@@ -1,0 +1,39 @@
+# Rust Build Artifacts
+target/
+Cargo.lock
+**/*.rlib
+**/*.so
+**/*.dylib
+**/*.dll
+
+# Backup files
+**/*.rs.bk
+**/*.bak
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# IDE Settings
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+
+# Environment files
+.env
+.env.local
+
+# Profiling and Coverage
+*.profraw
+*.profdata
+coverage/
+tarpaulin-report.html
+
+# Logging
+*.log
+
+# Temporary files
+tmp/
+temp/
