@@ -36,34 +36,85 @@ impl Default for DirectionalLight {
     }
 }
 
-/// GPU-friendly light parameters.
+/// ECS component for a point light source.
+#[derive(Clone, Debug)]
+pub struct PointLight {
+    pub position: Vec3,
+    pub color: Vec3,
+    pub intensity: f32,
+    pub radius: f32,
+}
+
+impl PointLight {
+    pub fn new(position: Vec3, color: Vec3, intensity: f32, radius: f32) -> Self {
+        Self {
+            position,
+            color,
+            intensity,
+            radius,
+        }
+    }
+}
+
+/// GPU-friendly light parameters for multiple lights.
 ///
-/// Bound as a uniform buffer in the fragment shader.
+/// Supports 1 directional light and 3 point lights in the MVP.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct LightUniform {
-    /// Direction towards the light (xyz) + padding (w).
-    pub direction: [f32; 4],
-    /// Colour × intensity (xyz) + padding (w).
-    pub color: [f32; 4],
-    /// Ambient colour (xyz) + padding (w).
+    // Directional light: xyz = direction, w = intensity
+    pub dir_color: [f32; 4],
+    pub dir_direction: [f32; 4],
+
+    // Ambient color: xyz = color, w = padding
     pub ambient: [f32; 4],
+
+    // Point lights (array of 3 for simplicity in the shader loop)
+    // pos.xyz, pos.w = intensity; color.xyz, color.w = radius
+    pub point_lights_pos: [[f32; 4]; 3],
+    pub point_lights_color: [[f32; 4]; 3],
+
+    pub num_point_lights: u32,
+    pub _padding: [u32; 3], // 16-byte alignment
 }
 
 impl LightUniform {
-    /// Builds the uniform from a [`DirectionalLight`] and an ambient term.
-    pub fn from_light(light: &DirectionalLight, ambient: Vec3) -> Self {
-        let c = light.color * light.intensity;
+    pub fn new(dir_light: &DirectionalLight, ambient: Vec3) -> Self {
+        let dc = dir_light.color * dir_light.intensity;
         Self {
-            direction: [light.direction.x, light.direction.y, light.direction.z, 0.0],
-            color: [c.x, c.y, c.z, 1.0],
-            ambient: [ambient.x, ambient.y, ambient.z, 1.0],
+            dir_color: [dc.x, dc.y, dc.z, dir_light.intensity],
+            dir_direction: [
+                dir_light.direction.x,
+                dir_light.direction.y,
+                dir_light.direction.z,
+                0.0,
+            ],
+            ambient: [ambient.x, ambient.y, ambient.z, 0.0],
+            point_lights_pos: [[0.0; 4]; 3],
+            point_lights_color: [[0.0; 4]; 3],
+            num_point_lights: 0,
+            _padding: [0; 3],
+        }
+    }
+
+    pub fn add_point_light(&mut self, light: &PointLight) {
+        if self.num_point_lights < 3 {
+            let i = self.num_point_lights as usize;
+            self.point_lights_pos[i] = [
+                light.position.x,
+                light.position.y,
+                light.position.z,
+                light.intensity,
+            ];
+            self.point_lights_color[i] =
+                [light.color.x, light.color.y, light.color.z, light.radius];
+            self.num_point_lights += 1;
         }
     }
 }
 
 impl Default for LightUniform {
     fn default() -> Self {
-        Self::from_light(&DirectionalLight::default(), Vec3::splat(0.15))
+        Self::new(&DirectionalLight::default(), Vec3::splat(0.15))
     }
 }

@@ -30,7 +30,13 @@ fn main() {
     let cube_mesh = create_cube();
     let mesh_index = context.upload_mesh(&cube_mesh);
 
-    let material = Material::solid(Vec3::new(0.8, 0.2, 0.3)); // Reddish
+    // Load texture
+    let metal_grid_bytes = include_bytes!("../assets/metal_grid.png");
+    let tex_idx = context
+        .upload_texture(metal_grid_bytes, "metal_grid")
+        .unwrap_or(0);
+
+    let material = Material::textured(Vec3::new(0.8, 0.2, 0.3), tex_idx); // Reddish tint
     let material_index = context.add_material(material);
 
     // Setup camera
@@ -40,7 +46,7 @@ fn main() {
 
     // Setup light
     let light = DirectionalLight::default();
-    let light_uniform = LightUniform::from_light(&light, Vec3::splat(0.1));
+    let light_uniform = LightUniform::new(&light, Vec3::splat(0.1));
     context.update_light_buffer(&light_uniform);
 
     let mut rotation = 0.0f32;
