@@ -1,20 +1,23 @@
 pub mod column;
-pub mod table;
 pub mod edges;
+pub mod table;
 
-use std::any::TypeId;
 use crate::component::ComponentInfo;
-pub use table::Table;
 pub use edges::Edges;
+use std::any::TypeId;
+pub use table::Table;
 
 /// A group of entities that share the exact same set of component types.
 ///
 /// Each archetype has a `Table` for storing component data and `Edges` for
 /// transitions to other archetypes.
 pub struct Archetype {
+    #[allow(dead_code)]
     pub(crate) id: usize,
+    #[allow(dead_code)]
     pub(crate) types: Vec<TypeId>,
     pub(crate) table: Table,
+    #[allow(dead_code)]
     pub(crate) edges: Edges,
     pub(crate) component_infos: Vec<ComponentInfo>,
 }

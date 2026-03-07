@@ -157,12 +157,13 @@ impl RenderContext {
         let fallback_tex = Texture::white_1x1(&device, &queue);
         let fallback_texture_bg = forward_pass.create_texture_bind_group(&device, &fallback_tex);
 
-        // --- Per-object model buffer ---
-        let identity = ModelUniform {
-            model: redox_math::Mat4::IDENTITY.to_cols_array_2d(),
-        };
-        let model_buffer =
-            buffer::create_uniform_buffer(&device, "model_uniform", bytemuck::bytes_of(&identity));
+        // --- Per-object model buffer (Storage) ---
+        let model_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("model_storage_buffer"),
+            size: (64 * 10000) as u64, // Support up to 10,000 objects
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         let model_bind_group = forward_pass.create_model_bind_group(&device, &model_buffer);
 
         Self {
@@ -299,16 +300,19 @@ impl RenderContext {
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             render_pass.set_bind_group(1, &self.light_bind_group, &[]);
 
-            for obj in objects {
-                // Update model matrix
-                let model_uni = ModelUniform {
+            // Update all model matrices at once
+            let model_data: Vec<ModelUniform> = objects
+                .iter()
+                .map(|obj| ModelUniform {
                     model: obj.model_matrix.to_cols_array_2d(),
-                };
-                self.queue
-                    .write_buffer(&self.model_buffer, 0, bytemuck::bytes_of(&model_uni));
+                })
+                .collect();
+            self.queue
+                .write_buffer(&self.model_buffer, 0, bytemuck::cast_slice(&model_data));
 
-                render_pass.set_bind_group(2, &self.model_bind_group, &[]);
+            render_pass.set_bind_group(2, &self.model_bind_group, &[]);
 
+            for (i, obj) in objects.iter().enumerate() {
                 // Texture bind group
                 let mut texture_bg = &self.fallback_texture_bg;
                 if let Some(material) = self.materials.get(obj.material_index) {
@@ -326,7 +330,11 @@ impl RenderContext {
                         gpu_mesh.index_buffer.slice(..),
                         wgpu::IndexFormat::Uint32,
                     );
-                    render_pass.draw_indexed(0..gpu_mesh.index_count, 0, 0..1);
+                    render_pass.draw_indexed(
+                        0..gpu_mesh.index_count,
+                        0,
+                        (i as u32)..(i as u32 + 1),
+                    );
                 }
             }
         }

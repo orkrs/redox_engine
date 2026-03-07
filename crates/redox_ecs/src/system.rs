@@ -1,33 +1,21 @@
-use crate::world::World;
+// use redox_math::{Mat4, Transform};
+use redox_math::Mat4;
 
-/// Trait implemented by any logic that operates on the ECS `World`.
-pub trait System {
-    /// Runs the system logic.
-    fn run(&mut self, world: &mut World);
-}
+pub struct System;
+pub struct SystemStage;
 
-/// A collection of systems to be executed in order.
-pub struct SystemStage {
-    systems: Vec<Box<dyn System>>,
-}
+// Компонент-дескриптор меша
+#[derive(Debug, Clone)]
+pub struct MeshHandle(pub usize);
 
-impl SystemStage {
-    /// Creates a new empty stage.
-    pub fn new() -> Self {
-        Self {
-            systems: Vec::new(),
-        }
-    }
+// Компонент-дескриптор материала
+#[derive(Debug, Clone)]
+pub struct MaterialHandle(pub usize);
 
-    /// Adds a system to the stage.
-    pub fn add_system<S: System + 'static>(&mut self, system: S) {
-        self.systems.push(Box::new(system));
-    }
-
-    /// Runs all systems in order.
-    pub fn run(&mut self, world: &mut World) {
-        for system in &mut self.systems {
-            system.run(world);
-        }
-    }
+// Внутренняя структура для передачи данных на рендер
+#[derive(Debug, Clone)]
+pub struct RenderObject {
+    pub model_matrix: Mat4,
+    pub mesh_index: usize,
+    pub material_index: usize,
 }

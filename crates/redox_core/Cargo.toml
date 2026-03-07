@@ -1,0 +1,22 @@
+[package]
+name = "redox_core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+redox_math = { path = "../redox_math" }
+redox_ecs = { path = "../redox_ecs" }
+redox_render = { path = "../redox_render" }
+
+winit = { workspace = true }
+log = "0.4"
+env_logger = "0.11"
+pollster = "0.3"
+bytemuck = "1.14"
+wgpu = { workspace = true }
+
+[dev-dependencies]
+# Добавляем это, чтобы example мог видеть физику
+redox_physics = { path = "../redox_physics" }
+rapier3d = "0.18"
+pollster = "0.3"

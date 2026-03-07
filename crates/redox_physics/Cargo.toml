@@ -1,0 +1,19 @@
+[package]
+name = "redox_physics"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+redox_math = { path = "../redox_math" }
+redox_ecs = { path = "../redox_ecs" }
+redox_core = { path = "../redox_core" }
+
+rapier3d = "0.18"
+log = "0.4"
+crossbeam-queue = "0.3"
+thiserror = "1.0"
+
+
+[dev-dependencies]
+pollster = "0.3"
+env_logger = "0.11"

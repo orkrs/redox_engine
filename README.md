@@ -18,8 +18,10 @@ The foundational pillars of the RedOx Engine successfully reached their Phase 1 
   Offers all necessary geometric primitives, high-performance transformation utilities (via `glam`), and complex frustum culling logic using the Gribb-Hartmann method. Completely covered by integration tests.
 - **Core ECS** (`redox_ecs`) – **Complete & Tested**
   A fully featured, archetype‑based ECS featuring entity generation lock-free queues, component storage pooling, parallel disjoint iteration, global events, and parent-child hierarchy support.
-- **Renderer Module** (`redox_render`) – **Complete**
-  A robust `wgpu`-based renderer achieving seamless ECS integration. Features include a dynamic forward shading pass, procedural meshes, textured materials, and a real-time multi-light system (Directional + Point lights with attenuation).
+- **Renderer Module** (`redox_render`) – **Complete & Optimized**
+  A robust `wgpu`-based renderer achieving seamless ECS integration. Features include a dynamic forward shading pass with **GPU-driven instancing** (via storage buffers), procedural meshes, textured materials, and a real-time multi-light system (Directional + Point lights with attenuation).
+- **Physics Engine** (`redox_physics`) – **Integrated**
+  Powered by `rapier3d`, providing rigid body dynamics, colliders, and seamless synchronization with the ECS `Transform` components. Full support for gravity, restitution, and kinematic bodies.
 
 ## Key Features
 
@@ -44,9 +46,14 @@ The foundational pillars of the RedOx Engine successfully reached their Phase 1 
 To see the engine in action, run the following command from the workspace root:
 
 ```bash
+cargo run --example falling_balls -p redox_core
+```
+*(This "Unified Showcase" example demonstrates the full power of the engine: 100+ physics-enabled spheres falling into a box, synchronized via ECS, rendered using GPU instancing, and illuminated by dynamic point lights.)*
+
+```bash
 cargo run --example basic_cube -p redox_render
 ```
-*(This basic example demonstrates window creation, GPU context initialization, procedural mesh generation, texture loading, material application, and real-time lighting + model rotation.)*
+*(A basic example demonstrating window creation, GPU context initialization, procedural mesh generation, texture loading, material application, and real-time lighting.)*
 
 ## Tech Stack
 
@@ -59,7 +66,7 @@ cargo run --example basic_cube -p redox_render
 | Rendering      | [`wgpu`](https://crates.io/crates/wgpu) (DirectX 12 / Vulkan / Metal)             |
 | Windowing      | [`winit`](https://crates.io/crates/winit)                                         |
 | Asset Decoding | [`image`](https://crates.io/crates/image), [`tobj`](https://crates.io/crates/tobj)|
-| Physics        | [`rapier3d`](https://crates.io/crates/rapier3d) (planned)                         |
+| Physics        | [`rapier3d`](https://crates.io/crates/rapier3d)                                   |
 | UI / Debug     | [`egui`](https://crates.io/crates/egui) (planned)                                 |
 
 ## Development Goal

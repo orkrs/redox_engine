@@ -11,6 +11,7 @@ pub mod quat;
 pub mod bounds;
 pub mod frustum;
 pub mod conversions;
+pub mod transform;
 
 // Re-export all public items from submodules for convenient glob imports.
 pub use vector::*;
@@ -19,3 +20,4 @@ pub use quat::*;
 pub use bounds::*;
 pub use frustum::*;
 pub use conversions::*;
+pub use transform::*;
