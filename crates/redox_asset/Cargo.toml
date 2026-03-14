@@ -1,0 +1,18 @@
+[package]
+name = "redox_asset"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+redox_ecs = { path = "../redox_ecs" }
+image = { workspace = true }
+gltf = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+notify = { workspace = true }
+flume = { workspace = true }
+
+[dev-dependencies]

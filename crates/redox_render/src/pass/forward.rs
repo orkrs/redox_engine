@@ -26,6 +26,7 @@ pub struct ForwardPass {
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ModelUniform {
     pub model: [[f32; 4]; 4],
+    pub color: [f32; 4],
 }
 
 impl ForwardPass {

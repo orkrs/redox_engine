@@ -10,6 +10,7 @@ path = "src/lib.rs"
 # Internal crates
 redox_math = { path = "../redox_math" }
 redox_ecs = { path = "../redox_ecs" }
+redox_asset = { path = "../redox_asset" }
 
 # Graphics
 wgpu = { workspace = true }
@@ -23,6 +24,9 @@ env_logger = { workspace = true }
 
 # Model loading
 tobj = "4.0"
+
+rand = "0.8"
+half = "2.4"
 
 # Blocking async init
 pollster = "0.4"

@@ -52,6 +52,7 @@ pub fn load_obj<P: AsRef<Path>>(path: P) -> Result<Vec<Mesh>, tobj::LoadError> {
                         position: [px, py, pz],
                         normal: [nx, ny, nz],
                         uv: [u, v],
+                        tangent: [1.0, 0.0, 0.0],
                     }
                 })
                 .collect();

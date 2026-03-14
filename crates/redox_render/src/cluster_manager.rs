@@ -1,13 +1,15 @@
 //! GPU cluster management and light assignment updates.
 
 use crate::clustering::{self, ClusterInfo, ClusterLightAssignment};
-use crate::light::PointLight;
+use crate::light::{PointLight, PointLightGpu};
 use wgpu::{Buffer, Device, Queue};
 
 /// Manages cluster data and GPU buffers for clustered forward rendering.
 pub struct ClusterManager {
     /// Current cluster information.
     pub cluster_info: ClusterInfo,
+    /// Point lights storage buffer.
+    pub point_lights_buffer: Buffer,
     /// Metadata buffer: (offset, count) for each cluster.
     pub metadata_buffer: Buffer,
     /// Light index buffer: flat array of light indices.
@@ -31,6 +33,15 @@ impl ClusterManager {
     ) -> Self {
         let cluster_info = ClusterInfo::new(screen_width, screen_height, camera);
         let num_clusters = cluster_info.total_clusters();
+
+        // Initialize point lights buffer
+        let point_lights_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("cluster_point_lights_buffer"),
+            size: (clustering::cluster_config::MAX_LIGHTS as u64)
+                * std::mem::size_of::<PointLightGpu>() as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
 
         // Initialize buffers with default sizes
         let metadata_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -68,6 +79,7 @@ impl ClusterManager {
 
         Self {
             cluster_info,
+            point_lights_buffer,
             metadata_buffer,
             light_indices_buffer,
             bounds_buffer,
@@ -124,6 +136,17 @@ impl ClusterManager {
         _device: &Device,
         queue: &Queue,
     ) {
+        // Convert PointLight to PointLightGpu and serialize to GPU
+        let gpu_lights: Vec<PointLightGpu> = lights
+            .iter()
+            .map(PointLightGpu::from_point_light)
+            .collect();
+        
+        if !gpu_lights.is_empty() {
+            let lights_bytes = bytemuck::cast_slice::<PointLightGpu, u8>(&gpu_lights);
+            queue.write_buffer(&self.point_lights_buffer, 0, lights_bytes);
+        }
+
         // Build cluster bounds
         let cluster_bounds = clustering::build_clusters(
             camera,

@@ -453,6 +453,10 @@ impl RenderContext {
             &ssao_blurred_view,
             &ssao_pbr_sampler,
             &ibl_processor.sampler,
+            &cluster_manager.point_lights_buffer,
+            &cluster_manager.metadata_buffer,
+            &cluster_manager.light_indices_buffer,
+            &cluster_manager.info_buffer,
         );
 
         Self {
@@ -953,6 +957,10 @@ impl RenderContext {
             &self.ssao_blurred_view,
             &self.ssao_pbr_sampler,
             &self.ibl_processor.sampler,
+            &self.cluster_manager.point_lights_buffer,
+            &self.cluster_manager.metadata_buffer,
+            &self.cluster_manager.light_indices_buffer,
+            &self.cluster_manager.info_buffer,
         );
     }
 

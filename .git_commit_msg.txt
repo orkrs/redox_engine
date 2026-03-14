@@ -1,0 +1,18 @@
+Implement clustered forward rendering infrastructure - Phase 1
+
+Add foundational components for clustered forward rendering:
+
+Core Components:
+- clustering.rs: Cluster bounds, light assignment, depth distribution
+- cluster_manager.rs: GPU buffer management and cluster updates
+- RenderContext integration: cluster_manager field and update methods
+- Light structures: PointLightGpu for storage buffer representation
+
+Configuration:
+- 16x16 pixel clusters in screen space
+- 24 logarithmic depth slices for better precision
+- Support up to 512 lights with 256 per cluster max
+- CPU-based assignment (GPU compute shader planned for Phase 5)
+
+Next Phase: Shader updates to use cluster lookup in PBR rendering
+See CLUSTERED_RENDERING_IMPL.md for implementation guide

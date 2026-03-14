@@ -84,6 +84,7 @@ fn main() {
                     let model_matrix = Mat4::from_rotation_y(rotation);
                     let render_obj = RenderObject {
                         model_matrix,
+                        color: [1.0, 1.0, 1.0, 1.0],
                         mesh_index,
                         material_index,
                     };

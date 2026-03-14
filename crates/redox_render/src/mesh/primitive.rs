@@ -14,35 +14,35 @@ pub fn create_cube() -> Mesh {
     #[rustfmt::skip]
     let vertices = vec![
         // Front  (+Z)
-        Vertex { position: [-0.5, -0.5,  0.5], normal: [ 0.0,  0.0,  1.0], uv: [0.0, 1.0] },
-        Vertex { position: [ 0.5, -0.5,  0.5], normal: [ 0.0,  0.0,  1.0], uv: [1.0, 1.0] },
-        Vertex { position: [ 0.5,  0.5,  0.5], normal: [ 0.0,  0.0,  1.0], uv: [1.0, 0.0] },
-        Vertex { position: [-0.5,  0.5,  0.5], normal: [ 0.0,  0.0,  1.0], uv: [0.0, 0.0] },
+        Vertex { position: [-0.5, -0.5,  0.5], normal: [ 0.0,  0.0,  1.0], uv: [0.0, 1.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [ 0.5, -0.5,  0.5], normal: [ 0.0,  0.0,  1.0], uv: [1.0, 1.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [ 0.5,  0.5,  0.5], normal: [ 0.0,  0.0,  1.0], uv: [1.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [-0.5,  0.5,  0.5], normal: [ 0.0,  0.0,  1.0], uv: [0.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
         // Back   (-Z)
-        Vertex { position: [ 0.5, -0.5, -0.5], normal: [ 0.0,  0.0, -1.0], uv: [0.0, 1.0] },
-        Vertex { position: [-0.5, -0.5, -0.5], normal: [ 0.0,  0.0, -1.0], uv: [1.0, 1.0] },
-        Vertex { position: [-0.5,  0.5, -0.5], normal: [ 0.0,  0.0, -1.0], uv: [1.0, 0.0] },
-        Vertex { position: [ 0.5,  0.5, -0.5], normal: [ 0.0,  0.0, -1.0], uv: [0.0, 0.0] },
+        Vertex { position: [ 0.5, -0.5, -0.5], normal: [ 0.0,  0.0, -1.0], uv: [0.0, 1.0], tangent: [-1.0,  0.0,  0.0] },
+        Vertex { position: [-0.5, -0.5, -0.5], normal: [ 0.0,  0.0, -1.0], uv: [1.0, 1.0], tangent: [-1.0,  0.0,  0.0] },
+        Vertex { position: [-0.5,  0.5, -0.5], normal: [ 0.0,  0.0, -1.0], uv: [1.0, 0.0], tangent: [-1.0,  0.0,  0.0] },
+        Vertex { position: [ 0.5,  0.5, -0.5], normal: [ 0.0,  0.0, -1.0], uv: [0.0, 0.0], tangent: [-1.0,  0.0,  0.0] },
         // Top    (+Y)
-        Vertex { position: [-0.5,  0.5,  0.5], normal: [ 0.0,  1.0,  0.0], uv: [0.0, 1.0] },
-        Vertex { position: [ 0.5,  0.5,  0.5], normal: [ 0.0,  1.0,  0.0], uv: [1.0, 1.0] },
-        Vertex { position: [ 0.5,  0.5, -0.5], normal: [ 0.0,  1.0,  0.0], uv: [1.0, 0.0] },
-        Vertex { position: [-0.5,  0.5, -0.5], normal: [ 0.0,  1.0,  0.0], uv: [0.0, 0.0] },
+        Vertex { position: [-0.5,  0.5,  0.5], normal: [ 0.0,  1.0,  0.0], uv: [0.0, 1.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [ 0.5,  0.5,  0.5], normal: [ 0.0,  1.0,  0.0], uv: [1.0, 1.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [ 0.5,  0.5, -0.5], normal: [ 0.0,  1.0,  0.0], uv: [1.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [-0.5,  0.5, -0.5], normal: [ 0.0,  1.0,  0.0], uv: [0.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
         // Bottom (-Y)
-        Vertex { position: [-0.5, -0.5, -0.5], normal: [ 0.0, -1.0,  0.0], uv: [0.0, 1.0] },
-        Vertex { position: [ 0.5, -0.5, -0.5], normal: [ 0.0, -1.0,  0.0], uv: [1.0, 1.0] },
-        Vertex { position: [ 0.5, -0.5,  0.5], normal: [ 0.0, -1.0,  0.0], uv: [1.0, 0.0] },
-        Vertex { position: [-0.5, -0.5,  0.5], normal: [ 0.0, -1.0,  0.0], uv: [0.0, 0.0] },
+        Vertex { position: [-0.5, -0.5, -0.5], normal: [ 0.0, -1.0,  0.0], uv: [0.0, 1.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [ 0.5, -0.5, -0.5], normal: [ 0.0, -1.0,  0.0], uv: [1.0, 1.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [ 0.5, -0.5,  0.5], normal: [ 0.0, -1.0,  0.0], uv: [1.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [-0.5, -0.5,  0.5], normal: [ 0.0, -1.0,  0.0], uv: [0.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
         // Right  (+X)
-        Vertex { position: [ 0.5, -0.5,  0.5], normal: [ 1.0,  0.0,  0.0], uv: [0.0, 1.0] },
-        Vertex { position: [ 0.5, -0.5, -0.5], normal: [ 1.0,  0.0,  0.0], uv: [1.0, 1.0] },
-        Vertex { position: [ 0.5,  0.5, -0.5], normal: [ 1.0,  0.0,  0.0], uv: [1.0, 0.0] },
-        Vertex { position: [ 0.5,  0.5,  0.5], normal: [ 1.0,  0.0,  0.0], uv: [0.0, 0.0] },
+        Vertex { position: [ 0.5, -0.5,  0.5], normal: [ 1.0,  0.0,  0.0], uv: [0.0, 1.0], tangent: [ 0.0,  0.0, -1.0] },
+        Vertex { position: [ 0.5, -0.5, -0.5], normal: [ 1.0,  0.0,  0.0], uv: [1.0, 1.0], tangent: [ 0.0,  0.0, -1.0] },
+        Vertex { position: [ 0.5,  0.5, -0.5], normal: [ 1.0,  0.0,  0.0], uv: [1.0, 0.0], tangent: [ 0.0,  0.0, -1.0] },
+        Vertex { position: [ 0.5,  0.5,  0.5], normal: [ 1.0,  0.0,  0.0], uv: [0.0, 0.0], tangent: [ 0.0,  0.0, -1.0] },
         // Left   (-X)
-        Vertex { position: [-0.5, -0.5, -0.5], normal: [-1.0,  0.0,  0.0], uv: [0.0, 1.0] },
-        Vertex { position: [-0.5, -0.5,  0.5], normal: [-1.0,  0.0,  0.0], uv: [1.0, 1.0] },
-        Vertex { position: [-0.5,  0.5,  0.5], normal: [-1.0,  0.0,  0.0], uv: [1.0, 0.0] },
-        Vertex { position: [-0.5,  0.5, -0.5], normal: [-1.0,  0.0,  0.0], uv: [0.0, 0.0] },
+        Vertex { position: [-0.5, -0.5, -0.5], normal: [-1.0,  0.0,  0.0], uv: [0.0, 1.0], tangent: [ 0.0,  0.0,  1.0] },
+        Vertex { position: [-0.5, -0.5,  0.5], normal: [-1.0,  0.0,  0.0], uv: [1.0, 1.0], tangent: [ 0.0,  0.0,  1.0] },
+        Vertex { position: [-0.5,  0.5,  0.5], normal: [-1.0,  0.0,  0.0], uv: [1.0, 0.0], tangent: [ 0.0,  0.0,  1.0] },
+        Vertex { position: [-0.5,  0.5, -0.5], normal: [-1.0,  0.0,  0.0], uv: [0.0, 0.0], tangent: [ 0.0,  0.0,  1.0] },
     ];
 
     let mut indices = Vec::with_capacity(36);
@@ -52,6 +52,22 @@ pub fn create_cube() -> Mesh {
     }
 
     Mesh::new(vertices, indices)
+}
+
+/// Creates a unit cube with normals pointing **inward** and winding reversed so that
+/// when viewed from inside (e.g. room walls), faces are front-facing and lit correctly.
+/// Use for interior geometry (corridor walls, floor, ceiling) with back-face culling.
+pub fn create_cube_inward_normals() -> Mesh {
+    let mut mesh = create_cube();
+    for v in &mut mesh.vertices {
+        v.normal = [-v.normal[0], -v.normal[1], -v.normal[2]];
+        v.tangent = [-v.tangent[0], -v.tangent[1], -v.tangent[2]];
+    }
+    // Reverse winding so the interior face is front when viewed from inside
+    for tri in mesh.indices.chunks_exact_mut(3) {
+        tri.swap(1, 2);
+    }
+    mesh
 }
 
 /// Creates a UV sphere with the given `radius` and resolution.
@@ -82,10 +98,15 @@ pub fn create_sphere(radius: f32, segments: u32) -> Mesh {
             let u = seg as f32 / segments as f32;
             let v = ring as f32 / rings as f32;
 
+            let tx = -sin_phi;
+            let ty = 0.0;
+            let tz = cos_phi;
+
             vertices.push(Vertex {
                 position: [x * radius, y * radius, z * radius],
                 normal: [x, y, z],
                 uv: [u, v],
+                tangent: [tx, ty, tz],
             });
         }
     }
@@ -134,10 +155,15 @@ pub fn create_torus(radius: f32, tube_radius: f32, segments: u32, tube_segments:
             let u = seg as f32 / segments as f32;
             let v = tube as f32 / tube_segments as f32;
 
+            let tx = -sin_theta;
+            let ty = 0.0;
+            let tz = cos_theta;
+
             vertices.push(Vertex {
                 position: [x, y, z],
                 normal: [nx, ny, nz],
                 uv: [u, v],
+                tangent: [tx, ty, tz],
             });
         }
     }
@@ -165,21 +191,25 @@ pub fn create_quad() -> Mesh {
             position: [-0.5, -0.5, 0.0],
             normal: [0.0, 0.0, 1.0],
             uv: [0.0, 1.0],
+            tangent: [1.0, 0.0, 0.0],
         },
         Vertex {
             position: [0.5, -0.5, 0.0],
             normal: [0.0, 0.0, 1.0],
             uv: [1.0, 1.0],
+            tangent: [1.0, 0.0, 0.0],
         },
         Vertex {
             position: [0.5, 0.5, 0.0],
             normal: [0.0, 0.0, 1.0],
             uv: [1.0, 0.0],
+            tangent: [1.0, 0.0, 0.0],
         },
         Vertex {
             position: [-0.5, 0.5, 0.0],
             normal: [0.0, 0.0, 1.0],
             uv: [0.0, 0.0],
+            tangent: [1.0, 0.0, 0.0],
         },
     ];
     let indices = vec![0, 1, 2, 0, 2, 3];

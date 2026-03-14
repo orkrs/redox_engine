@@ -42,4 +42,14 @@ impl Archetype {
             component_infos,
         }
     }
+
+    /// Returns the sorted set of component [`TypeId`]s that define this archetype.
+    pub fn component_types(&self) -> &[TypeId] {
+        &self.types
+    }
+
+    /// Returns the entities stored in this archetype.
+    pub fn entities(&self) -> &[crate::entity::Entity] {
+        self.table.entities()
+    }
 }

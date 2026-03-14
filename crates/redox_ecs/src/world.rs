@@ -1,6 +1,7 @@
 use crate::archetype::Archetype;
 use crate::component::{Component, ComponentInfo};
 use crate::entity::{Entity, EntityAllocator};
+use crate::query::{Query, QueryData, QueryFilter, NullFilter};
 use hashbrown::HashMap;
 use std::any::{Any, TypeId};
 
@@ -224,6 +225,55 @@ impl World {
             self.type_to_archetype.insert(types, id);
             id
         }
+    }
+
+    pub fn all_entities(&self) -> impl Iterator<Item = Entity> + '_ {
+        self.archetypes.iter().flat_map(|arch| arch.table.entities().iter().copied())
+    }
+
+    /// Iterates over all archetypes, yielding for each:
+    /// - the archetype index
+    /// - the sorted slice of [`TypeId`]s that define the archetype
+    /// - the slice of [`Entity`]s stored in that archetype
+    ///
+    /// Useful for building debug / inspector UIs.
+    pub fn archetype_iter(&self) -> impl Iterator<Item = (usize, &[TypeId], &[Entity])> + '_ {
+        self.archetypes.iter().enumerate().map(|(i, arch)| {
+            (i, arch.component_types(), arch.entities())
+        })
+    }
+
+    /// Number of active archetypes.
+    pub fn archetype_count(&self) -> usize {
+        self.archetypes.len()
+    }
+
+    // --- QUERIES ---
+
+    /// Creates a query for the given [`QueryData`] type.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// // Single component
+    /// for pos in world.query::<&Position>().iter(&world) { ... }
+    ///
+    /// // Tuple of components
+    /// for (pos, vel) in world.query::<(&Position, &Velocity)>().iter(&world) { ... }
+    /// ```
+    #[inline]
+    pub fn query<Q: QueryData>(&self) -> Query<Q, NullFilter> {
+        Query::new()
+    }
+
+    /// Creates a filtered query for the given [`QueryData`] and [`QueryFilter`] types.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// for (pos, vel) in world.query_filtered::<(&Position, &Velocity), With<Player>>().iter(&world) { ... }
+    /// ```
+    #[inline]
+    pub fn query_filtered<Q: QueryData, F: QueryFilter>(&self) -> Query<Q, F> {
+        Query::new()
     }
 }
 

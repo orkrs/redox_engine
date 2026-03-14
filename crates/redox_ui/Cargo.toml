@@ -1,0 +1,23 @@
+[package]
+name = "redox_ui"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+redox_math = { path = "../redox_math" }
+redox_ecs = { path = "../redox_ecs" }
+redox_render = { path = "../redox_render" }
+
+egui = { workspace = true }
+egui-wgpu = { workspace = true }
+egui-winit = { workspace = true }
+egui_plot = { workspace = true }
+glam = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }
+log = { workspace = true }
+
+[dev-dependencies]

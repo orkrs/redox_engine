@@ -87,6 +87,8 @@ impl EntityAllocator {
         self.free_ids.push(entity.id);
         true
     }
+
+
 }
 
 impl Default for EntityAllocator {

@@ -248,13 +248,14 @@ async fn run() {
 
                     let mut render_objects = Vec::new();
                     for &entity in &all_entities {
-                        if let (Some(tf), Some(mesh), Some(mat)) = (
+                        if let (Some(transform), Some(mesh), Some(mat)) = (
                             world.get_component::<Transform>(entity),
                             world.get_component::<MeshHandle>(entity),
                             world.get_component::<MaterialHandle>(entity),
                         ) {
                             render_objects.push(RenderObject {
-                                model_matrix: tf.matrix(),
+                                model_matrix: transform.matrix(),
+                                color: [1.0, 1.0, 1.0, 1.0],
                                 mesh_index: mesh.0,
                                 material_index: mat.0,
                             });

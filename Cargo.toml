@@ -1,6 +1,16 @@
 [workspace]
 resolver = "2"
-members = ["crates/*"]
+members = [
+    "crates/redox_math",
+    "crates/redox_ecs",
+    "crates/redox_render",
+    "crates/redox_physics",
+    "crates/redox_core",
+    "crates/redox_input",
+    "crates/redox_asset",
+    "crates/redox_audio",
+    "crates/redox_ui",
+]
 
 [profile.release]
 opt-level = 3
@@ -30,6 +40,10 @@ image = "0.24"
 gltf = "1.4"
 bytemuck = { version = "1.14", features = ["derive"] }
 anyhow = "1.0"
-egui = "0.27"
-egui-wgpu = "0.27"
-egui-winit = "0.27"
+egui = "0.28"
+egui-wgpu = "0.28"
+egui-winit = "0.28"
+egui_plot = "0.28"
+thiserror = "1.0"
+notify = "6.1"
+flume = "0.11"

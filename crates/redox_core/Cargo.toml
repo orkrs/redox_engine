@@ -7,6 +7,10 @@ edition = "2024"
 redox_math = { path = "../redox_math" }
 redox_ecs = { path = "../redox_ecs" }
 redox_render = { path = "../redox_render" }
+redox_input = { path = "../redox_input" }
+redox_asset = { path = "../redox_asset" }
+redox_audio = { path = "../redox_audio" }
+redox_ui = { path = "../redox_ui" }
 
 winit = { workspace = true }
 log = "0.4"
@@ -16,7 +20,12 @@ bytemuck = "1.14"
 wgpu = { workspace = true }
 
 [dev-dependencies]
-# Добавляем это, чтобы example мог видеть физику
+# Для примеров: физика, UI, рандом
 redox_physics = { path = "../redox_physics" }
 rapier3d = "0.18"
 pollster = "0.3"
+egui-wgpu = { workspace = true }
+egui = { workspace = true }
+rand = "0.8"
+# Для benchmark: замер памяти (RSS)
+memory-stats = "1.1"

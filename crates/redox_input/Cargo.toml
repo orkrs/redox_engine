@@ -1,0 +1,15 @@
+[package]
+name = "redox_input"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+redox_math = { path = "../redox_math" }
+redox_ecs = { path = "../redox_ecs" }
+winit = { workspace = true }
+log = { workspace = true }
+
+[dev-dependencies]

@@ -1,0 +1,76 @@
+=== Benchmark Results ===
+Duration: 30.0 s
+Frames: 6996
+Average FPS: 243.4
+Min FPS: 46.9, Max FPS: 2527.2, 1% Low: 78.1, 0.1% Low: 70.1
+
+Breakdown (average ms per frame):
+  Shadow pass:    0.11
+  Normal pass:   0.06
+  SSAO pass:     0.02
+  SSAO blur:     0.01
+  Scene pass:    0.11
+  Tone mapping:  0.01
+  Asset manager: 0.00
+  UI:            0.13
+  Events:        0.00
+  ECS:           0.00
+  Physics:       0.00
+  Total render:  0.32
+
+Draw calls (average per frame): 181
+Memory usage (peak RSS): 235 MB (avg: 231 MB)
+
+Load progression (summary):
+  Phase 1 (0-5s): objects 80, lights 2, avg FPS 255, min FPS 2527, avg draw calls 81, mem 233 MB
+  Phase 2 (5-10s): objects 80, lights 2, avg FPS 243, min FPS 2347, avg draw calls 121, mem 231 MB
+  Phase 3 (10-14s): objects 120, lights 6, avg FPS 243, min FPS 2108, avg draw calls 161, mem 230 MB
+  Phase 4 (14-19s): objects 160, lights 10, avg FPS 240, min FPS 1897, avg draw calls 201, mem 230 MB
+  Phase 5 (19-24s): objects 200, lights 14, avg FPS 240, min FPS 1802, avg draw calls 241, mem 231 MB
+  Phase 6 (24-29s): objects 240, lights 18, avg FPS 240, min FPS 1716, avg draw calls 281, mem 231 MB
+
+---------- Per-phase detailed statistics ----------
+  --- Phase 1 (time 0.0-4.8 s, 1157 frames) ---
+      Load: objects=80, point_lights=2
+      Frame time (ms): avg=3.927, min=0.396, max=21.324, p1=0.454, p99=12.809, p99.9=13.467, std=3.531
+      FPS: avg=254.7, min=46.9, max=2527.2, 1% low=78.1, 0.1% low=74.3
+      Pass times (avg ms): shadow=0.098, normal=0.042, ssao=0.024, blur=0.012, scene=0.069, tone=0.014, asset=0.001, ui=0.143
+      Draw calls: avg=81.0, min=81, max=81
+      Memory RSS (MB): avg=233.0, min=223.1, max=234.8
+  --- Phase 2 (time 4.8-9.6 s, 1176 frames) ---
+      Load: objects=80, point_lights=2
+      Frame time (ms): avg=4.118, min=0.426, max=14.197, p1=0.471, p99=10.583, p99.9=13.394, std=3.355
+      FPS: avg=242.8, min=70.4, max=2346.9, 1% low=94.5, 0.1% low=74.7
+      Pass times (avg ms): shadow=0.101, normal=0.044, ssao=0.020, blur=0.011, scene=0.080, tone=0.011, asset=0.001, ui=0.121
+      Draw calls: avg=121.0, min=121, max=121
+      Memory RSS (MB): avg=231.4, min=229.8, max=235.0
+  --- Phase 3 (time 9.6-14.4 s, 1178 frames) ---
+      Load: objects=120, point_lights=6
+      Frame time (ms): avg=4.112, min=0.474, max=14.297, p1=0.518, p99=10.329, p99.9=13.748, std=3.286
+      FPS: avg=243.2, min=69.9, max=2108.4, 1% low=96.8, 0.1% low=72.7
+      Pass times (avg ms): shadow=0.108, normal=0.052, ssao=0.020, blur=0.011, scene=0.100, tone=0.012, asset=0.001, ui=0.126
+      Draw calls: avg=161.0, min=161, max=161
+      Memory RSS (MB): avg=230.4, min=230.2, max=230.7
+  --- Phase 4 (time 14.4-19.2 s, 1163 frames) ---
+      Load: objects=160, point_lights=10
+      Frame time (ms): avg=4.173, min=0.527, max=15.355, p1=0.576, p99=13.725, p99.9=14.450, std=3.931
+      FPS: avg=239.7, min=65.1, max=1896.8, 1% low=72.9, 0.1% low=69.2
+      Pass times (avg ms): shadow=0.118, normal=0.060, ssao=0.021, blur=0.011, scene=0.116, tone=0.012, asset=0.001, ui=0.123
+      Draw calls: avg=201.0, min=201, max=201
+      Memory RSS (MB): avg=230.2, min=230.1, max=230.4
+  --- Phase 5 (time 19.2-24.0 s, 1164 frames) ---
+      Load: objects=200, point_lights=14
+      Frame time (ms): avg=4.158, min=0.555, max=11.391, p1=0.625, p99=9.993, p99.9=11.292, std=3.139
+      FPS: avg=240.5, min=87.8, max=1802.5, 1% low=100.1, 0.1% low=88.6
+      Pass times (avg ms): shadow=0.124, normal=0.067, ssao=0.020, blur=0.011, scene=0.135, tone=0.012, asset=0.001, ui=0.122
+      Draw calls: avg=241.0, min=241, max=241
+      Memory RSS (MB): avg=230.6, min=230.4, max=231.2
+  --- Phase 6 (time 24.0-28.7 s, 1158 frames) ---
+      Load: objects=240, point_lights=18
+      Frame time (ms): avg=4.164, min=0.583, max=14.527, p1=0.667, p99=12.168, p99.9=13.460, std=3.297
+      FPS: avg=240.2, min=68.8, max=1716.4, 1% low=82.2, 0.1% low=74.3
+      Pass times (avg ms): shadow=0.134, normal=0.076, ssao=0.022, blur=0.011, scene=0.159, tone=0.013, asset=0.001, ui=0.128
+      Draw calls: avg=281.0, min=281, max=281
+      Memory RSS (MB): avg=231.2, min=231.1, max=231.3
+---------- End per-phase statistics ----------
+=== End of report ===

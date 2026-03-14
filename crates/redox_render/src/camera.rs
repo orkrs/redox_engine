@@ -2,7 +2,7 @@
 
 use bytemuck::{Pod, Zeroable};
 use redox_ecs::Entity;
-use redox_math::{Vec3, Mat4, Quat, look_at, perspective};
+use redox_math::{Mat4, Quat, Vec3, look_at, perspective};
 
 /// ECS component describing a perspective camera.
 #[derive(Clone, Debug)]
@@ -24,7 +24,12 @@ impl Camera {
     /// * `aspect_ratio` — width / height of the viewport.
     /// * `near` / `far` — clipping plane distances.
     pub fn new(fov_y: f32, aspect_ratio: f32, near: f32, far: f32) -> Self {
-        Self { fov_y, aspect_ratio, near, far }
+        Self {
+            fov_y,
+            aspect_ratio,
+            near,
+            far,
+        }
     }
 
     /// Builds the projection matrix for this camera.
@@ -83,5 +88,7 @@ impl CameraUniform {
 }
 
 impl Default for CameraUniform {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
