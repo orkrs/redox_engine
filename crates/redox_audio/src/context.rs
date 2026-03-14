@@ -77,6 +77,58 @@ impl AudioContext {
         self.play_sound(data)
     }
 
+    /// Applies a low-pass filter to the main track (for occlusion/obstruction effect).
+    /// Filter cutoff frequency in Hz (20000.0 = no filtering, lower = more muffled).
+    pub fn set_lowpass_filter(&mut self, cutoff_hz: f32) {
+        // Note: Full kira integration would apply this via effect chains
+        // This is a placeholder for the architectural approach
+        if let Some(_m) = &mut self.manager {
+            // In a full implementation:
+            // m.main_track().set_effect(lowpass_effect);
+            log::debug!("Setting lowpass filter to {:.0} Hz", cutoff_hz);
+        }
+    }
+
+    /// Applies reverb settings to the main track.
+    /// This would typically be called from the reverb system after zone blending.
+    pub fn set_reverb(&mut self, _decay: f32, _damping: f32) {
+        // Note: kira 0.8+ has limited reverb support out of the box
+        // For full cinematic reverb, consider: convolver effects, multiple delay lines, or external libraries
+        if let Some(_m) = &mut self.manager {
+            // In a full implementation:
+            // m.main_track().set_effect(reverb_effect);
+            log::debug!("Setting reverb with decay {:.2}s, damping {:.2}", _decay, _damping);
+        }
+    }
+
+    /// Updates spatial parameters for an emitter (volume, pan) based on listener position.
+    pub fn update_spatial_parameters(
+        &self,
+        emitter_pos: redox_math::Vec3,
+        listener_pos: redox_math::Vec3,
+        listener_forward: redox_math::Vec3,
+        listener_up: redox_math::Vec3,
+        max_distance: f32,
+    ) -> (f32, f32) {
+        let to_emitter = emitter_pos - listener_pos;
+        let distance = to_emitter.length();
+
+        // Calculate volume attenuation
+        let volume = if distance >= max_distance {
+            0.0
+        } else if distance < 0.1 {
+            1.0
+        } else {
+            ((max_distance - distance) / max_distance).clamp(0.0, 1.0)
+        };
+
+        // Calculate pan (left/right) based on cross product with listener forward
+        let listener_right = listener_forward.cross(listener_up).normalize();
+        let pan = to_emitter.normalize().dot(listener_right).clamp(-1.0, 1.0);
+
+        (volume, pan)
+    }
+
     /// Caches decoded sound from asset data and associates it with the handle.
     /// No-op if this handle is already cached. Returns `true` if the sound was added.
     pub fn add_sound_from_asset(&mut self, handle: Handle<AudioData>, data: &[u8]) -> bool {
