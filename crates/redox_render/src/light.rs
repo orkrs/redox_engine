@@ -1,4 +1,6 @@
 //! Directional light component and GPU uniform.
+//!
+//! Supports both legacy per-vertex light arrays and modern clustered forward rendering.
 
 use bytemuck::{Pod, Zeroable};
 use redox_math::Vec3;
@@ -58,7 +60,7 @@ impl PointLight {
 
 /// GPU-friendly light parameters for multiple lights.
 ///
-/// Supports 1 directional light and 3 point lights in the MVP.
+/// Supports 1 directional light and up to 128 point lights.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct LightUniform {
@@ -66,13 +68,16 @@ pub struct LightUniform {
     pub dir_color: [f32; 4],
     pub dir_direction: [f32; 4],
 
-    // Ambient color: xyz = color, w = padding
+    // Ambient color: xyz = color, w = ambient intensity (1.0 = full)
     pub ambient: [f32; 4],
 
-    // Point lights (array of 3 for simplicity in the shader loop)
+    // Shadow matrix
+    pub shadow_view_proj: [[f32; 4]; 4],
+
+    // Point lights (array of 128 for a more atmospheric forest)
     // pos.xyz, pos.w = intensity; color.xyz, color.w = radius
-    pub point_lights_pos: [[f32; 4]; 3],
-    pub point_lights_color: [[f32; 4]; 3],
+    pub point_lights_pos: [[f32; 4]; 128],
+    pub point_lights_color: [[f32; 4]; 128],
 
     pub num_point_lights: u32,
     pub _padding: [u32; 3], // 16-byte alignment
@@ -89,16 +94,17 @@ impl LightUniform {
                 dir_light.direction.z,
                 0.0,
             ],
-            ambient: [ambient.x, ambient.y, ambient.z, 0.0],
-            point_lights_pos: [[0.0; 4]; 3],
-            point_lights_color: [[0.0; 4]; 3],
+            ambient: [ambient.x, ambient.y, ambient.z, 1.0], // w = 1.0 — ambient multiplier
+            shadow_view_proj: [[0.0; 4]; 4],
+            point_lights_pos: [[0.0; 4]; 128],
+            point_lights_color: [[0.0; 4]; 128],
             num_point_lights: 0,
             _padding: [0; 3],
         }
     }
 
     pub fn add_point_light(&mut self, light: &PointLight) {
-        if self.num_point_lights < 3 {
+        if self.num_point_lights < 128 {
             let i = self.num_point_lights as usize;
             self.point_lights_pos[i] = [
                 light.position.x,
@@ -116,5 +122,36 @@ impl LightUniform {
 impl Default for LightUniform {
     fn default() -> Self {
         Self::new(&DirectionalLight::default(), Vec3::splat(0.15))
+    }
+}
+
+/// GPU-friendly point light structure for storage buffers (clustered rendering).
+///
+/// This is used instead of the fixed arrays in LightUniform for better scaling.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct PointLightGpu {
+    /// Position in world space (padded to vec4).
+    pub position: [f32; 4],
+    /// Color in linear RGB (padded to vec4).
+    pub color: [f32; 4],
+    /// Intensity multiplier.
+    pub intensity: f32,
+    /// Attenuation radius.
+    pub radius: f32,
+    /// Unused padding.
+    pub _padding: [f32; 2],
+}
+
+impl PointLightGpu {
+    /// Creates a GPU light from a CPU light component.
+    pub fn from_point_light(light: &PointLight) -> Self {
+        Self {
+            position: [light.position.x, light.position.y, light.position.z, 1.0],
+            color: [light.color.x, light.color.y, light.color.z, 1.0],
+            intensity: light.intensity,
+            radius: light.radius,
+            _padding: [0.0; 2],
+        }
     }
 }
