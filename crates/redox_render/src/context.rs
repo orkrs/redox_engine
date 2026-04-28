@@ -13,13 +13,34 @@ use redox_asset::{AssetId, Handle};
 use crate::asset_types::{MaterialData, MeshData, TextureData};
 use crate::camera::CameraUniform;
 use crate::cluster_manager::ClusterManager;
-use crate::light::LightUniform;
+use crate::light::{LightUniform, ShaderDebugUniform};
+
+/// Debug visualization mode for the PBR shader (binding 21).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u32)]
+pub enum ShaderDebugVizMode {
+    #[default]
+    None = 0,
+    ClusterIndex = 1,
+    ShadowValue = 2,
+}
 use crate::material::Material;
 use crate::mesh::Mesh;
+use crate::pass::debug_lines::DebugLinesPass;
 use crate::pass::forward::{ForwardPass, ModelUniform, create_depth_texture};
 use crate::pass::normal::NormalPass;
 use crate::pass::pbr::PbrPass;
 use crate::pass::shadow::{SHADOW_FORMAT, SHADOW_SIZE, ShadowPass};
+use crate::shadow::csm::{CsmConfig, CsmState, ShadowUniform};
+use crate::virtual_geometry::runtime::{VGConfig, VGSystem};
+use crate::virtual_geometry::{VGAssetId, VirtualMesh};
+use crate::pass::taa::{
+    TaaPass, TaaUniform,
+    create_history_texture, create_velocity_texture,
+    halton_jitter_ndc,
+};
+use crate::pass::velocity::{VelocityPass, VelocityUniform};
+use redox_math::{Mat4, Vec3, look_at};
 use crate::post::ssao::SSAOPass;
 use crate::post::tone_mapping::create_tone_mapping_pipeline;
 use crate::resource::buffer;
@@ -45,6 +66,12 @@ pub struct RenderContext {
     pub queue: wgpu::Queue,
     pub surface: wgpu::Surface<'static>,
     pub config: wgpu::SurfaceConfiguration,
+    /// Internal render scale for TAAU (render at lower res, upscale temporally).
+    pub render_scale: f32,
+    /// Internal render width in pixels.
+    pub internal_width: u32,
+    /// Internal render height in pixels.
+    pub internal_height: u32,
 
     // --- Render pass ---
     pub forward_pass: ForwardPass,
@@ -59,6 +86,7 @@ pub struct RenderContext {
 
     pub light_uniform: LightUniform,
     pub light_buffer: wgpu::Buffer,
+    pub shader_debug_buffer: wgpu::Buffer,
 
     pub global_bind_group: wgpu::BindGroup,
 
@@ -89,6 +117,13 @@ pub struct RenderContext {
 
     pub shadow_view: wgpu::TextureView,
     pub shadow_sampler: wgpu::Sampler,
+    pub csm_texture: wgpu::Texture,
+    pub csm_view: wgpu::TextureView,
+    pub csm_sampler: wgpu::Sampler,
+    pub local_shadow_atlas: wgpu::Texture,
+    pub local_shadow_atlas_view: wgpu::TextureView,
+    pub shadow_uniform: ShadowUniform,
+    pub shadow_uniform_buffer: wgpu::Buffer,
 
     // --- Resource storage (MVP) ---
     pub meshes: Vec<GpuMesh>,
@@ -122,6 +157,51 @@ pub struct RenderContext {
     // --- IBL ---
     pub ibl_processor: IBLProcessor,
     pub ibl_resource: IBLResource,
+
+    // --- Debug visualization (e.g. audio occlusion rays) ---
+    pub debug_lines_pass: DebugLinesPass,
+    /// Lines to draw this frame: (start, end, occluded). Set via [`Self::set_debug_lines`].
+    pub current_debug_lines: Vec<(Vec3, Vec3, bool)>,
+    /// Camera-only bind group (for debug lines pipeline).
+    camera_bind_group: wgpu::BindGroup,
+
+    // --- Temporal Anti-Aliasing (TAA) ---
+    /// Enable TAA.  When `false` the velocity pass and TAA pass are skipped
+    /// and tone mapping reads directly from the HDR buffer (no change to
+    /// existing behaviour).
+    pub taa_enabled: bool,
+    /// Number of frames rendered since the last reset (drives jitter sequence).
+    pub taa_frame_count: u64,
+    /// Previous frame's **unjittered** view-projection matrix.
+    /// Written at the end of each frame; read by the velocity pass at the start
+    /// of the next.
+    pub taa_prev_vp_unjittered: Mat4,
+    /// TAA accumulation pass (neighbour AABB clamp + blend).
+    pub taa_pass: TaaPass,
+    /// Velocity (motion-vector) generation pass.
+    pub velocity_pass: VelocityPass,
+    /// Ping-pong history texture 0.
+    pub taa_history_tex: [wgpu::Texture; 2],
+    /// Views into the ping-pong history textures.
+    pub taa_history_view: [wgpu::TextureView; 2],
+    /// Velocity (motion vector) texture.
+    pub taa_velocity_tex: wgpu::Texture,
+    /// View into the velocity texture.
+    pub taa_velocity_view: wgpu::TextureView,
+    /// Index of the history texture that was written **last frame** (the read
+    /// source for the next frame).  Flipped at the end of each TAA frame.
+    pub taa_history_read_idx: usize,
+    /// TAA blend factor: weight of the *current* frame in accumulation.
+    /// Lower reduces aliasing/shimmer, but can increase ghosting.
+    pub taa_blend_alpha: f32,
+    // --- CSM state ---
+    pub csm_state: CsmState,
+
+    // --- Virtual Geometry (Nanite-like) ---
+    pub vg_system: Option<VGSystem>,
+
+    /// Point lights for the current frame (shared between update_cluster_lights and render_frame_into).
+    pub current_point_lights: Vec<crate::light::PointLight>,
 }
 
 impl RenderContext {
@@ -192,12 +272,23 @@ impl RenderContext {
 
         let hdr_format = wgpu::TextureFormat::Rgba16Float;
 
+        // --- Internal resolution for TAAU ---
+        // Default quality: render above output resolution, then TAA resolve.
+        // This behaves like SSAA/temporal supersampling and reduces stair-steps without adding blur.
+        let render_scale = 1.70_f32;
+        let internal_width = ((config.width as f32) * render_scale).round().max(1.0) as u32;
+        let internal_height = ((config.height as f32) * render_scale).round().max(1.0) as u32;
+        // Lower = more history (less aliasing / shimmer), higher = more responsive.
+        // Tuned for default supersampling scale.
+        let taa_blend_alpha = 0.05_f32;
+
         // --- Render passes ---
         let forward_pass = ForwardPass::new(&device, hdr_format);
         let pbr_pass = PbrPass::new(&device, hdr_format);
         let shadow_pass = ShadowPass::new(&device);
         let normal_pass = NormalPass::new(&device, wgpu::TextureFormat::Rgba16Float);
         let ssao_pass = SSAOPass::new(&device, &queue);
+        let debug_lines_pass = DebugLinesPass::new(&device, &forward_pass.camera_bgl);
 
         // --- Camera uniform ---
         let camera_uniform = CameraUniform::default();
@@ -206,8 +297,16 @@ impl RenderContext {
             "camera_uniform",
             bytemuck::bytes_of(&camera_uniform),
         );
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("camera_bind_group"),
+            layout: &forward_pass.camera_bgl,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
+        });
 
-        // --- Shadow Map ---
+        // --- Shadow Map / CSM depth array ---
         let shadow_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("shadow_texture"),
             size: wgpu::Extent3d {
@@ -236,6 +335,64 @@ impl RenderContext {
             ..Default::default()
         });
 
+        // CSM texture array (4 cascades).
+        let csm_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("csm_texture_array"),
+            size: wgpu::Extent3d {
+                width: SHADOW_SIZE,
+                height: SHADOW_SIZE,
+                depth_or_array_layers: 4,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: SHADOW_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let csm_view = csm_texture.create_view(&wgpu::TextureViewDescriptor {
+            label: Some("csm_texture_array_view"),
+            dimension: Some(wgpu::TextureViewDimension::D2Array),
+            ..Default::default()
+        });
+
+        let csm_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("csm_comparison_sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            compare: Some(wgpu::CompareFunction::LessEqual),
+            ..Default::default()
+        });
+
+        // Local lights static shadow atlas.
+        let local_shadow_atlas = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("local_shadow_atlas"),
+            size: wgpu::Extent3d {
+                width: 4096,
+                height: 4096,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: SHADOW_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let local_shadow_atlas_view =
+            local_shadow_atlas.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let shadow_uniform = ShadowUniform::default();
+        let shadow_uniform_buffer = buffer::create_uniform_buffer(
+            &device,
+            "shadow_uniform",
+            bytemuck::bytes_of(&shadow_uniform),
+        );
+
         // --- Light uniform ---
         let light_uniform = LightUniform::default();
         let light_buffer = buffer::create_uniform_buffer(
@@ -244,16 +401,23 @@ impl RenderContext {
             bytemuck::bytes_of(&light_uniform),
         );
 
-        // --- Depth ---
-        let (depth_texture, depth_view) =
-            create_depth_texture(&device, config.width, config.height);
+        let shader_debug_uniform = ShaderDebugUniform::default();
+        let shader_debug_buffer = buffer::create_uniform_buffer(
+            &device,
+            "shader_debug_uniform",
+            bytemuck::bytes_of(&shader_debug_uniform),
+        );
 
-        // --- HDR Texture ---
+        // --- Depth (internal) ---
+        let (depth_texture, depth_view) =
+            create_depth_texture(&device, internal_width, internal_height);
+
+        // --- HDR Texture (internal) ---
         let hdr_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("hdr_texture"),
             size: wgpu::Extent3d {
-                width: config.width,
-                height: config.height,
+                width: internal_width,
+                height: internal_height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -333,25 +497,25 @@ impl RenderContext {
             }],
         });
 
-        // --- Normal + SSAO textures and bind groups ---
+        // --- Normal + SSAO textures and bind groups (internal) ---
         let (normal_texture, normal_view) = create_normal_ssao_texture(
             &device,
-            config.width,
-            config.height,
+            internal_width,
+            internal_height,
             wgpu::TextureFormat::Rgba16Float,
             "normal",
         );
         let (ssao_raw_texture, ssao_raw_view) = create_normal_ssao_texture(
             &device,
-            config.width,
-            config.height,
+            internal_width,
+            internal_height,
             wgpu::TextureFormat::R16Float,
             "ssao_raw",
         );
         let (ssao_blurred_texture, ssao_blurred_view) = create_normal_ssao_texture(
             &device,
-            config.width,
-            config.height,
+            internal_width,
+            internal_height,
             wgpu::TextureFormat::R16Float,
             "ssao_blurred",
         );
@@ -433,13 +597,31 @@ impl RenderContext {
             ],
         });
 
+        // --- TAA infrastructure ---
+        let taa_pass = TaaPass::new(&device, hdr_format);
+        let velocity_pass = VelocityPass::new(&device);
+
+        let (taa_history_tex0, taa_history_view0) =
+            create_history_texture(&device, config.width, config.height, "taa_history_0");
+        let (taa_history_tex1, taa_history_view1) =
+            create_history_texture(&device, config.width, config.height, "taa_history_1");
+        let (taa_velocity_tex, taa_velocity_view) =
+            create_velocity_texture(&device, internal_width, internal_height);
+
         // --- IBL ---
         let ibl_processor = IBLProcessor::new(&device);
         let ibl_resource = IBLResource::dummy(&device);
 
         // --- Clustered Forward Rendering ---
         let dummy_camera = Camera::new(std::f32::consts::PI / 4.0, 16.0 / 9.0, 0.1, 1000.0);
-        let cluster_manager = ClusterManager::new(config.width, config.height, &dummy_camera, &device, &queue);
+        let cluster_manager = ClusterManager::new(internal_width, internal_height, &dummy_camera, &device, &queue);
+
+        let csm_state = CsmState::new(CsmConfig {
+            cascade_count: 4,
+            shadow_map_resolution: SHADOW_SIZE,
+            near: 0.1,
+            far: 1000.0,
+        });
 
         let global_bind_group = pbr_pass.create_global_bind_group(
             &device,
@@ -457,13 +639,29 @@ impl RenderContext {
             &cluster_manager.metadata_buffer,
             &cluster_manager.light_indices_buffer,
             &cluster_manager.info_buffer,
+            &csm_view,
+            &csm_sampler,
+            &local_shadow_atlas_view,
+            &shadow_uniform_buffer,
+            &shader_debug_buffer,
         );
+
+        let vg_system = Some(VGSystem::new(
+            &device,
+            VGConfig::default(),
+            &camera_buffer,
+            hdr_format,
+            crate::pass::forward::DEPTH_FORMAT,
+        ));
 
         Self {
             device,
             queue,
             surface,
             config,
+            render_scale,
+            internal_width,
+            internal_height,
             forward_pass,
             pbr_pass,
             shadow_pass,
@@ -473,6 +671,7 @@ impl RenderContext {
             camera_uniform,
             light_uniform,
             light_buffer,
+            shader_debug_buffer,
             global_bind_group,
             hdr_texture,
             hdr_view,
@@ -493,6 +692,13 @@ impl RenderContext {
             depth_view,
             shadow_view,
             shadow_sampler,
+            csm_texture,
+            csm_view,
+            csm_sampler,
+            local_shadow_atlas,
+            local_shadow_atlas_view,
+            shadow_uniform,
+            shadow_uniform_buffer,
             meshes: Vec::new(),
             materials: Vec::new(),
             textures,
@@ -512,7 +718,94 @@ impl RenderContext {
             cluster_manager,
             ibl_processor,
             ibl_resource,
+            debug_lines_pass,
+            current_debug_lines: Vec::new(),
+            camera_bind_group,
+            taa_enabled: true,
+            taa_frame_count: 0,
+            taa_prev_vp_unjittered: Mat4::IDENTITY,
+            taa_pass,
+            velocity_pass,
+            taa_history_tex: [taa_history_tex0, taa_history_tex1],
+            taa_history_view: [taa_history_view0, taa_history_view1],
+            taa_velocity_tex,
+            taa_velocity_view,
+            taa_history_read_idx: 0,
+            taa_blend_alpha,
+            csm_state,
+            // Virtual Geometry is initialised by default so the Nanite-like pipeline
+            // is available without extra setup. It remains a no-op unless the scene
+            // spawns entities with `VirtualMesh`.
+            vg_system,
+            current_point_lights: Vec::new(),
         }
+    }
+
+    // ── TAA helpers ─────────────────────────────────────────────────────────
+
+    /// Enables or disables Temporal Anti-Aliasing.
+    ///
+    /// When enabled the pipeline inserts a velocity pass and a TAA accumulation
+    /// pass between the main forward pass and tone mapping.  The jitter is
+    /// injected automatically inside [`render_frame`]; callers keep their
+    /// `update_camera_buffer` workflow unchanged.
+    ///
+    /// Disabling TAA resets the frame counter so history is correctly
+    /// re-initialised if TAA is re-enabled later.
+    pub fn enable_taa(&mut self, enabled: bool) {
+        if enabled {
+            // Force a clean history on next frame (avoid blending stale data after toggling).
+            self.taa_frame_count = 0;
+            self.taa_history_read_idx = 0;
+            // Keep previous VP consistent to avoid huge motion vectors on the first TAA frame.
+            self.taa_prev_vp_unjittered = Mat4::from_cols_array_2d(&self.camera_uniform.view_proj);
+        } else if self.taa_enabled {
+            // Disabling also resets so re-enabling starts clean.
+            self.taa_frame_count = 0;
+            self.taa_history_read_idx = 0;
+        }
+        self.taa_enabled = enabled;
+    }
+
+    /// Sets TAA blend factor (weight of current frame).
+    ///
+    /// - Lower values reduce aliasing/shimmer, but increase ghosting risk.
+    /// - Typical range: 0.04–0.10.
+    pub fn set_taa_blend_alpha(&mut self, alpha: f32) {
+        self.taa_blend_alpha = alpha.clamp(0.02, 0.20);
+        // Clear accumulation once so the new blend behaviour settles quickly.
+        self.taa_frame_count = 0;
+        self.taa_history_read_idx = 0;
+    }
+
+    /// Sets debug lines to draw this frame (e.g. from [`redox_audio::AudioDebugDraw`]).
+    pub fn set_debug_lines(&mut self, lines: Vec<(Vec3, Vec3, bool)>) {
+        self.current_debug_lines = lines;
+    }
+
+    /// Uploads current debug lines to the GPU. Call before starting the render pass that will draw them.
+    pub fn upload_debug_lines(&mut self) {
+        let lines = std::mem::take(&mut self.current_debug_lines);
+        if !lines.is_empty() {
+            self.debug_lines_pass.upload_lines(&self.queue, &lines);
+        }
+    }
+
+    /// Records drawing the debug lines uploaded by [`upload_debug_lines`](Self::upload_debug_lines).
+    /// Call after [`record_draw`](Self::record_draw) in the same render pass. Uses only `&self`.
+    pub fn draw_debug_lines<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+        self.debug_lines_pass.draw(&self.camera_bind_group, pass);
+    }
+
+    /// If debug lines were set this frame, uploads and records drawing them into `pass`.
+    /// Call after [`record_draw`](Self::record_draw) in the same render pass. Clears the line list.
+    pub fn draw_debug_lines_if_any<'a>(&'a mut self, pass: &mut wgpu::RenderPass<'a>) {
+        let lines = std::mem::take(&mut self.current_debug_lines);
+        if lines.is_empty() {
+            return;
+        }
+        self.debug_lines_pass.upload_lines(&self.queue, &lines);
+        self.debug_lines_pass.draw(&self.camera_bind_group, pass);
     }
 
     pub fn device(&self) -> &wgpu::Device {
@@ -535,6 +828,25 @@ impl RenderContext {
         &self.config
     }
 
+    /// Sets the internal render scale used by TAAU.
+    ///
+    /// - < 1.0: TAAU upscaling (faster, blurrier, more aliasing risk)
+    /// - = 1.0: regular TAA (no upscale)
+    /// - > 1.0: temporal supersampling (sharper, fewer stair-steps, slower)
+    ///
+    /// This recreates internal-resolution textures (depth/HDR/normal/SSAO/velocity)
+    /// and forces a TAA history reset on the next frame.
+    pub fn set_render_scale(&mut self, scale: f32) {
+        self.render_scale = scale.clamp(0.5, 2.0);
+        // Recreate size-dependent resources using the current output resolution.
+        let w = self.config.width;
+        let h = self.config.height;
+        self.resize(w, h);
+        // If TAA is enabled, ensure history is clean after scale change.
+        self.taa_frame_count = 0;
+        self.taa_history_read_idx = 0;
+    }
+
     /// Reconfigure the surface and depth buffer after a window resize.
     pub fn resize(&mut self, new_width: u32, new_height: u32) {
         if new_width == 0 || new_height == 0 {
@@ -544,18 +856,22 @@ impl RenderContext {
         self.config.height = new_height;
         self.surface.configure(&self.device, &self.config);
 
-        // Depth
-        let (dt, dv) = create_depth_texture(&self.device, new_width, new_height);
+        // Recompute internal resolution (TAAU input size)
+        self.internal_width = ((new_width as f32) * self.render_scale).round().max(1.0) as u32;
+        self.internal_height = ((new_height as f32) * self.render_scale).round().max(1.0) as u32;
+
+        // Depth (internal)
+        let (dt, dv) = create_depth_texture(&self.device, self.internal_width, self.internal_height);
         self.depth_texture = dt;
         self.depth_view = dv;
 
-        // HDR
-        let (ht, hv, hs) = create_hdr_texture(&self.device, new_width, new_height);
+        // HDR (internal)
+        let (ht, hv, hs) = create_hdr_texture(&self.device, self.internal_width, self.internal_height);
         self.hdr_texture = ht;
         self.hdr_view = hv;
         self.hdr_sampler = hs;
 
-        // Tone Mapping Bind Group (samples from the new HDR texture)
+        // Tone Mapping Bind Group (samples from the new HDR texture; will upscale if internal < output)
         self.tone_mapping_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("tone_mapping_bg_resized"),
             layout: &self.tone_mapping_pipeline.get_bind_group_layout(0),
@@ -571,11 +887,11 @@ impl RenderContext {
             ],
         });
 
-        // Normal + SSAO textures (same size as framebuffer)
+        // Normal + SSAO textures (internal size)
         let (nt, nv) = create_normal_ssao_texture(
             &self.device,
-            new_width,
-            new_height,
+            self.internal_width,
+            self.internal_height,
             wgpu::TextureFormat::Rgba16Float,
             "normal",
         );
@@ -584,8 +900,8 @@ impl RenderContext {
 
         let (sr, sv) = create_normal_ssao_texture(
             &self.device,
-            new_width,
-            new_height,
+            self.internal_width,
+            self.internal_height,
             wgpu::TextureFormat::R16Float,
             "ssao_raw",
         );
@@ -594,8 +910,8 @@ impl RenderContext {
 
         let (sb, sbv) = create_normal_ssao_texture(
             &self.device,
-            new_width,
-            new_height,
+            self.internal_width,
+            self.internal_height,
             wgpu::TextureFormat::R16Float,
             "ssao_blurred",
         );
@@ -671,7 +987,29 @@ impl RenderContext {
             ],
         });
 
+        // Rebuild cluster buffers for the new internal dimensions so that the
+        // lighting grid matches the shading resolution.
+        self.cluster_manager.resize_for_screen(
+            self.internal_width,
+            self.internal_height,
+            &self.device,
+            &self.queue,
+        );
+
         self.update_global_bind_group();
+
+        // Recreate TAA history at output resolution (full-res)
+        let (vh0, vv0) = create_history_texture(&self.device, new_width, new_height, "taa_history_0");
+        let (vh1, vv1) = create_history_texture(&self.device, new_width, new_height, "taa_history_1");
+        self.taa_history_tex = [vh0, vh1];
+        self.taa_history_view = [vv0, vv1];
+        // Velocity is generated at internal resolution.
+        let (vt, vv) = create_velocity_texture(&self.device, self.internal_width, self.internal_height);
+        self.taa_velocity_tex = vt;
+        self.taa_velocity_view = vv;
+        // Force history reset so stale data is not blended on the next frame
+        self.taa_frame_count = 0;
+        self.taa_history_read_idx = 0;
 
         log::info!("Resized to {}×{}", new_width, new_height);
     }
@@ -943,7 +1281,7 @@ impl RenderContext {
         self.update_global_bind_group();
     }
 
-    /// Recreates the global bind group with current resources (includes SSAO texture + SSAO sampler).
+    /// Recreates the global bind group with current resources (includes SSAO texture + SSAO sampler + CSM).
     pub fn update_global_bind_group(&mut self) {
         self.global_bind_group = self.pbr_pass.create_global_bind_group(
             &self.device,
@@ -961,14 +1299,29 @@ impl RenderContext {
             &self.cluster_manager.metadata_buffer,
             &self.cluster_manager.light_indices_buffer,
             &self.cluster_manager.info_buffer,
+            &self.csm_view,
+            &self.csm_sampler,
+            &self.local_shadow_atlas_view,
+            &self.shadow_uniform_buffer,
+            &self.shader_debug_buffer,
         );
     }
 
-    pub fn render_frame(&mut self, objects: &[RenderObject]) -> Result<(), wgpu::SurfaceError> {
-        let output = self.surface.get_current_texture()?;
-        let surface_view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+    /// Returns the next available swap-chain texture so callers can render
+    /// 3D + UI into the same surface before calling `present()` once.
+    pub fn surface_texture(&self) -> Result<wgpu::SurfaceTexture, wgpu::SurfaceError> {
+        self.surface.get_current_texture()
+    }
+
+    /// Renders all 3D passes into `surface_view`.
+    ///
+    /// Does **not** call `present()` — the caller must do that after adding
+    /// any additional passes (e.g. UI) to the same surface texture.
+    pub fn render_frame_into(
+        &mut self,
+        objects: &[RenderObject],
+        surface_view: &wgpu::TextureView,
+    ) -> Result<(), wgpu::SurfaceError> {
 
         let mut encoder = self
             .device
@@ -979,40 +1332,102 @@ impl RenderContext {
         // 0. Update Buffers
         self.update_model_buffer(objects);
 
+        // ── TAA jitter injection ────────────────────────────────────────────
+        // The unjittered VP is already in `camera_uniform` (set by the caller
+        // via `camera_uniform.update()` + `update_camera_buffer()`).
+        // We save it, then overwrite the GPU buffer with the jittered version.
+        let unjittered_vp = Mat4::from_cols_array_2d(&self.camera_uniform.view_proj);
+
+        if self.taa_enabled {
+            // Jitter is in NDC, but we want a constant ±0.5 pixel shift in the
+            // *input* render resolution (TAAU).
+            let jitter =
+                halton_jitter_ndc(self.taa_frame_count, self.internal_width, self.internal_height);
+            // Build jittered projection: start from the unjittered VP's
+            // projection component. We apply the jitter directly to the
+            // combined VP matrix by modifying its z-column rows 0 and 1.
+            // For a combined VP matrix the same derivation holds: adding
+            // delta to z_axis.x shifts NDC_x by −delta / (−1) = +delta.
+            let mut jittered_vp = unjittered_vp;
+            jittered_vp.z_axis.x -= jitter[0];
+            jittered_vp.z_axis.y -= jitter[1];
+
+            let mut jittered_uniform = self.camera_uniform;
+            jittered_uniform.view_proj = jittered_vp.to_cols_array_2d();
+            self.queue.write_buffer(
+                &self.camera_buffer,
+                0,
+                bytemuck::bytes_of(&jittered_uniform),
+            );
+        }
+
         // 0. Update Light Uniform with Shadow Matrix
         let mut light_u = self.pbr_pass_light_uniform();
 
-        let shadow_matrix = {
-            let light_dir = redox_math::Vec3::new(
-                light_u.dir_direction[0],
-                light_u.dir_direction[1],
-                light_u.dir_direction[2],
-            )
-            .normalize();
+        // Compute CSM matrices using CsmState
+        let light_dir = redox_math::Vec3::new(
+            light_u.dir_direction[0],
+            light_u.dir_direction[1],
+            light_u.dir_direction[2],
+        )
+        .normalize();
 
-            let size = 25.0;
-            // Use standard RH ortho instead of rh_gl which has -1..1 depth range
-            let proj = redox_math::orthographic(-size, size, -size, size, -50.0, 50.0);
-            let view = redox_math::look_at(
-                light_dir * -20.0,
-                redox_math::Vec3::ZERO,
-                redox_math::Vec3::Y,
-            );
-            proj * view
-        };
+        // Get camera matrices from unjittered view-projection matrix
+        // Note: This is a simplification - we're assuming the camera is at origin looking down -Z
+        // In a real implementation, we should store view and projection matrices separately
+        let unjittered_vp = Mat4::from_cols_array_2d(&self.camera_uniform.view_proj);
+        
+        // Extract camera view and projection matrices from camera_uniform
+        // Note: In a real implementation, we should store view and projection separately
+        // For now, we'll use reasonable defaults
+        let camera_view = look_at(
+            redox_math::Vec3::new(0.0, 0.0, 5.0),  // Camera position
+            redox_math::Vec3::new(0.0, 0.0, 0.0),  // Look at origin
+            redox_math::Vec3::new(0.0, 1.0, 0.0),  // Up vector
+        );
+        
+        // Use projection matrix from camera uniform if available
+        // Otherwise use default
+        let camera_proj = redox_math::perspective(
+            std::f32::consts::FRAC_PI_4,  // 45 degrees FOV
+            16.0 / 9.0,                   // Aspect ratio
+            0.1,                          // Near plane
+            1000.0,                       // Far plane
+        );
+        
+        // Update CSM state and get shadow uniform with all cascade matrices
+        let shadow_u = self.csm_state.update(
+            camera_view,
+            camera_proj,
+            light_dir,
+            SHADOW_SIZE,
+        );
+        
+        // Store updated uniform
+        self.shadow_uniform = shadow_u;
+        self.queue.write_buffer(
+            &self.shadow_uniform_buffer,
+            0,
+            bytemuck::bytes_of(&self.shadow_uniform),
+        );
 
-        light_u.shadow_view_proj = shadow_matrix.to_cols_array_2d();
+        // For backward compatibility, also update light_u.shadow_view_proj 
+        // with first cascade matrix (legacy single cascade support)
+        light_u.shadow_view_proj = shadow_u.csm_matrices[0];
         self.update_light_buffer(&light_u);
 
-        // 1. Shadow Pass
-        {
+        // Create buffer for the first cascade (for backward compatibility with existing shadow pass)
+        // Render all CSM cascades
+        for cascade_idx in 0..self.csm_state.config.cascade_count.min(4) {
+            // Create buffer for this cascade's matrix
             let shadow_view_proj_buffer = buffer::create_uniform_buffer(
                 &self.device,
-                "shadow_matrix_temp",
-                bytemuck::bytes_of(&shadow_matrix.to_cols_array_2d()),
+                &format!("shadow_matrix_temp_cascade{}", cascade_idx),
+                bytemuck::bytes_of(&shadow_u.csm_matrices[cascade_idx]),
             );
+            
             let shadow_matrix_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("shadow_matrix_bg"),
+                label: Some(&format!("shadow_matrix_bg_cascade{}", cascade_idx)),
                 layout: &self.shadow_pass.bind_group_layout,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
@@ -1020,39 +1435,200 @@ impl RenderContext {
                 }],
             });
 
-            let mut shadow_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("shadow_pass"),
-                color_attachments: &[],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.shadow_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
+            // Create view for this cascade layer
+            let csm_layer_view = self.csm_texture.create_view(&wgpu::TextureViewDescriptor {
+                label: Some(&format!("csm_layer{}_view", cascade_idx)),
+                base_array_layer: cascade_idx as u32,
+                array_layer_count: Some(1),
+                dimension: Some(wgpu::TextureViewDimension::D2),
+                ..Default::default()
             });
 
-            shadow_pass.set_pipeline(&self.shadow_pass.pipeline);
-            shadow_pass.set_bind_group(0, &shadow_matrix_bg, &[]);
-            shadow_pass.set_bind_group(1, &self.shadow_model_bind_group, &[]);
+            {
+                let mut shadow_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some(&format!("shadow_pass_csm{}", cascade_idx)),
+                    color_attachments: &[],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: &csm_layer_view,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
+                    }),
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
 
-            for (i, obj) in objects.iter().enumerate() {
-                if let Some(gpu_mesh) = self.meshes.get(obj.mesh_index) {
-                    shadow_pass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));
-                    shadow_pass.set_index_buffer(
-                        gpu_mesh.index_buffer.slice(..),
-                        wgpu::IndexFormat::Uint32,
-                    );
-                    shadow_pass.draw_indexed(
-                        0..gpu_mesh.index_count,
-                        0,
-                        (i as u32)..(i as u32 + 1),
-                    );
+                shadow_pass.set_pipeline(&self.shadow_pass.pipeline);
+                shadow_pass.set_bind_group(0, &shadow_matrix_bg, &[]);
+                shadow_pass.set_bind_group(1, &self.shadow_model_bind_group, &[]);
+
+                for (i, obj) in objects.iter().enumerate() {
+                    if let Some(gpu_mesh) = self.meshes.get(obj.mesh_index) {
+                        shadow_pass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));
+                        shadow_pass.set_index_buffer(
+                            gpu_mesh.index_buffer.slice(..),
+                            wgpu::IndexFormat::Uint32,
+                        );
+                        shadow_pass.draw_indexed(
+                            0..gpu_mesh.index_count,
+                            0,
+                            (i as u32)..(i as u32 + 1),
+                        );
+                    }
                 }
             }
+        }
+        
+        // --- 1b. Local Shadow Pass (for point lights) ---
+        // MVP: render point-light shadows as a 6-face cube packed into a 4×2 atlas grid:
+        //   row 0: PosX, NegX, PosY, NegY
+        //   row 1: PosZ, NegZ, (unused), (unused)
+        // This matches the WGSL sampling logic in `get_point_light_shadow`.
+        let mut shadow_casting_point_light_idx: Option<usize> = None;
+        let mut local_shadow_matrices = [Mat4::IDENTITY; 6];
+
+        for (idx, light) in self.current_point_lights.iter().enumerate() {
+            if !light.cast_vsm_shadows {
+                continue;
+            }
+            shadow_casting_point_light_idx = Some(idx);
+
+            // Compute view-proj for the 6 cube faces (RH, depth [0,1]).
+            //
+            // Face order must match the WGSL `cube_face_index` mapping:
+            //   0 PosX, 1 NegX, 2 PosY, 3 NegY, 4 PosZ, 5 NegZ.
+            let light_pos = light.position;
+            let near = 0.05_f32;
+            let far = light.radius.max(0.5);
+            let proj = redox_math::Mat4::perspective_rh(std::f32::consts::FRAC_PI_2, 1.0, near, far);
+            let face_forward_up: [(Vec3, Vec3); 6] = [
+                (Vec3::X, Vec3::Y),          // PosX
+                (Vec3::NEG_X, Vec3::Y),      // NegX
+                (Vec3::Y, Vec3::NEG_Z),      // PosY
+                (Vec3::NEG_Y, Vec3::Z),      // NegY
+                (Vec3::Z, Vec3::Y),          // PosZ
+                (Vec3::NEG_Z, Vec3::Y),      // NegZ
+            ];
+            for (fi, (fwd, up)) in face_forward_up.iter().enumerate() {
+                let target = light_pos + *fwd;
+                let view = redox_math::Mat4::look_at_rh(light_pos, target, *up);
+                local_shadow_matrices[fi] = proj * view;
+            }
+
+            // Clear whole atlas once, then render each face into its tile using viewport+scissor.
+            let atlas_w = 4096u32;
+            let atlas_h = 4096u32;
+            let tile_w = atlas_w / 4;
+            let tile_h = atlas_h / 2;
+
+            // Pre-create per-face shadow-matrix buffers + bind groups so they live long enough
+            // for the whole render pass (wgpu requires referenced resources to outlive the pass).
+            let mut face_shadow_buffers: Vec<wgpu::Buffer> = Vec::with_capacity(6);
+            let mut face_shadow_bgs: Vec<wgpu::BindGroup> = Vec::with_capacity(6);
+            for face_i in 0..6usize {
+                let m = local_shadow_matrices[face_i].to_cols_array_2d();
+                let shadow_matrix_buffer = buffer::create_uniform_buffer(
+                    &self.device,
+                    "local_shadow_matrix_temp_face",
+                    bytemuck::bytes_of(&m),
+                );
+                let shadow_matrix_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("local_shadow_matrix_bg_face"),
+                    layout: &self.shadow_pass.bind_group_layout,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: shadow_matrix_buffer.as_entire_binding(),
+                    }],
+                });
+                face_shadow_buffers.push(shadow_matrix_buffer);
+                face_shadow_bgs.push(shadow_matrix_bg);
+            }
+
+            {
+                let mut shadow_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("local_shadow_pass_point_cube"),
+                    color_attachments: &[],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: &self.local_shadow_atlas_view,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
+                    }),
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+
+                shadow_pass.set_pipeline(&self.shadow_pass.pipeline);
+                shadow_pass.set_bind_group(1, &self.shadow_model_bind_group, &[]);
+
+                // Per-face draw (6 times) with per-face shadow matrix bind group.
+                for face_i in 0..6usize {
+                    let (col, row) = match face_i {
+                        0 => (0u32, 0u32), // PosX
+                        1 => (1u32, 0u32), // NegX
+                        2 => (2u32, 0u32), // PosY
+                        3 => (3u32, 0u32), // NegY
+                        4 => (0u32, 1u32), // PosZ
+                        _ => (1u32, 1u32), // NegZ
+                    };
+                    let x = col * tile_w;
+                    let y = row * tile_h;
+
+                    shadow_pass.set_bind_group(0, &face_shadow_bgs[face_i], &[]);
+
+                    shadow_pass.set_viewport(
+                        x as f32,
+                        y as f32,
+                        tile_w as f32,
+                        tile_h as f32,
+                        0.0,
+                        1.0,
+                    );
+                    shadow_pass.set_scissor_rect(x, y, tile_w, tile_h);
+
+                    for (i, obj) in objects.iter().enumerate() {
+                        if let Some(gpu_mesh) = self.meshes.get(obj.mesh_index) {
+                            shadow_pass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));
+                            shadow_pass.set_index_buffer(
+                                gpu_mesh.index_buffer.slice(..),
+                                wgpu::IndexFormat::Uint32,
+                            );
+                            shadow_pass.draw_indexed(
+                                0..gpu_mesh.index_count,
+                                0,
+                                (i as u32)..(i as u32 + 1),
+                            );
+                        }
+                    }
+                }
+            }
+
+            // MVP: only one shadow-casting point light for now.
+            break;
+        }
+
+        // If we have a shadow caster, we need to update its PointLightGpu entry in the storage buffer
+        if let Some(idx) = shadow_casting_point_light_idx {
+             use crate::light::PointLightGpu;
+             let gpu_lights: Vec<PointLightGpu> = self.current_point_lights
+                .iter()
+                .map(|l| {
+                    PointLightGpu::from_point_light(l)
+                })
+                .collect();
+             
+             if idx < gpu_lights.len() {
+                 let mut updated_gpu_lights = gpu_lights;
+                 updated_gpu_lights[idx].shadow_matrices =
+                     std::array::from_fn(|fi| local_shadow_matrices[fi].to_cols_array_2d());
+                 
+                 let lights_bytes = bytemuck::cast_slice::<PointLightGpu, u8>(&updated_gpu_lights);
+                 self.queue.write_buffer(&self.cluster_manager.point_lights_buffer, 0, lights_bytes);
+             }
         }
 
         // 2. Normal pass (normals + linear depth for SSAO)
@@ -1182,11 +1758,171 @@ impl RenderContext {
                 occlusion_query_set: None,
             });
 
+            let debug_lines = std::mem::take(&mut self.current_debug_lines);
+            if !debug_lines.is_empty() {
+                self.debug_lines_pass.upload_lines(&self.queue, &debug_lines);
+            }
             self.record_draw(&mut render_pass, objects);
+            // Draw virtual geometry objects
+            if let Some(vg) = &self.vg_system {
+                if vg.has_content() {
+                    vg.render(&mut render_pass);
+                }
+            }
+            if !debug_lines.is_empty() {
+                self.debug_lines_pass.draw(&self.camera_bind_group, &mut render_pass);
+            }
         }
 
-        // 2. Post-processing Pass (Tone Mapping)
-        {
+        // ── TAA: velocity + accumulation passes ─────────────────────────────
+        if self.taa_enabled {
+            // --- 6a. Update velocity uniform ---
+            let jittered_vp = if self.taa_frame_count == 0 {
+                unjittered_vp // first frame: no jitter yet
+            } else {
+                let jitter = halton_jitter_ndc(
+                    self.taa_frame_count,
+                    self.internal_width,
+                    self.internal_height,
+                );
+                let mut vp = unjittered_vp;
+                vp.z_axis.x -= jitter[0];
+                vp.z_axis.y -= jitter[1];
+                vp
+            };
+            let inv_jittered_vp = jittered_vp.inverse();
+
+            let vel_uniform = VelocityUniform {
+                inv_curr_vp: inv_jittered_vp.to_cols_array_2d(),
+                prev_vp: self.taa_prev_vp_unjittered.to_cols_array_2d(),
+                screen_size: [self.internal_width as f32, self.internal_height as f32],
+                _pad: [0.0; 2],
+            };
+            self.queue.write_buffer(
+                &self.velocity_pass.uniform_buffer,
+                0,
+                bytemuck::bytes_of(&vel_uniform),
+            );
+
+            let velocity_bg = self.velocity_pass.create_bind_group(&self.device, &self.depth_view);
+
+            // --- 6b. Velocity pass ---
+            {
+                let mut vel_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("velocity_pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &self.taa_velocity_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                r: 0.0,
+                                g: 0.0,
+                                b: 0.0,
+                                a: 1.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+                vel_pass.set_pipeline(&self.velocity_pass.pipeline);
+                vel_pass.set_bind_group(0, &velocity_bg, &[]);
+                vel_pass.draw(0..3, 0..1);
+            }
+
+            // --- 6c. Update TAA uniform ---
+            let is_first_frame = self.taa_frame_count == 0;
+            let taa_uniform = TaaUniform {
+                output_size: [self.config.width as f32, self.config.height as f32],
+                input_size: [self.internal_width as f32, self.internal_height as f32],
+                blend_alpha: self.taa_blend_alpha,
+                reset: if is_first_frame { 1 } else { 0 },
+            };
+            self.queue.write_buffer(
+                &self.taa_pass.uniform_buffer,
+                0,
+                bytemuck::bytes_of(&taa_uniform),
+            );
+
+            // Ping-pong: read from history_read_idx, write to the other
+            let history_read_idx = self.taa_history_read_idx;
+            let history_write_idx = 1 - history_read_idx;
+
+            let taa_bg = self.taa_pass.create_bind_group(
+                &self.device,
+                &self.hdr_view,
+                &self.taa_velocity_view,
+                &self.taa_history_view[history_read_idx],
+            );
+
+            // --- 6d. TAA accumulation pass → write history ---
+            {
+                let mut taa_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("taa_pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &self.taa_history_view[history_write_idx],
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+                taa_pass.set_pipeline(&self.taa_pass.pipeline);
+                taa_pass.set_bind_group(0, &taa_bg, &[]);
+                taa_pass.draw(0..3, 0..1);
+            }
+
+            // --- 6e. Tone mapping from TAA output ---
+            // Build a temporary bind group pointing at the freshly written
+            // history texture (history_write_idx) instead of hdr_view.
+            let taa_tone_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("taa_tone_bg"),
+                layout: &self.tone_mapping_pipeline.get_bind_group_layout(0),
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(
+                            &self.taa_history_view[history_write_idx],
+                        ),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&self.hdr_sampler),
+                    },
+                ],
+            });
+            {
+                let mut post_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("tone_mapping_pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &surface_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+                post_pass.set_pipeline(&self.tone_mapping_pipeline);
+                post_pass.set_bind_group(0, &taa_tone_bg, &[]);
+                post_pass.draw(0..3, 0..1);
+            }
+
+            // --- 6f. Advance ping-pong and frame counter ---
+            self.taa_history_read_idx = history_write_idx;
+            self.taa_prev_vp_unjittered = unjittered_vp;
+            self.taa_frame_count += 1;
+        } else {
+            // ── Standard path (no TAA): tone mapping directly from HDR ──────
             let mut post_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("tone_mapping_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -1201,13 +1937,24 @@ impl RenderContext {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-
             post_pass.set_pipeline(&self.tone_mapping_pipeline);
             post_pass.set_bind_group(0, &self.tone_mapping_bind_group, &[]);
-            post_pass.draw(0..3, 0..1); // Fullscreen triangle
+            post_pass.draw(0..3, 0..1);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
+        Ok(())
+    }
+
+    /// Convenience wrapper: acquires a surface texture, renders into it, then
+    /// presents it. Use `render_frame_into` + manual `present()` when you need
+    /// to add additional passes (e.g. egui) before presentation.
+    pub fn render_frame(&mut self, objects: &[RenderObject]) -> Result<(), wgpu::SurfaceError> {
+        let output = self.surface.get_current_texture()?;
+        let surface_view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        self.render_frame_into(objects, &surface_view)?;
         output.present();
         Ok(())
     }
@@ -1235,6 +1982,14 @@ impl RenderContext {
         self.update_global_bind_group();
     }
 
+    /// Writes the shader debug uniform (debug_viz_mode) to the GPU.
+    pub fn update_shader_debug_buffer(&mut self, mode: ShaderDebugVizMode) {
+        let mut u = ShaderDebugUniform::default();
+        u.debug_viz_mode = mode as u32;
+        self.queue
+            .write_buffer(&self.shader_debug_buffer, 0, bytemuck::bytes_of(&u));
+    }
+
     pub fn update_model_buffer(&self, objects: &[RenderObject]) {
         let model_data: Vec<ModelUniform> = objects
             .iter()
@@ -1248,10 +2003,17 @@ impl RenderContext {
     }
 
     /// Updates cluster light assignments. Call this when lights change or camera is updated.
+    ///
+    /// Must be called **after** `update_camera_buffer()` so that `camera_uniform.camera_pos`
+    /// already holds the correct world-space camera position for this frame.
     pub fn update_cluster_lights(&mut self, lights: &[crate::light::PointLight], camera: &Camera) {
+        self.current_point_lights = lights.to_vec();
+        let cp = self.camera_uniform.camera_pos;
+        let cam_pos = redox_math::Vec3::new(cp[0], cp[1], cp[2]);
         self.cluster_manager.update_clusters(
             lights,
             camera,
+            cam_pos,
             &self.device,
             &self.queue,
         );
@@ -1260,6 +2022,76 @@ impl RenderContext {
     /// Returns cluster manager for GPU cluster buffer bindings (if needed).
     pub fn cluster_manager(&self) -> &ClusterManager {
         &self.cluster_manager
+    }
+
+    // ── Virtual Geometry ──────────────────────────────────────────────────────
+
+    /// Initialise the Virtual Geometry subsystem with the given config.
+    ///
+    /// Call once after [`RenderContext::new`].  After this, `vg_system` is
+    /// `Some` and VG assets / instances can be registered.
+    pub fn init_virtual_geometry(&mut self, config: VGConfig) {
+        // Use HDR format since VG objects are rendered into the HDR buffer in the forward pass
+        let hdr_fmt = wgpu::TextureFormat::Rgba16Float;
+        let depth_fmt = crate::pass::forward::DEPTH_FORMAT;
+        let vg = VGSystem::new(&self.device, config, &self.camera_buffer, hdr_fmt, depth_fmt);
+        self.vg_system = Some(vg);
+    }
+
+    /// Register a mesh as a VG asset, returning its [`VGAssetId`].
+    ///
+    /// Requires [`init_virtual_geometry`] to have been called first.
+    pub fn register_vg_mesh(
+        &mut self,
+        mesh: &crate::mesh::Mesh,
+        material_index: u32,
+    ) -> Option<VGAssetId> {
+        self.vg_system.as_mut()?.register_mesh(mesh, material_index, &self.queue)
+    }
+
+    /// Prepare the VG system for this frame and synchronise transforms from ECS.
+    ///
+    /// Must be called each frame before [`render_frame`].
+    pub fn prepare_vg_frame(&mut self, world: &mut redox_ecs::world::World) {
+        let vg = match self.vg_system.as_mut() {
+            Some(v) => v,
+            None => return,
+        };
+
+        // Phase 1: collect all VG entities with their current data (read-only)
+        type Entity = redox_ecs::Entity;
+        let mut updates: Vec<(Entity, [[f32; 4]; 4], Option<crate::virtual_geometry::VGInstanceHandle>, VGAssetId)> = Vec::new();
+        for entity in world.all_entities() {
+            let vm = match world.get_component::<VirtualMesh>(entity) {
+                Some(v) => v.clone(),
+                None => continue,
+            };
+            let mat = match world.get_component::<crate::systems::Transform>(entity) {
+                Some(t) => t.matrix().to_cols_array_2d(),
+                None => continue,
+            };
+            updates.push((entity, mat, vm.instance_handle, vm.asset_id));
+        }
+
+        // Phase 2: apply updates and spawn new instances, then write back handles
+        let mut new_handles: Vec<(Entity, crate::virtual_geometry::VGInstanceHandle)> = Vec::new();
+        for (entity, mat, handle_opt, asset_id) in &updates {
+            if let Some(handle) = *handle_opt {
+                vg.update_instance_transform(handle, *mat);
+            } else if let Some(handle) = vg.spawn_instance(*asset_id, *mat) {
+                new_handles.push((*entity, handle));
+            }
+        }
+        // Phase 3: write back newly assigned instance handles
+        for (entity, handle) in new_handles {
+            if let Some(vm_mut) = world.get_component_mut::<VirtualMesh>(entity) {
+                vm_mut.instance_handle = Some(handle);
+            }
+        }
+
+        // Run CPU culling and upload draw commands
+        let vp = self.camera_uniform.view_proj;
+        vg.prepare_frame(&self.queue, &vp);
     }
 }
 

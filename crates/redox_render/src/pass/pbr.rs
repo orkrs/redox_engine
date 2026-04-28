@@ -167,6 +167,57 @@ impl PbrPass {
                     },
                     count: None,
                 },
+                // 14: CSM depth array (t_csm)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 14,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        sample_type: wgpu::TextureSampleType::Depth,
+                    },
+                    count: None,
+                },
+                // 15: CSM comparison sampler (s_shadow)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 15,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
+                    count: None,
+                },
+                // 16: Local shadow atlas (t_local_shadow_atlas)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 16,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Depth,
+                    },
+                    count: None,
+                },
+                // 17: Shadow uniform (ShadowUniform)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 17,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // 18: Shader Debug Uniform
+                wgpu::BindGroupLayoutEntry {
+                    binding: 18,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -316,6 +367,11 @@ impl PbrPass {
         cluster_metadata_buffer: &wgpu::Buffer,
         cluster_light_indices_buffer: &wgpu::Buffer,
         cluster_info_buffer: &wgpu::Buffer,
+        csm_view: &wgpu::TextureView,
+        csm_sampler: &wgpu::Sampler,
+        local_shadow_atlas_view: &wgpu::TextureView,
+        shadow_uniform_buffer: &wgpu::Buffer,
+        shader_debug_buffer: &wgpu::Buffer,
     ) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("pbr_global_bg"),
@@ -376,6 +432,26 @@ impl PbrPass {
                 wgpu::BindGroupEntry {
                     binding: 13,
                     resource: cluster_info_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 14,
+                    resource: wgpu::BindingResource::TextureView(csm_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 15,
+                    resource: wgpu::BindingResource::Sampler(csm_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 16,
+                    resource: wgpu::BindingResource::TextureView(local_shadow_atlas_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 17,
+                    resource: shadow_uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 18,
+                    resource: shader_debug_buffer.as_entire_binding(),
                 },
             ],
         })

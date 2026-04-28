@@ -1,4 +1,9 @@
 //! Camera component and GPU uniform for the view-projection matrix.
+//!
+//! When TAA is enabled the [`RenderContext`] injects a subpixel jitter into
+//! the projection matrix every frame (see [`crate::pass::taa`]).  The
+//! unjittered VP is stored separately so the velocity pass can compute correct
+//! motion vectors.
 
 use bytemuck::{Pod, Zeroable};
 use redox_ecs::Entity;
@@ -90,5 +95,25 @@ impl CameraUniform {
 impl Default for CameraUniform {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// ── ECS resource for TAA camera history ──────────────────────────────────────
+
+/// ECS resource that stores the previous frame's **unjittered** VP matrix.
+///
+/// [`RenderContext`] writes this every frame so the velocity pass can compute
+/// per-pixel motion vectors.  Applications never need to touch this directly.
+#[derive(Clone, Debug)]
+pub struct PreviousViewProj {
+    /// Column-major 4×4 unjittered VP matrix from the last rendered frame.
+    pub matrix: Mat4,
+}
+
+impl Default for PreviousViewProj {
+    fn default() -> Self {
+        Self {
+            matrix: Mat4::IDENTITY,
+        }
     }
 }

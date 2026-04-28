@@ -75,6 +75,8 @@ pub struct ClusterInfo {
     pub far: f32,
     /// Log-based depth scaling factor (for logarithmic depth distribution).
     pub depth_scale: f32,
+    /// Total number of clusters in the 3D grid (clusters_x * clusters_y * depth_slices).
+    pub total_clusters: u32,
 }
 
 impl ClusterInfo {
@@ -83,6 +85,7 @@ impl ClusterInfo {
         let clusters_x = (screen_width + cluster_config::CLUSTER_SIZE_X - 1) / cluster_config::CLUSTER_SIZE_X;
         let clusters_y = (screen_height + cluster_config::CLUSTER_SIZE_Y - 1) / cluster_config::CLUSTER_SIZE_Y;
         let depth_slices = cluster_config::CLUSTER_DEPTH;
+        let total_clusters = clusters_x * clusters_y * depth_slices;
 
         // Logarithmic depth scaling: z_slice = near * (far/near)^(i/(num_slices-1))
         // This allows better precision near the camera.
@@ -97,11 +100,13 @@ impl ClusterInfo {
             near: camera.near,
             far: camera.far,
             depth_scale,
+            total_clusters,
         }
     }
 
-    /// Total number of clusters.
+    /// Total number of clusters (convenience for usize-based code).
     pub fn total_clusters(&self) -> usize {
+        // Derive from dimensions to avoid stale cached values after resize.
         (self.clusters_x as usize) * (self.clusters_y as usize) * (self.depth_slices as usize)
     }
 }
@@ -184,10 +189,13 @@ pub fn get_depth_slice(linear_depth: f32, cluster_info: &ClusterInfo) -> u32 {
     (z_norm as u32).min(cluster_info.depth_slices - 1)
 }
 
-/// Checks if a sphere (light) intersects with a cluster in screen-space and depth.
+/// Returns true if a point light sphere could illuminate any fragment in the given cluster.
 ///
-/// This is a conservative test: it checks if the light's bounding sphere could intersect
-/// the cluster's bounds. A more precise implementation could use frustum intersection.
+/// Uses euclidean distance from the camera to the light to match the WGSL shader's own
+/// depth metric (`length(camera_pos - world_pos)`).  Screen-space X/Y culling is
+/// intentionally omitted because translating a world-space sphere to pixel-space
+/// without a full perspective projection would require the view+proj matrices here;
+/// the depth check alone provides the critical correctness win.
 fn sphere_intersects_cluster(
     light_pos: Vec3,
     light_radius: f32,
@@ -196,8 +204,8 @@ fn sphere_intersects_cluster(
     cluster_z: u32,
     cluster_info: &ClusterInfo,
     cluster_bounds: &[ClusterBounds],
+    cam_pos: Vec3,
 ) -> bool {
-    // Check depth intersection
     let cluster_idx = (cluster_z as usize) * (cluster_info.clusters_x as usize)
         * (cluster_info.clusters_y as usize)
         + (cluster_y as usize) * (cluster_info.clusters_x as usize)
@@ -208,40 +216,34 @@ fn sphere_intersects_cluster(
     }
 
     let bounds = &cluster_bounds[cluster_idx];
-    let depth_min = bounds.min_depth;
-    let depth_max = bounds.max_depth;
 
-    // Conservative depth check: light must be within [depth_min - radius, depth_max + radius]
-    if light_pos.z > depth_max + light_radius || light_pos.z + light_radius < depth_min {
-        return false;
-    }
+    // Euclidean distance from camera to light center (same metric as WGSL get_depth_slice).
+    let dist = (light_pos - cam_pos).length();
+    // Near/far extents of the light sphere along the camera-to-light ray.
+    let sphere_near = (dist - light_radius).max(0.0);
+    let sphere_far = dist + light_radius;
 
-    // Screen-space AABB check (simplified; assumes light at given depth)
-    // For a point light, we compute its approximate screen-space radius
-    let screen_radius = (light_radius / light_pos.z).max(0.1) * 1000.0; // Rough projection
-    
-    let cluster_min_x = (cluster_x as f32) * cluster_config::CLUSTER_SIZE_X as f32;
-    let cluster_max_x = cluster_min_x + cluster_config::CLUSTER_SIZE_X as f32;
-    let cluster_min_y = (cluster_y as f32) * cluster_config::CLUSTER_SIZE_Y as f32;
-    let cluster_max_y = cluster_min_y + cluster_config::CLUSTER_SIZE_Y as f32;
-
-    // Rough circle-rect intersection: does the light's screen-space circle intersect the cluster rect?
-    let dx = light_pos.x.max(cluster_min_x).min(cluster_max_x) - light_pos.x;
-    let dy = light_pos.y.max(cluster_min_y).min(cluster_max_y) - light_pos.y;
-    let dist_sq = dx * dx + dy * dy;
-
-    dist_sq <= screen_radius * screen_radius
+    // Reject if the sphere depth range and cluster depth range do not overlap.
+    sphere_near <= bounds.max_depth && sphere_far >= bounds.min_depth
 }
 
 /// Assigns lights to clusters based on spatial intersection.
+///
+/// `cam_pos` is the camera's world-space position; it must match what
+/// `camera_uniform.camera_pos` contains so the depth metric aligns with the shader.
 ///
 /// Returns indices into the lights array for each cluster, along with metadata.
 pub fn assign_lights_to_clusters(
     lights: &[PointLight],
     cluster_info: &ClusterInfo,
     cluster_bounds: &[ClusterBounds],
+    cam_pos: Vec3,
 ) -> ClusterLightAssignment {
-    let num_clusters = cluster_info.total_clusters();
+    // Derive this from dimensions directly to avoid any mismatch with the cached
+    // `total_clusters` field (and to stay safe across resizes).
+    let num_clusters = (cluster_info.clusters_x as usize)
+        * (cluster_info.clusters_y as usize)
+        * (cluster_info.depth_slices as usize);
     let mut cluster_metadata: Vec<ClusterMetadata> = vec![
         ClusterMetadata {
             offset: 0,
@@ -260,6 +262,10 @@ pub fn assign_lights_to_clusters(
                     * (cluster_info.clusters_y as usize)
                     + (cluster_y as usize) * (cluster_info.clusters_x as usize)
                     + (cluster_x as usize);
+                if cluster_idx >= cluster_metadata.len() {
+                    // Defensive guard: should never happen, but avoids a hard crash.
+                    continue;
+                }
 
                 let mut light_count = 0u32;
                 for (light_idx, light) in lights.iter().enumerate() {
@@ -271,6 +277,7 @@ pub fn assign_lights_to_clusters(
                         cluster_z,
                         cluster_info,
                         cluster_bounds,
+                        cam_pos,
                     ) {
                         light_indices.push(light_idx as u32);
                         light_count += 1;

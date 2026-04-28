@@ -3,7 +3,7 @@ use rapier3d::prelude::*;
 use redox_ecs::Entity;
 use redox_ecs::world::World;
 use redox_math::{Quat, Vec3};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::raycast::{RaycastRequest, RaycastResult};
 use crate::utils::{quat_from_rapier, quat_to_rapier, vec3_from_rapier, vec3_to_rapier};
@@ -206,5 +206,56 @@ impl PhysicsContext {
     /// Returns iterator over all registered entities and their bodies.
     pub fn active_bodies(&self) -> impl Iterator<Item = (&Entity, &RigidBodyHandle)> {
         self.entity_to_body.iter().map(|(e, (h, _))| (e, h))
+    }
+
+    /// Performs a raycast from `origin` toward `target` (direction = (target - origin).normalized()),
+    /// ignoring colliders attached to any of `exclude_entities`.
+    ///
+    /// Used by the audio occlusion system to test line-of-sight between listener and emitter
+    /// without hitting the listener or emitter entities.
+    ///
+    /// Returns `Some((toi, hit_entity))` for the first hit, or `None` if the ray is clear.
+    /// `toi` is the time-of-impact (distance along the ray from origin).
+    pub fn cast_ray_excluding(
+        &self,
+        origin: Vec3,
+        target: Vec3,
+        exclude_entities: &[Entity],
+    ) -> Option<(f32, Entity)> {
+        let to_origin = target - origin;
+        let distance = to_origin.length();
+        if distance < 1e-6 {
+            return None;
+        }
+        let direction = to_origin / distance;
+        let ray = Ray::new(
+            Point::from(vec3_to_rapier(origin)),
+            vec3_to_rapier(direction),
+        );
+
+        let excluded: HashSet<ColliderHandle> = exclude_entities
+            .iter()
+            .filter_map(|e| self.entity_to_body.get(e))
+            .flat_map(|(_, colliders)| colliders.iter().copied())
+            .collect();
+
+        let predicate = |handle: ColliderHandle, _: &Collider| !excluded.contains(&handle);
+        let filter = QueryFilter::default().predicate(&predicate);
+
+        if let Some((handle, toi)) = self.query_pipeline.cast_ray(
+            &self.rigid_bodies,
+            &self.colliders,
+            &ray,
+            distance,
+            true,
+            filter,
+        ) {
+            self.collider_to_entity
+                .get(&handle)
+                .copied()
+                .map(|entity| (toi, entity))
+        } else {
+            None
+        }
     }
 }

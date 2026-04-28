@@ -1,14 +1,12 @@
 //! Audio systems for cinematic spatial sound simulation.
 //!
-//! Implements occlusion/obstruction raycast checking, reverb zone management,
-//! and real-time acoustic parameter updates.
+//! Implements occlusion/obstruction raycast checking (via rapier3d when [`redox_physics::PhysicsContext`]
+//! is present), reverb zone management, and real-time acoustic parameter updates.
 
 use redox_ecs::World;
 use redox_math::Vec3;
 
-use crate::components::{
-    AudioEmitter, AudioListener, ReverbZone, ReverbPreset, SpatialAudioEmitter, AcousticMaterial,
-};
+use crate::components::{AudioListener, ReverbZone, ReverbPreset, SpatialAudioEmitter};
 
 /// Result of occlusion/obstruction raycast check.
 #[derive(Debug, Clone, Copy)]
@@ -36,26 +34,24 @@ impl Default for OcclusionResult {
 
 /// Performs occlusion/obstruction raycast check between listener and emitter.
 ///
-/// In a full implementation, this would use rapier3d raycasting against colliders.
-/// For now, this provides the interface structure for future integration.
+/// Used as fallback when [`redox_physics::PhysicsContext`] is not in the world (no physics).
+/// When physics is available, [`occlusion_raycast_system`] uses real rapier3d raycasts instead.
 pub fn check_occlusion(
     listener_pos: Vec3,
     emitter_pos: Vec3,
-    _world: &World, // Would contain colliders in full implementation
+    _world: &World,
 ) -> OcclusionResult {
     let distance = (emitter_pos - listener_pos).length();
-
-    // Placeholder implementation: simple distance-based occlusion
-    // In production, would raycast through physics colliders
-    let occlusion = if distance < 1.0 { 0.0 } else { 0.0 };
-
     OcclusionResult {
         has_line_of_sight: true,
-        occlusion,
+        occlusion: 0.0,
         obstruction: 0.0,
         obstacle_distance: distance,
     }
 }
+
+/// Occlusion coefficient applied when a raycast hits an obstacle (one or more walls).
+const OCCLUSION_COEFFICIENT_PER_HIT: f32 = 0.8;
 
 /// System that tracks listener position relative to reverb zones.
 ///
@@ -96,36 +92,77 @@ pub fn reverb_listener_system(world: &mut World) {
 
 /// System that updates occlusion coefficients for spatial audio emitters.
 ///
-/// Raycasts from listener to each emitter and applies occlusion/obstruction filtering.
+/// When [`redox_physics::PhysicsContext`] is present, performs real rapier3d raycasts from
+/// listener to each emitter (excluding listener and emitter from the ray). Otherwise
+/// falls back to [`check_occlusion`] (no occlusion). Also writes per-emitter occlusion
+/// into [`crate::context::AudioContext`] via [`AudioContext::set_emitter_occlusion`] for
+/// volume/low-pass application.
 pub fn occlusion_raycast_system(world: &mut World) {
-    // Find listener
-    let mut listener_pos = None;
-    
-    for entity in world.all_entities() {
-        if let Some(listener) = world.get_component::<AudioListener>(entity) {
-            listener_pos = Some(listener.position);
-            break;
+    let listener_entity = world
+        .all_entities()
+        .find(|&e| world.get_component::<AudioListener>(e).is_some());
+    let listener_pos = listener_entity
+        .and_then(|e| world.get_component::<AudioListener>(e))
+        .map(|l| l.position);
+
+    let Some(listener_pos) = listener_pos else {
+        return;
+    };
+
+    let emitters: Vec<(redox_ecs::Entity, Vec3)> = world
+        .all_entities()
+        .filter_map(|e| {
+            world
+                .get_component::<SpatialAudioEmitter>(e)
+                .map(|s| (e, s.emitter.position))
+        })
+        .collect();
+
+    let use_physics = world.get_resource::<redox_physics::PhysicsContext>().is_some();
+    let mut results: Vec<(redox_ecs::Entity, Vec3, f32, f32)> = Vec::with_capacity(emitters.len());
+
+    if use_physics {
+        let physics = world.get_resource::<redox_physics::PhysicsContext>().unwrap();
+        for (entity, emitter_pos) in &emitters {
+            let mut exclude = vec![*entity];
+            if let Some(le) = listener_entity {
+                exclude.push(le);
+            }
+            let (occlusion, obstruction) = match physics.cast_ray_excluding(
+                listener_pos,
+                *emitter_pos,
+                &exclude,
+            ) {
+                Some((_toi, _hit_entity)) => (OCCLUSION_COEFFICIENT_PER_HIT, 0.0),
+                None => (0.0, 0.0),
+            };
+            results.push((*entity, *emitter_pos, occlusion, obstruction));
+        }
+    } else {
+        for (entity, emitter_pos) in &emitters {
+            let result = check_occlusion(listener_pos, *emitter_pos, world);
+            results.push((*entity, *emitter_pos, result.occlusion, result.obstruction));
         }
     }
 
-    if let Some(listener_pos) = listener_pos {
-        // Update all spatial emitters
-        let mut emitters_to_update = Vec::new();
-
-        for entity in world.all_entities() {
-            if let Some(emitter) = world.get_component::<SpatialAudioEmitter>(entity) {
-                emitters_to_update.push((entity, emitter.clone()));
+    if let Some(debug) = world.get_resource_mut::<crate::debug::AudioDebugDraw>() {
+        if debug.draw_rays {
+            debug.rays.clear();
+            for (_entity, emitter_pos, occlusion, _) in &results {
+                debug.rays.push((listener_pos, *emitter_pos, *occlusion > 0.0));
             }
         }
+    }
 
-        for (entity, mut emitter) in emitters_to_update {
-            // Check occlusion/obstruction
-            let occlusion = check_occlusion(listener_pos, emitter.emitter.position, world);
-
-            emitter.occlusion_coefficient = occlusion.occlusion;
-            emitter.obstruction_coefficient = occlusion.obstruction;
-
-            world.add_component(entity, emitter);
+    for (entity, _pos, occlusion, obstruction) in &results {
+        if let Some(emitter) = world.get_component_mut::<SpatialAudioEmitter>(*entity) {
+            emitter.occlusion_coefficient = *occlusion;
+            emitter.obstruction_coefficient = *obstruction;
+        }
+    }
+    if let Some(audio_ctx) = world.get_resource_mut::<crate::context::AudioContext>() {
+        for (entity, _pos, occlusion, _) in &results {
+            audio_ctx.set_emitter_occlusion(*entity, *occlusion);
         }
     }
 }

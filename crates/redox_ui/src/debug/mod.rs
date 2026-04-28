@@ -17,9 +17,11 @@
 
 pub mod stats;
 pub mod inspector;
+pub mod audio;
 
 pub use stats::StatsPanel;
 pub use inspector::EntityInspector;
+pub use audio::AudioDebugPanel;
 
 use redox_ecs::world::World;
 
@@ -34,6 +36,8 @@ pub struct DebugOverlay {
     pub stats: StatsPanel,
     /// ECS entity / archetype inspector window.
     pub inspector: EntityInspector,
+    /// Audio debug (reverb zones, occlusion rays, toggles).
+    pub audio_debug: AudioDebugPanel,
     /// Master switch — when `false` no debug windows are drawn at all.
     pub enabled: bool,
 }
@@ -44,6 +48,7 @@ impl DebugOverlay {
         Self {
             stats: StatsPanel::new(),
             inspector: EntityInspector::new(),
+            audio_debug: AudioDebugPanel::new(),
             enabled: true,
         }
     }
@@ -60,9 +65,9 @@ impl DebugOverlay {
     ///
     /// Call once per egui frame (between `begin_frame` and `end_frame_and_render`).
     ///
-    /// `world` is passed through to the inspector; the stats panel only needs
-    /// timing data that has already been recorded via [`record_frame`].
-    pub fn show(&mut self, ctx: &egui::Context, world: &World) {
+    /// `world` is passed through to the inspector and audio debug panel; the stats panel
+    /// only needs timing data that has already been recorded via [`record_frame`].
+    pub fn show(&mut self, ctx: &egui::Context, world: &mut World) {
         if !self.enabled {
             return;
         }
@@ -74,6 +79,9 @@ impl DebugOverlay {
         }
         if self.inspector.open {
             self.inspector.show(ctx, world);
+        }
+        if self.audio_debug.open {
+            self.audio_debug.show(ctx, world);
         }
     }
 
@@ -105,9 +113,18 @@ impl DebugOverlay {
                     if ui.small_button(insp_label).clicked() {
                         self.inspector.open = !self.inspector.open;
                     }
+
+                    let audio_label = if self.audio_debug.open {
+                        "🔊 Audio ✓"
+                    } else {
+                        "🔊 Audio"
+                    };
+                    if ui.small_button(audio_label).clicked() {
+                        self.audio_debug.open = !self.audio_debug.open;
+                    }
                 });
 
-                ui.weak("F1 Stats · F2 Inspector · F3 Debug");
+                ui.weak("F1 Stats · F2 Inspector · F3 Debug · Audio panel for occlusion/reverb");
             });
     }
 }

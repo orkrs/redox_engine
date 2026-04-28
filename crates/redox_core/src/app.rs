@@ -5,6 +5,7 @@ use std::time::Instant;
 use winit::event::{Event, WindowEvent};
 
 use redox_ecs::World;
+use redox_input::InputState;
 use redox_render::context::RenderContext;
 
 use crate::config::EngineConfig;
@@ -52,6 +53,7 @@ impl AppBuilder {
 
         // 4. Create ECS World
         let mut world = World::new();
+        world.insert_resource(InputState::new());
 
         // 5. Create Time resource
         let mut time = Time::new(1.0 / 60.0);
@@ -63,37 +65,42 @@ impl AppBuilder {
         event_loop
             .run(move |event, elwt| {
                 match event {
-                    Event::WindowEvent {
-                        event: WindowEvent::CloseRequested,
-                        ..
-                    } => {
-                        log::info!("Close requested, shutting down.");
-                        elwt.exit()
+                    Event::NewEvents(_) => {
+                        if let Some(input) = world.get_resource_mut::<InputState>() {
+                            input.begin_frame();
+                        }
                     }
-                    Event::WindowEvent {
-                        event: WindowEvent::Resized(size),
-                        ..
-                    } => {
-                        render_context.resize(size.width, size.height);
+                    Event::WindowEvent { event, .. } => {
+                        if let Some(input) = world.get_resource_mut::<InputState>() {
+                            input.process_window_event(&event);
+                        }
+
+                        match event {
+                            WindowEvent::CloseRequested => {
+                                log::info!("Close requested, shutting down.");
+                                elwt.exit()
+                            }
+                            WindowEvent::Resized(size) => {
+                                render_context.resize(size.width, size.height);
+                            }
+                            WindowEvent::RedrawRequested => {
+                                let now = Instant::now();
+                                let delta = now.duration_since(last_frame_time).as_secs_f32();
+                                last_frame_time = now;
+
+                                time.tick(delta);
+
+                                // 6. & 7. Execute all scheduled systems via dispatcher
+                                self.dispatcher
+                                    .run(&mut world, &mut render_context, &mut time);
+
+                                // If surface was lost during render execution, resizing resets it
+                            }
+                            _ => {}
+                        }
                     }
                     Event::AboutToWait => {
                         window_arc.request_redraw();
-                    }
-                    Event::WindowEvent {
-                        event: WindowEvent::RedrawRequested,
-                        ..
-                    } => {
-                        let now = Instant::now();
-                        let delta = now.duration_since(last_frame_time).as_secs_f32();
-                        last_frame_time = now;
-
-                        time.tick(delta);
-
-                        // 6. & 7. Execute all scheduled systems via dispatcher
-                        self.dispatcher
-                            .run(&mut world, &mut render_context, &mut time);
-
-                        // If surface was lost during render execution, resizing resets it
                     }
                     _ => {}
                 }

@@ -66,7 +66,7 @@ impl ShadowPass {
                 }],
                 compilation_options: Default::default(),
             },
-            fragment: None, // No fragment shader for shadow pass
+            fragment: None, // No fragment shader for classic shadow pass (writes to depth texture)
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 front_face: wgpu::FrontFace::Ccw,

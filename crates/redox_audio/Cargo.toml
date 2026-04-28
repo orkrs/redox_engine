@@ -10,6 +10,7 @@ path = "src/lib.rs"
 redox_math = { path = "../redox_math" }
 redox_ecs = { path = "../redox_ecs" }
 redox_asset = { path = "../redox_asset" }
+redox_physics = { path = "../redox_physics" }
 kira = { workspace = true }
 log = { workspace = true }
 

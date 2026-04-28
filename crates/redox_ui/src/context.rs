@@ -97,12 +97,12 @@ impl UiContext {
         &self.egui_ctx
     }
 
-    /// Draws all debug overlay windows (stats + inspector).
+    /// Draws all debug overlay windows (stats + inspector + audio debug).
     ///
     /// Call inside the egui frame (after [`begin_frame`](Self::begin_frame)).
     /// The overlay respects the [`show_debug`](Self::show_debug) flag —
     /// if `false`, nothing is drawn.
-    pub fn draw_debug(&mut self, world: &World) {
+    pub fn draw_debug(&mut self, world: &mut World) {
         if !self.show_debug {
             return;
         }

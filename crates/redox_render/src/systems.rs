@@ -21,6 +21,32 @@ pub use redox_math::Transform;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MeshHandle(pub Handle<MeshData>);
 
+/// Stores the **previous frame's model matrix** for TAA velocity generation.
+///
+/// Add this component alongside [`Transform`] on any entity that should
+/// contribute accurate per-object motion vectors.  Update it once per frame
+/// (after rendering, before moving the object):
+/// ```rust,ignore
+/// // at the end of the Update stage
+/// if let Some(prev) = world.get_component_mut::<PreviousTransform>(entity) {
+///     prev.matrix = current_transform.matrix();
+/// }
+/// ```
+/// Without this component the velocity pass assumes the object was stationary,
+/// which is correct for static geometry but may produce slight ghosting on fast
+/// moving objects.
+#[derive(Clone, Copy, Debug)]
+pub struct PreviousTransform {
+    /// Model matrix from the previous frame.
+    pub matrix: Mat4,
+}
+
+impl PreviousTransform {
+    pub fn new(matrix: Mat4) -> Self {
+        Self { matrix }
+    }
+}
+
 /// Handle to a material asset. Resolved to a GPU material index by [`RenderContext`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MaterialHandle(pub Handle<MaterialData>);

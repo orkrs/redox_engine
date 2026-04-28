@@ -18,6 +18,11 @@ pub struct DirectionalLight {
     pub color: Vec3,
     /// Intensity multiplier.
     pub intensity: f32,
+    /// Whether this light should cast shadows via Virtual Shadow Maps.
+    pub cast_vsm_shadows: bool,
+    /// Angular radius of the source disc (radians).  Used by SMRT for
+    /// soft shadow penumbra width.  Default ~0.53° for a sun-like source.
+    pub source_angle: f32,
 }
 
 impl DirectionalLight {
@@ -27,6 +32,8 @@ impl DirectionalLight {
             direction: direction.normalize(),
             color,
             intensity,
+            cast_vsm_shadows: false,
+            source_angle: 0.0087,
         }
     }
 }
@@ -45,6 +52,10 @@ pub struct PointLight {
     pub color: Vec3,
     pub intensity: f32,
     pub radius: f32,
+    /// Whether this light should cast shadows via Virtual Shadow Maps (6 faces).
+    pub cast_vsm_shadows: bool,
+    /// Physical radius of the light emitter for SMRT soft shadows.
+    pub source_radius: f32,
 }
 
 impl PointLight {
@@ -54,6 +65,47 @@ impl PointLight {
             color,
             intensity,
             radius,
+            cast_vsm_shadows: false,
+            source_radius: 0.05,
+        }
+    }
+}
+
+/// ECS component for a spot light source.
+#[derive(Clone, Debug)]
+pub struct SpotLight {
+    pub position: Vec3,
+    pub direction: Vec3,
+    pub color: Vec3,
+    pub intensity: f32,
+    pub range: f32,
+    /// Outer cone half-angle in radians.
+    pub outer_cone_angle: f32,
+    /// Inner cone half-angle in radians (full brightness).
+    pub inner_cone_angle: f32,
+    pub cast_vsm_shadows: bool,
+    pub source_radius: f32,
+}
+
+impl SpotLight {
+    pub fn new(
+        position: Vec3,
+        direction: Vec3,
+        color: Vec3,
+        intensity: f32,
+        range: f32,
+        outer_cone_angle: f32,
+    ) -> Self {
+        Self {
+            position,
+            direction: direction.normalize(),
+            color,
+            intensity,
+            range,
+            outer_cone_angle,
+            inner_cone_angle: outer_cone_angle * 0.8,
+            cast_vsm_shadows: false,
+            source_radius: 0.05,
         }
     }
 }
@@ -135,6 +187,9 @@ pub struct PointLightGpu {
     pub position: [f32; 4],
     /// Color in linear RGB (padded to vec4).
     pub color: [f32; 4],
+    /// Shadow view-projection matrices for point-light cube faces.
+    /// Face order matches `shadow::local_light::CubeFace` (PosX, NegX, PosY, NegY, PosZ, NegZ).
+    pub shadow_matrices: [[[f32; 4]; 4]; 6],
     /// Intensity multiplier.
     pub intensity: f32,
     /// Attenuation radius.
@@ -143,12 +198,21 @@ pub struct PointLightGpu {
     pub _padding: [f32; 2],
 }
 
+/// Shader debug uniform (binding 21): debug_viz_mode and padding for WGSL layout.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
+pub struct ShaderDebugUniform {
+    pub debug_viz_mode: u32,
+    _pad: [u32; 3],
+}
+
 impl PointLightGpu {
     /// Creates a GPU light from a CPU light component.
     pub fn from_point_light(light: &PointLight) -> Self {
         Self {
             position: [light.position.x, light.position.y, light.position.z, 1.0],
             color: [light.color.x, light.color.y, light.color.z, 1.0],
+            shadow_matrices: [redox_math::Mat4::IDENTITY.to_cols_array_2d(); 6],
             intensity: light.intensity,
             radius: light.radius,
             _padding: [0.0; 2],

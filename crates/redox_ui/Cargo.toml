@@ -10,6 +10,7 @@ path = "src/lib.rs"
 redox_math = { path = "../redox_math" }
 redox_ecs = { path = "../redox_ecs" }
 redox_render = { path = "../redox_render" }
+redox_audio = { path = "../redox_audio" }
 
 egui = { workspace = true }
 egui-wgpu = { workspace = true }

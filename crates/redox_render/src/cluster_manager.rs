@@ -22,6 +22,9 @@ pub struct ClusterManager {
     current_assignment: Option<ClusterLightAssignment>,
 }
 
+/// Maximum number of light indices in the flat buffer (cap to avoid huge allocations).
+const MAX_INDICES_CAP: u64 = 2 * 1024 * 1024;
+
 impl ClusterManager {
     /// Creates a new cluster manager with initial screen and camera parameters.
     pub fn new(
@@ -51,10 +54,12 @@ impl ClusterManager {
             mapped_at_creation: false,
         });
 
+        // Flat array of light indices per cluster; worst case num_clusters * MAX_LIGHTS_PER_CLUSTER.
+        let indices_capacity = (num_clusters as u64) * (clustering::cluster_config::MAX_LIGHTS_PER_CLUSTER as u64);
+        let light_indices_buffer_size = (indices_capacity.min(MAX_INDICES_CAP)) * std::mem::size_of::<u32>() as u64;
         let light_indices_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("cluster_light_indices_buffer"),
-            size: (clustering::cluster_config::MAX_LIGHTS as u64)
-                * std::mem::size_of::<u32>() as u64,
+            size: light_indices_buffer_size,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -88,6 +93,65 @@ impl ClusterManager {
         }
     }
 
+    /// Rebuilds cluster buffers for a new screen resolution without requiring
+    /// a full `Camera` struct (reuses the existing near/far values).
+    pub fn resize_for_screen(
+        &mut self,
+        screen_width: u32,
+        screen_height: u32,
+        device: &Device,
+        queue: &Queue,
+    ) {
+        use clustering::cluster_config;
+        let new_clusters_x =
+            (screen_width + cluster_config::CLUSTER_SIZE_X - 1) / cluster_config::CLUSTER_SIZE_X;
+        let new_clusters_y =
+            (screen_height + cluster_config::CLUSTER_SIZE_Y - 1) / cluster_config::CLUSTER_SIZE_Y;
+
+        let old_total = self.cluster_info.total_clusters();
+
+        self.cluster_info.clusters_x = new_clusters_x;
+        self.cluster_info.clusters_y = new_clusters_y;
+        self.cluster_info.screen_width = screen_width;
+        self.cluster_info.screen_height = screen_height;
+        self.cluster_info.total_clusters =
+            new_clusters_x * new_clusters_y * self.cluster_info.depth_slices;
+
+        let new_total = self.cluster_info.total_clusters();
+
+        if new_total > old_total {
+            self.metadata_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("cluster_metadata_buffer"),
+                size: (new_total as u64)
+                    * std::mem::size_of::<clustering::ClusterMetadata>() as u64,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+
+            self.bounds_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("cluster_bounds_buffer"),
+                size: (new_total as u64)
+                    * std::mem::size_of::<clustering::ClusterBounds>() as u64,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+
+            let indices_cap = (new_total as u64)
+                * (clustering::cluster_config::MAX_LIGHTS_PER_CLUSTER as u64);
+            let indices_size =
+                (indices_cap.min(MAX_INDICES_CAP)) * std::mem::size_of::<u32>() as u64;
+            self.light_indices_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("cluster_light_indices_buffer"),
+                size: indices_size,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+        }
+
+        queue.write_buffer(&self.info_buffer, 0, bytemuck::bytes_of(&self.cluster_info));
+        self.current_assignment = None;
+    }
+
     /// Rebuilds screen dimensions (e.g., on window resize).
     pub fn rebuild_for_resolution(
         &mut self,
@@ -117,6 +181,15 @@ impl ClusterManager {
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
+
+            let indices_cap = (new_total as u64) * (clustering::cluster_config::MAX_LIGHTS_PER_CLUSTER as u64);
+            let indices_size = (indices_cap.min(MAX_INDICES_CAP)) * std::mem::size_of::<u32>() as u64;
+            self.light_indices_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("cluster_light_indices_buffer"),
+                size: indices_size,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
         }
 
         self.cluster_info = new_info;
@@ -129,10 +202,14 @@ impl ClusterManager {
     }
 
     /// Updates cluster light assignments based on current lights.
+    ///
+    /// `cam_pos` must be the camera's world-space position (same value written into
+    /// `camera_uniform.camera_pos`) so the CPU depth test matches the WGSL shader.
     pub fn update_clusters(
         &mut self,
         lights: &[PointLight],
         camera: &crate::camera::Camera,
+        cam_pos: redox_math::Vec3,
         _device: &Device,
         queue: &Queue,
     ) {
@@ -155,7 +232,7 @@ impl ClusterManager {
         );
 
         // Assign lights to clusters
-        let assignment = clustering::assign_lights_to_clusters(lights, &self.cluster_info, &cluster_bounds);
+        let assignment = clustering::assign_lights_to_clusters(lights, &self.cluster_info, &cluster_bounds, cam_pos);
 
         // Write metadata buffer
         let metadata_bytes = bytemuck::cast_slice::<clustering::ClusterMetadata, u8>(&assignment.cluster_metadata);

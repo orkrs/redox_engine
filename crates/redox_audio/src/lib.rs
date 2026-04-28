@@ -15,6 +15,7 @@
 pub mod asset_types;
 pub mod context;
 pub mod components;
+pub mod debug;
 pub mod loader;
 pub mod spatial;
 pub mod systems;
@@ -25,6 +26,7 @@ pub use components::{
     AudioEmitter, AudioListener, SpatialAudioEmitter, ReverbZone, ReverbPreset, AcousticMaterial,
 };
 pub use loader::AudioLoader;
+pub use debug::AudioDebugDraw;
 pub use systems::{
     check_occlusion, reverb_listener_system, occlusion_raycast_system, compute_active_reverb,
     OcclusionResult,

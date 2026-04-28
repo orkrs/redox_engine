@@ -16,14 +16,23 @@ pub mod pass;
 pub mod post;
 pub mod resource;
 pub mod shader;
+pub mod shadow;
 pub mod systems;
+pub mod virtual_geometry;
 
-pub use camera::{ActiveCamera, Camera, CameraUniform};
+pub use camera::{ActiveCamera, Camera, CameraUniform, PreviousViewProj};
 pub use context::RenderContext;
-pub use light::{DirectionalLight, LightUniform, PointLight, PointLightGpu};
+pub use light::{DirectionalLight, LightUniform, PointLight, PointLightGpu, SpotLight};
 pub use material::Material;
 pub use asset_types::{MaterialData, MeshData, TextureData};
 pub use mesh::{Mesh, Vertex};
-pub use systems::{MaterialHandle, MeshHandle, RenderObject, Transform};
+pub use systems::{MaterialHandle, MeshHandle, PreviousTransform, RenderObject, Transform};
 pub use clustering::ClusterInfo;
 pub use cluster_manager::{ClusterManager, ClusterAssignmentStats};
+// TAA public surface
+pub use pass::taa::{halton_jitter_ndc, TaaUniform};
+// Virtual Geometry
+pub use virtual_geometry::{
+    VGAssetId, VGConfig, VGInstanceHandle, VGStats, VGSystem, VGAssetData,
+    VirtualMesh, VirtualMeshConfig,
+};

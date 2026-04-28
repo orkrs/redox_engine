@@ -8,6 +8,7 @@ use kira::manager::backend::DefaultBackend;
 use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle, StaticSoundSettings};
 use kira::tween::Tween;
 use redox_asset::{AssetId, Handle};
+use redox_ecs::Entity;
 
 use crate::asset_types::AudioData;
 
@@ -16,12 +17,18 @@ use crate::asset_types::AudioData;
 /// Wraps `kira::AudioManager` and provides simple play/volume controls.
 /// When using the asset system, call [`Self::add_sound_from_asset`] when an
 /// [`AudioData`] is loaded, then [`Self::play_sound_by_handle`] to play.
+///
+/// Per-emitter occlusion (from [`occlusion_raycast_system`]) is stored here
+/// so that volume and low-pass can be applied per sound when updating spatial audio.
 pub struct AudioContext {
     manager: Option<AudioManager>,
     /// Master volume (0.0 → 1.0).
     pub master_volume: f64,
     /// Cached decoded sounds by asset handle id (from [`Handle<AudioData>`]).
     sound_cache: HashMap<AssetId, StaticSoundData>,
+    /// Occlusion coefficient per emitter entity (0.0 = clear, 1.0 = fully occluded).
+    /// Updated by [`crate::systems::occlusion_raycast_system`]; use when applying volume/filter.
+    occlusion_by_emitter: HashMap<Entity, f32>,
 }
 
 impl AudioContext {
@@ -40,6 +47,7 @@ impl AudioContext {
             manager,
             master_volume: 1.0,
             sound_cache: HashMap::new(),
+            occlusion_by_emitter: HashMap::new(),
         }
     }
 
@@ -99,6 +107,34 @@ impl AudioContext {
             // m.main_track().set_effect(reverb_effect);
             log::debug!("Setting reverb with decay {:.2}s, damping {:.2}", _decay, _damping);
         }
+    }
+
+    /// Sets the occlusion coefficient for an emitter entity.
+    /// Call from [`crate::systems::occlusion_raycast_system`]; use [`Self::get_emitter_occlusion`]
+    /// when applying volume or low-pass to that emitter's sound.
+    pub fn set_emitter_occlusion(&mut self, entity: Entity, coefficient: f32) {
+        let c = coefficient.clamp(0.0, 1.0);
+        if c > 0.0001 {
+            self.occlusion_by_emitter.insert(entity, c);
+        } else {
+            self.occlusion_by_emitter.remove(&entity);
+        }
+    }
+
+    /// Returns the current occlusion coefficient for an emitter (0.0 if unknown or clear).
+    pub fn get_emitter_occlusion(&self, entity: Entity) -> f32 {
+        self.occlusion_by_emitter.get(&entity).copied().unwrap_or(0.0)
+    }
+
+    /// Volume multiplier from occlusion (1.0 = no occlusion, lower when occluded).
+    /// Use when scaling a sound's volume: `volume *= audio_ctx.volume_multiplier_from_occlusion(occlusion)`.
+    pub fn volume_multiplier_from_occlusion(occlusion: f32) -> f32 {
+        (1.0 - occlusion * 0.7).max(0.0)
+    }
+
+    /// Suggested low-pass cutoff in Hz from occlusion (20000 = no filter, lower = more muffled).
+    pub fn lowpass_cutoff_from_occlusion(occlusion: f32) -> f32 {
+        20000.0 * (1.0 - occlusion).max(0.0) + 400.0 * occlusion
     }
 
     /// Updates spatial parameters for an emitter (volume, pan) based on listener position.

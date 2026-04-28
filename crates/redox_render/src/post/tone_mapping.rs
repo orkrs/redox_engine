@@ -91,9 +91,46 @@ fn vs_main(
 @group(0) @binding(0) var t_hdr: texture_2d<f32>;
 @group(0) @binding(1) var s_hdr: sampler;
 
+fn luma(c: vec3<f32>) -> f32 {
+    // Rec.709 luma (linear)
+    return dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let hdr_color = textureSample(t_hdr, s_hdr, in.uv).rgb;
+    let dims = vec2<f32>(textureDimensions(t_hdr));
+    let texel = 1.0 / max(dims, vec2<f32>(1.0));
+
+    // 5-tap constrained sharpen in HDR space (keeps TAA from looking blurry).
+    let c  = textureSample(t_hdr, s_hdr, in.uv).rgb;
+    let n  = textureSample(t_hdr, s_hdr, in.uv + vec2<f32>(0.0, -texel.y)).rgb;
+    let s  = textureSample(t_hdr, s_hdr, in.uv + vec2<f32>(0.0,  texel.y)).rgb;
+    let e  = textureSample(t_hdr, s_hdr, in.uv + vec2<f32>( texel.x, 0.0)).rgb;
+    let w  = textureSample(t_hdr, s_hdr, in.uv + vec2<f32>(-texel.x, 0.0)).rgb;
+
+    let blur = (n + s + e + w) * 0.25;
+    let high = c - blur;
+
+    // Strength: tune as needed. Higher -> sharper but more ringing/shimmer.
+    let strength = 0.25;
+
+    // Limit sharpening in flat areas to avoid shimmering.
+    let lc = luma(c);
+    let ln = luma(n);
+    let ls = luma(s);
+    let le = luma(e);
+    let lw = luma(w);
+    let lmin = min(lc, min(min(ln, ls), min(le, lw)));
+    let lmax = max(lc, max(max(ln, ls), max(le, lw)));
+    let contrast = lmax - lmin;
+    let adapt = smoothstep(0.02, 0.20, contrast);
+
+    var hdr_color = c + high * (strength * adapt);
+
+    // Constrain to local min/max to suppress ringing.
+    let cmin = min(c, min(min(n, s), min(e, w)));
+    let cmax = max(c, max(max(n, s), max(e, w)));
+    hdr_color = clamp(hdr_color, cmin, cmax);
 
     // Reinhard tone mapping: map [0, ∞) → [0, 1) in linear space.
     // Do NOT apply manual gamma here – the sRGB render target performs the
