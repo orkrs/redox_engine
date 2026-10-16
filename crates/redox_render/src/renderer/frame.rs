@@ -74,6 +74,8 @@ impl Renderer {
             self.light_uniform.dir_color[3],
         );
 
+        self.gpu_profiler.mark(&mut encoder, "ddgi_fill");
+
         // 0. Update Buffers
         self.update_model_buffer(objects);
 
@@ -159,7 +161,7 @@ impl Renderer {
             }
         }
 
-        self.gpu_profiler.mark(&mut encoder, "ddgi_and_cull");
+        self.gpu_profiler.mark(&mut encoder, "cluster_vg_cull");
         // 0. Update Light Uniform with Shadow Matrix
         let mut light_u = self.pbr_pass_light_uniform();
         if self.uses_scatter_light() {

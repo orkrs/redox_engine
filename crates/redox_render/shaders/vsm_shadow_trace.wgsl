@@ -222,7 +222,15 @@ fn vsm_trace_1ray(world_pos: vec3<f32>, normal: vec3<f32>, light_dir: vec3<f32>,
             * mix(1.0, 0.45, contact) / lk.z_world_per_ndc;
         // Kernel size in texels: grows with the penumbra, never below 2 so stair-steps blend.
         let spread = clamp(dist * tan_source / max(lk.texel_world, 1e-4), 2.0, 4.0);
-        let lit = vsm_pcf_smooth(lk, bias_ndc, (1.25 * lk.texel_world) / lk.z_world_per_ndc, spread);
+        // The sample closest to the surface decides how crisp the edge looks: it gets the wide
+        // kernel. Farther samples only shape the penumbra, so a single bilinear tap is enough.
+        let min_diff = (1.25 * lk.texel_world) / lk.z_world_per_ndc;
+        var lit: f32;
+        if (s == 1u) {
+            lit = vsm_pcf_smooth(lk, bias_ndc, min_diff, spread);
+        } else {
+            lit = vsm_pcf_bilinear(lk, bias_ndc, min_diff);
+        }
         let occ = 1.0 - lit;
         if (occ > 0.01) {
             let stored = textureLoad(t_vsm_pages, lk.pixel, lk.layer, 0).r;

@@ -8,7 +8,11 @@
 //!
 //! Run:         cargo run --example skinned_demo -p redox_core --release
 //! Screenshots: cargo run --example skinned_demo -p redox_core --release -- --screenshot <dir>
-//!              (renders offscreen, no window, writes PNG files; add `--size 1920x1080`)
+//!              (renders offscreen, no window, writes PNG files; add `--size 1920x1080`,
+//!              `--times 5,10.5`, `--sun vsm|off`)
+//! Regression:  ... -- --golden crates/redox_core/tests/golden
+//!              renders three fixed frames and compares them with the stored images (exit code
+//!              1 on a mismatch); add `--update-golden` to rewrite the references.
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -29,6 +33,14 @@ use redox_render::{RenderObject, Renderer, SkinnedMeshBinding};
 use winit::keyboard::KeyCode;
 
 const SHOT_SIZE: (u32, u32) = (1280, 720);
+/// `--golden` renders these frames at this size (small: the references live in the repo).
+const GOLDEN_SIZE: (u32, u32) = (640, 360);
+const GOLDEN_TIMES: [f32; 3] = [2.0, 6.0, 11.0];
+/// A golden frame passes when its mean absolute channel error stays below this (0..255)...
+const GOLDEN_MAX_MEAN_ERROR: f32 = 1.5;
+/// ...and fewer than this fraction of pixels differ by more than [`GOLDEN_PIXEL_TOLERANCE`].
+const GOLDEN_MAX_BAD_FRACTION: f32 = 0.005;
+const GOLDEN_PIXEL_TOLERANCE: u8 = 24;
 /// Animation times captured in `--screenshot` mode.
 const SHOT_TIMES: [f32; 5] = [1.0, 5.0, 10.0, 15.0, 20.0];
 const CAMERA_TARGET: Vec3 = Vec3::new(0.0, 1.1, 0.0);
@@ -245,6 +257,11 @@ fn on_off(flag: bool) -> &'static str {
 fn main() {
     env_logger::init();
     let args: Vec<String> = std::env::args().collect();
+    if let Some(i) = args.iter().position(|a| a == "--golden") {
+        let dir = args.get(i + 1).map_or_else(|| PathBuf::from("golden"), PathBuf::from);
+        let update = args.iter().any(|a| a == "--update-golden");
+        std::process::exit(if golden(&dir, update, &args) { 0 } else { 1 });
+    }
     match args.iter().position(|a| a == "--screenshot") {
         Some(i) => {
             let dir = args.get(i + 1).map_or_else(|| PathBuf::from("skinned_demo_shots"), PathBuf::from);
@@ -356,7 +373,8 @@ fn windowed() {
 }
 
 /// Offscreen render: no window, one PNG per entry of [`SHOT_TIMES`].
-fn screenshots(dir: &std::path::Path, size: (u32, u32), args: &[String]) {
+fn screenshots(dir: &std::path::Path, size: (u32, u32), args: &[String]) -> Vec<(usize, PathBuf)> {
+    let mut written = Vec::new();
     std::fs::create_dir_all(dir).expect("create screenshot dir");
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor { backends: wgpu::Backends::all(), ..Default::default() });
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
@@ -417,7 +435,16 @@ fn screenshots(dir: &std::path::Path, size: (u32, u32), args: &[String]) {
     let camera = Camera::new(0.9, w as f32 / h as f32, 0.1, 100.0);
     // One continuous 60 fps timeline from t = 0, exactly like the windowed loop, so shadow
     // page streaming, TAA history and camera motion behave the same as on screen.
-    let last_frame = (SHOT_TIMES.iter().copied().fold(0.0, f32::max) * 60.0) as usize;
+    // `--times 10,10.02,10.04` overrides the default capture times (seconds).
+    let times: Vec<f32> = args
+        .iter()
+        .position(|a| a == "--times")
+        .and_then(|i| args.get(i + 1))
+        .map(|v| v.split(',').filter_map(|t| t.trim().parse().ok()).collect())
+        .filter(|v: &Vec<f32>| !v.is_empty())
+        .unwrap_or_else(|| SHOT_TIMES.to_vec());
+    let shot_frames: Vec<usize> = times.iter().map(|t| (t * 60.0).round() as usize).collect();
+    let last_frame = shot_frames.iter().copied().max().unwrap_or(0);
     for frame in 0..=last_frame {
         let t = frame as f32 / 60.0;
         let (pos, rot) = camera_pose(t);
@@ -432,7 +459,7 @@ fn screenshots(dir: &std::path::Path, size: (u32, u32), args: &[String]) {
         // ahead of the GPU and per-frame staging memory can be reused while still in flight.
         renderer.device.poll(wgpu::Maintain::Wait);
 
-        if SHOT_TIMES.iter().any(|shot| (shot * 60.0) as usize == frame) {
+        if shot_frames.contains(&frame) {
             println!("gpu: {}", renderer.gpu_profiler.report());
             let (stats, free, capacity) = renderer.vsm_diagnostics();
             println!(
@@ -440,10 +467,117 @@ fn screenshots(dir: &std::path::Path, size: (u32, u32), args: &[String]) {
                 stats.pages_allocated, stats.pages_freed, stats.pages_overflow, stats.pages_dirty
             );
             let pixels = read_texture(&renderer.device, &renderer.queue, &target, w, h);
-            let path = dir.join(format!("skinned_demo_t{:03}.png", (t * 100.0) as u32));
+            let path = dir.join(format!("skinned_demo_f{frame:05}.png"));
             image::save_buffer(&path, &pixels, w, h, image::ColorType::Rgba8).expect("write png");
             println!("wrote {}", path.display());
+            written.push((frame, path));
         }
+    }
+    written
+}
+
+/// Renders the golden frames and compares (or, with `update`, stores) them. `true` = all match.
+fn golden(dir: &std::path::Path, update: bool, args: &[String]) -> bool {
+    let work = std::env::temp_dir().join(format!("redox_golden_{}", std::process::id()));
+    let mut golden_args: Vec<String> = args
+        .iter()
+        .filter(|a| !matches!(a.as_str(), "--golden" | "--update-golden"))
+        .cloned()
+        .collect();
+    let times = GOLDEN_TIMES.map(|t| t.to_string()).join(",");
+    golden_args.extend(["--times".to_string(), times]);
+    let frames = screenshots(&work, GOLDEN_SIZE, &golden_args);
+    std::fs::create_dir_all(dir).expect("create golden dir");
+
+    let mut ok = true;
+    for (frame, path) in frames {
+        let reference = dir.join(format!("frame_{frame:05}.png"));
+        if update || !reference.exists() {
+            std::fs::copy(&path, &reference).expect("store golden frame");
+            println!("golden: stored {}", reference.display());
+            continue;
+        }
+        let (Ok(a), Ok(b)) = (image::open(&path), image::open(&reference)) else {
+            println!("golden: frame {frame}: cannot read images");
+            ok = false;
+            continue;
+        };
+        let (a, b) = (a.to_rgba8(), b.to_rgba8());
+        if a.dimensions() != b.dimensions() {
+            println!("golden: frame {frame}: size differs");
+            ok = false;
+            continue;
+        }
+        let diff = image_difference(a.as_raw(), b.as_raw());
+        let pass = diff.mean_error <= GOLDEN_MAX_MEAN_ERROR && diff.bad_fraction <= GOLDEN_MAX_BAD_FRACTION;
+        println!(
+            "golden: frame {frame}: mean error {:.2}, {:.3}% pixels off -> {}",
+            diff.mean_error,
+            diff.bad_fraction * 100.0,
+            if pass { "ok" } else { "MISMATCH" }
+        );
+        ok &= pass;
+    }
+    let _ = std::fs::remove_dir_all(&work);
+    ok
+}
+
+/// How far two RGBA8 images are apart.
+#[derive(Debug, PartialEq)]
+struct ImageDifference {
+    /// Mean absolute error over the RGB channels, 0..255.
+    mean_error: f32,
+    /// Fraction of pixels where some channel differs by more than [`GOLDEN_PIXEL_TOLERANCE`].
+    bad_fraction: f32,
+}
+
+fn image_difference(a: &[u8], b: &[u8]) -> ImageDifference {
+    assert_eq!(a.len(), b.len(), "images must have the same size");
+    let pixels = (a.len() / 4).max(1);
+    let (mut sum, mut bad) = (0u64, 0usize);
+    for (pa, pb) in a.chunks_exact(4).zip(b.chunks_exact(4)) {
+        let mut worst = 0u8;
+        for c in 0..3 {
+            let d = pa[c].abs_diff(pb[c]);
+            sum += u64::from(d);
+            worst = worst.max(d);
+        }
+        bad += usize::from(worst > GOLDEN_PIXEL_TOLERANCE);
+    }
+    ImageDifference {
+        mean_error: sum as f32 / (pixels * 3) as f32,
+        bad_fraction: bad as f32 / pixels as f32,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn identical_images_have_no_difference() {
+        let img = vec![10u8, 20, 30, 255, 200, 100, 0, 255];
+        assert_eq!(image_difference(&img, &img), ImageDifference { mean_error: 0.0, bad_fraction: 0.0 });
+    }
+
+    #[test]
+    fn small_noise_stays_under_the_thresholds() {
+        let a = vec![100u8; 4 * 1000];
+        let b: Vec<u8> = a.iter().map(|v| v + 1).collect();
+        let d = image_difference(&a, &b);
+        assert!(d.mean_error <= GOLDEN_MAX_MEAN_ERROR && d.bad_fraction <= GOLDEN_MAX_BAD_FRACTION);
+    }
+
+    #[test]
+    fn a_missing_shadow_block_is_caught() {
+        let a = vec![200u8; 4 * 10_000];
+        let mut b = a.clone();
+        // 5 % of the pixels turn dark, like a wrongly shadowed page.
+        for px in b.chunks_exact_mut(4).take(500) {
+            px[..3].fill(80);
+        }
+        let d = image_difference(&a, &b);
+        assert!(d.bad_fraction > GOLDEN_MAX_BAD_FRACTION, "{d:?}");
     }
 }
 
