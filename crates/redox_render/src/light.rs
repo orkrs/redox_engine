@@ -5,7 +5,7 @@
 use bytemuck::{Pod, Zeroable};
 use redox_math::Vec3;
 
-/// Forward lighting path selection (mirrors [`redox_core::LightingMode`]).
+/// Forward lighting path selection (mirrors `redox_core::LightingMode`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum LightingMode {
     /// Clustered forward shading (default).

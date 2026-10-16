@@ -101,7 +101,7 @@ impl Renderer {
 
     /// Initialise the Virtual Geometry subsystem with the given config.
     ///
-    /// Call once after [`RenderContext::new`].  After this, `vg_system` is
+    /// Call once after `RenderContext::new`.  After this, `vg_system` is
     /// `Some` and VG assets / instances can be registered.
     pub fn init_virtual_geometry(&mut self, config: VGConfig) {
         // Use HDR format since VG objects are rendered into the HDR buffer in the forward pass
@@ -120,7 +120,7 @@ impl Renderer {
 
     /// Register a mesh as a VG asset, returning its [`VGAssetId`].
     ///
-    /// Requires [`init_virtual_geometry`] to have been called first.
+    /// Requires `init_virtual_geometry` to have been called first.
     pub fn register_vg_mesh(
         &mut self,
         mesh: &crate::mesh::Mesh,
@@ -133,7 +133,7 @@ impl Renderer {
 
     /// Prepare the VG system for this frame and synchronise transforms from ECS.
     ///
-    /// Must be called each frame before [`render_frame`].
+    /// Must be called each frame before `render_frame`.
     pub fn prepare_vg_frame(&mut self, world: &mut redox_ecs::world::World) {
         let vg = match self.vg_system.as_mut() {
             Some(v) => v,

@@ -1,9 +1,9 @@
 //! MetaSounds-lite mixer graph (Uplift v2 Phase 8).
 //!
 //! Hierarchical buses (Music / Sfx / Voice / Ui → Master) with linear gain and
-//! mute. [`AudioContext`] owns a live copy, creates matching kira sub-tracks when
-//! a device is available, and routes [`AudioContext::play_sfx`] /
-//! [`AudioContext::play_one_shot`] / [`AudioContext::play_loop`] through them.
+//! mute. `AudioContext` owns a live copy, creates matching kira sub-tracks when
+//! a device is available, and routes `AudioContext::play_sfx` /
+//! `AudioContext::play_one_shot` / `AudioContext::play_loop` through them.
 //!
 //! Without an audio device the graph still evaluates `routed_gain` correctly so
 //! gameplay can call `play_sfx` unconditionally (it becomes a no-op).

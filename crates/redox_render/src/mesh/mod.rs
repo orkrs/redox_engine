@@ -66,7 +66,7 @@ impl Vertex {
 /// CPU-side mesh data (vertices + indices) with an optional bounding box.
 ///
 /// After creation the mesh is purely on the CPU. Call
-/// [`RenderContext::upload_mesh`] to create GPU buffers.
+/// `RenderContext::upload_mesh` to create GPU buffers.
 #[derive(Clone, Debug)]
 pub struct Mesh {
     /// Vertex data.

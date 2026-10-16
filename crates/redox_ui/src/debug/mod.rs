@@ -1,6 +1,6 @@
 //! Debug overlay — groups [`StatsPanel`] and [`EntityInspector`] together.
 //!
-//! [`DebugOverlay`] is the top-level struct that lives inside [`UiContext`].
+//! [`DebugOverlay`] is the top-level struct that lives inside `UiContext`.
 //! It provides:
 //! - A persistent control bar ("RedOx Debug") with toggle buttons and F-key hints.
 //! - The [`StatsPanel`] (performance statistics + FPS graph).
@@ -66,7 +66,7 @@ impl DebugOverlay {
     /// Call once per egui frame (between `begin_frame` and `end_frame_and_render`).
     ///
     /// `world` is passed through to the inspector and audio debug panel; the stats panel
-    /// only needs timing data that has already been recorded via [`record_frame`].
+    /// only needs timing data that has already been recorded via `record_frame`.
     pub fn show(&mut self, ctx: &egui::Context, world: &mut World) {
         if !self.enabled {
             return;

@@ -36,14 +36,14 @@ pub struct VsmGpuInfo {
     pub phys_page_count: u32,
     /// Atlas pages along one axis (√pool, rounded up).
     pub phys_pages_per_side: u32,
-    /// SMRT params (mirror of [`SmrtUniform`](super::smrt::SmrtUniform)).
+    /// SMRT params (mirror of `SmrtUniform`).
     pub ray_count: u32,
     pub samples_per_ray: u32,
     pub source_angle: f32,
     pub source_radius: f32,
     pub max_trace_dist: f32,
     pub _pad0: [f32; 3],
-    /// 16-byte alignment pad: WGSL vec3<f32> has size 16, so the following
+    /// 16-byte alignment pad: WGSL `vec3<f32>` has size 16, so the following
     /// array<..mat4..> must start at a 16-aligned offset (shader struct = 8896 B).
     pub _pad_align: [f32; 4],
     pub levels: [VsmLevelGpu; VSM_MAX_LEVELS],

@@ -107,7 +107,7 @@ impl EditorDock {
         self.tree = Self::default_tree();
     }
 
-    /// Merge-add any [`REQUIRED_TABS`] missing from a loaded layout (e.g. Packager/Profiler).
+    /// Merge-add any `REQUIRED_TABS` missing from a loaded layout (e.g. Packager/Profiler).
     pub fn ensure_tabs(&mut self) {
         for tab in Self::REQUIRED_TABS {
             if self.tree.find_tab(tab).is_some() {

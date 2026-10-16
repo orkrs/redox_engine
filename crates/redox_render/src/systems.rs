@@ -177,9 +177,9 @@ pub fn sync_assets_to_render(
     }
 }
 
-/// Syncs [`VirtualMesh`] ECS entities and runs CPU/GPU culling for VG.
+/// Syncs `VirtualMesh` ECS entities and runs CPU/GPU culling for VG.
 ///
-/// Register on [`redox_core::Stage::RenderPrep`] before extracting render objects.
+/// Register on `redox_core::Stage::RenderPrep` before extracting render objects.
 pub fn prepare_vg_frame(world: &mut redox_ecs::World, render_ctx: &mut RenderContext) {
     render_ctx.prepare_vg_frame(world);
 }

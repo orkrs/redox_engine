@@ -1,7 +1,7 @@
 //! ECS events emitted by the asset system.
 //!
-//! Insert [`Events<AssetLoadedEvent>`] and optionally [`Events<AssetReloadedEvent>`]
-//! / [`Events<AssetLoadFailedEvent>`] as resources, then run [`AssetManager::update`]
+//! Insert `Events<AssetLoadedEvent>` and optionally `Events<AssetReloadedEvent>`
+//! / `Events<AssetLoadFailedEvent>` as resources, then run `AssetManager::update`
 //! each frame. Systems can read these events to react to finished loads or hot-reloads.
 
 use crate::handle::AssetId;

@@ -133,7 +133,7 @@ impl SkyboxPass {
     /// Recreates the group-0 bind group for a (possibly new) environment view.
     ///
     /// Call whenever the environment changes, e.g. after
-    /// [`crate::RenderContext::set_environment`].
+    /// `crate::RenderContext::set_environment`.
     pub fn refresh_bind_group(
         &mut self,
         device: &wgpu::Device,

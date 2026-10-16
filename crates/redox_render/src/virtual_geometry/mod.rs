@@ -55,7 +55,7 @@ pub use runtime::{VGAssetId, VGConfig, VGInstanceHandle, VGStats, VGSystem};
 pub struct VirtualMesh {
     /// The VG asset to display.
     pub asset_id: VGAssetId,
-    /// Handle to the spawned instance (populated by [`super::context::RenderContext::prepare_vg_frame`]).
+    /// Handle to the spawned instance (populated by `super::context::RenderContext::prepare_vg_frame`).
     pub instance_handle: Option<VGInstanceHandle>,
 }
 

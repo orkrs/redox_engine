@@ -116,7 +116,7 @@ pub fn zone_weight(distance: f32, blend_distance: f32) -> f32 {
 /// When [`redox_physics::PhysicsContext`] is present, performs real rapier3d raycasts from
 /// listener to each emitter (excluding listener and emitter from the ray). Otherwise
 /// falls back to [`check_occlusion`] (no occlusion). Also writes per-emitter occlusion
-/// into [`crate::context::AudioContext`] via [`AudioContext::set_emitter_occlusion`] for
+/// into [`crate::context::AudioContext`] via `AudioContext::set_emitter_occlusion` for
 /// volume/low-pass application.
 pub fn occlusion_raycast_system(world: &mut World) {
     let listener_entity = world

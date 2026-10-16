@@ -19,7 +19,7 @@ pub fn toksvig_roughness_delta(avg_normal_len: f32, max_delta: f32) -> f32 {
     (v.sqrt() * 0.5).min(max_delta)
 }
 
-/// Decode an RGBA8 normal (tangent-space, [0,1] → [-1,1]), return unit vector.
+/// Decode an RGBA8 normal (tangent-space, \[0,1\] → [-1,1]), return unit vector.
 #[inline]
 pub fn decode_normal_rgba8(px: [u8; 4]) -> [f32; 3] {
     let x = (px[0] as f32 / 255.0) * 2.0 - 1.0;
@@ -30,7 +30,7 @@ pub fn decode_normal_rgba8(px: [u8; 4]) -> [f32; 3] {
 }
 
 /// Encode a unit normal back to RGBA8; alpha stores Toksvig roughness delta
-/// in [0,1] (0 = sharp, 1 = max_delta mapped).
+/// in \[0,1\] (0 = sharp, 1 = max_delta mapped).
 #[inline]
 pub fn encode_normal_rgba8(n: [f32; 3], roughness_delta: f32, max_delta: f32) -> [u8; 4] {
     let scale = max_delta.max(1e-6);

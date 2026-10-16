@@ -9,7 +9,7 @@ use crate::asset_types::AudioData;
 ///
 /// Uses a handle to [`AudioData`] loaded via the asset manager. When the asset
 /// is loaded and synced to [`crate::context::AudioContext`], playback can use
-/// [`AudioContext::play_sound_by_handle`] or [`AudioContext::play_spatial_by_handle`].
+/// `AudioContext::play_sound_by_handle` or `AudioContext::play_spatial_by_handle`.
 #[derive(Debug, Clone)]
 pub struct AudioEmitter {
     /// Handle to the audio asset (WAV/OGG bytes). Playback uses the context's cached sound.

@@ -7,7 +7,7 @@ impl Renderer {
     ///
     /// When enabled the pipeline inserts a velocity pass and a TAA accumulation
     /// pass between the main forward pass and tone mapping.  The jitter is
-    /// injected automatically inside [`render_frame`]; callers keep their
+    /// injected automatically inside `render_frame`; callers keep their
     /// `update_camera_buffer` workflow unchanged.
     ///
     /// Disabling TAA resets the frame counter so history is correctly

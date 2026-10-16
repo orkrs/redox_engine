@@ -82,7 +82,7 @@ The repository is a Cargo workspace. Each domain lives in its own crate with a m
 
 ### `crates/redox_render`
 - The GPU renderer: owns `wgpu` device creation, surface management, and all render passes.  
-- Implements clustered forward lighting, TAAU, GTAO, CSM shadows, local shadow atlas, and Virtual Geometry.  
+- Implements clustered forward lighting, TAAU, GTAO, virtual shadow maps (VSM) for the sun, local shadow atlas, and Virtual Geometry.  
 - Contains the shader source manager and GPU‑side structs for lights and materials.
 
 ### `crates/redox_ecs`
@@ -118,7 +118,7 @@ The repository is a Cargo workspace. Each domain lives in its own crate with a m
 | **History**         | Previous TAA output used for temporal accumulation. |
 | **Velocity buffer** | Stores motion vectors for temporal reprojection. |
 | **Local shadow atlas** | Tiled depth texture for point‑light shadows (4×2 grid). |
-| **CSM array**       | Depth texture array for cascaded directional shadows. |
+| **VSM page pool**   | Layered R32Float pages backing the sun's virtual shadow map clipmap. |
 
 ---
 
@@ -132,7 +132,7 @@ The engine outputs HDR lighting to an FP16 render target.
 
 1. Update camera and light uniforms.  
 2. Update clustered light buffers.  
-3. Render shadow maps (CSM + local atlas).  
+3. Render shadow maps (VSM pages for the sun + local atlas).  
 4. Render main HDR color buffer (forward pass).  
 5. Render normal buffer.  
 6. Generate GTAO (bent normal + ambient occlusion).  
@@ -166,11 +166,12 @@ This acts as **supersampling (SSAA)** combined with temporal accumulation, produ
 
 The engine supports both directional and point light shadows.
 
-### Directional shadows – Cascaded Shadow Maps (CSM)
+### Directional shadows – Virtual Shadow Maps (VSM)
 
-- Four cascades stored in a depth texture array.  
-- Each cascade has its own view‑projection matrix.  
-- The shader selects the appropriate cascade based on view‑space depth.
+- A clipmap of light-space levels around the camera; each level is a grid of 256 px pages.  
+- Pages are allocated on demand from a shared pool and cached until invalidated.  
+- A screen-space pass traces the clipmap and PBR samples the filtered result.  
+- The former cascaded shadow maps were removed (see `CHANGELOG.md`).
 
 ### Point light shadows – local shadow atlas
 
@@ -337,6 +338,5 @@ bakes headlessly.
 - **Sun shadows** come from a virtual shadow map clipmap (5 levels from 16 m, 256 px pages).
   A compute pass (`vsm_request.wgsl`) tells the CPU which pages the visible pixels need, the
   pool evicts the least recently used page, and windows follow the camera in page steps.
-  The old CSM path is kept in the source but is not functional; use VSM.
 - **Look.** Tone mapping writes linear values to sRGB targets (it used to be encoded twice);
   `Renderer::set_ibl_intensity` scales environment lighting.

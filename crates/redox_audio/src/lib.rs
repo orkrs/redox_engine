@@ -10,7 +10,7 @@
 //! - **Acoustic Materials**: Model how surfaces absorb/reflect sound
 //! - **Preset Reverb**: Pre-configured reverb effects for common spaces
 //!
-//! Use [`Handle<AudioData>`] with the asset manager for async loading.
+//! Use `Handle<AudioData>` with the asset manager for async loading.
 
 pub mod asset_types;
 pub mod components;

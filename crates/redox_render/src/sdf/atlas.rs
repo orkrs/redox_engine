@@ -56,7 +56,7 @@ impl SdfBrick {
 /// Stable handle from a mesh id to its brick slot in [`SdfBrickAtlas`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BrickRef {
-    /// Index into [`SdfBrickAtlas::bricks`].
+    /// Index into `SdfBrickAtlas::bricks`.
     pub index: u32,
 }
 

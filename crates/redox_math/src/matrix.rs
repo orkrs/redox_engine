@@ -91,7 +91,7 @@ pub fn perspective_infinite_reverse_z(fov_radians: f32, aspect_ratio: f32, near:
 /// * `far`    - Distance to the far clipping plane.
 ///
 /// # Returns
-/// An orthographic projection matrix (right‑handed, depth range [0,1]).
+/// An orthographic projection matrix (right‑handed, depth range \[0,1\]).
 #[inline]
 pub fn orthographic(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32) -> Mat4 {
     Mat4::orthographic_rh(left, right, bottom, top, near, far)

@@ -122,7 +122,7 @@ impl Default for TaaUniform {
 /// The TAA render pass.
 ///
 /// Owns the pipeline, sampler, and the uniform buffer.
-/// The **ping-pong history textures** are owned by [`RenderContext`] so they
+/// The **ping-pong history textures** are owned by `RenderContext` so they
 /// can be shared with the tone-mapping pass.
 pub struct TaaPass {
     pub pipeline: wgpu::RenderPipeline,

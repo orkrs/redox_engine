@@ -3,7 +3,7 @@
 //!
 //! ## Algorithm (per LOD level `L` from [`LodChainConfig`])
 //!
-//! 1. **Simplify** — [`meshopt::simplify`] (quadric-error decimation) reduces
+//! 1. **Simplify** — [`meshopt::simplify()`](meshopt::simplify()) (quadric-error decimation) reduces
 //!    the triangle count towards `triangle_fraction × source_triangles`.
 //!    Each level is simplified from the previous one so the LOD chain stays
 //!    topologically consistent. The result is watertight — unlike triangle

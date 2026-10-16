@@ -2,7 +2,7 @@
 //!
 //! [`Handle<T>`] is a copyable, type-safe reference to an asset. Validity and
 //! lifetime are determined by the [`AssetManager`](crate::manager::AssetManager);
-//! use [`AssetManager::get`] or [`AssetManager::status`] to check if a handle
+//! use `AssetManager::get` or `AssetManager::status` to check if a handle
 //! is still valid and loaded.
 
 use std::marker::PhantomData;

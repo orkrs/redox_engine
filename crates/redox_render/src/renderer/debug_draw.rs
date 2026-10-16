@@ -18,7 +18,7 @@ impl Renderer {
         }
     }
 
-    /// Sets debug lines to draw this frame (e.g. from [`redox_audio::AudioDebugDraw`]).
+    /// Sets debug lines to draw this frame (e.g. from `redox_audio::AudioDebugDraw`).
     pub fn set_debug_lines(&mut self, lines: Vec<(Vec3, Vec3, bool)>) {
         self.current_debug_lines = lines;
     }

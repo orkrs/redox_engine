@@ -424,7 +424,7 @@ impl VGSystem {
     /// Prepare the frame: select LOD per instance, cull meshlets, upload draw commands.
     ///
     /// `view_proj` must be the same column-major matrix used by the camera buffer.
-    /// `camera_pos` and `fov_y_rad` drive per-instance LOD selection via [`lod::select_lod`].
+    /// `camera_pos` and `fov_y_rad` drive per-instance LOD selection via `lod::select_lod`.
     pub fn prepare_frame(
         &mut self,
         queue: &wgpu::Queue,

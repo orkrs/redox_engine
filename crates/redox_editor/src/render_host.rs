@@ -6,7 +6,7 @@
 //!   surface on the renderer — egui owns the swapchain).
 //! - Engine frame path through [`Renderer::render_frame_into`]: VSM shadows, normal
 //!   prepass, SSAO, opaque PBR, bloom, Sharp AA (MSAA resolve + SMAA + RCAS).
-//! - Unit-cube + ground proxies uploaded into [`GpuRegistry`].
+//! - Unit-cube + ground proxies uploaded into `GpuRegistry`.
 //! - [`RenderHost::resize`] recreates the egui RTT; caller re-registers the texture.
 //! - Quad layout: same Sharp-AA host path per pane (half-res pane RTTs, blit to
 //!   viewport) when the engine renderer is available.
