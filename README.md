@@ -299,7 +299,10 @@ cargo test -p redox_ecs -p redox_audio -p redox_render -p redox_anim
 cargo run --example prism_vault -p redox_core --release   # flagship showcase
 cargo run --example showcase -p redox_core
 cargo run --example dino_runner -p redox_core
+cargo run --example skinned_demo -p redox_core --release  # skeletal animation + IK
 ```
+
+`skinned_demo --screenshot <dir>` renders the scene offscreen (no window) and writes PNG frames.
 
 Generate a procedural world with the PCG CLI:
 
@@ -315,5 +318,7 @@ also polls `shaders/` and logs compile errors when a file is saved; pipelines ar
 
 See `ARCHITECTURE_REALITY.md` and `PROGRESS.md` for the current state of each system.
 Known gaps: DDGI is a GPU probe fill against scene AABBs with an analytic sky/sun model (no
-light bounce from surfaces), shader hot-reload does not swap pipelines live, and the editor
-AnimGraph canvas is a UI demo. `redox_editor --bake` runs the meshlet/SDF bakes headlessly.
+light bounce from surfaces), shader hot-reload does not swap pipelines live, directional VSM
+shadows cache pages and do not follow in-place mesh deformation (point-light shadows do), skinning
+runs on the CPU, and normal maps are not skinned. `redox_editor --bake` runs the meshlet/SDF
+bakes headlessly.
