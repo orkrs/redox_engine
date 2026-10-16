@@ -37,7 +37,7 @@ redox_physics = { path = "../redox_physics" }
 redox_gameplay = { path = "../redox_gameplay" }
 redox_vfx = { path = "../redox_vfx" }
 redox_scene = { path = "../redox_scene" }
-rapier3d = "0.18"
+rapier3d = { workspace = true }
 pollster = "0.3"
 egui-wgpu = { workspace = true }
 egui = { workspace = true }
