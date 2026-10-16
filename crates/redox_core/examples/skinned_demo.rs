@@ -4,7 +4,7 @@
 //!
 //! Run:         cargo run --example skinned_demo -p redox_core --release
 //! Screenshots: cargo run --example skinned_demo -p redox_core --release -- --screenshot <dir>
-//!              (renders offscreen, no window, writes PNG files)
+//!              (renders offscreen, no window, writes PNG files; add `--size 1920x1080`)
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -26,9 +26,9 @@ use winit::keyboard::KeyCode;
 
 const SHOT_SIZE: (u32, u32) = (1280, 720);
 /// Animation times captured in `--screenshot` mode.
-const SHOT_TIMES: [f32; 4] = [0.0, 0.6, 1.2, 1.8];
-/// Frames rendered per screenshot so TAA history converges.
-const SHOT_WARMUP_FRAMES: usize = 10;
+const SHOT_TIMES: [f32; 6] = [0.0, 1.2, 4.0, 8.0, 12.0, 17.0];
+/// Frames replayed per screenshot (also lets TAA history converge).
+const SHOT_WARMUP_FRAMES: usize = 90;
 const CAMERA_TARGET: Vec3 = Vec3::new(0.0, 1.1, 0.0);
 
 struct Rig {
@@ -186,7 +186,14 @@ fn main() {
     match args.iter().position(|a| a == "--screenshot") {
         Some(i) => {
             let dir = args.get(i + 1).map_or_else(|| PathBuf::from("skinned_demo_shots"), PathBuf::from);
-            screenshots(&dir);
+            let size = args
+                .iter()
+                .position(|a| a == "--size")
+                .and_then(|i| args.get(i + 1))
+                .and_then(|v| v.split_once('x'))
+                .and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)))
+                .unwrap_or(SHOT_SIZE);
+            screenshots(&dir, size);
         }
         None => windowed(),
     }
@@ -241,7 +248,7 @@ fn windowed() {
 }
 
 /// Offscreen render: no window, one PNG per entry of [`SHOT_TIMES`].
-fn screenshots(dir: &std::path::Path) {
+fn screenshots(dir: &std::path::Path, size: (u32, u32)) {
     std::fs::create_dir_all(dir).expect("create screenshot dir");
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor { backends: wgpu::Backends::all(), ..Default::default() });
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
@@ -261,7 +268,7 @@ fn screenshots(dir: &std::path::Path) {
     ))
     .expect("device");
 
-    let (w, h) = SHOT_SIZE;
+    let (w, h) = size;
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -290,9 +297,12 @@ fn screenshots(dir: &std::path::Path) {
     let lights = light_scene();
     let camera = Camera::new(0.9, w as f32 / h as f32, 0.1, 100.0);
     for t in SHOT_TIMES {
-        let (pos, rot) = camera_pose(0.0);
-        for _ in 0..SHOT_WARMUP_FRAMES {
-            scene.update(&renderer, t);
+        // Replay the last second of animation and camera motion at 60 fps, like the windowed
+        // loop, so frame-to-frame effects (shadow page streaming, TAA) show up in the shot.
+        for frame in 0..SHOT_WARMUP_FRAMES {
+            let frame_t = t - (SHOT_WARMUP_FRAMES - 1 - frame) as f32 / 60.0;
+            let (pos, rot) = camera_pose(frame_t);
+            scene.update(&renderer, frame_t.max(0.0));
             renderer.camera_uniform.update(&camera, pos, rot);
             renderer.update_camera_buffer();
             let objects = scene.objects(&renderer);
