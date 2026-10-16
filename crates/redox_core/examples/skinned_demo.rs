@@ -367,8 +367,16 @@ fn screenshots(dir: &std::path::Path, size: (u32, u32)) {
         let objects = scene.objects(&renderer);
         let fv = FrameView::new(&camera, &objects, &lights);
         renderer.render_frame_view(&fv, &view).expect("render");
+        // Frame pacing like a presented swapchain: without it the CPU runs arbitrarily far
+        // ahead of the GPU and per-frame staging memory can be reused while still in flight.
+        renderer.device.poll(wgpu::Maintain::Wait);
 
         if SHOT_TIMES.iter().any(|shot| (shot * 60.0) as usize == frame) {
+            let (stats, free, capacity) = renderer.vsm_diagnostics();
+            println!(
+                "t={t:.1}s vsm: pool free {free}/{capacity}, allocated {}, freed {}, overflow {}, dirty {}",
+                stats.pages_allocated, stats.pages_freed, stats.pages_overflow, stats.pages_dirty
+            );
             let pixels = read_texture(&renderer.device, &renderer.queue, &target, w, h);
             let path = dir.join(format!("skinned_demo_t{:03}.png", (t * 100.0) as u32));
             image::save_buffer(&path, &pixels, w, h, image::ColorType::Rgba8).expect("write png");

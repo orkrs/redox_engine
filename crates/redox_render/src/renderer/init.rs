@@ -855,13 +855,9 @@ impl Renderer {
         // ── VSM resources (directional; activated via `set_shadow_mode`) ──
         let vsm_depth_pass = crate::shadow::depth_pass::VsmDepthPass::new(&device);
 
-        let info_size = std::mem::size_of::<crate::shadow::vsm_clipmap::VsmGpuInfo>() as u64;
-        let vsm_info_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("vsm_gpu_info"),
-            size: info_size.max(16),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        // `vsm_info_buffer` is created once, above: a second `let` here used to shadow it, so
+        // the screen-space trace bind group kept an orphan buffer that was never written and
+        // sun shadows stayed off until the first resize rebuilt the bind group.
         let vsm_pageinfo_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("vsm_pageinfo_dyn"),
             // One 256-byte dynamic-offset slot per dirty page. Clipmap is
