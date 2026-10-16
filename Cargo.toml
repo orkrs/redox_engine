@@ -66,7 +66,7 @@ egui_plot = "0.28"
 egui_dock = "0.13"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
-ron = "0.8"
+ron = "0.12"
 notify = "6.1"
 meshopt = "0.6"
 flume = "0.12"
