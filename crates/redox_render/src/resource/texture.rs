@@ -189,10 +189,10 @@ impl Texture {
         bytes: &[u8],
         label: &str,
     ) -> Result<Self, image::ImageError> {
-        let decoder = image::codecs::hdr::HdrDecoder::new(bytes)?;
-        let metadata = decoder.metadata();
-        let (width, height) = (metadata.width, metadata.height);
-        let pixels = decoder.read_image_hdr()?;
+        let img =
+            image::load_from_memory_with_format(bytes, image::ImageFormat::Hdr)?.into_rgb32f();
+        let (width, height) = (img.width(), img.height());
+        let pixels = img.pixels();
 
         // Convert Rgb<f32> to RGBA f16 packed as u16.
         let mut data: Vec<u16> = Vec::with_capacity(width as usize * height as usize * 4);
