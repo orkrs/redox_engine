@@ -22,7 +22,7 @@ members = [
 
 [workspace.package]
 license = "MIT OR Apache-2.0"
-rust-version = "1.85"
+rust-version = "1.88"
 
 [workspace.lints.clippy]
 # Renderer entry points and shared dispatcher types are intentionally wide.

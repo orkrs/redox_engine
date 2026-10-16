@@ -119,10 +119,10 @@ impl GpuProfiler {
             return;
         }
         device.poll(wgpu::Maintain::Poll);
-        if let Readback::Mapping(done) = &self.state {
-            if done.load(Ordering::Acquire) {
-                self.harvest();
-            }
+        if let Readback::Mapping(done) = &self.state
+            && done.load(Ordering::Acquire)
+        {
+            self.harvest();
         }
         self.labels.clear();
         self.marks = 0;

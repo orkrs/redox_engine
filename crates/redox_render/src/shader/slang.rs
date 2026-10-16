@@ -123,10 +123,10 @@ impl SlangCompiler {
             options.target
         );
 
-        if let Ok(cache) = self.cache.read() {
-            if let Some(cached) = cache.get(&cache_key) {
-                return Ok(cached.clone());
-            }
+        if let Ok(cache) = self.cache.read()
+            && let Some(cached) = cache.get(&cache_key)
+        {
+            return Ok(cached.clone());
         }
 
         let mut cmd = Command::new("slangc");

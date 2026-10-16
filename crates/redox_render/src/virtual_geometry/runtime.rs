@@ -30,6 +30,12 @@ use super::meshlet::{
 };
 use crate::mesh::{CompressedVertex, bounds_vectors, compress_vertices};
 
+mod pipeline;
+mod types;
+
+use pipeline::build_pipeline;
+pub use types::{VGAssetId, VGConfig, VGInstanceHandle, VGStats};
+
 // ── WGSL shader source ──────────────────────────────────────────────────────
 
 // Vertex + fragment shader for virtual geometry rendering. The source lives in
@@ -39,62 +45,6 @@ use crate::mesh::{CompressedVertex, bounds_vectors, compress_vertices};
 // (binding 0). The fragment stage renders world-space normals tinted with a
 // VG debug colour so VG objects are easy to distinguish from standard PBR
 // objects; full PBR integration can be added by extending the bind groups.
-
-// ── Config & Stats ────────────────────────────────────────────────────────────
-
-/// Configuration for [`VGSystem`].
-#[derive(Clone, Debug)]
-pub struct VGConfig {
-    /// Maximum total vertices across all VG assets.
-    pub max_vertices: usize,
-    /// Maximum total indices across all VG assets.
-    pub max_indices: usize,
-    /// Maximum total meshlets across all VG assets.
-    pub max_meshlets: usize,
-    /// Maximum active instances.
-    pub max_instances: usize,
-    /// Maximum visible draw commands per frame.
-    pub max_visible_commands: usize,
-    /// LOD chain config used when building new VG assets.
-    pub lod_config: LodChainConfig,
-    /// When true, culling runs on GPU via `vg_cull.wgsl` (CPU fallback otherwise).
-    pub gpu_cull: bool,
-}
-
-impl Default for VGConfig {
-    fn default() -> Self {
-        Self {
-            max_vertices: 1 << 18,
-            max_indices: 1 << 19,
-            max_meshlets: MAX_GLOBAL_MESHLETS.min(1 << 16),
-            max_instances: MAX_VG_INSTANCES,
-            max_visible_commands: MAX_VISIBLE_COMMANDS,
-            lod_config: LodChainConfig::default(),
-            gpu_cull: false,
-        }
-    }
-}
-
-/// Per-frame statistics reported by [`VGSystem`].
-#[derive(Clone, Debug, Default)]
-pub struct VGStats {
-    pub total_meshlets: u32,
-    pub visible_meshlets: u32,
-    pub total_triangles: u64,
-    pub visible_triangles: u64,
-    pub registered_assets: u32,
-    pub active_instances: u32,
-}
-
-// ── Asset handle ──────────────────────────────────────────────────────────────
-
-/// Opaque identifier for a registered VG asset.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct VGAssetId(pub u64);
-
-/// Opaque handle for a spawned VG instance.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct VGInstanceHandle(pub u32);
 
 // ── Internal stored asset ─────────────────────────────────────────────────────
 
@@ -824,62 +774,4 @@ impl VGSystem {
     pub fn has_content(&self) -> bool {
         self.indirect.count > 0
     }
-}
-
-// ── Pipeline builder ──────────────────────────────────────────────────────────
-
-fn build_pipeline(
-    device: &wgpu::Device,
-    camera_bgl: &wgpu::BindGroupLayout,
-    instances_bgl: &wgpu::BindGroupLayout,
-    surface_format: wgpu::TextureFormat,
-    depth_format: wgpu::TextureFormat,
-) -> wgpu::RenderPipeline {
-    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("vg_pipeline_layout"),
-        bind_group_layouts: &[camera_bgl, instances_bgl],
-        push_constant_ranges: &[],
-    });
-
-    let shader_src = crate::shader::shader_with_vertex_decode(crate::shader::VG_WGSL);
-    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("vg_shader"),
-        source: wgpu::ShaderSource::Wgsl(shader_src.into()),
-    });
-
-    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("vg_pipeline"),
-        layout: Some(&layout),
-        vertex: wgpu::VertexState {
-            module: &shader,
-            entry_point: "vs_main",
-            buffers: &[CompressedVertex::buffer_layout()],
-            compilation_options: Default::default(),
-        },
-        fragment: Some(wgpu::FragmentState {
-            module: &shader,
-            entry_point: "fs_main",
-            targets: &[Some(wgpu::ColorTargetState {
-                format: surface_format,
-                blend: Some(wgpu::BlendState::REPLACE),
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-            compilation_options: Default::default(),
-        }),
-        primitive: wgpu::PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleList,
-            front_face: wgpu::FrontFace::Ccw,
-            cull_mode: Some(wgpu::Face::Back),
-            ..Default::default()
-        },
-        depth_stencil: Some(wgpu::DepthStencilState {
-            format: depth_format,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::LessEqual,
-            stencil: wgpu::StencilState::default(),
-            bias: wgpu::DepthBiasState::default(),
-        }),
-        multisample: wgpu::MultisampleState::default(),
-        multiview: None,
-    })
 }

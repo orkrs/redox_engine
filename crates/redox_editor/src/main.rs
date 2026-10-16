@@ -37,16 +37,16 @@ fn collect_transforms(world: &World) -> Vec<(u32, Transform)> {
 
 fn focus_selection(ui_ctx: &EditorUiCtx) {
     let sel = ui_ctx.selection.lock().primary;
-    if let Some(e) = sel {
-        if let Some(t) = ui_ctx.world.lock().get_component::<Transform>(e).copied() {
-            ui_ctx
-                .camera
-                .lock()
-                .focus_on(redox_math::Aabb::from_center_size(
-                    t.translation,
-                    Vec3::splat(1.0),
-                ));
-        }
+    if let Some(e) = sel
+        && let Some(t) = ui_ctx.world.lock().get_component::<Transform>(e).copied()
+    {
+        ui_ctx
+            .camera
+            .lock()
+            .focus_on(redox_math::Aabb::from_center_size(
+                t.translation,
+                Vec3::splat(1.0),
+            ));
     }
 }
 
@@ -394,8 +394,8 @@ fn main() {
                             }
                         }
                         // Gizmo drag
-                        if gizmo.lock().axis.is_some() {
-                            if let (Some(sel), Some(host), Some(rect), Some(pos)) = (
+                        if gizmo.lock().axis.is_some()
+                            && let (Some(sel), Some(host), Some(rect), Some(pos)) = (
                                 selection.lock().primary,
                                 render_host.as_ref(),
                                 *viewport_rect.lock(),
@@ -438,7 +438,6 @@ fn main() {
                                     }
                                 }
                             }
-                        }
                     }
                     winit::event::WindowEvent::MouseInput { state, button, .. } => {
                         let pressed = state == winit::event::ElementState::Pressed;
@@ -496,11 +495,10 @@ fn main() {
                                     }
                                 } else if !pressed && gizmo.lock().axis.is_some() {
                                     gizmo.lock().end_drag();
-                                    if *ui_ctx.surface_snap.lock() {
-                                        if let Some(e) = selection.lock().primary {
+                                    if *ui_ctx.surface_snap.lock()
+                                        && let Some(e) = selection.lock().primary {
                                             *ui_ctx.status.lock() = format!("snap:{}", e.id());
                                         }
-                                    }
                                     ui_ctx.git.lock().refresh_from_world(&world.lock());
                                 }
                             }
@@ -669,8 +667,8 @@ fn main() {
                                 let snap = registry.lock().snapshot_world(&world.lock());
                                 ui_ctx.time_travel.lock().push(snap);
                             }
-                            if tick_ai {
-                                if let Some(e) = *ui_ctx.demo_agent.lock() {
+                            if tick_ai
+                                && let Some(e) = *ui_ctx.demo_agent.lock() {
                                     let mut w = world.lock();
                                     if let Some(agent) = w
                                         .get_component_mut::<redox_gameplay::StateTreeComponent>(e)
@@ -680,7 +678,6 @@ fn main() {
                                         ui_ctx.graph.lock().sync_from_agent(agent);
                                     }
                                 }
-                            }
                         }
 
                         // Auto world streaming (~4 Hz) while a session is open
@@ -809,8 +806,8 @@ fn main() {
                                 }
                                 ui_ctx.status.lock().clear();
                             } else if let Some(rest) = status.strip_prefix("snap:") {
-                                if let Ok(id) = rest.parse::<u32>() {
-                                    if let Some(e) = resolve_entity(&world.lock(), id) {
+                                if let Ok(id) = rest.parse::<u32>()
+                                    && let Some(e) = resolve_entity(&world.lock(), id) {
                                         let pos = world
                                             .lock()
                                             .get_component::<Transform>(e)
@@ -834,7 +831,6 @@ fn main() {
                                         ));
                                         ui_ctx.git.lock().refresh_from_world(&world.lock());
                                     }
-                                }
                                 ui_ctx.status.lock().clear();
                             }
                         }
@@ -951,8 +947,8 @@ fn main() {
                                     host.render(&cam, &entities, selected_id, shading);
                                 }
                             }
-                            if let Some(lp) = lines_pass.as_ref() {
-                                if layout == ViewportLayout::Single {
+                            if let Some(lp) = lines_pass.as_ref()
+                                && layout == ViewportLayout::Single {
                                     let mut encoder = host.device().create_command_encoder(
                                         &wgpu::CommandEncoderDescriptor {
                                             label: Some("lines_encoder"),
@@ -1005,7 +1001,6 @@ fn main() {
                                     );
                                     host.queue().submit(Some(encoder.finish()));
                                 }
-                            }
                         }
 
                         let raw_input = egui_winit.take_egui_input(&window);
@@ -1019,8 +1014,8 @@ fn main() {
                             egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
                                 ui.horizontal(|ui| {
                                     ui.menu_button("File", |ui| {
-                                        if ui.button("New World").clicked() {
-                                            if let Ok(s) = WorldSession::create_new(
+                                        if ui.button("New World").clicked()
+                                            && let Ok(s) = WorldSession::create_new(
                                                 "worlds/untitled",
                                                 "empty",
                                                 4,
@@ -1029,13 +1024,11 @@ fn main() {
                                                 *ui_ctx_ref.world_session.lock() = Some(s);
                                                 ui_ctx_ref.log("[INFO] Created worlds/untitled");
                                             }
-                                        }
-                                        if ui.button("Open worlds/arena").clicked() {
-                                            if let Ok(s) = WorldSession::open("worlds/arena") {
+                                        if ui.button("Open worlds/arena").clicked()
+                                            && let Ok(s) = WorldSession::open("worlds/arena") {
                                                 *ui_ctx_ref.world_session.lock() = Some(s);
                                                 ui_ctx_ref.log("[INFO] Opened worlds/arena");
                                             }
-                                        }
                                         if ui.button("Save Layout Ctrl+S").clicked() {
                                             let _ = dock.save_to_file(std::path::Path::new(
                                                 "editor_layout.ron",
@@ -1084,15 +1077,14 @@ fn main() {
                                             }
                                         }
                                         ui.separator();
-                                        if ui.button("Tick Streaming").clicked() {
-                                            if let Some(session) =
+                                        if ui.button("Tick Streaming").clicked()
+                                            && let Some(session) =
                                                 ui_ctx_ref.world_session.lock().as_mut()
                                             {
                                                 let eye = camera.lock().eye;
                                                 session.tick(&mut world.lock(), eye);
                                                 ui_ctx_ref.log("[INFO] World partition tick");
                                             }
-                                        }
                                     });
                                     ui.menu_button("Git", |ui| {
                                         // Agent E: surface git2 availability + refresh
@@ -1244,8 +1236,8 @@ fn main() {
                         let is_click = egui_ctx.input(|i| i.pointer.primary_clicked());
                         let hover_pos = egui_ctx.input(|i| i.pointer.hover_pos());
                         let alt = egui_ctx.input(|i| i.modifiers.alt);
-                        if is_click && !alt && gizmo.lock().axis.is_none() {
-                            if let (Some(pos), Some(rect), Some(host)) =
+                        if is_click && !alt && gizmo.lock().axis.is_none()
+                            && let (Some(pos), Some(rect), Some(host)) =
                                 (hover_pos, *viewport_rect.lock(), render_host.as_ref())
                             {
                                 let vp = &host.viewport;
@@ -1339,7 +1331,6 @@ fn main() {
                                     }
                                 }
                             }
-                        }
 
                         {
                             let mut world_guard = world.lock();

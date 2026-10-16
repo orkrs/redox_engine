@@ -137,13 +137,12 @@ pub fn tick_physics(world: &mut World, dt: f32) {
         }
     }
 
-    if !raycasts.is_empty() {
-        if let Some(events) =
+    if !raycasts.is_empty()
+        && let Some(events) =
             world.get_resource_mut::<redox_ecs::Events<crate::raycast::RaycastResult>>()
-        {
-            for res in raycasts {
-                events.send(res);
-            }
+    {
+        for res in raycasts {
+            events.send(res);
         }
     }
 }

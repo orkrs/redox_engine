@@ -258,11 +258,12 @@ pub fn pick_unit_cubes(entities: &[(u32, Transform)], origin: Vec3, dir: Vec3) -
         };
         let local_o = inv.transform_point3(origin);
         let local_d = inv.transform_vector3(dir);
-        if let Some(hit_t) = ray_aabb_t(local_o, local_d, Vec3::splat(-0.5), Vec3::splat(0.5)) {
-            if hit_t >= 0.0 && hit_t < best_t {
-                best_t = hit_t;
-                best_id = Some(id);
-            }
+        if let Some(hit_t) = ray_aabb_t(local_o, local_d, Vec3::splat(-0.5), Vec3::splat(0.5))
+            && hit_t >= 0.0
+            && hit_t < best_t
+        {
+            best_t = hit_t;
+            best_id = Some(id);
         }
     }
     best_id

@@ -538,10 +538,10 @@ fn main() {
                 game.speed = 8.0;
                 game.vy = 0.0;
                 game.jump_buf = 0;
-                if let Some(player) = game.player {
-                    if let Some(t) = world.get_component_mut::<Transform>(player) {
-                        t.translation = Vec3::new(PLAYER_X, STAND_Y, 0.0);
-                    }
+                if let Some(player) = game.player
+                    && let Some(t) = world.get_component_mut::<Transform>(player)
+                {
+                    t.translation = Vec3::new(PLAYER_X, STAND_Y, 0.0);
                 }
                 for (i, &cactus) in game.cacti.iter().enumerate() {
                     recycle_cactus(world, cactus, 16.0 + i as f32 * 11.0);

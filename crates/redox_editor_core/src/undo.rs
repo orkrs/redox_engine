@@ -121,32 +121,28 @@ impl UndoStack {
             before: _,
             after,
         } = &cmd
-        {
-            if let Some(UndoCommand::SetComponent {
+            && let Some(UndoCommand::SetComponent {
                 entity: e2,
                 type_name: t2,
                 before: b2,
                 after: _,
             }) = self.undo.last()
-            {
-                if e2 == entity
-                    && t2 == type_name
-                    && self.last_push_time.elapsed().as_secs_f32() < self.merge_window_secs
-                {
-                    // Merge: keep original before, update after
-                    let merged = UndoCommand::SetComponent {
-                        entity: *entity,
-                        type_name: type_name.clone(),
-                        before: b2.clone(),
-                        after: after.clone(),
-                    };
-                    self.undo.pop();
-                    self.undo.push(merged);
-                    self.last_push_time = std::time::Instant::now();
-                    self.redo.clear();
-                    return;
-                }
-            }
+            && e2 == entity
+            && t2 == type_name
+            && self.last_push_time.elapsed().as_secs_f32() < self.merge_window_secs
+        {
+            // Merge: keep original before, update after
+            let merged = UndoCommand::SetComponent {
+                entity: *entity,
+                type_name: type_name.clone(),
+                before: b2.clone(),
+                after: after.clone(),
+            };
+            self.undo.pop();
+            self.undo.push(merged);
+            self.last_push_time = std::time::Instant::now();
+            self.redo.clear();
+            return;
         }
         self.undo.push(cmd);
         self.redo.clear();

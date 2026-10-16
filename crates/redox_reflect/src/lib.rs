@@ -265,10 +265,10 @@ impl TypeRegistry {
     pub fn snapshot_entity(&self, world: &World, entity: Entity) -> Vec<ReflectValue> {
         let mut out = Vec::new();
         for reg in self.by_id.values() {
-            if (reg.has)(world, entity) {
-                if let Some(v) = (reg.read)(world, entity) {
-                    out.push(v);
-                }
+            if (reg.has)(world, entity)
+                && let Some(v) = (reg.read)(world, entity)
+            {
+                out.push(v);
             }
         }
         out.sort_by(|a, b| match (a, b) {

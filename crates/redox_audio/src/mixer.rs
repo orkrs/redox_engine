@@ -271,10 +271,10 @@ impl MixerGraph {
             self.bus(source).effective_gain() * self.master.effective_gain()
         };
 
-        if let Some(ducking) = &self.ducking {
-            if ducking.target_bus == source {
-                return base * ducking.current_gain;
-            }
+        if let Some(ducking) = &self.ducking
+            && ducking.target_bus == source
+        {
+            return base * ducking.current_gain;
         }
         base
     }

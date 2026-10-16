@@ -139,10 +139,10 @@ impl PageRequestPass {
     /// Harvests a finished readback. Call once per frame before using [`Self::latest_bits`].
     pub fn begin_frame(&mut self, device: &wgpu::Device) {
         device.poll(wgpu::Maintain::Poll);
-        if let Readback::Mapping(done) = &self.state {
-            if done.load(Ordering::Acquire) {
-                self.harvest();
-            }
+        if let Readback::Mapping(done) = &self.state
+            && done.load(Ordering::Acquire)
+        {
+            self.harvest();
         }
     }
 
@@ -233,10 +233,10 @@ impl PageRequestPass {
         self.state = Readback::Mapping(done);
         if block {
             device.poll(wgpu::Maintain::Wait);
-            if let Readback::Mapping(done) = &self.state {
-                if done.load(Ordering::Acquire) {
-                    self.harvest();
-                }
+            if let Readback::Mapping(done) = &self.state
+                && done.load(Ordering::Acquire)
+            {
+                self.harvest();
             }
         }
     }

@@ -175,15 +175,15 @@ pub fn record_point_atlas_shadows(
                     );
                 }
             }
-            if let Some(vg) = vg_system {
-                if vg.has_content() {
-                    vg.draw_shadow_indirect(
-                        &mut shadow_pass,
-                        ctx.vg_shadow_pass,
-                        &ctx.face_matrix_bgs[job.face_base + face_i],
-                        ctx.vg_shadow_instances_bg,
-                    );
-                }
+            if let Some(vg) = vg_system
+                && vg.has_content()
+            {
+                vg.draw_shadow_indirect(
+                    &mut shadow_pass,
+                    ctx.vg_shadow_pass,
+                    &ctx.face_matrix_bgs[job.face_base + face_i],
+                    ctx.vg_shadow_instances_bg,
+                );
             }
         }
     }

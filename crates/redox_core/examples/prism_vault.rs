@@ -269,18 +269,18 @@ fn open_or_generate_partition() -> WorldPartition {
         cell_size: 16.0,
         seed: 42,
     };
-    if !path.join("world.ron").exists() {
-        if let Err(e) = generate_to(&path, &params) {
-            log::warn!("PCG write failed ({e}); falling back to in-memory partition");
-            let generated = redox_scene::generate(&params);
-            let mut part = WorldPartition::in_memory(
-                params.cell_size,
-                [0.0; 3],
-                generated.cells.into_iter().collect(),
-            );
-            configure_streaming(&mut part);
-            return part;
-        }
+    if !path.join("world.ron").exists()
+        && let Err(e) = generate_to(&path, &params)
+    {
+        log::warn!("PCG write failed ({e}); falling back to in-memory partition");
+        let generated = redox_scene::generate(&params);
+        let mut part = WorldPartition::in_memory(
+            params.cell_size,
+            [0.0; 3],
+            generated.cells.into_iter().collect(),
+        );
+        configure_streaming(&mut part);
+        return part;
     }
     let mut part = WorldPartition::open(&path).unwrap_or_else(|e| {
         log::warn!("WorldPartition::open failed ({e}); using in-memory");
@@ -665,20 +665,20 @@ fn tick_game(
         let has_stamina = world
             .get_component::<AttributeSet>(player)
             .map(|s| s.stamina.current);
-        if let (Some((cost, cooldown)), Some(stamina)) = (dash_cost, has_stamina) {
-            if stamina >= cost {
-                world
-                    .get_component_mut::<AttributeSet>(player)
-                    .expect("player attrs")
-                    .stamina
-                    .current -= cost;
-                let ability = world
-                    .get_component_mut::<Ability>(player)
-                    .expect("player ability");
-                ability.remaining_cooldown = cooldown;
-                session.dash_timer = 0.22;
-                dashed = true;
-            }
+        if let (Some((cost, cooldown)), Some(stamina)) = (dash_cost, has_stamina)
+            && stamina >= cost
+        {
+            world
+                .get_component_mut::<AttributeSet>(player)
+                .expect("player attrs")
+                .stamina
+                .current -= cost;
+            let ability = world
+                .get_component_mut::<Ability>(player)
+                .expect("player ability");
+            ability.remaining_cooldown = cooldown;
+            session.dash_timer = 0.22;
+            dashed = true;
         }
     }
     if dashed {
@@ -699,17 +699,17 @@ fn tick_game(
         walk_dir
     };
     let speed = if session.dash_timer > 0.0 { 16.0 } else { 5.5 };
-    if dir.length_squared() > 0.0 {
-        if let Some(t) = world.get_component_mut::<Transform>(session.player) {
-            t.translation += dir * speed * dt;
-            t.translation.x = t.translation.x.clamp(-half_bounds(), half_bounds());
-            t.translation.z = t.translation.z.clamp(-half_bounds(), half_bounds());
-            t.translation.y = if session.dash_timer > 0.0 {
-                0.85 + (session.dash_timer * 12.0).sin().abs() * 0.15
-            } else {
-                0.85
-            };
-        }
+    if dir.length_squared() > 0.0
+        && let Some(t) = world.get_component_mut::<Transform>(session.player)
+    {
+        t.translation += dir * speed * dt;
+        t.translation.x = t.translation.x.clamp(-half_bounds(), half_bounds());
+        t.translation.z = t.translation.z.clamp(-half_bounds(), half_bounds());
+        t.translation.y = if session.dash_timer > 0.0 {
+            0.85 + (session.dash_timer * 12.0).sin().abs() * 0.15
+        } else {
+            0.85
+        };
     }
 
     let player_pos = world
@@ -761,7 +761,7 @@ fn tick_game(
                 }
             }
         }
-        if far_n > 0 && (session.time_played * 2.0) as u32 % 4 == 0 {
+        if far_n > 0 && ((session.time_played * 2.0) as u32).is_multiple_of(4) {
             log::warn!(
                 "streamed actors beyond 500m: {far_n} (max |r|={max_r:.0}) — regen worlds/arena"
             );
@@ -832,10 +832,10 @@ fn tick_game(
             c.spin += dt * 1.4;
             c.spin
         });
-        if let Some(spin) = spin {
-            if let Some(t) = world.get_component_mut::<Transform>(crystal_e) {
-                t.rotation = Quat::from_rotation_y(spin);
-            }
+        if let Some(spin) = spin
+            && let Some(t) = world.get_component_mut::<Transform>(crystal_e)
+        {
+            t.rotation = Quat::from_rotation_y(spin);
         }
     }
 
@@ -873,10 +873,8 @@ fn tick_game(
         audio.sync_mixer();
     }
 
-    if GOD_MODE {
-        if let Some(attrs) = world.get_component_mut::<AttributeSet>(session.player) {
-            attrs.health.current = attrs.health.max;
-        }
+    if GOD_MODE && let Some(attrs) = world.get_component_mut::<AttributeSet>(session.player) {
+        attrs.health.current = attrs.health.max;
     }
 
     if session.collected >= CRYSTAL_COUNT as u8 {

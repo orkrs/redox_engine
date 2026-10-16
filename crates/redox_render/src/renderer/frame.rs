@@ -124,16 +124,17 @@ impl Renderer {
                 .record_gpu_cull(&self.device, &mut encoder, &self.queue);
         }
 
-        if let Some(ps) = self.particle_system.as_mut() {
-            if ps.gpu_sim_enabled && ps.last_alive_count > 0 {
-                let mut uniforms = self.particle_sim_uniforms;
-                uniforms.capacity = ps.capacity;
-                uniforms.alive_count = ps.last_alive_count;
-                if uniforms.delta_time <= 0.0 {
-                    uniforms.delta_time = 1.0 / 60.0;
-                }
-                ps.record_gpu_sim(&self.device, &mut encoder, &self.queue, &uniforms);
+        if let Some(ps) = self.particle_system.as_mut()
+            && ps.gpu_sim_enabled
+            && ps.last_alive_count > 0
+        {
+            let mut uniforms = self.particle_sim_uniforms;
+            uniforms.capacity = ps.capacity;
+            uniforms.alive_count = ps.last_alive_count;
+            if uniforms.delta_time <= 0.0 {
+                uniforms.delta_time = 1.0 / 60.0;
             }
+            ps.record_gpu_sim(&self.device, &mut encoder, &self.queue, &uniforms);
         }
 
         // ── VG GPU cull (optional; CPU cull done in prepare_vg_frame) ───────
@@ -473,22 +474,23 @@ impl Renderer {
         // that Hi-Z of the *previous* frame rejected (1-frame disocclusion).
         self.hiz
             .build_from_depth(&self.device, &self.queue, &mut encoder, &self.depth_view);
-        if let Some(vg) = self.vg_system.as_mut() {
-            if vg.config.gpu_cull && vg.active_instance_count() > 0 {
-                let cam_pos = Vec3::new(
-                    self.camera_uniform.camera_pos[0],
-                    self.camera_uniform.camera_pos[1],
-                    self.camera_uniform.camera_pos[2],
-                );
-                vg.record_gpu_cull_phase2(
-                    &self.device,
-                    &self.queue,
-                    &mut encoder,
-                    &self.camera_uniform.view_proj,
-                    cam_pos,
-                    &self.hiz,
-                );
-            }
+        if let Some(vg) = self.vg_system.as_mut()
+            && vg.config.gpu_cull
+            && vg.active_instance_count() > 0
+        {
+            let cam_pos = Vec3::new(
+                self.camera_uniform.camera_pos[0],
+                self.camera_uniform.camera_pos[1],
+                self.camera_uniform.camera_pos[2],
+            );
+            vg.record_gpu_cull_phase2(
+                &self.device,
+                &self.queue,
+                &mut encoder,
+                &self.camera_uniform.view_proj,
+                cam_pos,
+                &self.hiz,
+            );
         }
 
         self.gpu_profiler.mark(&mut encoder, "normal_prepass_hiz");
@@ -539,10 +541,10 @@ impl Renderer {
             // Skybox background:
             // opaque fragment overwrites it. Skipped while the dummy (black)
             // IBL placeholder is active.
-            if let Some(sb) = &self.skybox_pass {
-                if !self.ibl_resource.is_dummy() {
-                    sb.draw(&mut render_pass);
-                }
+            if let Some(sb) = &self.skybox_pass
+                && !self.ibl_resource.is_dummy()
+            {
+                sb.draw(&mut render_pass);
             }
 
             self.record_draw(&mut render_pass, objects, &self.main_vis_scratch);
@@ -706,31 +708,31 @@ impl Renderer {
         }
 
         // ── 5d. GPU particles (billboards + reactive mask) ─────────────────
-        if self.reactive_view.is_some() {
-            if let Some(reactive) = &self.reactive_view {
-                let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("reactive_clear"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: reactive,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                });
-            }
+        if self.reactive_view.is_some()
+            && let Some(reactive) = &self.reactive_view
+        {
+            let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("reactive_clear"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: reactive,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
         }
-        if let Some(ps) = &self.particle_system {
-            if ps.last_alive_count > 0 || ps.gpu_sim_enabled {
-                let reactive = self.reactive_view.as_ref();
-                let mut particle_pass =
-                    ps.begin_draw_pass(&mut encoder, &self.hdr_view, &self.depth_view, reactive);
-                ps.record_draw(&mut particle_pass, reactive);
-            }
+        if let Some(ps) = &self.particle_system
+            && (ps.last_alive_count > 0 || ps.gpu_sim_enabled)
+        {
+            let reactive = self.reactive_view.as_ref();
+            let mut particle_pass =
+                ps.begin_draw_pass(&mut encoder, &self.hdr_view, &self.depth_view, reactive);
+            ps.record_draw(&mut particle_pass, reactive);
         }
 
         self.gpu_profiler
@@ -1004,10 +1006,10 @@ impl Renderer {
             );
         }
 
-        if let Some(vg) = self.vg_system.as_mut() {
-            if vg.config.gpu_cull {
-                vg.schedule_gpu_cull_readback(&mut encoder);
-            }
+        if let Some(vg) = self.vg_system.as_mut()
+            && vg.config.gpu_cull
+        {
+            vg.schedule_gpu_cull_readback(&mut encoder);
         }
 
         // Feed next frame's motion reprojection (VSM temporal, future TAA-adjacent passes).

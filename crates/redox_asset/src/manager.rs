@@ -211,10 +211,10 @@ impl AssetManager {
         }
 
         self.inserters.entry(type_id).or_insert(|any, id, boxed| {
-            if let Some(s) = any.downcast_mut::<AssetStorage<T>>() {
-                if let Ok(asset) = boxed.downcast::<T>() {
-                    s.insert(Handle::new(id), *asset);
-                }
+            if let Some(s) = any.downcast_mut::<AssetStorage<T>>()
+                && let Ok(asset) = boxed.downcast::<T>()
+            {
+                s.insert(Handle::new(id), *asset);
             }
         });
 
@@ -287,10 +287,10 @@ impl AssetManager {
         let path = self.base_path.join(path.as_ref());
 
         let type_id = TypeId::of::<T>();
-        if let Some((tid, id)) = self.path_to_handle.get(&path) {
-            if *tid == type_id {
-                return Ok(Handle::new(*id));
-            }
+        if let Some((tid, id)) = self.path_to_handle.get(&path)
+            && *tid == type_id
+        {
+            return Ok(Handle::new(*id));
         }
 
         if !self
@@ -359,16 +359,15 @@ impl AssetManager {
                                 path: item.path.clone(),
                             });
                         }
-                        if item.is_reload {
-                            if let Some(ev) =
+                        if item.is_reload
+                            && let Some(ev) =
                                 world.get_resource_mut::<redox_ecs::Events<AssetReloadedEvent>>()
-                            {
-                                ev.send(AssetReloadedEvent {
-                                    type_id: item.type_id,
-                                    id: item.id,
-                                    path: item.path.clone(),
-                                });
-                            }
+                        {
+                            ev.send(AssetReloadedEvent {
+                                type_id: item.type_id,
+                                id: item.id,
+                                path: item.path.clone(),
+                            });
                         }
                     }
                 }

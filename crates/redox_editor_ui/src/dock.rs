@@ -64,12 +64,12 @@ impl EditorDock {
 
     pub fn new() -> Self {
         let layout_path = std::path::Path::new("editor_layout.ron");
-        if let Ok(s) = std::fs::read_to_string(layout_path) {
-            if let Ok(tree) = ron::from_str::<DockState<Tab>>(&s) {
-                let mut dock = Self { tree };
-                dock.ensure_tabs();
-                return dock;
-            }
+        if let Ok(s) = std::fs::read_to_string(layout_path)
+            && let Ok(tree) = ron::from_str::<DockState<Tab>>(&s)
+        {
+            let mut dock = Self { tree };
+            dock.ensure_tabs();
+            return dock;
         }
         Self {
             tree: Self::default_tree(),

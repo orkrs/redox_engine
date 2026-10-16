@@ -134,14 +134,14 @@ impl NodeCanvas {
                     });
                 }
             }
-            if let Some(p) = n.parent {
-                if let Some(&to) = id_to_idx.get(&p) {
-                    edges.push(Edge {
-                        from,
-                        to,
-                        label: "parent".into(),
-                    });
-                }
+            if let Some(p) = n.parent
+                && let Some(&to) = id_to_idx.get(&p)
+            {
+                edges.push(Edge {
+                    from,
+                    to,
+                    label: "parent".into(),
+                });
             }
         }
         self.graph = NodeGraph { nodes, edges };
@@ -516,14 +516,14 @@ impl NodeCanvas {
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 4.0, egui::Color32::from_gray(28));
 
-        if response.dragged() {
-            if let Some(pos) = response.interact_pointer_pos() {
-                let rel = pos - rect.min.to_vec2();
-                if let Some(n) = self.graph.nodes.iter_mut().find(|n| {
-                    egui::Rect::from_center_size(n.pos, egui::vec2(130.0, 44.0)).contains(rel)
-                }) {
-                    n.pos += response.drag_delta();
-                }
+        if response.dragged()
+            && let Some(pos) = response.interact_pointer_pos()
+        {
+            let rel = pos - rect.min.to_vec2();
+            if let Some(n) = self.graph.nodes.iter_mut().find(|n| {
+                egui::Rect::from_center_size(n.pos, egui::vec2(130.0, 44.0)).contains(rel)
+            }) {
+                n.pos += response.drag_delta();
             }
         }
 

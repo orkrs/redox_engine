@@ -167,14 +167,14 @@ pub fn occlusion_raycast_system(world: &mut World) {
         }
     }
 
-    if let Some(debug) = world.get_resource_mut::<crate::debug::AudioDebugDraw>() {
-        if debug.draw_rays {
-            debug.rays.clear();
-            for (_entity, emitter_pos, occlusion, _) in &results {
-                debug
-                    .rays
-                    .push((listener_pos, *emitter_pos, *occlusion > 0.0));
-            }
+    if let Some(debug) = world.get_resource_mut::<crate::debug::AudioDebugDraw>()
+        && debug.draw_rays
+    {
+        debug.rays.clear();
+        for (_entity, emitter_pos, occlusion, _) in &results {
+            debug
+                .rays
+                .push((listener_pos, *emitter_pos, *occlusion > 0.0));
         }
     }
 
@@ -201,13 +201,13 @@ pub fn compute_active_reverb(world: &World) -> Option<ReverbPreset> {
     let mut weighted: Vec<(ReverbPreset, f32)> = Vec::new();
 
     for entity in world.all_entities() {
-        if let Some(zone) = world.get_component::<ReverbZone>(entity) {
-            if zone.current_weight > 0.001 {
-                weighted.push((
-                    ReverbPreset::from_name(&zone.preset_name),
-                    zone.current_weight,
-                ));
-            }
+        if let Some(zone) = world.get_component::<ReverbZone>(entity)
+            && zone.current_weight > 0.001
+        {
+            weighted.push((
+                ReverbPreset::from_name(&zone.preset_name),
+                zone.current_weight,
+            ));
         }
     }
 

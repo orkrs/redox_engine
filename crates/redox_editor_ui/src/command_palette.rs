@@ -133,13 +133,13 @@ impl CommandPalette {
                 if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                     close = true;
                 }
-                if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    if let Some(cmd) = self.commands.iter().find(|c| {
+                if ui.input(|i| i.key_pressed(egui::Key::Enter))
+                    && let Some(cmd) = self.commands.iter().find(|c| {
                         q.is_empty() || c.label.to_lowercase().contains(&q) || c.id.contains(&q)
-                    }) {
-                        result = Some(cmd.id.clone());
-                        close = true;
-                    }
+                    })
+                {
+                    result = Some(cmd.id.clone());
+                    close = true;
                 }
             });
         if close {

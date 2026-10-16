@@ -219,10 +219,10 @@ impl AudioContext {
         if request.mode == PlayMode::Loop {
             settings = settings.loop_region(0.0..);
         }
-        if request.bus != MixerBusId::Master {
-            if let Some(track) = self.bus_tracks.get(&request.bus) {
-                settings = settings.output_destination(track);
-            }
+        if request.bus != MixerBusId::Master
+            && let Some(track) = self.bus_tracks.get(&request.bus)
+        {
+            settings = settings.output_destination(track);
         }
         data.settings = settings;
         self.play_sound(data)

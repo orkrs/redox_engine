@@ -133,13 +133,11 @@ impl Column {
         let last_index = self.len - 1;
 
         // Drop the removed element in place before its bytes are overwritten.
-        if drop {
-            if let Some(drop_fn) = self.info.drop_fn {
-                // SAFETY: `index < len` (caller contract) so the slot holds a live,
-                // aligned value of the column's type, dropped exactly once here; it is
-                // overwritten or discarded (len shrinks) below.
-                unsafe { drop_fn(self.get(index)) };
-            }
+        if drop && let Some(drop_fn) = self.info.drop_fn {
+            // SAFETY: `index < len` (caller contract) so the slot holds a live,
+            // aligned value of the column's type, dropped exactly once here; it is
+            // overwritten or discarded (len shrinks) below.
+            unsafe { drop_fn(self.get(index)) };
         }
 
         if index != last_index {

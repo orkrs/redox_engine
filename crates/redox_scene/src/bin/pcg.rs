@@ -57,13 +57,12 @@ fn run() -> Result<(), String> {
     }
 
     let out = out.ok_or("missing --out <dir>")?;
-    if params.name == "world" {
-        if let Some(stem) = std::path::Path::new(&out)
+    if params.name == "world"
+        && let Some(stem) = std::path::Path::new(&out)
             .file_name()
             .and_then(|s| s.to_str())
-        {
-            params.name = stem.to_string();
-        }
+    {
+        params.name = stem.to_string();
     }
     if params.width < 1 || params.height < 1 {
         return Err("width/height must be >= 1".into());

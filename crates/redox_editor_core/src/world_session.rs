@@ -112,10 +112,10 @@ impl WorldSession {
         let cells_root = self.root.join(ofpa::CELLS_DIR);
         if let Ok(entries) = std::fs::read_dir(&cells_root) {
             for e in entries.flatten() {
-                if let Some(name) = e.file_name().to_str() {
-                    if let Some(cell) = ofpa::parse_cell_dir(name) {
-                        set.insert((cell.x, cell.y));
-                    }
+                if let Some(name) = e.file_name().to_str()
+                    && let Some(cell) = ofpa::parse_cell_dir(name)
+                {
+                    set.insert((cell.x, cell.y));
                 }
             }
         }

@@ -148,10 +148,10 @@ impl EditorUiCtx {
         let primary = self.selection.lock().primary;
         {
             let world = self.world.lock();
-            if let Some(e) = primary {
-                if world.get_component::<StateTreeComponent>(e).is_some() {
-                    return Some(e);
-                }
+            if let Some(e) = primary
+                && world.get_component::<StateTreeComponent>(e).is_some()
+            {
+                return Some(e);
             }
         }
         *self.demo_agent.lock()

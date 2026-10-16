@@ -418,8 +418,8 @@ fn windowed() {
                 if let winit::event::WindowEvent::KeyboardInput { event: key, .. } = &event {
                     // Handled here, not via `just_pressed`: that flag is cleared on the
                     // next `NewEvents`, which comes before the redraw that would read it.
-                    if key.state == winit::event::ElementState::Pressed && !key.repeat {
-                        if let winit::keyboard::PhysicalKey::Code(code) = key.physical_key {
+                    if key.state == winit::event::ElementState::Pressed && !key.repeat
+                        && let winit::keyboard::PhysicalKey::Code(code) = key.physical_key {
                             let changed = match code {
                                 KeyCode::KeyV => {
                                     sun_shadows = sun_shadows.next();
@@ -440,7 +440,6 @@ fn windowed() {
                                 window.set_title(&title(sun_shadows, point_shadows, follow_deformation));
                             }
                         }
-                    }
                 }
                 match event {
                     winit::event::WindowEvent::CloseRequested => elwt.exit(),
@@ -450,7 +449,7 @@ fn windowed() {
                             elwt.exit();
                         }
                         frame_count += 1;
-                        if frame_count % 120 == 0 {
+                        if frame_count.is_multiple_of(120) {
                             eprintln!("gpu: {}", ctx.gpu_profiler.report());
                             let (stats, free, capacity) = ctx.vsm_diagnostics();
                             eprintln!(

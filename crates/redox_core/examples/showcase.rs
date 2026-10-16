@@ -157,10 +157,10 @@ fn main() {
                         last = Instant::now();
                         orbit_t += dt * 0.35;
 
-                        if let Some(input) = world.get_resource::<InputState>() {
-                            if input.keyboard.is_pressed(KeyCode::Escape) {
-                                elwt.exit();
-                            }
+                        if let Some(input) = world.get_resource::<InputState>()
+                            && input.keyboard.is_pressed(KeyCode::Escape)
+                        {
+                            elwt.exit();
                         }
 
                         // Orbiting camera — VSM clipmap must follow the real view.

@@ -76,10 +76,10 @@ impl PackagerPanel {
                     Err(e) => self.status = format!("Scan failed: {e}"),
                 }
             }
-            if ui.button("Write Bake Report").clicked() {
-                if let Err(e) = self.write_bake_report() {
-                    self.status = format!("Bake report failed: {e}");
-                }
+            if ui.button("Write Bake Report").clicked()
+                && let Err(e) = self.write_bake_report()
+            {
+                self.status = format!("Bake report failed: {e}");
             }
             if ui.button("Generate PCG Arena").clicked() {
                 match bake_pcg_arena(Path::new(&self.world_root), false) {
