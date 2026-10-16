@@ -12,7 +12,7 @@
 //! * A brick occupies a contiguous 64³ sub-region ("page") of the atlas;
 //!   [`BrickRef::index`] already provides a stable slot number to hang a
 //!   page coordinate off.
-//! * The WGSL companion (`shaders/sdf_shadow.wgsl`) and `pbr.wgsl` sample the
+//! * The WGSL companion (`docs/reference/shaders/sdf_shadow.wgsl`) and `pbr.wgsl` sample the
 //!   GPU atlas via the multi-brick page table in [`crate::sdf::SdfSceneGpu`].
 
 use super::bake::DistanceField64;

@@ -153,7 +153,7 @@ impl Renderer {
             }],
         });
 
-        // --- Shadow Map / CSM depth array ---
+        // --- Classic shadow map ---
         let shadow_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("shadow_texture"),
             size: wgpu::Extent3d {
@@ -182,39 +182,6 @@ impl Renderer {
             ..Default::default()
         });
 
-        // CSM texture array (4 cascades).
-        let csm_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("csm_texture_array"),
-            size: wgpu::Extent3d {
-                width: SHADOW_SIZE,
-                height: SHADOW_SIZE,
-                depth_or_array_layers: 4,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: SHADOW_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-        let csm_view = csm_texture.create_view(&wgpu::TextureViewDescriptor {
-            label: Some("csm_texture_array_view"),
-            dimension: Some(wgpu::TextureViewDimension::D2Array),
-            ..Default::default()
-        });
-
-        let csm_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("csm_comparison_sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            compare: Some(wgpu::CompareFunction::LessEqual),
-            ..Default::default()
-        });
-
         // Local lights static shadow atlas.
         let local_shadow_atlas = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("local_shadow_atlas"),
@@ -232,13 +199,6 @@ impl Renderer {
         });
         let local_shadow_atlas_view =
             local_shadow_atlas.create_view(&wgpu::TextureViewDescriptor::default());
-
-        let shadow_uniform = ShadowUniform::default();
-        let shadow_uniform_buffer = buffer::create_uniform_buffer(
-            &device,
-            "shadow_uniform",
-            bytemuck::bytes_of(&shadow_uniform),
-        );
 
         // --- Light uniform ---
         let light_uniform = LightUniform::default();
@@ -617,13 +577,6 @@ impl Renderer {
             &cluster_manager.point_lights_buffer,
         );
 
-        let csm_state = CsmState::new(CsmConfig {
-            cascade_count: 4,
-            shadow_map_resolution: SHADOW_SIZE,
-            near: 0.1,
-            far: 200.0,
-        });
-
         // ── VSM resources (directional; activated via `set_shadow_mode`) ──
         let vsm_config = crate::shadow::vsm_clipmap::VsmConfig {
             // 256² pages × 512 layers ≈ 128 MB (same budget as 128²×2048).
@@ -731,10 +684,7 @@ impl Renderer {
             &cluster_manager.metadata_buffer,
             &cluster_manager.light_indices_buffer,
             &cluster_manager.info_buffer,
-            &csm_view,
-            &csm_sampler,
             &local_shadow_atlas_view,
-            &shadow_uniform_buffer,
             &vsm_pages_array_view,
             &vsm_sampler,
             &vsm_info_buffer,
@@ -784,40 +734,6 @@ impl Renderer {
 
         // Pooled per-frame shadow resources: allocated once here, written via
         // queue.write_buffer each frame (removes per-frame buffer/BG churn).
-        let cascade_matrix_buffers: Vec<wgpu::Buffer> = (0..4)
-            .map(|i| {
-                buffer::create_uniform_buffer(
-                    &device,
-                    &format!("cascade_matrix_buf{i}"),
-                    &[0u8; 64],
-                )
-            })
-            .collect();
-        let cascade_matrix_bgs: Vec<wgpu::BindGroup> = cascade_matrix_buffers
-            .iter()
-            .enumerate()
-            .map(|(i, buf)| {
-                device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some(&format!("cascade_matrix_bg{i}")),
-                    layout: &shadow_pass.bind_group_layout,
-                    entries: &[wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: buf.as_entire_binding(),
-                    }],
-                })
-            })
-            .collect();
-        let csm_layer_views: Vec<wgpu::TextureView> = (0..4)
-            .map(|i| {
-                csm_texture.create_view(&wgpu::TextureViewDescriptor {
-                    label: Some(&format!("csm_layer{i}_view")),
-                    base_array_layer: i,
-                    array_layer_count: Some(1),
-                    dimension: Some(wgpu::TextureViewDimension::D2),
-                    ..Default::default()
-                })
-            })
-            .collect();
         use crate::shadow::atlas_allocator::MAX_CASTERS;
         // One uniform + bind group per cube face per caster. Sharing 6 buffers
         // across casters races: Queue::write_buffer batches before the encoder,
@@ -947,13 +863,8 @@ impl Renderer {
             prev_depth_view,
             shadow_view,
             shadow_sampler,
-            csm_texture,
-            csm_view,
-            csm_sampler,
             local_shadow_atlas,
             local_shadow_atlas_view,
-            shadow_uniform,
-            shadow_uniform_buffer,
             registry,
             fallback_texture_bg,
             fallback_normal_view: fallback_normal.view,
@@ -1017,7 +928,6 @@ impl Renderer {
             taa_velocity_tex,
             taa_velocity_view,
             taa_history_read_idx: 0,
-            csm_state,
             // Virtual Geometry is initialised by default so the Nanite-like pipeline
             // is available without extra setup. It remains a no-op unless the scene
             // spawns entities with `VirtualMesh`.
@@ -1053,9 +963,6 @@ impl Renderer {
             prev_dynamic_centers: Vec::new(),
             vsm_pages_array_view,
             vg_bind_groups_dirty: true,
-            cascade_matrix_buffers,
-            cascade_matrix_bgs,
-            csm_layer_views,
             face_matrix_buffers,
             face_matrix_bgs,
             particle_system: None,

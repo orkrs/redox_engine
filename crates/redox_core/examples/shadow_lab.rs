@@ -1,11 +1,11 @@
-//! **Shadow Lab** — diagnostic scene for CSM / PCSS / VSM / point-light shadows.
+//! **Shadow Lab** — diagnostic scene for VSM / point-light shadows.
 //!
-//! Flat bright ground + tall casters so acne, peter-panning, cascade seams,
+//! Flat bright ground + tall casters so acne, peter-panning, clipmap seams,
 //! and point-atlas artifacts are easy to spot.
 //!
 //! Run: `cargo run --example shadow_lab -p redox_core`
 //!
-//! WASD orbit · Q/E height · Arrows orbit sun · 1 CSM+PCSS · 2 VSM ·
+//! WASD orbit · Q/E height · Arrows orbit sun · 1 shadows off · 2 VSM ·
 //! 3 toggle point shadows · Space pause · R reset · ESC quit
 
 use std::f32::consts::TAU;
@@ -294,7 +294,7 @@ fn build_scene(world: &mut World, ctx: &mut RenderContext) {
         Vec3::new(36.0, 0.3, 36.0),
     );
 
-    // Checker markers for cascade seams / swimming.
+    // Checker markers for clipmap seams / swimming.
     for z in -3..=3 {
         for x in -3..=3 {
             if (x + z) % 2 != 0 {
@@ -476,10 +476,8 @@ fn draw_hud(egui: &egui::Context, lab: &mut LabState, ctx: &RenderContext, dt: f
 
                 let mode = if lab.use_vsm {
                     "VSM clipmap"
-                } else if lab.soft_shadows {
-                    "CSM + PCSS"
                 } else {
-                    "CSM hard"
+                    "directional shadows off"
                 };
                 ui.label(format!("Directional: {mode}"));
                 ui.label(format!(
@@ -511,12 +509,12 @@ fn draw_hud(egui: &egui::Context, lab: &mut LabState, ctx: &RenderContext, dt: f
                 ui.add(egui::Slider::new(&mut lab.sun_yaw, -TAU..=TAU).text("sun azimuth"));
 
                 ui.separator();
-                ui.label("Look for: cascade seams on checker,");
+                ui.label("Look for: clipmap seams on checker,");
                 ui.label("acne on thin sticks, contact under spheres,");
                 ui.label("point-light multi-shadow overlap near center.");
                 ui.separator();
                 ui.label("WASD orbit · Q/E zoom · Arrows sun");
-                ui.label("1 CSM+PCSS · 2 VSM · Space pause · R reset");
+                ui.label("1 shadows off · 2 VSM · Space pause · R reset");
             });
         });
 }

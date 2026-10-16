@@ -10,7 +10,7 @@
 //! * [`gpu_atlas`] — 128³ GPU atlas + multi-brick page table uploaded for PBR.
 //! * [`SdfShadowScene`] — world-space queries over the atlas plus
 //!   [`SdfShadowScene::trace_cone`], the ground-truth implementation of the
-//!   cone-traced shadow integral. `shaders/sdf_shadow.wgsl` mirrors it
+//!   cone-traced shadow integral. `docs/reference/shaders/sdf_shadow.wgsl` mirrors it
 //!   one-to-one for the GPU path.
 //!
 //! # Cone integral (shared CPU/GPU contract)
@@ -45,7 +45,7 @@ const VIS_EPS: f32 = 1.0e-3;
 
 /// Scene-level SDF shadow queries over a brick atlas.
 ///
-/// This is the CPU ground truth for `shaders/sdf_shadow.wgsl` and doubles as
+/// This is the CPU ground truth for `docs/reference/shaders/sdf_shadow.wgsl` and doubles as
 /// the offline validation path (unit tests, future DDGI ray budget checks).
 pub struct SdfShadowScene {
     pub atlas: SdfBrickAtlas,

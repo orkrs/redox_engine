@@ -1,5 +1,5 @@
 //! Skinned meshes: the pose is applied on the CPU and the deformed vertices are streamed into
-//! an ordinary mesh slot, so every existing pass (PBR, CSM / VSM / point shadows, normal
+//! an ordinary mesh slot, so every existing pass (PBR, VSM / point shadows, normal
 //! prepass, GTAO, TAA) draws it unchanged.
 
 use redox_anim::SkinnedGeometry;

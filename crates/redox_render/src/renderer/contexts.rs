@@ -1,117 +1,13 @@
 //! Lightweight pass contexts for multi-threaded command-buffer recording.
 
-use bytemuck;
-use redox_math::{Aabb, Mat4, Vec3};
+use redox_math::Mat4;
 
 use crate::pass::normal::NormalPass;
 use crate::pass::shadow::ShadowPass;
 use crate::pass::vg_resolve::VgShadowPass;
 use crate::registry::GpuRegistry;
-use crate::shadow::csm::ShadowUniform;
 use crate::systems::RenderObject;
 use crate::virtual_geometry::runtime::VGSystem;
-
-/// Clone-friendly handles for CSM shadow depth recording.
-pub struct ShadowContext<'a> {
-    pub device: &'a wgpu::Device,
-    pub queue: &'a wgpu::Queue,
-    pub shadow_pass: &'a ShadowPass,
-    pub shadow_model_bind_group: &'a wgpu::BindGroup,
-    pub cascade_matrix_buffers: &'a [wgpu::Buffer],
-    pub cascade_matrix_bgs: &'a [wgpu::BindGroup],
-    pub csm_layer_views: &'a [wgpu::TextureView],
-    pub vg_shadow_pass: &'a VgShadowPass,
-    pub vg_shadow_instances_bg: &'a wgpu::BindGroup,
-    pub registry: &'a GpuRegistry,
-}
-
-/// Records directional CSM cascade depth passes into a fresh command buffer.
-pub fn record_csm_shadow_depth(
-    ctx: &ShadowContext<'_>,
-    shadow_u: &ShadowUniform,
-    cascade_vis: &[Vec<bool>],
-    objects: &[RenderObject],
-    vg_system: Option<&VGSystem>,
-    render_csm: bool,
-) -> wgpu::CommandBuffer {
-    let mut encoder = ctx
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("shadow_csm_encoder"),
-        });
-
-    if !render_csm {
-        return encoder.finish();
-    }
-
-    let cascade_count = shadow_u
-        .csm_matrices
-        .iter()
-        .take(4)
-        .enumerate()
-        .filter(|(i, _)| *i < cascade_vis.len())
-        .count()
-        .min(ctx.csm_layer_views.len());
-
-    for cascade_idx in 0..cascade_count {
-        ctx.queue.write_buffer(
-            &ctx.cascade_matrix_buffers[cascade_idx],
-            0,
-            bytemuck::bytes_of(&shadow_u.csm_matrices[cascade_idx]),
-        );
-
-        let shadow_matrix_bg = &ctx.cascade_matrix_bgs[cascade_idx];
-        let csm_layer_view = &ctx.csm_layer_views[cascade_idx];
-
-        let mut shadow_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("shadow_pass_csm_parallel"),
-            color_attachments: &[],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: csm_layer_view,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
-                    store: wgpu::StoreOp::Store,
-                }),
-                stencil_ops: None,
-            }),
-            timestamp_writes: None,
-            occlusion_query_set: None,
-        });
-
-        shadow_pass.set_pipeline(&ctx.shadow_pass.pipeline);
-        shadow_pass.set_bind_group(0, shadow_matrix_bg, &[]);
-        shadow_pass.set_bind_group(1, ctx.shadow_model_bind_group, &[]);
-
-        for (i, obj) in objects.iter().enumerate() {
-            if cascade_idx >= cascade_vis.len() || !cascade_vis[cascade_idx][i] {
-                continue;
-            }
-            let ext = obj.bounds.max - obj.bounds.min;
-            if ext.y < 0.6 && ext.x > 8.0 && ext.z > 8.0 {
-                continue;
-            }
-            if let Some(gpu_mesh) = ctx.registry.mesh_by_slot(obj.mesh_index) {
-                shadow_pass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));
-                shadow_pass
-                    .set_index_buffer(gpu_mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                shadow_pass.draw_indexed(0..gpu_mesh.index_count, 0, (i as u32)..(i as u32 + 1));
-            }
-        }
-
-        if let Some(vg) = vg_system {
-            if vg.has_content() {
-                vg.draw_shadow_indirect(
-                    &mut shadow_pass,
-                    ctx.vg_shadow_pass,
-                    shadow_matrix_bg,
-                    ctx.vg_shadow_instances_bg,
-                );
-            }
-        }
-    }
-
-    encoder.finish()
-}
 
 /// Clone-friendly handles for the depth/normal prepass.
 pub struct PrepassContext<'a> {
@@ -192,38 +88,6 @@ pub fn compute_main_visibility(
     for o in objects {
         out.push(frustum.intersects_aabb(&o.bounds));
     }
-}
-
-/// Conservative AABB vs clip test (shadow cascade culling).
-#[allow(dead_code)]
-pub fn aabb_overlaps_clip(bounds: Aabb, view_proj: Mat4) -> bool {
-    let corners = [
-        Vec3::new(bounds.min.x, bounds.min.y, bounds.min.z),
-        Vec3::new(bounds.max.x, bounds.min.y, bounds.min.z),
-        Vec3::new(bounds.min.x, bounds.max.y, bounds.min.z),
-        Vec3::new(bounds.max.x, bounds.max.y, bounds.min.z),
-        Vec3::new(bounds.min.x, bounds.min.y, bounds.max.z),
-        Vec3::new(bounds.max.x, bounds.min.y, bounds.max.z),
-        Vec3::new(bounds.min.x, bounds.max.y, bounds.max.z),
-        Vec3::new(bounds.max.x, bounds.max.y, bounds.max.z),
-    ];
-    let mut min_ndc = Vec3::splat(f32::INFINITY);
-    let mut max_ndc = Vec3::splat(f32::NEG_INFINITY);
-    for c in corners {
-        let clip = view_proj * c.extend(1.0);
-        if clip.w <= 0.0 {
-            return true;
-        }
-        let ndc = clip.truncate() / clip.w;
-        min_ndc = min_ndc.min(ndc);
-        max_ndc = max_ndc.max(ndc);
-    }
-    min_ndc.x <= 1.0
-        && max_ndc.x >= -1.0
-        && min_ndc.y <= 1.0
-        && max_ndc.y >= -1.0
-        && min_ndc.z <= 1.0
-        && max_ndc.z >= 0.0
 }
 
 /// One point-light caster's atlas job (matrices already uploaded).

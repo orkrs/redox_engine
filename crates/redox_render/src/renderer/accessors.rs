@@ -3,7 +3,7 @@
 use super::*;
 
 impl Renderer {
-    /// Enable or disable multi-threaded command recording (CSM + prepass).
+    /// Enable or disable multi-threaded command recording (prepass).
     pub fn set_mt_command_recording(&mut self, enabled: bool) {
         self.mt_command_recording = enabled;
     }

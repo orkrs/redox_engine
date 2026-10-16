@@ -18,7 +18,7 @@ impl Renderer {
     /// Writes a new light uniform to the GPU.
     ///
     /// When [`Self::vsm_enabled`] is true, forces `soft_shadows = 2` (VSM path)
-    /// so the PBR shader never falls through to classic CSM.
+    /// so the PBR shader never falls through to a classic shadow map.
     pub fn update_light_buffer(&mut self, light: &LightUniform) {
         let mut light = *light;
         if self.vsm_enabled {

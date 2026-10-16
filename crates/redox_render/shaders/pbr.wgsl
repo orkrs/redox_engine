@@ -65,10 +65,7 @@ struct Model {
 @group(1) @binding(6) var<storage, read> cluster_metadata: array<ClusterMetadata>;
 @group(1) @binding(7) var<storage, read> cluster_light_indices: array<u32>;
 @group(1) @binding(8) var<uniform> cluster_info: ClusterInfo;
-@group(1) @binding(9) var t_csm: texture_depth_2d_array;
-@group(1) @binding(10) var s_csm: sampler_comparison;
 @group(1) @binding(11) var t_local_shadow_atlas: texture_depth_2d;
-@group(1) @binding(12) var<uniform> shadow_u: ShadowUniform;
 @group(1) @binding(13) var t_vsm_pages: texture_2d_array<f32>;
 @group(1) @binding(14) var s_vsm: sampler;
 @group(1) @binding(15) var<storage, read> vsm_info: VsmGpuInfo;
@@ -154,21 +151,6 @@ struct ClusterInfo {
     total_clusters: u32,
     _pad0: u32,
     _pad1: u32,
-    _pad2: u32,
-};
-
-struct ShadowUniform {
-    // 4 cascade matrices (4×4 each)
-    csm_matrices: array<mat4x4<f32>, 4>,
-    // Split depths in view space
-    csm_splits: vec4<f32>,
-    // Size of the shadow atlas (e.g. 4096.0)
-    shadow_atlas_size: f32,
-    // NOTE: We intentionally omit explicit padding here so that the
-    // std140/std430 layout size matches the 288-byte Rust struct
-    // (`shadow::csm::ShadowUniform`). Tail padding is added implicitly.
-    soft_near: f32,
-    soft_far: f32,
     _pad2: u32,
 };
 
@@ -457,17 +439,6 @@ fn fetch_shadow(shadow_coords: vec4<f32>) -> f32 {
     return visibility / 9.0;
 }
 
-fn get_cascade_index(view_z: f32) -> u32 {
-    var idx: u32 = 3u;
-    for (var i = 0u; i < 4u; i = i + 1u) {
-        if (view_z < shadow_u.csm_splits[i]) {
-            idx = i;
-            break;
-        }
-    }
-    return idx;
-}
-
 fn cube_face_index(dir: vec3<f32>) -> u32 {
     let ad = abs(dir);
     if (ad.x >= ad.y && ad.x >= ad.z) {
@@ -522,7 +493,7 @@ fn get_point_light_shadow(light: PointLight, world_pos: vec3<f32>, normal: vec3<
     let row = floor(f32(tile_index) / tpa);
     let inv_tpa = 1.0 / tpa;
 
-    // 5×5 PCF — matches directional `csm_sample` look (monolithic, no grain).
+    // 5×5 PCF — monolithic look, no grain.
     let texel_atlas = inv_tpa / 512.0; // TILE_PX = 512
     let tile_origin = vec2<f32>(col, row) * inv_tpa;
     var visibility = 0.0;
@@ -548,104 +519,10 @@ fn get_point_light_shadow(light: PointLight, world_pos: vec3<f32>, normal: vec3<
     return visibility / 25.0;
 }
 
-fn csm_sample(cascade_idx: u32, uv: vec2<f32>, depth: f32) -> f32 {
-    // 5×5 PCF — hides cascade texel stairs at distant umbrae.
-    var visibility = 0.0;
-    let texel_size = 1.0 / shadow_u.shadow_atlas_size;
-    for (var y = -2; y <= 2; y = y + 1) {
-        for (var x = -2; x <= 2; x = x + 1) {
-            let offset = vec2<f32>(f32(x), f32(y)) * texel_size;
-            visibility += textureSampleCompareLevel(
-                t_csm, s_csm, uv + offset, i32(cascade_idx), depth,
-            );
-        }
-    }
-    return visibility / 25.0;
-}
-
 fn shadow_sample_dither(clip_xy: vec2<f32>) -> f32 {
     let dims = vec2<f32>(textureDimensions(t_blue_noise));
     let noise = textureSample(t_blue_noise, s_blue_noise, clip_xy / dims).r;
     return fract(noise + f32(shader_debug.frame_index % 16u) * 0.61803398875);
-}
-
-/// Percentage-closer soft shadows: blocker search → penumbra estimate →
-/// variable-radius PCF. `light_angle` is the source angular radius (radians).
-/// `dither` ∈ [0,1) rotates the Fibonacci disk (blue-noise + temporal).
-fn pcss_csm(world_pos: vec3<f32>, view_z: f32, normal: vec3<f32>, light_angle: f32, dither: f32) -> f32 {
-    let cascade_idx = get_cascade_index(view_z);
-    let l_dir = normalize(light_u.dir_direction.xyz);
-    let n_dot_l = max(dot(normal, l_dir), 0.0);
-    let biased = world_pos + normal * (0.001 + (1.0 - n_dot_l) * 0.0035);
-    let mat = shadow_u.csm_matrices[cascade_idx];
-    let clip = mat * vec4<f32>(biased, 1.0);
-    if (clip.w <= 1.0e-4) {
-        return 1.0;
-    }
-    let ndc = clip.xyz / clip.w;
-    let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
-    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || ndc.z > 1.0 || ndc.z < 0.0) {
-        return 1.0;
-    }
-
-    let texel = 1.0 / shadow_u.shadow_atlas_size;
-
-    // ── Blocker search (9 texel loads in a 4-texel radius) ──
-    // Comparison samplers cannot return raw depth; use textureLoad instead.
-    var blocker_sum = 0.0;
-    var blocker_count = 0.0;
-    let search_radius = texel * 4.0;
-    let atlas_res = vec2<f32>(shadow_u.shadow_atlas_size);
-    for (var y = -1; y <= 1; y++) {
-        for (var x = -1; x <= 1; x++) {
-            let offset = vec2<f32>(f32(x), f32(y)) * search_radius;
-            let coord = vec2<i32>((uv + offset) * atlas_res);
-            let d = textureLoad(t_csm, coord, i32(cascade_idx), 0);
-            // Bias so flat receivers do not count themselves as blockers (shadow acne zebra).
-            let blocker_bias = 0.0008;
-            if (d < (ndc.z - blocker_bias)) {
-                blocker_sum += d;
-                blocker_count += 1.0;
-            }
-        }
-    }
-    if (blocker_count < 0.5) {
-        return 1.0; // fully lit region — skip PCF entirely.
-    }
-    let blocker_ndc = blocker_sum / blocker_count;
-
-    // ── Penumbra estimate ──
-    // Convert depths to linear view distance for a physically-scaled penumbra.
-    let receiver_d = linearize_depth01(ndc.z);
-    let blocker_d = linearize_depth01(blocker_ndc);
-    let block_dist = max(receiver_d - blocker_d, 0.0);
-    let penumbra_world = (block_dist * light_angle) / max(blocker_d, 1e-3);
-    // World→NDC scale ≈ 2*tan(fov/2)/res is unknown here; approximate via the
-    // cascade's own world-texel size: penumbra_texels = penumbra_world * res/(2R)
-    // where R = ortho half-extent ≈ split*aspect… use the pragmatic clamp below.
-    var filter_radius = penumbra_world * shadow_u.shadow_atlas_size * 0.02;
-    filter_radius = clamp(filter_radius, texel, texel * 12.0);
-
-    // ── Variable-radius PCF with blue-noise rotation (kills 1/16 banding) ──
-    var visibility = 0.0;
-    let golden = 2.39996323;
-    let rot_angle = dither * 6.28318530718;
-    for (var i = 0u; i < 16u; i = i + 1u) {
-        let fi = f32(i);
-        let angle = fi * golden + rot_angle;
-        let r = sqrt(fi / 16.0) * filter_radius;
-        let offset = vec2<f32>(cos(angle), sin(angle)) * r;
-        visibility += textureSampleCompareLevel(
-            t_csm, s_csm, uv + offset, i32(cascade_idx), ndc.z - 0.0003,
-        );
-    }
-    return visibility / 16.0;
-}
-
-fn linearize_depth01(d: f32) -> f32 {
-    let denom = shadow_u.soft_far - d * (shadow_u.soft_far - shadow_u.soft_near);
-    if (abs(denom) < 1e-6) { return shadow_u.soft_far; }
-    return shadow_u.soft_near * shadow_u.soft_far / denom;
 }
 
 fn sample_vsm_shadow(screen_uv: vec2<f32>) -> f32 {
@@ -662,60 +539,6 @@ fn multi_bounce_gtao(raw_ao: f32, albedo: vec3<f32>) -> f32 {
     let lum = dot(albedo, vec3<f32>(0.2126, 0.7152, 0.0722));
     let albedo_term = clamp(lum, 0.0, 1.0);
     return mix(raw_ao, max(raw_ao, bounce), albedo_term);
-}
-
-fn sample_directional_csm_shadow(world_pos: vec3<f32>, view_z: f32, normal: vec3<f32>, dither: f32) -> f32 {
-    let cascade_idx = get_cascade_index(view_z);
-
-    let l_dir = normalize(light_u.dir_direction.xyz);
-    let n_dot_l = max(dot(normal, l_dir), 0.0);
-    let bias = 0.001 + (1.0 - n_dot_l) * 0.0035;
-    let shadow_pos = world_pos + normal * bias;
-
-    let mat = shadow_u.csm_matrices[cascade_idx];
-    let clip = mat * vec4<f32>(shadow_pos, 1.0);
-    if (clip.w <= 1.0e-4) {
-        return 1.0;
-    }
-    let ndc = clip.xyz / clip.w;
-    let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
-
-    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || ndc.z > 1.0 || ndc.z < 0.0) {
-        return 1.0;
-    }
-
-    var shadow: f32;
-    if (light_u.soft_shadows == 1u) {
-        shadow = pcss_csm(world_pos, view_z, normal, 0.016, dither);
-    } else {
-        shadow = csm_sample(cascade_idx, uv, ndc.z - 0.0002);
-    }
-
-    let idx_usize = i32(cascade_idx);
-    if (cascade_idx + 1u < 4u && idx_usize >= 0) {
-        let next_split = shadow_u.csm_splits[cascade_idx];
-        let prev_split = select(0.0, shadow_u.csm_splits[cascade_idx - 1u], cascade_idx > 0u);
-        let band = (next_split - prev_split) * 0.1;
-        if (view_z > next_split - band) {
-            let mat2 = shadow_u.csm_matrices[cascade_idx + 1u];
-            let clip2 = mat2 * vec4<f32>(shadow_pos, 1.0);
-            let ndc2 = clip2.xyz / clip2.w;
-            let uv2 = vec2<f32>(ndc2.x * 0.5 + 0.5, 0.5 - ndc2.y * 0.5);
-            if (!(uv2.x < 0.0 || uv2.x > 1.0 || uv2.y < 0.0 || uv2.y > 1.0 || ndc2.z < 0.0 || ndc2.z > 1.0)) {
-                let s2 = csm_sample(cascade_idx + 1u, uv2, ndc2.z - 0.001);
-                let t = (view_z - (next_split - band)) / max(band, 1e-4);
-                shadow = mix(shadow, s2, clamp(t, 0.0, 1.0));
-            }
-        }
-    }
-    return shadow;
-}
-
-fn get_csm_shadow(world_pos: vec3<f32>, view_z: f32, normal: vec3<f32>, dither: f32) -> f32 {
-    if (light_u.soft_shadows == 2u) {
-        return 1.0;
-    }
-    return sample_directional_csm_shadow(world_pos, view_z, normal, dither);
 }
 
 fn apply_geometric_specular_aa(normal: vec3<f32>, roughness: f32) -> f32 {
@@ -958,14 +781,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             } else {
                 s = vsm_shadow(in.world_pos, n, l_dir);
             }
-        } else {
-            s = get_csm_shadow(in.world_pos, view_z, n, shadow_sample_dither(in.clip_pos.xy));
         }
         return vec4<f32>(s, s, s, 1.0);
     } else if (shader_debug.debug_viz_mode == 3u) {
         // ShadowSources: each darkening pipeline as its own colour.
         //   Magenta = GTAO
-        //   Cyan    = CSM / PCSS (hard directional map)
         //   Lime    = VSM screen shadow
         //   Yellow  = SDF cone trace
         let screen_uv = in.clip_pos.xy / vec2<f32>(textureDimensions(t_gtao));
@@ -974,21 +794,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
         let view_z = -(camera.view * vec4<f32>(in.world_pos, 1.0)).z;
         let l_dir = normalize(light_u.dir_direction.xyz);
-
-        // Force CSM sample (skip VSM branch inside get_csm_shadow).
-        let cascade_idx = get_cascade_index(view_z);
-        let n_dot_l = max(dot(n, l_dir), 0.0);
-        let bias = 0.002 + (1.0 - n_dot_l) * 0.008;
-        let shadow_pos = in.world_pos + n * bias;
-        let mat = shadow_u.csm_matrices[cascade_idx];
-        let clip = mat * vec4<f32>(shadow_pos, 1.0);
-        let ndc = clip.xyz / clip.w;
-        let csm_uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
-        var csm_vis = 1.0;
-        if (!(csm_uv.x < 0.0 || csm_uv.x > 1.0 || csm_uv.y < 0.0 || csm_uv.y > 1.0 || ndc.z > 1.0 || ndc.z < 0.0)) {
-            csm_vis = csm_sample(cascade_idx, csm_uv, ndc.z - 0.0005);
-        }
-        let csm_dark = clamp(1.0 - csm_vis, 0.0, 1.0);
 
         var vsm_dark = 0.0;
         if (light_u.soft_shadows == 2u) {
@@ -1009,7 +814,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let colored =
             base
             + vec3<f32>(1.0, 0.15, 0.85) * ao_dark   // magenta — SSAO
-            + vec3<f32>(0.15, 0.95, 1.0) * csm_dark  // cyan    — CSM
             + vec3<f32>(0.45, 1.0, 0.2) * vsm_dark   // lime    — VSM
             + vec3<f32>(1.0, 0.92, 0.15) * sdf_dark; // yellow  — SDF
         return vec4<f32>(colored, 1.0);
@@ -1019,7 +823,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var shadow = 1.0;
     var lo = vec3<f32>(0.0);
 
-    // --- Directional Light — VSM-only (CSM deleted per user request) ---
+    // --- Directional Light — VSM-only ---
     {
         let l = normalize(light_u.dir_direction.xyz);
         let radiance = light_u.dir_color.rgb * light_u.dir_color.w;
@@ -1160,7 +964,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 }
 
 // ── Virtual Shadow Maps: clipmap lookup + SMRT soft sampling ────────────
-// Canonical source: shaders/vsm_smrt.wgsl (WGSL has no includes; this block
+// Canonical source: docs/reference/shaders/vsm_smrt.wgsl (WGSL has no includes; this block
 // is mirrored verbatim — keep both copies in sync).
 // ── BEGIN VSM_SMRT BLOCK (mirrored into pbr.wgsl verbatim) ──────────────
 

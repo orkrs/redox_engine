@@ -168,53 +168,14 @@ impl Renderer {
         }
         // Keep screen-space VSM flag in sync (PBR branches on this).
         light_u.vsm_screen_shadows = u32::from(self.vsm_screen_shadows);
-        // Compute CSM matrices using CsmState
         let light_dir = redox_math::Vec3::new(
             light_u.dir_direction[0],
             light_u.dir_direction[1],
             light_u.dir_direction[2],
         )
         .normalize();
-
-        // Real camera matrices: the uniform now stores view / proj separately,
-        // so cascades are built from the actual camera (fixes the hardcoded
-        // origin-camera bug that broke directional shadows).
-        let camera_view = Mat4::from_cols_array_2d(&self.camera_uniform.view);
-        let camera_proj = Mat4::from_cols_array_2d(&self.camera_uniform.proj);
-
-        // Update CSM state and get shadow uniform with all cascade matrices.
-        // Use the live camera near/far so cascade splits match projection unprojection.
-        let shadow_u = self.csm_state.update(
-            camera_view,
-            camera_proj,
-            light_dir,
-            SHADOW_SIZE,
-            self.camera_near,
-            self.camera_far,
-        );
-
-        // Per-cascade caster masks (conservative AABB vs cascade clip volume).
-        let cascade_count = self.csm_state.config.cascade_count.min(4);
-        let cascade_vis: Vec<Vec<bool>> = (0..cascade_count)
-            .map(|ci| {
-                let vp = Mat4::from_cols_array_2d(&shadow_u.csm_matrices[ci]);
-                objects
-                    .iter()
-                    .map(|obj| aabb_overlaps_clip(obj.bounds, vp))
-                    .collect()
-            })
-            .collect();
-
-        self.shadow_uniform = shadow_u;
-        self.queue.write_buffer(
-            &self.shadow_uniform_buffer,
-            0,
-            bytemuck::bytes_of(&self.shadow_uniform),
-        );
-
-        // For backward compatibility, also update light_u.shadow_view_proj
-        // with first cascade matrix (legacy single cascade support)
-        light_u.shadow_view_proj = shadow_u.csm_matrices[0];
+        // The classic single shadow map is gone; keep the legacy field neutral.
+        light_u.shadow_view_proj = Mat4::IDENTITY.to_cols_array_2d();
         self.update_light_buffer(&light_u);
 
         let cam_eye = Vec3::new(
@@ -223,8 +184,7 @@ impl Renderer {
             self.camera_uniform.camera_pos[2],
         );
 
-        // Collect VSM dirty pages *before* CSM so we can skip 4 cascade
-        // depth passes once the clipmap is resident (biggest GPU win).
+        // Collect VSM dirty pages for this frame's clipmap update.
         let vsm_dirty: Vec<crate::shadow::vsm_clipmap::DirtyPage> = if self.vsm_enabled {
             self.vsm_clipmap.update(cam_eye, light_dir);
             let mut aabbs: Vec<redox_math::Aabb> = objects.iter().map(|o| o.bounds).collect();
@@ -277,8 +237,6 @@ impl Renderer {
         } else {
             Vec::new()
         };
-        // VSM-only: CSM passes skipped (deleted per user request).
-        let render_csm_depth = false;
         compute_main_visibility(
             &self.camera_uniform.view_proj,
             objects,
@@ -287,18 +245,6 @@ impl Renderer {
 
         let mut mt_cmd_buffers: Vec<wgpu::CommandBuffer> = Vec::new();
         if self.mt_command_recording {
-            let shadow_ctx = ShadowContext {
-                device: &self.device,
-                queue: &self.queue,
-                shadow_pass: &self.shadow_pass,
-                shadow_model_bind_group: &self.shadow_model_bind_group,
-                cascade_matrix_buffers: &self.cascade_matrix_buffers,
-                cascade_matrix_bgs: &self.cascade_matrix_bgs,
-                csm_layer_views: &self.csm_layer_views,
-                vg_shadow_pass: &self.vg_shadow_pass,
-                vg_shadow_instances_bg: &self.vg_shadow_instances_bg,
-                registry: &self.registry,
-            };
             let prepass_ctx = PrepassContext {
                 device: &self.device,
                 normal_pass: &self.normal_pass,
@@ -308,20 +254,7 @@ impl Renderer {
                 registry: &self.registry,
             };
             let vis = self.main_vis_scratch.clone();
-            let (shadow_cmd, prepass_cmd) = join(
-                || {
-                    record_csm_shadow_depth(
-                        &shadow_ctx,
-                        &shadow_u,
-                        &cascade_vis,
-                        objects,
-                        self.vg_system.as_ref(),
-                        render_csm_depth,
-                    )
-                },
-                || record_normal_prepass(&prepass_ctx, objects, &vis),
-            );
-            mt_cmd_buffers.push(shadow_cmd);
+            let prepass_cmd = record_normal_prepass(&prepass_ctx, objects, &vis);
             mt_cmd_buffers.push(prepass_cmd);
         }
 
@@ -457,7 +390,7 @@ impl Renderer {
 
             // Upload page tables AFTER allocation so PBR sees VALID bits
             // this frame (uploading first made moving-sun frames fall back
-            // to CSM, then static frames sampled empty cached pages).
+            // to a classic map, then static frames sampled empty cached pages).
             let info = self.vsm_clipmap.gpu_info(&self.smrt_config);
             self.queue
                 .write_buffer(&self.vsm_info_buffer, 0, bytemuck::bytes_of(&info));

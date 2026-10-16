@@ -28,9 +28,8 @@ use redox_asset::Handle;
 use redox_vfx::{ParticleSimUniforms, ParticleSystem};
 
 use contexts::{
-    AtlasCasterJob, AtlasContext, PrepassContext, ShadowContext, VsmContext,
-    compute_main_visibility, record_csm_shadow_depth, record_normal_prepass,
-    record_point_atlas_shadows, record_vsm_pages,
+    AtlasCasterJob, AtlasContext, PrepassContext, VsmContext, compute_main_visibility,
+    record_normal_prepass, record_point_atlas_shadows, record_vsm_pages,
 };
 
 use crate::asset_types::{BlendMode, MaterialData, MeshData, TextureData};
@@ -46,7 +45,7 @@ pub enum ShaderDebugVizMode {
     None = 0,
     ClusterIndex = 1,
     ShadowValue = 2,
-    /// Magenta=SSAO · Cyan=CSM · Lime=VSM · Yellow=SDF (darkening amounts).
+    /// Magenta=SSAO · Lime=VSM · Yellow=SDF (darkening amounts).
     ShadowSources = 3,
 }
 use crate::camera::Camera;
@@ -85,7 +84,6 @@ use crate::registry::{GpuMesh, GpuRegistry};
 use crate::resource::buffer;
 use crate::resource::ibl::{IBLProcessor, IBLResource};
 use crate::resource::texture::Texture;
-use crate::shadow::csm::{CsmConfig, CsmState, ShadowUniform};
 use crate::systems::RenderObject;
 use crate::systems::Transform;
 use crate::virtual_geometry::hiz::HiZPyramid;
@@ -133,7 +131,7 @@ pub struct Renderer {
     pub camera_buffer: wgpu::Buffer,
     pub camera_uniform: CameraUniform,
     /// Near/far of the last uploaded camera — must match `camera_uniform.proj`
-    /// when building CSM cascades (mismatched far → detached shadow chunks).
+    /// for the VSM clipmap and cluster setup.
     pub camera_near: f32,
     pub camera_far: f32,
 
@@ -209,13 +207,8 @@ pub struct Renderer {
 
     pub shadow_view: wgpu::TextureView,
     pub shadow_sampler: wgpu::Sampler,
-    pub csm_texture: wgpu::Texture,
-    pub csm_view: wgpu::TextureView,
-    pub csm_sampler: wgpu::Sampler,
     pub local_shadow_atlas: wgpu::Texture,
     pub local_shadow_atlas_view: wgpu::TextureView,
-    pub shadow_uniform: ShadowUniform,
-    pub shadow_uniform_buffer: wgpu::Buffer,
 
     // --- GPU resource registry ---
     pub registry: GpuRegistry,
@@ -355,7 +348,7 @@ pub struct Renderer {
     /// Group-25 resources sampled by the PBR shader in VSM mode.
     pub vsm_info_buffer: wgpu::Buffer,
     pub vsm_sampler: wgpu::Sampler,
-    /// Runtime switch: false = classic CSM path, true = VSM + SMRT sampling.
+    /// Runtime switch for VSM + SMRT sampling.
     pub vsm_enabled: bool,
     /// Per-pass GPU timings (needs timestamp-query features on the device).
     pub gpu_profiler: crate::profiler::GpuProfiler,
@@ -382,9 +375,6 @@ pub struct Renderer {
     /// Cached D2Array view for VSM pages (avoid per-frame view alloc).
     vsm_pages_array_view: wgpu::TextureView,
     vg_bind_groups_dirty: bool,
-
-    // --- CSM state ---
-    pub csm_state: CsmState,
 
     // --- Virtual Geometry (Nanite-like) ---
     pub vg_system: Option<VGSystem>,
@@ -420,12 +410,6 @@ pub struct Renderer {
     pub staging_ring: crate::resource::StagingRing,
 
     // ── Per-frame reusable shadow resources (allocated once, written each frame) ──
-    /// Cascade matrix uniform buffers, one per CSM cascade slot.
-    pub cascade_matrix_buffers: Vec<wgpu::Buffer>,
-    /// Bind groups pointing at [`Self::cascade_matrix_buffers`].
-    pub cascade_matrix_bgs: Vec<wgpu::BindGroup>,
-    /// Cached per-layer views into the CSM texture array.
-    pub csm_layer_views: Vec<wgpu::TextureView>,
     /// Cube-face matrix buffers for point-light shadows (6 faces).
     pub face_matrix_buffers: Vec<wgpu::Buffer>,
     /// Bind groups pointing at [`Self::face_matrix_buffers`].
@@ -437,6 +421,6 @@ pub struct Renderer {
     /// R8 reactive mask for TAA (written by particles / transparent FX).
     reactive_texture: Option<wgpu::Texture>,
     reactive_view: Option<wgpu::TextureView>,
-    /// When true, CSM shadow + normal prepass record on worker threads.
+    /// When true, the normal prepass records on a worker thread.
     pub mt_command_recording: bool,
 }

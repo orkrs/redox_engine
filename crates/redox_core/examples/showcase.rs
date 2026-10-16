@@ -1,5 +1,5 @@
-//! Phase-1 showcase: PBR + real-camera CSM shadows + multi point-light shadows
-//! + SSAO + egui stats. Orbiting camera proves cascades track the viewer.
+//! Phase-1 showcase: PBR + VSM directional shadows + multi point-light shadows
+//! + SSAO + egui stats. Orbiting camera proves the VSM clipmap tracks the viewer.
 //!
 //! Run: cargo run --example showcase -p redox_core
 
@@ -163,7 +163,7 @@ fn main() {
                             }
                         }
 
-                        // Orbiting camera — CSM cascades must follow the real view.
+                        // Orbiting camera — VSM clipmap must follow the real view.
                         let radius = 13.0;
                         let cam_pos =
                             Vec3::new(orbit_t.sin() * radius, 6.5, orbit_t.cos() * radius);
@@ -255,7 +255,7 @@ fn main() {
                                             s.visible_triangles, s.total_triangles
                                         ));
                                     }
-                                    ui.monospace("CSM+PCSS or VSM toggle; 8 point atlas shadows");
+                                    ui.monospace("VSM toggle; 8 point atlas shadows");
                                     ui.monospace("ESC exits");
                                 });
                             });

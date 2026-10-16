@@ -265,7 +265,7 @@ impl PbrFrameLayouts {
     }
 }
 
-/// Factory for the planned scene/shadow bind group (CSM, clusters, VSM, SDF).
+/// Factory for the planned scene/shadow bind group (clusters, VSM, SDF).
 pub struct PbrSceneLayouts {
     pub light_bgl: wgpu::BindGroupLayout,
     pub shadow_bgl: wgpu::BindGroupLayout,

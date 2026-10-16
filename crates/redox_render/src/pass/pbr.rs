@@ -210,24 +210,6 @@ impl PbrPass {
                     },
                     count: None,
                 },
-                // 9: CSM depth array
-                wgpu::BindGroupLayoutEntry {
-                    binding: 9,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        view_dimension: wgpu::TextureViewDimension::D2Array,
-                        sample_type: wgpu::TextureSampleType::Depth,
-                    },
-                    count: None,
-                },
-                // 10: CSM comparison sampler
-                wgpu::BindGroupLayoutEntry {
-                    binding: 10,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
-                    count: None,
-                },
                 // 11: Local shadow atlas
                 wgpu::BindGroupLayoutEntry {
                     binding: 11,
@@ -236,17 +218,6 @@ impl PbrPass {
                         multisampled: false,
                         view_dimension: wgpu::TextureViewDimension::D2,
                         sample_type: wgpu::TextureSampleType::Depth,
-                    },
-                    count: None,
-                },
-                // 12: Shadow uniform
-                wgpu::BindGroupLayoutEntry {
-                    binding: 12,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
                     },
                     count: None,
                 },
@@ -534,10 +505,7 @@ impl PbrPass {
         cluster_metadata_buffer: &wgpu::Buffer,
         cluster_light_indices_buffer: &wgpu::Buffer,
         cluster_info_buffer: &wgpu::Buffer,
-        csm_view: &wgpu::TextureView,
-        csm_sampler: &wgpu::Sampler,
         local_shadow_atlas_view: &wgpu::TextureView,
-        shadow_uniform_buffer: &wgpu::Buffer,
         vsm_pages_view: &wgpu::TextureView,
         vsm_sampler: &wgpu::Sampler,
         vsm_info_buffer: &wgpu::Buffer,
@@ -590,20 +558,8 @@ impl PbrPass {
                     resource: cluster_info_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 9,
-                    resource: wgpu::BindingResource::TextureView(csm_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 10,
-                    resource: wgpu::BindingResource::Sampler(csm_sampler),
-                },
-                wgpu::BindGroupEntry {
                     binding: 11,
                     resource: wgpu::BindingResource::TextureView(local_shadow_atlas_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 12,
-                    resource: shadow_uniform_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 13,

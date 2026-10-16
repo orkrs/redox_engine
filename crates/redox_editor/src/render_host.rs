@@ -130,7 +130,7 @@ impl SharedGpu {
 /// Offscreen engine-path host: full [`Renderer`] → egui-sampled [`EditorViewport`].
 pub struct RenderHost {
     pub viewport: EditorViewport,
-    /// Full engine renderer (PBR + CSM + bloom + Sharp AA). `None` only if init failed.
+    /// Full engine renderer (PBR + VSM + bloom + Sharp AA). `None` only if init failed.
     pub renderer: Option<Renderer>,
     cube_mesh: usize,
     default_mat: usize,

@@ -131,18 +131,6 @@ struct ClusterInfo {
     _pad2: u32,
 };
 
-struct ShadowUniform {
-    // 4 cascade matrices (4×4 each)
-    csm_matrices: array<mat4x4<f32>, 4>,
-    // Split depths in view space
-    csm_splits: vec4<f32>,
-    // Size of the shadow atlas (e.g. 4096.0)
-    shadow_atlas_size: f32,
-    soft_near: f32,
-    soft_far: f32,
-    _pad2: u32,
-};
-
 struct ShaderDebugUniform {
     debug_viz_mode: u32,
     frame_index: u32,
@@ -172,10 +160,7 @@ struct ShaderDebugUniform {
 @group(1) @binding(6) var<storage, read> cluster_metadata: array<ClusterMetadata>;
 @group(1) @binding(7) var<storage, read> cluster_light_indices: array<u32>;
 @group(1) @binding(8) var<uniform> cluster_info: ClusterInfo;
-@group(1) @binding(9) var t_csm: texture_depth_2d_array;
-@group(1) @binding(10) var s_csm: sampler_comparison;
 @group(1) @binding(11) var t_local_shadow_atlas: texture_depth_2d;
-@group(1) @binding(12) var<uniform> shadow_u: ShadowUniform;
 @group(1) @binding(13) var t_vsm_pages: texture_2d_array<f32>;
 @group(1) @binding(14) var s_vsm: sampler;
 @group(1) @binding(15) var<storage, read> vsm_info: VsmGpuInfo;
@@ -413,7 +398,7 @@ fn get_point_light_shadow(light: PointLight, world_pos: vec3<f32>, normal: vec3<
     let row = floor(f32(tile_index) / tpa);
     let inv_tpa = 1.0 / tpa;
 
-    // 5×5 PCF — matches directional `csm_sample` look (monolithic, no grain).
+    // 5×5 PCF — monolithic look, no grain.
     let texel_atlas = inv_tpa / 512.0; // TILE_PX = 512
     let tile_origin = vec2<f32>(col, row) * inv_tpa;
     var visibility = 0.0;
@@ -436,154 +421,23 @@ fn get_point_light_shadow(light: PointLight, world_pos: vec3<f32>, normal: vec3<
     return visibility / 25.0;
 }
 
-fn get_cascade_index(view_z: f32) -> u32 {
-    var idx: u32 = 3u;
-    for (var i = 0u; i < 4u; i = i + 1u) {
-        if (view_z < shadow_u.csm_splits[i]) {
-            idx = i;
-            break;
-        }
-    }
-    return idx;
-}
-
-fn csm_sample(cascade_idx: u32, uv: vec2<f32>, depth: f32) -> f32 {
-    var visibility = 0.0;
-    let texel_size = 1.0 / shadow_u.shadow_atlas_size;
-    for (var y = -2; y <= 2; y = y + 1) {
-        for (var x = -2; x <= 2; x = x + 1) {
-            let offset = vec2<f32>(f32(x), f32(y)) * texel_size;
-            visibility += textureSampleCompareLevel(
-                t_csm, s_csm, uv + offset, i32(cascade_idx), depth,
-            );
-        }
-    }
-    return visibility / 25.0;
-}
-
-fn linearize_depth01(d: f32) -> f32 {
-    let denom = shadow_u.soft_far - d * (shadow_u.soft_far - shadow_u.soft_near);
-    if (abs(denom) < 1e-6) { return shadow_u.soft_far; }
-    return shadow_u.soft_near * shadow_u.soft_far / denom;
-}
-
 fn shadow_sample_dither(clip_xy: vec2<f32>) -> f32 {
     let dims = vec2<f32>(textureDimensions(t_blue_noise));
     let noise = textureSample(t_blue_noise, s_blue_noise, clip_xy / dims).r;
     return fract(noise + f32(shader_debug.frame_index % 16u) * 0.61803398875);
 }
 
-fn pcss_csm(world_pos: vec3<f32>, view_z: f32, normal: vec3<f32>, light_angle: f32, dither: f32) -> f32 {
-    let cascade_idx = get_cascade_index(view_z);
-    let mat = shadow_u.csm_matrices[cascade_idx];
-    let biased = world_pos + normal * 0.0004;
-    let clip = mat * vec4<f32>(biased, 1.0);
-    if (clip.w <= 1.0e-4) {
+/// Directional shadow factor: VSM clipmap only (`soft_shadows == 2`), otherwise lit.
+fn get_dir_shadow(world_pos: vec3<f32>, normal: vec3<f32>) -> f32 {
+    if (light_u.soft_shadows != 2u) {
         return 1.0;
     }
-    let ndc = clip.xyz / clip.w;
-    let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
-    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || ndc.z > 1.0) {
-        return 1.0;
-    }
-
-    let texel = 1.0 / shadow_u.shadow_atlas_size;
-
-    var blocker_sum = 0.0;
-    var blocker_count = 0.0;
-    let search_radius = texel * 4.0;
-    let atlas_res = vec2<f32>(shadow_u.shadow_atlas_size);
-    for (var y = -1; y <= 1; y++) {
-        for (var x = -1; x <= 1; x++) {
-            let offset = vec2<f32>(f32(x), f32(y)) * search_radius;
-            let coord = vec2<i32>((uv + offset) * atlas_res);
-            let d = textureLoad(t_csm, coord, i32(cascade_idx), 0);
-            if (d < ndc.z) {
-                blocker_sum += d;
-                blocker_count += 1.0;
-            }
-        }
-    }
-    if (blocker_count < 0.5) {
-        return 1.0;
-    }
-    let blocker_ndc = blocker_sum / blocker_count;
-
-    let receiver_d = linearize_depth01(ndc.z);
-    let blocker_d = linearize_depth01(blocker_ndc);
-    let block_dist = max(receiver_d - blocker_d, 0.0);
-    let penumbra_world = (block_dist * light_angle) / max(blocker_d, 1e-3);
-    var filter_radius = penumbra_world * shadow_u.shadow_atlas_size * 0.02;
-    filter_radius = clamp(filter_radius, texel, texel * 8.0);
-
-    var visibility = 0.0;
-    let golden = 2.39996323;
-    let rot_angle = dither * 6.28318530718;
-    for (var i = 0u; i < 16u; i = i + 1u) {
-        let fi = f32(i);
-        let angle = fi * golden + rot_angle;
-        let r = sqrt(fi / 16.0) * filter_radius;
-        let offset = vec2<f32>(cos(angle), sin(angle)) * r;
-        visibility += textureSampleCompareLevel(
-            t_csm, s_csm, uv + offset, i32(cascade_idx), ndc.z - 0.001,
-        );
-    }
-    return visibility / 16.0;
-}
-
-fn get_csm_shadow(world_pos: vec3<f32>, view_z: f32, normal: vec3<f32>, dither: f32) -> f32 {
-    let cascade_idx = get_cascade_index(view_z);
-
     let l_dir = normalize(light_u.dir_direction.xyz);
-    let n_dot_l = max(dot(normal, l_dir), 0.0);
-    let bias = 0.00025 + (1.0 - n_dot_l) * 0.0012;
-    let shadow_pos = world_pos + normal * bias;
-
-    let mat = shadow_u.csm_matrices[cascade_idx];
-    let clip = mat * vec4<f32>(shadow_pos, 1.0);
-    if (clip.w <= 1.0e-4) {
-        return 1.0;
+    let lk = vsm_lookup(world_pos);
+    if (lk.valid > 0.5) {
+        return vsm_shadow(world_pos, normal, l_dir);
     }
-    let ndc = clip.xyz / clip.w;
-    let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
-
-    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || ndc.z > 1.0 || ndc.z < 0.0) {
-        return 1.0;
-    }
-
-    // VSM-only: never fall through to CSM.
-    if (light_u.soft_shadows == 2u) {
-        let lk = vsm_lookup(world_pos);
-        if (lk.valid > 0.5) {
-            return vsm_shadow(world_pos, normal, l_dir);
-        }
-        return 1.0;
-    }
-    var shadow: f32;
-    if (light_u.soft_shadows == 1u) {
-        shadow = pcss_csm(world_pos, view_z, normal, 0.016, dither);
-    } else {
-        shadow = csm_sample(cascade_idx, uv, ndc.z - 0.0002);
-    }
-
-    let idx_usize = i32(cascade_idx);
-    if (cascade_idx + 1u < 4u && idx_usize >= 0) {
-        let next_split = shadow_u.csm_splits[cascade_idx];
-        let prev_split = select(0.0, shadow_u.csm_splits[cascade_idx - 1u], cascade_idx > 0u);
-        let band = (next_split - prev_split) * 0.1;
-        if (view_z > next_split - band) {
-            let mat2 = shadow_u.csm_matrices[cascade_idx + 1u];
-            let clip2 = mat2 * vec4<f32>(shadow_pos, 1.0);
-            let ndc2 = clip2.xyz / clip2.w;
-            let uv2 = vec2<f32>(ndc2.x * 0.5 + 0.5, 0.5 - ndc2.y * 0.5);
-            if (!(uv2.x < 0.0 || uv2.x > 1.0 || uv2.y < 0.0 || uv2.y > 1.0 || ndc2.z > 1.0 || ndc2.z < 0.0)) {
-                let s2 = csm_sample(cascade_idx + 1u, uv2, ndc2.z - 0.0005);
-                let t = (view_z - (next_split - band)) / max(band, 1e-4);
-                shadow = mix(shadow, s2, clamp(t, 0.0, 1.0));
-            }
-        }
-    }
-    return shadow;
+    return 1.0;
 }
 
 // ── VSM_SMRT BLOCK (mirrored verbatim from pbr.wgsl — keep in sync) ──────
@@ -918,7 +772,7 @@ fn fs_main(in: FsInput) -> @location(0) vec4<f32> {
         return vec4<f32>(color_val, color_val * 0.5, 0.0, 1.0);
     } else if (shader_debug.debug_viz_mode == 2u) {
         let view_z = -(camera.view * vec4<f32>(world_pos, 1.0)).z;
-        let s = get_csm_shadow(world_pos, view_z, n, shadow_sample_dither(in.fb_pos.xy));
+        let s = get_dir_shadow(world_pos, n);
         return vec4<f32>(s, s, s, 1.0);
     }
 
@@ -930,7 +784,7 @@ fn fs_main(in: FsInput) -> @location(0) vec4<f32> {
         let l = normalize(light_u.dir_direction.xyz);
         let n_dot_l = max(dot(n, l), 0.0);
         let view_z = -(camera.view * vec4<f32>(world_pos, 1.0)).z;
-        shadow = get_csm_shadow(world_pos, view_z, n, shadow_sample_dither(in.fb_pos.xy));
+        shadow = get_dir_shadow(world_pos, n);
         if (n_dot_l > 0.0) {
             let radiance = light_u.dir_color.rgb * light_u.dir_color.w;
             lo += eval_substrate_lit(mat, n, v, l, albedo, metallic, lobe_r) * radiance * shadow;

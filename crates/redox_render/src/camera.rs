@@ -1,7 +1,7 @@
 //! Camera component and GPU uniform.
 //!
 //! [`CameraUniform`] carries **separate** view / projection matrices plus their
-//! inverses — this is what lets shadow passes (CSM) build correct cascade
+//! inverses — this is what lets shadow passes (VSM) build correct clipmap
 //! frustums from the real camera instead of a hardcoded guess.
 //!
 //! When TAA is enabled the renderer injects a subpixel jitter into the

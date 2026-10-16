@@ -1,10 +1,9 @@
-//! Shadow subsystem: cascaded shadow maps (CSM), the shadow atlas
+//! Shadow subsystem: the shadow atlas
 //! allocator, and the Virtual Shadow Map (VSM) stack — page tables,
 //! clipmap state, visibility/depth passes, page caching and SMRT sampling.
 
 pub mod atlas_allocator;
 pub mod cache;
-pub mod csm;
 pub mod depth_pass;
 pub mod page_request;
 pub mod page_table;

@@ -1,7 +1,5 @@
 //! Free helper functions for render-target creation and culling.
 
-use super::*;
-
 /// Helper to create a render target texture for normal or GTAO pass.
 pub(super) fn create_normal_ssao_texture(
     device: &wgpu::Device,
@@ -266,32 +264,4 @@ pub(super) fn create_bloom_upsample_bgs(
         bgs.push(bloom_pass.create_bind_group(device, &mip_views[i + 1], sampler));
     }
     bgs.try_into().unwrap()
-}
-
-/// Conservative overlap test: world AABB vs ortho clip cube `[-1,1]×[-1,1]×[0,1]`.
-pub(super) fn aabb_overlaps_clip(bounds: Aabb, view_proj: Mat4) -> bool {
-    let b = bounds;
-    let corners = [
-        Vec3::new(b.min.x, b.min.y, b.min.z),
-        Vec3::new(b.max.x, b.min.y, b.min.z),
-        Vec3::new(b.min.x, b.max.y, b.min.z),
-        Vec3::new(b.max.x, b.max.y, b.min.z),
-        Vec3::new(b.min.x, b.min.y, b.max.z),
-        Vec3::new(b.max.x, b.min.y, b.max.z),
-        Vec3::new(b.min.x, b.max.y, b.max.z),
-        Vec3::new(b.max.x, b.max.y, b.max.z),
-    ];
-    let mut min_c = Vec3::splat(f32::INFINITY);
-    let mut max_c = Vec3::splat(f32::NEG_INFINITY);
-    for c in corners {
-        let p = view_proj.transform_point3(c);
-        min_c = min_c.min(p);
-        max_c = max_c.max(p);
-    }
-    !(max_c.x < -1.0
-        || min_c.x > 1.0
-        || max_c.y < -1.0
-        || min_c.y > 1.0
-        || max_c.z < 0.0
-        || min_c.z > 1.0)
 }

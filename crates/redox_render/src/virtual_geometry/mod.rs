@@ -74,7 +74,7 @@ impl VirtualMesh {
 pub struct VirtualMeshConfig {
     /// LOD bias (positive = more aggressive LOD reduction).
     pub lod_bias: f32,
-    /// Whether this object should cast VG shadows in CSM / point-light depth passes.
+    /// Whether this object should cast VG shadows in VSM / point-light depth passes.
     pub cast_shadows: bool,
 }
 

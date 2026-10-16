@@ -429,7 +429,7 @@ pub fn create_vg_vis_targets(device: &wgpu::Device, width: u32, height: u32) -> 
 
 // ── VG shadow depth pass ──────────────────────────────────────────────────────
 
-/// Depth-only meshlet draws for CSM / point-light shadow atlases.
+/// Depth-only meshlet draws for VSM / point-light shadow atlases.
 pub struct VgShadowPass {
     pub pipeline: wgpu::RenderPipeline,
     pub instances_bgl: wgpu::BindGroupLayout,
