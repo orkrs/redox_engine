@@ -7,17 +7,12 @@ use redox_math::{Transform, Vec3};
 
 use crate::components::{CharacterController, Collider, RigidBody};
 use crate::context::PhysicsContext;
-use crate::utils::{quat_to_rapier, vec3_from_rapier, vec3_to_rapier};
 
 /// Moves every [`CharacterController`] this step: gravity, wall slide, autostep.
 pub fn move_character_controllers(world: &mut World, dt: f32) {
-    let Some(mut physics) = world.remove_resource::<PhysicsContext>() else {
+    let Some(physics) = world.remove_resource::<PhysicsContext>() else {
         return;
     };
-    physics
-        .query_pipeline
-        .update(&physics.rigid_bodies, &physics.colliders);
-
     let entities: Vec<_> = world
         .query::<(
             redox_ecs::Entity,
@@ -48,24 +43,12 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
         let mut wish = desired;
         wish.y -= gravity * dt;
 
-        let iso = Isometry::from_parts(
-            Translation::from(vec3_to_rapier(transform.translation)),
-            quat_to_rapier(transform.rotation),
-        );
+        let iso = Pose::from_parts(transform.translation, transform.rotation);
         let filter = QueryFilter::default().exclude_rigid_body(body_handle);
         let kcc = RapierKcc::default();
-        let movement = kcc.move_shape(
-            dt,
-            &physics.rigid_bodies,
-            &physics.colliders,
-            &physics.query_pipeline,
-            shape,
-            &iso,
-            vec3_to_rapier(wish),
-            filter,
-            |_| {},
-        );
-        let delta = vec3_from_rapier(&movement.translation);
+        let queries = physics.query_pipeline(filter);
+        let movement = kcc.move_shape(dt, &queries, shape, &iso, wish, |_| {});
+        let delta = movement.translation;
         results.push((entity, delta, movement.grounded, body_handle));
     }
 
@@ -99,7 +82,6 @@ mod kcc_tests {
     use crate::components::{CharacterController, Collider, Kinematic, RigidBody};
     use crate::context::PhysicsContext;
     use crate::sync::tick_physics;
-    use crate::utils::vec3_to_rapier;
 
     fn spawn_body(
         world: &mut World,
@@ -111,11 +93,7 @@ mod kcc_tests {
         world.add_component(e, Transform::from_translation(translation));
         let mut phys = world.remove_resource::<PhysicsContext>().unwrap();
         let (bh, cols) = phys
-            .add_rigid_body(
-                e,
-                body.translation(vec3_to_rapier(translation)),
-                vec![collider],
-            )
+            .add_rigid_body(e, body.translation(translation), vec![collider])
             .unwrap();
         world.insert_resource(phys);
         world.add_component(e, RigidBody { handle: bh });

@@ -157,7 +157,7 @@ impl EditorApp {
             };
             let _ = phys.add_rigid_body(
                 ground_e,
-                RigidBodyBuilder::fixed().translation(rapier3d::na::Vector3::new(0.0, -0.5, 0.0)),
+                RigidBodyBuilder::fixed().translation(redox_math::Vec3::new(0.0, -0.5, 0.0)),
                 vec![ColliderBuilder::cuboid(64.0, 0.5, 64.0)],
             );
             phys

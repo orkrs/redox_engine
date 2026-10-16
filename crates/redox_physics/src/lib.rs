@@ -7,7 +7,6 @@ pub mod physics;
 pub mod raycast;
 pub mod sync;
 pub mod trigger;
-pub mod utils;
 
 pub use character::move_character_controllers;
 pub use components::{CharacterController, Collider, Kinematic, RigidBody, Trigger, Velocity};

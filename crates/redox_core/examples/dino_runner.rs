@@ -135,7 +135,7 @@ fn add_fixed_box(world: &mut World, entity: Entity, translation: Vec3, hx: f32, 
     let (bh, cols) = phys
         .add_rigid_body(
             entity,
-            RigidBodyBuilder::fixed().translation(rapier3d::na::Vector3::new(
+            RigidBodyBuilder::fixed().translation(redox_math::Vec3::new(
                 translation.x,
                 translation.y,
                 translation.z,
@@ -269,7 +269,7 @@ fn init_scene(world: &mut World, ctx: &mut RenderContext, game: &mut DinoGame) {
             .add_rigid_body(
                 player,
                 RigidBodyBuilder::kinematic_position_based()
-                    .translation(rapier3d::na::Vector3::new(PLAYER_X, player_y, 0.0)),
+                    .translation(redox_math::Vec3::new(PLAYER_X, player_y, 0.0)),
                 vec![
                     ColliderBuilder::capsule_y(0.35, 0.32)
                         .active_collision_types(ActiveCollisionTypes::all())
@@ -380,7 +380,7 @@ fn spawn_cactus(world: &mut World, mesh: usize, mat: usize, x: f32, variant: usi
                 root,
                 Vec3::new(x, y, 0.0),
                 ColliderBuilder::cuboid(0.4, hy, 0.35)
-                    .translation(rapier3d::na::Vector3::new(0.0, hy, 0.0)),
+                    .translation(redox_math::Vec3::new(0.0, hy, 0.0)),
             )
             .expect("cactus trigger");
         world.insert_resource(phys);

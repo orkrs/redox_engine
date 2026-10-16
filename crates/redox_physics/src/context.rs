@@ -6,7 +6,6 @@ use redox_math::{Quat, Vec3};
 use std::collections::{HashMap, HashSet};
 
 use crate::raycast::{RaycastRequest, RaycastResult};
-use crate::utils::{quat_from_rapier, quat_to_rapier, vec3_from_rapier, vec3_to_rapier};
 
 #[derive(Debug, thiserror::Error)]
 pub enum PhysicsError {
@@ -20,14 +19,14 @@ pub struct PhysicsContext {
     pub colliders: ColliderSet,
     pub physics_pipeline: PhysicsPipeline,
     pub island_manager: IslandManager,
-    pub broad_phase: BroadPhase,
+    pub broad_phase: BroadPhaseBvh,
     pub narrow_phase: NarrowPhase,
     pub impulse_joint_set: ImpulseJointSet,
     pub multibody_joint_set: MultibodyJointSet,
     pub ccd_solver: CCDSolver,
-    pub gravity: Vector<f32>,
+    pub gravity: Vec3,
     pub integration_parameters: IntegrationParameters,
-    pub query_pipeline: QueryPipeline,
+    pub soft_bodies: SoftBodySet,
 
     // Mappings between ECS Entities and Rapier Handles
     entity_to_body: HashMap<Entity, (RigidBodyHandle, Vec<ColliderHandle>)>,
@@ -46,14 +45,14 @@ impl PhysicsContext {
             colliders: ColliderSet::new(),
             physics_pipeline: PhysicsPipeline::new(),
             island_manager: IslandManager::new(),
-            broad_phase: BroadPhase::new(),
+            broad_phase: BroadPhaseBvh::new(),
             narrow_phase: NarrowPhase::new(),
             impulse_joint_set: ImpulseJointSet::new(),
             multibody_joint_set: MultibodyJointSet::new(),
             ccd_solver: CCDSolver::new(),
-            gravity: vec3_to_rapier(gravity),
+            gravity,
             integration_parameters: IntegrationParameters::default(),
-            query_pipeline: QueryPipeline::new(),
+            soft_bodies: SoftBodySet::new(),
             entity_to_body: HashMap::new(),
             collider_to_entity: HashMap::new(),
             raycast_requests: SegQueue::new(),
@@ -87,13 +86,14 @@ impl PhysicsContext {
                 _magnitude: Real,
             ) {
             }
+            fn handle_soft_body_tear_event(&self, _: &SoftBodySet, _: &SoftBodyTearEvent) {}
         }
 
         let sink = CollisionSink {
             buf: &self.collision_events,
         };
         self.physics_pipeline.step(
-            &self.gravity,
+            self.gravity,
             &self.integration_parameters,
             &mut self.island_manager,
             &mut self.broad_phase,
@@ -102,8 +102,8 @@ impl PhysicsContext {
             &mut self.colliders,
             &mut self.impulse_joint_set,
             &mut self.multibody_joint_set,
+            &mut self.soft_bodies,
             &mut self.ccd_solver,
-            Some(&mut self.query_pipeline),
             &(),
             &sink,
         );
@@ -151,8 +151,7 @@ impl PhysicsContext {
         translation: Vec3,
         builder: ColliderBuilder,
     ) -> Result<(RigidBodyHandle, ColliderHandle), PhysicsError> {
-        let body =
-            RigidBodyBuilder::kinematic_position_based().translation(vec3_to_rapier(translation));
+        let body = RigidBodyBuilder::kinematic_position_based().translation(translation);
         let col = builder
             .sensor(true)
             .active_events(ActiveEvents::COLLISION_EVENTS)
@@ -197,6 +196,7 @@ impl PhysicsContext {
                 &mut self.colliders,
                 &mut self.impulse_joint_set,
                 &mut self.multibody_joint_set,
+                &mut self.soft_bodies,
                 true,
             );
             log::debug!("Removed rigid body for entity {:?}", entity);
@@ -204,6 +204,16 @@ impl PhysicsContext {
         } else {
             Err(PhysicsError::EntityNotFound)
         }
+    }
+
+    /// Scene-query view over the current broad phase, bodies and colliders.
+    pub fn query_pipeline<'a>(&'a self, filter: QueryFilter<'a>) -> QueryPipeline<'a> {
+        self.broad_phase.as_query_pipeline(
+            self.narrow_phase.query_dispatcher(),
+            &self.rigid_bodies,
+            &self.colliders,
+            filter,
+        )
     }
 
     /// Retrieves the rigid body handle associated with the entity.
@@ -218,30 +228,21 @@ impl PhysicsContext {
         rotation: Quat,
     ) {
         if let Some(body) = self.rigid_bodies.get_mut(handle) {
-            body.set_position(
-                Isometry::from_parts(
-                    Translation::from(vec3_to_rapier(translation)),
-                    quat_to_rapier(rotation),
-                ),
-                true,
-            );
+            body.set_position(Pose::from_parts(translation, rotation), true);
         }
     }
 
     pub fn set_rigid_body_velocity(&mut self, handle: RigidBodyHandle, linvel: Vec3, angvel: Vec3) {
         if let Some(body) = self.rigid_bodies.get_mut(handle) {
-            body.set_linvel(vec3_to_rapier(linvel), true);
-            body.set_angvel(vec3_to_rapier(angvel), true);
+            body.set_linvel(linvel, true);
+            body.set_angvel(angvel, true);
         }
     }
 
     pub fn get_rigid_body_transform(&self, handle: RigidBodyHandle) -> Option<(Vec3, Quat)> {
         self.rigid_bodies.get(handle).map(|body| {
             let pos = body.position();
-            (
-                vec3_from_rapier(&pos.translation.vector),
-                quat_from_rapier(&pos.rotation),
-            )
+            (pos.translation, pos.rotation)
         })
     }
 
@@ -253,26 +254,14 @@ impl PhysicsContext {
     pub fn drain_raycast_results(&mut self) -> Vec<RaycastResult> {
         let mut results = Vec::new();
         while let Some(req) = self.raycast_requests.pop() {
-            let ray = Ray::new(
-                Point::from(vec3_to_rapier(req.origin)),
-                vec3_to_rapier(req.direction),
-            );
+            let ray = Ray::new(req.origin, req.direction);
 
-            let result = if let Some((handle, intersection)) =
-                self.query_pipeline.cast_ray_and_get_normal(
-                    &self.rigid_bodies,
-                    &self.colliders,
-                    &ray,
-                    req.max_distance,
-                    true,
-                    QueryFilter::default(),
-                ) {
-                let hit_point = req.origin + req.direction * intersection.toi;
-                let mut normal = Vec3::new(
-                    intersection.normal.x,
-                    intersection.normal.y,
-                    intersection.normal.z,
-                );
+            let hit = self
+                .query_pipeline(QueryFilter::default())
+                .cast_ray_and_get_normal(&ray, req.max_distance, true);
+            let result = if let Some((handle, intersection)) = hit {
+                let hit_point = req.origin + req.direction * intersection.time_of_impact;
+                let mut normal = intersection.normal;
                 if normal.dot(req.direction) > 0.0 {
                     normal = -normal;
                 }
@@ -283,7 +272,7 @@ impl PhysicsContext {
                     entity,
                     point: hit_point,
                     normal,
-                    distance: intersection.toi,
+                    distance: intersection.time_of_impact,
                 }
             } else {
                 RaycastResult {
@@ -318,7 +307,7 @@ impl PhysicsContext {
     /// Sync raycast with hit point + world normal. Updates the query pipeline first.
     /// Returns `(point, normal, entity)`.
     pub fn cast_ray_with_normal(
-        &mut self,
+        &self,
         origin: Vec3,
         direction: Vec3,
         max_distance: f32,
@@ -329,12 +318,7 @@ impl PhysicsContext {
             return None;
         }
         let direction = direction / dir_len;
-        self.query_pipeline
-            .update(&self.rigid_bodies, &self.colliders);
-        let ray = Ray::new(
-            Point::from(vec3_to_rapier(origin)),
-            vec3_to_rapier(direction),
-        );
+        let ray = Ray::new(origin, direction);
         let excluded: HashSet<ColliderHandle> = exclude_entities
             .iter()
             .filter_map(|e| self.entity_to_body.get(e))
@@ -342,20 +326,11 @@ impl PhysicsContext {
             .collect();
         let predicate = |handle: ColliderHandle, _: &Collider| !excluded.contains(&handle);
         let filter = QueryFilter::default().predicate(&predicate);
-        let (handle, intersection) = self.query_pipeline.cast_ray_and_get_normal(
-            &self.rigid_bodies,
-            &self.colliders,
-            &ray,
-            max_distance,
-            true,
-            filter,
-        )?;
-        let point = origin + direction * intersection.toi;
-        let mut normal = Vec3::new(
-            intersection.normal.x,
-            intersection.normal.y,
-            intersection.normal.z,
-        );
+        let (handle, intersection) =
+            self.query_pipeline(filter)
+                .cast_ray_and_get_normal(&ray, max_distance, true)?;
+        let point = origin + direction * intersection.time_of_impact;
+        let mut normal = intersection.normal;
         if normal.dot(direction) > 0.0 {
             normal = -normal;
         }
@@ -383,10 +358,7 @@ impl PhysicsContext {
             return None;
         }
         let direction = to_origin / distance;
-        let ray = Ray::new(
-            Point::from(vec3_to_rapier(origin)),
-            vec3_to_rapier(direction),
-        );
+        let ray = Ray::new(origin, direction);
 
         let excluded: HashSet<ColliderHandle> = exclude_entities
             .iter()
@@ -397,14 +369,7 @@ impl PhysicsContext {
         let predicate = |handle: ColliderHandle, _: &Collider| !excluded.contains(&handle);
         let filter = QueryFilter::default().predicate(&predicate);
 
-        if let Some((handle, toi)) = self.query_pipeline.cast_ray(
-            &self.rigid_bodies,
-            &self.colliders,
-            &ray,
-            distance,
-            true,
-            filter,
-        ) {
+        if let Some((handle, toi)) = self.query_pipeline(filter).cast_ray(&ray, distance, true) {
             self.collider_to_entity
                 .get(&handle)
                 .copied()
