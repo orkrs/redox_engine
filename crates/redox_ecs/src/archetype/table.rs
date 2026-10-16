@@ -10,12 +10,7 @@ pub struct Table {
     entities: Vec<Entity>,
 }
 
-// SAFETY: `Table` consists of a `HashMap<TypeId, Column>` and a `Vec<Entity>`; `Column`
-// is `Send`/`Sync` (see its impls) and `Entity` is plain data. Mutation requires
-// `&mut Table`, so shared references only permit reads.
-unsafe impl Send for Table {}
-// SAFETY: see the `Send` impl above.
-unsafe impl Sync for Table {}
+// `Table` is `Send + Sync` automatically: `Column` carries the (documented) manual impls.
 
 impl Table {
     /// Creates a new table for the given component types.

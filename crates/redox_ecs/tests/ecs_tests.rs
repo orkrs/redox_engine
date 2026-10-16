@@ -435,7 +435,7 @@ mod soundness_tests {
         }
     }
 
-    #[global_allocator]
+    #[cfg_attr(not(miri), global_allocator)]
     static GLOBAL: CountingAllocator = CountingAllocator;
 
     #[derive(Debug, Clone)]
@@ -445,6 +445,7 @@ mod soundness_tests {
     struct Pos(f32);
 
     #[test]
+    #[cfg_attr(miri, ignore = "counting allocator is disabled under Miri")]
     fn despawn_drops_heap_components() {
         let mut world = World::new();
         let e = world.spawn();
@@ -458,6 +459,7 @@ mod soundness_tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "counting allocator is disabled under Miri")]
     fn component_removal_and_migration_drop_old_values() {
         let mut world = World::new();
         let e = world.spawn();

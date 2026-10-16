@@ -60,15 +60,6 @@ pub struct QueryParIter<'w, Q: ReadOnlyQueryData, F: QueryFilter> {
     _marker: PhantomData<(Q, F)>,
 }
 
-// SAFETY: `QueryParIter` holds only a shared slice reference (`&[Archetype]`, and
-// `Archetype: Sync`), a plain-data `TickCtx` and PhantomData. The query types `Q` and
-// `F` are never instantiated (and are bounded by `Send`); data is only reached
-// through shared references to `Archetype`, and `Q` is statically read-only.
-unsafe impl<'w, Q: ReadOnlyQueryData + Send, F: QueryFilter + Send> Send
-    for QueryParIter<'w, Q, F>
-{
-}
-
 impl<'w, Q, F> ParallelIterator for QueryParIter<'w, Q, F>
 where
     Q: ReadOnlyQueryData + Send,
@@ -119,10 +110,6 @@ struct ArchChunk<'w, Q: ReadOnlyQueryData, F: QueryFilter> {
     ctx: TickCtx,
     _marker: PhantomData<(Q, F)>,
 }
-
-// SAFETY: same reasoning as for `QueryParIter`: a shared `&Archetype` (which is `Sync`),
-// plain-data `TickCtx` and PhantomData over `Send` marker types.
-unsafe impl<'w, Q: ReadOnlyQueryData + Send, F: QueryFilter + Send> Send for ArchChunk<'w, Q, F> {}
 
 /// A sequential iterator over a single archetype's rows (used inside Rayon workers).
 struct ArchRowIter<'w, Q: ReadOnlyQueryData, F: QueryFilter> {

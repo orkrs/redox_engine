@@ -170,23 +170,28 @@ impl World {
             .iter()
             .any(|i| i.type_id == component_info.type_id)
         {
-            // Overwrite in place; drop the previous value first. The new
-            // value's bytes are copied into the column, so the caller-side
-            // value must be forgotten to avoid dropping shared heap pointers.
+            // Overwrite in place; drop the previous value first. The new value's bytes
+            // are copied into the column, so the caller-side value is wrapped in
+            // `ManuallyDrop` up front: if the old value's destructor panics, unwinding
+            // must not drop the new value a second time.
             if let Some((arch_idx, row)) = location {
                 let tick = self.next_tick();
+                let mut component = std::mem::ManuallyDrop::new(component);
                 // SAFETY: the column for `T` exists (type is in the archetype) and
                 // `row` is the entity's live row. `ptr` points to the local
                 // `component`, a valid `T` that cannot overlap column storage; its
-                // ownership moves into the column and it is forgotten right after.
+                // ownership moves into the column and it is never dropped here.
                 unsafe {
                     let table = &mut self.archetypes[arch_idx].table;
                     if let Some(col) = table.column_mut(component_info.type_id) {
-                        let ptr = &component as *const T as *const u8;
+                        let ptr = &*component as *const T as *const u8;
                         col.replace(row, ptr, tick);
+                    } else {
+                        // No such column (cannot happen: the type is in the archetype):
+                        // the value was not moved, so drop it normally.
+                        std::mem::ManuallyDrop::drop(&mut component);
                     }
                 }
-                std::mem::forget(component);
             }
             return;
         }
@@ -282,9 +287,9 @@ impl World {
         // archetype's columns are a subset of the old one's, so every moved component
         // exists at `row`. Moved values transfer ownership to the new table and the old
         // row is removed with `drop = false` (no double drop).
-        // NOTE: the removed `T` itself is not dropped here (it leaks); this is a
-        // pre-existing behavior and is memory-safe.
-        unsafe {
+        // The removed `T` is read out first and dropped after the tables are
+        // consistent again, so a panicking destructor cannot corrupt storage.
+        let removed = unsafe {
             let archetypes_ptr = self.archetypes.as_mut_ptr();
             let old_arch = &mut *archetypes_ptr.add(arch_idx);
             let new_arch = &mut *archetypes_ptr.add(target_arch_idx);
@@ -299,14 +304,20 @@ impl World {
                 }
             }
 
+            let removed = old_arch
+                .table
+                .get_component_ptr(component_info.type_id, row)
+                .map(|p| std::ptr::read(p as *const T));
             if let Some(moved_entity) = old_arch.table.swap_remove(row, false) {
                 self.entity_locations.insert(moved_entity, (arch_idx, row));
             }
-        }
+            removed
+        };
 
         let new_row = self.archetypes[target_arch_idx].table.row_count() - 1;
         self.entity_locations
             .insert(entity, (target_arch_idx, new_row));
+        drop(removed);
         true
     }
 

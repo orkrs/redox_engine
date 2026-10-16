@@ -36,7 +36,8 @@ impl Column {
         Self {
             // Dangling-but-aligned: zero-sized components with `align > 1` are still
             // read through `&*(ptr as *const T)`, which requires alignment.
-            data: NonNull::new(info.align as *mut u8).unwrap_or(NonNull::dangling()),
+            data: NonNull::new(std::ptr::without_provenance_mut(info.align))
+                .unwrap_or(NonNull::dangling()),
             info,
             len: 0,
             cap: 0,
@@ -80,16 +81,36 @@ impl Column {
     /// - `index` must be `< len`, so the slot holds a live value.
     /// - Ownership of the new value moves into the column (caller must not drop it).
     pub unsafe fn replace(&mut self, index: usize, component_ptr: *const u8, tick: u32) {
+        /// Writes the new value into the slot even when the old value's destructor
+        /// panics, so the slot never keeps an already-dropped value (double drop).
+        struct WriteBack {
+            dst: *mut u8,
+            src: *const u8,
+            size: usize,
+        }
+        impl Drop for WriteBack {
+            fn drop(&mut self) {
+                // SAFETY: the creator guarantees `src`/`dst` are valid, non-overlapping
+                // ranges of `size` bytes.
+                unsafe { ptr::copy_nonoverlapping(self.src, self.dst, self.size) };
+            }
+        }
+
         debug_assert!(index < self.len);
         // SAFETY: `index < len` (caller contract), so `dst` is in bounds and holds a
         // live value which `drop_fn` consumes exactly once before the slot is
-        // overwritten; source validity and non-overlap are caller-guaranteed.
+        // overwritten (by `WriteBack`, also on unwind); source validity and
+        // non-overlap are caller-guaranteed.
         unsafe {
             let dst = self.get(index);
+            let _write_back = WriteBack {
+                dst,
+                src: component_ptr,
+                size: self.info.size,
+            };
             if let Some(drop_fn) = self.info.drop_fn {
                 drop_fn(dst);
             }
-            ptr::copy_nonoverlapping(component_ptr, dst, self.info.size);
         }
         self.ticks[index] = tick;
     }

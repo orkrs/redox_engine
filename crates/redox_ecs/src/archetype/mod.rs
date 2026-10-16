@@ -17,12 +17,7 @@ pub struct Archetype {
     pub(crate) component_infos: Vec<ComponentInfo>,
 }
 
-// SAFETY: Archetype contains `usize`, `Vec<TypeId>`, `Vec<ComponentInfo>` (plain data
-// and fn pointers) and a `Table`, which is itself `Send`/`Sync`. Mutation requires
-// `&mut Archetype`, so shared references only permit reads.
-unsafe impl Send for Archetype {}
-// SAFETY: see the `Send` impl above.
-unsafe impl Sync for Archetype {}
+// `Archetype` is `Send + Sync` automatically via `Table`.
 
 impl Archetype {
     /// Creates a new archetype with the given component infos.

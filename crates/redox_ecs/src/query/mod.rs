@@ -97,7 +97,12 @@ pub unsafe trait QueryData {
 /// Marker trait for fetches that never yield mutable references (`&T`,
 /// [`Entity`], tuples thereof). Read-only queries may iterate with a shared
 /// world borrow via [`Query::iter`](crate::query::iter::Query::iter).
-pub trait ReadOnlyQueryData: QueryData {}
+///
+/// # Safety
+/// Implementors must never hand out a mutable reference or otherwise mutate world
+/// data from `fetch`/`fetch_mut`, and `for_each_access` must report no writes:
+/// the shared-borrow and parallel iterators rely on this to avoid data races.
+pub unsafe trait ReadOnlyQueryData: QueryData {}
 
 // --- &T ---
 
@@ -147,7 +152,8 @@ unsafe impl<T: 'static + Send + Sync> QueryData for &T {
     }
 }
 
-impl<T: 'static + Send + Sync> ReadOnlyQueryData for &T {}
+// SAFETY: `&T` only reads.
+unsafe impl<T: 'static + Send + Sync> ReadOnlyQueryData for &T {}
 
 // --- &mut T ---
 
@@ -241,7 +247,8 @@ unsafe impl QueryData for Entity {
     }
 }
 
-impl ReadOnlyQueryData for Entity {}
+// SAFETY: `Entity` is copied out of the table and never written.
+unsafe impl ReadOnlyQueryData for Entity {}
 
 // ---------------------------------------------------------------------------
 // Macro for tuple implementations (2 … 8 components)
@@ -296,7 +303,8 @@ macro_rules! impl_query_data_tuple {
             }
         }
 
-        impl<$($name: ReadOnlyQueryData),+> ReadOnlyQueryData for ($($name,)+) {}
+        // SAFETY: a tuple is read-only when every element is.
+        unsafe impl<$($name: ReadOnlyQueryData),+> ReadOnlyQueryData for ($($name,)+) {}
     };
 }
 
