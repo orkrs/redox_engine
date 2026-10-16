@@ -687,10 +687,10 @@ fn vsm_lookup(pos: vec3<f32>) -> VsmLookup {
 fn vsm_tap_lit(lk: VsmLookup, pix: vec2<i32>, bias_ndc: f32, min_diff: f32) -> f32 {
     let lo = 1;
     let hi = i32(vsm_info.page_px) - 2;
-    if (pix.x < lo || pix.y < lo || pix.x > hi || pix.y > hi) {
-        return 1.0;
-    }
-    let stored = textureLoad(t_vsm_pages, pix, lk.layer, 0).r;
+    // Taps beyond the page interior replicate the edge texel. Returning "lit" here drew
+    // bright seams along every page border (wider than the PCF kernel at coarse levels).
+    let tap = clamp(pix, vec2<i32>(lo), vec2<i32>(hi));
+    let stored = textureLoad(t_vsm_pages, tap, lk.layer, 0).r;
     if (stored > 0.999) {
         return 1.0;
     }

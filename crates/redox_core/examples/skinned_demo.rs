@@ -172,10 +172,11 @@ fn shadowed(mut light: PointLight, enabled: bool) -> PointLight {
     light
 }
 
-fn light_scene(point_shadows: bool) -> LightScene {
+fn light_scene(sun_shadows: bool, point_shadows: bool) -> LightScene {
     let mut sun = DirectionalLight::new(Vec3::new(-0.45, 1.0, 0.55), Vec3::new(1.0, 0.96, 0.90), 1.5);
+    // `vsm` routes the sun through the VSM clipmap; without it the sun casts no shadow.
     sun.soft_shadows = false;
-    sun.vsm = true;
+    sun.vsm = sun_shadows;
     LightScene {
         directional: sun,
         ambient: Vec3::splat(0.08),
@@ -223,12 +224,32 @@ fn windowed() {
     };
     window.set_title(&title(sun_shadows, point_shadows, follow_deformation));
     let (start, mut last) = (Instant::now(), Instant::now());
+    let mut frame_count: u64 = 0;
 
     event_loop
         .run(move |event, elwt| match event {
             winit::event::Event::NewEvents(_) => input.begin_frame(),
             winit::event::Event::WindowEvent { event, .. } => {
                 input.process_window_event(&event);
+                if let winit::event::WindowEvent::KeyboardInput { event: key, .. } = &event {
+                    // Handled here, not via `just_pressed`: that flag is cleared on the
+                    // next `NewEvents`, which comes before the redraw that would read it.
+                    if key.state == winit::event::ElementState::Pressed && !key.repeat {
+                        if let winit::keyboard::PhysicalKey::Code(code) = key.physical_key {
+                            let flag = match code {
+                                KeyCode::KeyV => Some(&mut sun_shadows),
+                                KeyCode::KeyP => Some(&mut point_shadows),
+                                KeyCode::KeyD => Some(&mut follow_deformation),
+                                _ => None,
+                            };
+                            if let Some(flag) = flag {
+                                *flag = !*flag;
+                                ctx.set_vsm_enabled(sun_shadows);
+                                window.set_title(&title(sun_shadows, point_shadows, follow_deformation));
+                            }
+                        }
+                    }
+                }
                 match event {
                     winit::event::WindowEvent::CloseRequested => elwt.exit(),
                     winit::event::WindowEvent::Resized(size) => ctx.resize(size.width, size.height),
@@ -236,20 +257,13 @@ fn windowed() {
                         if input.keyboard.is_pressed(KeyCode::Escape) {
                             elwt.exit();
                         }
-                        let mut toggled = false;
-                        for (key, flag) in [
-                            (KeyCode::KeyV, &mut sun_shadows),
-                            (KeyCode::KeyP, &mut point_shadows),
-                            (KeyCode::KeyD, &mut follow_deformation),
-                        ] {
-                            if input.keyboard.just_pressed(key) {
-                                *flag = !*flag;
-                                toggled = true;
-                            }
-                        }
-                        if toggled {
-                            ctx.set_vsm_enabled(sun_shadows);
-                            window.set_title(&title(sun_shadows, point_shadows, follow_deformation));
+                        frame_count += 1;
+                        if frame_count % 120 == 0 {
+                            let (stats, free, capacity) = ctx.vsm_diagnostics();
+                            eprintln!(
+                                "vsm: pool free {free}/{capacity}, allocated {}, overflow {}, dirty last frame {}",
+                                stats.pages_allocated, stats.pages_overflow, stats.pages_dirty
+                            );
                         }
                         let _dt = last.elapsed().as_secs_f32().min(0.05);
                         last = Instant::now();
@@ -259,7 +273,7 @@ fn windowed() {
                         if follow_deformation {
                             ctx.invalidate_shadow_region(&scene.deformed_world_bounds());
                         }
-                        let lights = light_scene(point_shadows);
+                        let lights = light_scene(sun_shadows, point_shadows);
                         let (pos, rot) = camera_pose(t);
                         let camera = Camera::new(0.9, ctx.config.width as f32 / ctx.config.height as f32, 0.1, 100.0);
                         ctx.camera_uniform.update(&camera, pos, rot);
@@ -329,7 +343,7 @@ fn screenshots(dir: &std::path::Path, size: (u32, u32)) {
     let view = target.create_view(&Default::default());
 
     let mut scene = DemoScene::new(&mut renderer);
-    let lights = light_scene(false);
+    let lights = light_scene(true, false);
     let camera = Camera::new(0.9, w as f32 / h as f32, 0.1, 100.0);
     // One continuous 60 fps timeline from t = 0, exactly like the windowed loop, so shadow
     // page streaming, TAA history and camera motion behave the same as on screen.

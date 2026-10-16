@@ -35,6 +35,13 @@ impl Renderer {
         }
         self.vsm_enabled = enabled;
     }
+    /// VSM health counters: lifetime stats plus `(free, capacity)` of the physical page pool.
+    /// A growing `pages_overflow` means the pool is too small for the visible area.
+    pub fn vsm_diagnostics(&self) -> (crate::shadow::vsm_clipmap::VsmStats, usize, usize) {
+        let (free, capacity) = self.vsm_clipmap.pool_usage();
+        (self.vsm_clipmap.stats(), free, capacity)
+    }
+
     /// Marks directional (VSM) shadow pages under `bounds` stale so they re-render next frame.
     ///
     /// The VSM caches pages until an object moves more than 0.5 m; call this every frame for
