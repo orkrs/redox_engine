@@ -21,7 +21,7 @@ log = { workspace = true }
 redox_math = { path = "../redox_math" }
 
 # Дополнительные инструменты для эффективной ECS
-hashbrown = "0.14"   # Быстрые хэш-карты
+hashbrown = "0.17"   # Быстрые хэш-карты
 parking_lot = "0.12" # Быстрые мьютексы
 
 [dev-dependencies]
