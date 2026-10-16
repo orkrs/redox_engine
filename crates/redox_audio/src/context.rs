@@ -1,50 +1,126 @@
-//! Audio context — ECS resource wrapping kira's AudioManager.
+//! Audio context — ECS resource wrapping kira's AudioManager + MetaSounds-lite mixer.
+//!
+//! # Wiring with the mixer
+//! 1. `let mut audio = AudioContext::new();` (or [`with_audio`] into a `World`)
+//! 2. Register clips: `audio.register_sfx("dash", handle);` after
+//!    [`sync_assets_to_audio`] / [`AudioContext::add_sound_from_asset`]
+//! 3. On gameplay events: `audio.play_sfx("dash", 1.0);`
+//! 4. Optionally tweak buses: `audio.mixer.bus_mut(MixerBusId::Sfx).set_volume(0.8);`
+//!    then `audio.sync_mixer();` so kira track volumes match.
+//!
+//! If no audio device is present, play APIs return `None` but the mixer graph
+//! still updates — safe to call from Prism Vault dash / pickup paths.
 
 use std::collections::HashMap;
 use std::io::Cursor;
 
-use kira::manager::{AudioManager, AudioManagerSettings};
 use kira::manager::backend::DefaultBackend;
+use kira::manager::{AudioManager, AudioManagerSettings};
 use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle, StaticSoundSettings};
+use kira::spatial::emitter::EmitterSettings;
+use kira::spatial::listener::ListenerSettings;
+use kira::spatial::scene::{SpatialSceneHandle, SpatialSceneSettings};
+use kira::spatial::listener::ListenerHandle;
+use kira::track::effect::filter::{FilterBuilder, FilterHandle, FilterMode};
+use kira::track::effect::reverb::{ReverbBuilder, ReverbHandle};
+use kira::track::{TrackBuilder, TrackHandle};
 use kira::tween::Tween;
 use redox_asset::{AssetId, Handle};
-use redox_ecs::Entity;
+use redox_ecs::{Entity, World};
 
 use crate::asset_types::AudioData;
+use crate::components::ReverbPreset;
+use crate::mixer::{MixerBusId, MixerGraph, PlayMode, PlayRequest};
 
-/// ECS resource that manages the audio engine.
-///
-/// Wraps `kira::AudioManager` and provides simple play/volume controls.
-/// When using the asset system, call [`Self::add_sound_from_asset`] when an
-/// [`AudioData`] is loaded, then [`Self::play_sound_by_handle`] to play.
-///
-/// Per-emitter occlusion (from [`occlusion_raycast_system`]) is stored here
-/// so that volume and low-pass can be applied per sound when updating spatial audio.
+/// ECS resource that manages the audio engine and MetaSounds-lite buses.
 pub struct AudioContext {
     manager: Option<AudioManager>,
-    /// Master volume (0.0 → 1.0).
+    /// Live MetaSounds-lite graph (Music / Sfx / Voice / Ui → Master).
+    pub mixer: MixerGraph,
+    /// Kira sub-tracks keyed by bus (Master uses the main track).
+    bus_tracks: HashMap<MixerBusId, TrackHandle>,
+    spatial_scene: Option<SpatialSceneHandle>,
+    listener: Option<ListenerHandle>,
+    lowpass: Option<FilterHandle>,
+    reverb: Option<ReverbHandle>,
+    /// Named one-shot / loop aliases → cached asset ids.
+    named_sounds: HashMap<String, AssetId>,
+    /// Master volume (0.0 → 1.0) applied to the main track.
     pub master_volume: f64,
     /// Cached decoded sounds by asset handle id (from [`Handle<AudioData>`]).
     sound_cache: HashMap<AssetId, StaticSoundData>,
     /// Occlusion coefficient per emitter entity (0.0 = clear, 1.0 = fully occluded).
-    /// Updated by [`crate::systems::occlusion_raycast_system`]; use when applying volume/filter.
     occlusion_by_emitter: HashMap<Entity, f32>,
 }
 
 impl AudioContext {
-    /// Initialises the audio context.
+    /// Initialises the audio context and attempts to create bus sub-tracks.
     ///
     /// If the audio backend fails (e.g., no audio device), the context is
-    /// created in a degraded mode where all operations are no-ops.
+    /// created in a degraded mode where all play operations are no-ops.
     pub fn new() -> Self {
-        let manager = AudioManager::<DefaultBackend>::new(AudioManagerSettings::default())
+        let mut main_track = TrackBuilder::new();
+        let lowpass = main_track.add_effect(
+            FilterBuilder::new()
+                .mode(FilterMode::LowPass)
+                .cutoff(20_000.0),
+        );
+        // Reverb stays fully dry until a reverb zone becomes active.
+        let reverb = main_track.add_effect(ReverbBuilder::new().mix(0.0));
+        let mut settings = AudioManagerSettings::default();
+        settings.main_track_builder = main_track;
+
+        let mut manager = AudioManager::<DefaultBackend>::new(settings)
             .map_err(|e| {
                 log::warn!("Audio backend unavailable: {}. Running without audio.", e);
                 e
             })
             .ok();
+
+        let mixer = MixerGraph::new();
+        let mut bus_tracks = HashMap::new();
+        let mut spatial_scene = None;
+        let mut listener = None;
+        if let Some(m) = manager.as_mut() {
+            for id in MixerBusId::all_sub_buses() {
+                let vol = mixer.bus(id).effective_gain() as f64;
+                match m.add_sub_track(TrackBuilder::new().volume(vol)) {
+                    Ok(track) => {
+                        bus_tracks.insert(id, track);
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to create mixer bus {:?}: {e}", id);
+                    }
+                }
+            }
+            let _ = m
+                .main_track()
+                .set_volume(mixer.master.effective_gain() as f64, Tween::default());
+            match m.add_spatial_scene(SpatialSceneSettings::default()) {
+                Ok(mut scene) => {
+                    match scene.add_listener(
+                        redox_math::Vec3::ZERO,
+                        redox_math::Quat::IDENTITY,
+                        ListenerSettings::default(),
+                    ) {
+                        Ok(l) => listener = Some(l),
+                        Err(e) => log::warn!("Failed to create spatial listener: {e}"),
+                    }
+                    spatial_scene = Some(scene);
+                }
+                Err(e) => log::warn!("Failed to create spatial scene: {e}"),
+            }
+        }
+
         Self {
             manager,
+            mixer,
+            bus_tracks,
+            spatial_scene,
+            listener,
+            lowpass: Some(lowpass),
+            reverb: Some(reverb),
+            named_sounds: HashMap::new(),
             master_volume: 1.0,
             sound_cache: HashMap::new(),
             occlusion_by_emitter: HashMap::new(),
@@ -61,12 +137,99 @@ impl AudioContext {
         self.manager.as_mut()
     }
 
-    /// Sets the master volume (clamped to 0.0–1.0).
+    /// Pushes current [`MixerGraph`] volumes onto kira tracks / main track.
+    pub fn sync_mixer(&mut self) {
+        let master_gain = self.mixer.master.effective_gain() as f64 * self.master_volume;
+        if let Some(m) = self.manager.as_mut() {
+            let _ = m.main_track().set_volume(master_gain, Tween::default());
+        }
+        for id in MixerBusId::all_sub_buses() {
+            let gain = self.mixer.bus(id).effective_gain() as f64;
+            if let Some(track) = self.bus_tracks.get(&id) {
+                let _ = track.set_volume(gain, Tween::default());
+            }
+        }
+    }
+
+    /// Sets the master volume (clamped to 0.0–1.0) and syncs the mixer.
     pub fn set_master_volume(&mut self, volume: f64) {
         self.master_volume = volume.clamp(0.0, 1.0);
-        if let Some(m) = &mut self.manager {
-            let _ = m.main_track().set_volume(self.master_volume, Tween::default());
+        self.mixer.master.set_volume(self.master_volume as f32);
+        self.sync_mixer();
+    }
+
+    /// Registers a named alias for a cached sound (e.g. `"dash"`, `"pickup"`).
+    pub fn register_sfx(&mut self, name: impl Into<String>, handle: Handle<AudioData>) {
+        self.named_sounds.insert(name.into(), handle.id());
+    }
+
+    /// Registers raw decoded data under a name (useful without the asset manager).
+    pub fn register_sfx_data(&mut self, name: impl Into<String>, data: StaticSoundData) -> AssetId {
+        let name = name.into();
+        let id = AssetId(fxhash_name(&name));
+        self.sound_cache.insert(id, data);
+        self.named_sounds.insert(name, id);
+        id
+    }
+
+    /// Plays a registered one-shot on the Sfx bus.
+    ///
+    /// ```ignore
+    /// audio.play_sfx("dash", 1.0);
+    /// audio.play_sfx("pickup", 0.8);
+    /// ```
+    pub fn play_sfx(&mut self, name: &str, gain: f32) -> Option<StaticSoundHandle> {
+        let id = *self.named_sounds.get(name)?;
+        self.play_asset_id(id, PlayRequest::sfx(gain))
+    }
+
+    /// Plays a cached asset as a one-shot on `bus` with `gain`.
+    pub fn play_one_shot(
+        &mut self,
+        handle: Handle<AudioData>,
+        bus: MixerBusId,
+        gain: f32,
+    ) -> Option<StaticSoundHandle> {
+        self.play_asset_id(handle.id(), PlayRequest::one_shot(bus, gain))
+    }
+
+    /// Plays a cached asset looping on `bus` with `gain`.
+    pub fn play_loop(
+        &mut self,
+        handle: Handle<AudioData>,
+        bus: MixerBusId,
+        gain: f32,
+    ) -> Option<StaticSoundHandle> {
+        self.play_asset_id(handle.id(), PlayRequest::looping(bus, gain))
+    }
+
+    /// Plays by name with an explicit [`PlayRequest`] (bus + mode + gain).
+    pub fn play_named(&mut self, name: &str, request: PlayRequest) -> Option<StaticSoundHandle> {
+        let id = *self.named_sounds.get(name)?;
+        self.play_asset_id(id, request)
+    }
+
+    fn play_asset_id(
+        &mut self,
+        id: AssetId,
+        request: PlayRequest,
+    ) -> Option<StaticSoundHandle> {
+        let voice_gain = self.mixer.voice_gain(&request);
+        if voice_gain <= 0.0001 {
+            return None;
         }
+        let mut data = self.sound_cache.get(&id)?.clone();
+        let mut settings = StaticSoundSettings::new().volume(voice_gain as f64);
+        if request.mode == PlayMode::Loop {
+            settings = settings.loop_region(0.0..);
+        }
+        if request.bus != MixerBusId::Master {
+            if let Some(track) = self.bus_tracks.get(&request.bus) {
+                settings = settings.output_destination(track);
+            }
+        }
+        data.settings = settings;
+        self.play_sound(data)
     }
 
     /// Plays a static sound and returns a handle to the playing sound.
@@ -75,43 +238,74 @@ impl AudioContext {
     }
 
     /// Plays a static sound with spatial settings.
-    pub fn play_spatial(&mut self, data: StaticSoundData, _position: redox_math::Vec3, _max_distance: f32) -> Option<StaticSoundHandle> {
-        // Simplified for now: just plays it.
-        // In a fuller version we'd use kira's panning/volume based on listener.
-        let settings = StaticSoundSettings::new();
+    pub fn play_spatial(
+        &mut self,
+        data: StaticSoundData,
+        position: redox_math::Vec3,
+        max_distance: f32,
+    ) -> Option<StaticSoundHandle> {
+        let Some(scene) = self.spatial_scene.as_mut() else {
+            return self.play_sound(data);
+        };
+        let emitter = scene
+            .add_emitter(
+                position,
+                EmitterSettings::new()
+                    .distances((0.1, max_distance.max(0.11)))
+                    .persist_until_sounds_finish(true),
+            )
+            .ok()?;
         let mut data = data;
-        data.settings = settings;
-
+        data.settings = StaticSoundSettings::new().output_destination(&emitter);
         self.play_sound(data)
     }
 
-    /// Applies a low-pass filter to the main track (for occlusion/obstruction effect).
-    /// Filter cutoff frequency in Hz (20000.0 = no filtering, lower = more muffled).
-    pub fn set_lowpass_filter(&mut self, cutoff_hz: f32) {
-        // Note: Full kira integration would apply this via effect chains
-        // This is a placeholder for the architectural approach
-        if let Some(_m) = &mut self.manager {
-            // In a full implementation:
-            // m.main_track().set_effect(lowpass_effect);
-            log::debug!("Setting lowpass filter to {:.0} Hz", cutoff_hz);
+    /// Moves the Kira listener (ears) to match the game camera / player.
+    pub fn set_listener_pose(&mut self, position: redox_math::Vec3, orientation: redox_math::Quat) {
+        if let Some(listener) = self.listener.as_mut() {
+            let _ = listener.set_position(position, Tween::default());
+            let _ = listener.set_orientation(orientation, Tween::default());
         }
     }
 
-    /// Applies reverb settings to the main track.
-    /// This would typically be called from the reverb system after zone blending.
-    pub fn set_reverb(&mut self, _decay: f32, _damping: f32) {
-        // Note: kira 0.8+ has limited reverb support out of the box
-        // For full cinematic reverb, consider: convolver effects, multiple delay lines, or external libraries
-        if let Some(_m) = &mut self.manager {
-            // In a full implementation:
-            // m.main_track().set_effect(reverb_effect);
-            log::debug!("Setting reverb with decay {:.2}s, damping {:.2}", _decay, _damping);
+    /// Applies a low-pass filter to the main track (for occlusion/obstruction effect).
+    pub fn set_lowpass_filter(&mut self, cutoff_hz: f32) {
+        if let Some(filter) = self.lowpass.as_mut() {
+            let _ = filter.set_cutoff(cutoff_hz.max(20.0) as f64, Tween::default());
         }
+    }
+
+    /// Applies the occlusion curve to the main-track lowpass (muffled when blocked).
+    pub fn apply_occlusion_lowpass(&mut self, occlusion: f32) {
+        self.set_lowpass_filter(Self::lowpass_cutoff_from_occlusion(occlusion.clamp(0.0, 1.0)));
+    }
+
+    /// Applies reverb decay (seconds) and damping (0..1) to the main-track reverb.
+    pub fn set_reverb(&mut self, decay: f32, damping: f32) {
+        let Some(reverb) = self.reverb.as_mut() else {
+            return;
+        };
+        let tween = reverb_tween();
+        let _ = reverb.set_feedback(feedback_from_decay(decay), tween);
+        let _ = reverb.set_damping(damping.clamp(0.0, 1.0) as f64, tween);
+    }
+
+    /// Drives the main-track reverb from the blended zone preset.
+    ///
+    /// `None` (listener outside every zone) fades the reverb back to fully dry.
+    pub fn apply_reverb(&mut self, preset: Option<&ReverbPreset>) {
+        let Some(reverb) = self.reverb.as_mut() else {
+            return;
+        };
+        let params = preset.map(ReverbParams::from_preset).unwrap_or_default();
+        let tween = reverb_tween();
+        let _ = reverb.set_feedback(params.feedback, tween);
+        let _ = reverb.set_damping(params.damping, tween);
+        let _ = reverb.set_stereo_width(params.stereo_width, tween);
+        let _ = reverb.set_mix(params.mix, tween);
     }
 
     /// Sets the occlusion coefficient for an emitter entity.
-    /// Call from [`crate::systems::occlusion_raycast_system`]; use [`Self::get_emitter_occlusion`]
-    /// when applying volume or low-pass to that emitter's sound.
     pub fn set_emitter_occlusion(&mut self, entity: Entity, coefficient: f32) {
         let c = coefficient.clamp(0.0, 1.0);
         if c > 0.0001 {
@@ -123,16 +317,18 @@ impl AudioContext {
 
     /// Returns the current occlusion coefficient for an emitter (0.0 if unknown or clear).
     pub fn get_emitter_occlusion(&self, entity: Entity) -> f32 {
-        self.occlusion_by_emitter.get(&entity).copied().unwrap_or(0.0)
+        self.occlusion_by_emitter
+            .get(&entity)
+            .copied()
+            .unwrap_or(0.0)
     }
 
     /// Volume multiplier from occlusion (1.0 = no occlusion, lower when occluded).
-    /// Use when scaling a sound's volume: `volume *= audio_ctx.volume_multiplier_from_occlusion(occlusion)`.
     pub fn volume_multiplier_from_occlusion(occlusion: f32) -> f32 {
         (1.0 - occlusion * 0.7).max(0.0)
     }
 
-    /// Suggested low-pass cutoff in Hz from occlusion (20000 = no filter, lower = more muffled).
+    /// Suggested low-pass cutoff in Hz from occlusion.
     pub fn lowpass_cutoff_from_occlusion(occlusion: f32) -> f32 {
         20000.0 * (1.0 - occlusion).max(0.0) + 400.0 * occlusion
     }
@@ -149,7 +345,6 @@ impl AudioContext {
         let to_emitter = emitter_pos - listener_pos;
         let distance = to_emitter.length();
 
-        // Calculate volume attenuation
         let volume = if distance >= max_distance {
             0.0
         } else if distance < 0.1 {
@@ -158,15 +353,17 @@ impl AudioContext {
             ((max_distance - distance) / max_distance).clamp(0.0, 1.0)
         };
 
-        // Calculate pan (left/right) based on cross product with listener forward
         let listener_right = listener_forward.cross(listener_up).normalize();
-        let pan = to_emitter.normalize().dot(listener_right).clamp(-1.0, 1.0);
+        let pan = if to_emitter.length_squared() < 1e-6 {
+            0.0
+        } else {
+            to_emitter.normalize().dot(listener_right).clamp(-1.0, 1.0)
+        };
 
         (volume, pan)
     }
 
     /// Caches decoded sound from asset data and associates it with the handle.
-    /// No-op if this handle is already cached. Returns `true` if the sound was added.
     pub fn add_sound_from_asset(&mut self, handle: Handle<AudioData>, data: &[u8]) -> bool {
         if self.sound_cache.contains_key(&handle.id()) {
             return false;
@@ -190,8 +387,7 @@ impl AudioContext {
         self.sound_cache.contains_key(&handle.id())
     }
 
-    /// Plays a cached sound by handle. Returns a handle to the playing sound if the
-    /// asset was synced and the backend is available.
+    /// Plays a cached sound by handle (main track, unity gain).
     pub fn play_sound_by_handle(&mut self, handle: Handle<AudioData>) -> Option<StaticSoundHandle> {
         let data = self.sound_cache.get(&handle.id())?.clone();
         self.play_sound(data)
@@ -209,9 +405,24 @@ impl AudioContext {
     }
 }
 
+/// Inserts [`AudioContext`] into the world if missing and returns a mutable borrow.
+///
+/// ```ignore
+/// let audio = with_audio(&mut world);
+/// audio.mixer.bus_mut(MixerBusId::Music).set_volume(0.6);
+/// audio.sync_mixer();
+/// audio.play_sfx("dash", 1.0);
+/// ```
+pub fn with_audio(world: &mut World) -> &mut AudioContext {
+    if world.get_resource::<AudioContext>().is_none() {
+        world.insert_resource(AudioContext::new());
+    }
+    world
+        .get_resource_mut::<AudioContext>()
+        .expect("AudioContext just inserted")
+}
+
 /// Syncs loaded [`AudioData`] assets from the asset manager into the audio context.
-/// Call each frame after `asset_manager.update(world)`. For each handle in the slice,
-/// if the asset is ready and not yet cached, decodes and caches it.
 pub fn sync_assets_to_audio(
     audio_ctx: &mut AudioContext,
     asset_manager: &redox_asset::AssetManager,
@@ -233,10 +444,63 @@ impl Default for AudioContext {
     }
 }
 
-// Note: AudioManager is not Send+Sync by default in all kira backends.
-// We wrap it in Option to handle the case where the backend doesn't initialize.
-// For ECS resource storage we need Send + Sync, which AudioManager<DefaultBackend>
-// provides on most platforms.
+fn fxhash_name(name: &str) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in name.as_bytes() {
+        h ^= u64::from(*b);
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    // Keep out of the low asset-id range used by the asset manager when possible.
+    h | 0xA000_0000_0000_0000
+}
+
+/// Kira reverb parameters derived from a [`ReverbPreset`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ReverbParams {
+    pub feedback: f64,
+    pub damping: f64,
+    pub stereo_width: f64,
+    /// Wet share, 0.0 = fully dry.
+    pub mix: f64,
+}
+
+impl Default for ReverbParams {
+    /// Fully dry: used when the listener is outside every reverb zone.
+    fn default() -> Self {
+        Self {
+            feedback: 0.5,
+            damping: 0.5,
+            stereo_width: 1.0,
+            mix: 0.0,
+        }
+    }
+}
+
+impl ReverbParams {
+    /// Maps decay time to feedback, `level` (dB) to the wet mix.
+    pub fn from_preset(preset: &ReverbPreset) -> Self {
+        // Half of full scale at 0 dB keeps loud presets from drowning the dry signal.
+        let wet = 10f64.powf(f64::from(preset.level) / 20.0).clamp(0.0, 1.0) * 0.5;
+        Self {
+            feedback: feedback_from_decay(preset.decay_time),
+            damping: f64::from(preset.damping.clamp(0.0, 1.0)),
+            stereo_width: f64::from(preset.width.clamp(0.0, 1.0)),
+            mix: wet,
+        }
+    }
+}
+
+/// Decay time in seconds -> kira feedback (0.5 .. 0.95; 1.0 would ring forever).
+fn feedback_from_decay(decay_seconds: f32) -> f64 {
+    0.5 + 0.45 * f64::from((decay_seconds / 10.0).clamp(0.0, 1.0))
+}
+
+fn reverb_tween() -> Tween {
+    Tween {
+        duration: std::time::Duration::from_millis(250),
+        ..Tween::default()
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -244,11 +508,9 @@ mod tests {
 
     #[test]
     fn context_creation_does_not_panic() {
-        // This may or may not have an audio device in CI, so we just verify
-        // that creation doesn't panic.
         let ctx = AudioContext::new();
-        // In a no-audio environment, manager will be None.
         let _ = ctx.is_available();
+        assert!((ctx.mixer.routed_gain(MixerBusId::Sfx) - 1.0).abs() < 0.01);
     }
 
     #[test]
@@ -258,5 +520,42 @@ mod tests {
         assert!((ctx.master_volume - 1.0).abs() < 0.001);
         ctx.set_master_volume(-0.5);
         assert!((ctx.master_volume - 0.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn play_sfx_unknown_is_none() {
+        let mut ctx = AudioContext::new();
+        assert!(ctx.play_sfx("missing", 1.0).is_none());
+    }
+
+    #[test]
+    fn with_audio_inserts_resource() {
+        let mut world = World::new();
+        let _ = with_audio(&mut world);
+        assert!(world.get_resource::<AudioContext>().is_some());
+    }
+
+    #[test]
+    fn reverb_params_scale_with_preset() {
+        let cathedral = ReverbParams::from_preset(&ReverbPreset::cathedral());
+        let studio = ReverbParams::from_preset(&ReverbPreset::studio());
+        assert!(cathedral.feedback > studio.feedback);
+        assert!(cathedral.feedback <= 0.95 && studio.feedback >= 0.5);
+        assert!((0.0..=1.0).contains(&cathedral.mix));
+    }
+
+    #[test]
+    fn no_zone_means_dry_reverb() {
+        assert_eq!(ReverbParams::default().mix, 0.0);
+    }
+
+    #[test]
+    fn lowpass_follows_occlusion() {
+        let clear = AudioContext::lowpass_cutoff_from_occlusion(0.0);
+        let blocked = AudioContext::lowpass_cutoff_from_occlusion(1.0);
+        assert!(clear > 10_000.0);
+        assert!(blocked < 1_000.0);
+        let mut ctx = AudioContext::new();
+        ctx.apply_occlusion_lowpass(0.8);
     }
 }

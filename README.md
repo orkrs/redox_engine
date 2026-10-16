@@ -82,7 +82,7 @@ The repository is a Cargo workspace. Each domain lives in its own crate with a m
 
 ### `crates/redox_render`
 - The GPU renderer: owns `wgpu` device creation, surface management, and all render passes.  
-- Implements clustered forward lighting, TAAU, SSAO, CSM shadows, local shadow atlas, and Virtual Geometry.  
+- Implements clustered forward lighting, TAAU, GTAO, CSM shadows, local shadow atlas, and Virtual Geometry.  
 - Contains the shader source manager and GPU‑side structs for lights and materials.
 
 ### `crates/redox_ecs`
@@ -135,7 +135,7 @@ The engine outputs HDR lighting to an FP16 render target.
 3. Render shadow maps (CSM + local atlas).  
 4. Render main HDR color buffer (forward pass).  
 5. Render normal buffer.  
-6. Generate SSAO.  
+6. Generate GTAO (bent normal + ambient occlusion).  
 7. Generate velocity buffer.  
 8. TAA resolve.  
 9. Tone mapping (with constrained sharpening).  
@@ -222,7 +222,7 @@ The renderer includes an experimental **Virtual Geometry** pipeline:
 - **HDR rendering** to FP16 texture.  
 - **Constrained sharpening** (contrast‑adaptive, clamped) applied just before tone mapping.  
 - **Tone mapping** using a simple Reinhard‑like curve.  
-- **SSAO**: uses the normal buffer, a noise texture, and a kernel; followed by a bilateral blur.
+- **GTAO**: samples the depth/normal prepass with a noise texture at reduced resolution, then blurs and upsamples the result; the pass is skipped (AO = 1.0) when disabled.
 
 ---
 
@@ -288,3 +288,30 @@ Run it with:
 ```bash
 cargo run --example dino_runner -p redox_core
 ```
+
+## 17) Build and run
+
+Requires a stable Rust toolchain and a GPU with Vulkan, DX12 or Metal.
+
+```bash
+cargo check --workspace
+cargo test -p redox_ecs -p redox_audio -p redox_render -p redox_anim
+cargo run --example prism_vault -p redox_core --release   # flagship showcase
+cargo run --example showcase -p redox_core
+cargo run --example dino_runner -p redox_core
+```
+
+Generate a procedural world with the PCG CLI:
+
+```bash
+cargo run -p redox_scene --bin pcg -- --out worlds/arena --kind arena --width 6 --height 6 --cell-size 16 --seed 42
+```
+
+The `redox_render/shader-hot-reload` feature makes `shader::load` read WGSL from disk,
+but pipelines are not rebuilt automatically yet.
+
+## 18) Status and known limitations
+
+See `ARCHITECTURE_REALITY.md` and `PROGRESS.md` for the current state of each system.
+Known gaps: DDGI probes are filled on the CPU (no ray tracing), the editor `--bake`
+command is a stub, and shader hot-reload has no pipeline-rebuild watcher.
