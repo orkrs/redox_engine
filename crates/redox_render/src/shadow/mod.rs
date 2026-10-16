@@ -11,7 +11,6 @@ pub mod page_table;
 pub mod shadow_atlas;
 pub mod smrt;
 pub mod vsm_clipmap;
-pub mod visibility;
 
 pub use atlas_allocator::{
     MAX_CASTERS, NO_TILE, ShadowAtlasAllocator, TILE_PX, TILES_PER_AXIS, TOTAL_TILES, ATLAS_PX,
