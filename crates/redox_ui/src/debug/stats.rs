@@ -189,7 +189,7 @@ impl StatsPanel {
                 .map(|(i, &v)| [i as f64, v])
                 .collect();
 
-            let line = Line::new(points)
+            let line = Line::new("frame_ms", points)
                 .color(egui::Color32::from_rgb(100, 200, 255))
                 .name("FPS");
 

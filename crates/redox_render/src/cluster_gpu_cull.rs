@@ -42,8 +42,8 @@ impl ClusterGpuCull {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("cluster_cull_pipeline_layout"),
-            bind_group_layouts: &[&bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bgl)],
+            immediate_size: 0,
         });
 
         let shader = create_shader_module(
@@ -52,10 +52,11 @@ impl ClusterGpuCull {
             CLUSTER_CULL_LIGHTS_WGSL,
         );
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            cache: None,
             label: Some("cluster_cull_pipeline"),
             layout: Some(&pipeline_layout),
             module: &shader,
-            entry_point: "main",
+            entry_point: Some("main"),
             compilation_options: Default::default(),
         });
 

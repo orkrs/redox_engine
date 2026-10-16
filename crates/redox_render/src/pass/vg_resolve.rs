@@ -55,24 +55,25 @@ impl VgVisPass {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("vg_vis_pipeline_layout"),
-            bind_group_layouts: &[frame_bgl, &vis_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(frame_bgl), Some(&vis_bgl)],
+            immediate_size: 0,
         });
 
         let shader = create_shader_with_vertex_decode(device, "vg_vis_shader", VG_VIS_WGSL);
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
             label: Some("vg_vis_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[CompressedVertex::buffer_layout()],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[
                     Some(wgpu::ColorTargetState {
                         format: VIS_ID_FORMAT,
@@ -100,13 +101,13 @@ impl VgVisPass {
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: depth_format,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::LessEqual,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::LessEqual),
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
         });
 
         Self { pipeline, vis_bgl }
@@ -236,24 +237,25 @@ impl VgResolvePass {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("vg_resolve_pipeline_layout"),
-            bind_group_layouts: &[frame_bgl, scene_bgl, &resolve_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(frame_bgl), Some(scene_bgl), Some(&resolve_bgl)],
+            immediate_size: 0,
         });
 
         let shader = create_shader_module(device, "vg_resolve_shader", VG_RESOLVE_WGSL);
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
             label: Some("vg_resolve_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: hdr_format,
                     blend: Some(wgpu::BlendState::REPLACE),
@@ -264,7 +266,7 @@ impl VgResolvePass {
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
             multisample: multisample_state(sample_count),
-            multiview: None,
+            multiview_mask: None,
         });
 
         Self {
@@ -467,8 +469,8 @@ impl VgShadowPass {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("vg_shadow_pipeline_layout"),
-            bind_group_layouts: &[&shadow_bgl, &instances_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&shadow_bgl), Some(&instances_bgl)],
+            immediate_size: 0,
         });
 
         let shader = create_shader_with_vertex_decode(
@@ -478,11 +480,12 @@ impl VgShadowPass {
         );
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
             label: Some("vg_shadow_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[CompressedVertex::buffer_layout()],
                 compilation_options: Default::default(),
             },
@@ -495,8 +498,8 @@ impl VgShadowPass {
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: depth_format,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::LessEqual,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::LessEqual),
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState {
                     constant: 2,
@@ -505,7 +508,7 @@ impl VgShadowPass {
                 },
             }),
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
         });
 
         Self {

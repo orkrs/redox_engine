@@ -53,16 +53,17 @@ impl DebugLinesPass {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("debug_lines_layout"),
-            bind_group_layouts: &[camera_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(camera_bgl)],
+            immediate_size: 0,
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
             label: Some("debug_lines_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: Self::VERTEX_SIZE,
                     step_mode: wgpu::VertexStepMode::Vertex,
@@ -83,7 +84,7 @@ impl DebugLinesPass {
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: wgpu::TextureFormat::Rgba16Float,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -102,13 +103,13 @@ impl DebugLinesPass {
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: false,
-                depth_compare: wgpu::CompareFunction::LessEqual,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::LessEqual),
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
             multisample: multisample_state(sample_count),
-            multiview: None,
+            multiview_mask: None,
         });
 
         let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {

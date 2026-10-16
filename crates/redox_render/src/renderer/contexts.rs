@@ -34,6 +34,7 @@ pub fn record_normal_prepass(
     let mut normal_render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("normal_pass_parallel"),
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            depth_slice: None,
             view: ctx.normal_view,
             resolve_target: None,
             ops: wgpu::Operations {
@@ -56,6 +57,7 @@ pub fn record_normal_prepass(
         }),
         timestamp_writes: None,
         occlusion_query_set: None,
+        multiview_mask: None,
     });
 
     normal_render_pass.set_pipeline(&ctx.normal_pass.pipeline);
@@ -146,6 +148,7 @@ pub fn record_point_atlas_shadows(
             }),
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         });
         shadow_pass.set_pipeline(&ctx.shadow_pass.pipeline);
         shadow_pass.set_bind_group(1, ctx.shadow_model_bind_group, &[]);
@@ -216,6 +219,7 @@ pub fn record_vsm_pages(
         let mut page_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("vsm_page_depth"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                depth_slice: None,
                 view: &ctx.vsm_pages_views[phys as usize],
                 resolve_target: None,
                 ops: wgpu::Operations {
@@ -226,6 +230,7 @@ pub fn record_vsm_pages(
             depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         });
         page_pass.set_pipeline(&ctx.vsm_depth_pass.pipeline);
         page_pass.set_bind_group(0, ctx.vsm_pageinfo_bg, &[(page_ord as u32) * 256]);

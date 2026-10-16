@@ -12,10 +12,9 @@ impl Renderer {
         let size = window.inner_size();
 
         // --- Instance ---
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
+        let mut instance_desc = wgpu::InstanceDescriptor::new_without_display_handle();
+        instance_desc.backends = wgpu::Backends::all();
+        let instance = wgpu::Instance::new(instance_desc);
 
         // --- Surface ---
         let surface = instance
@@ -36,11 +35,8 @@ impl Renderer {
 
         // --- Device & Queue ---
         let mut required_features = wgpu::Features::empty();
-        if adapter
-            .features()
-            .contains(wgpu::Features::SHADER_PRIMITIVE_INDEX)
-        {
-            required_features |= wgpu::Features::SHADER_PRIMITIVE_INDEX;
+        if adapter.features().contains(wgpu::Features::PRIMITIVE_INDEX) {
+            required_features |= wgpu::Features::PRIMITIVE_INDEX;
         }
         // Rgba16Float MSAA×2 needs adapter-specific format features (WebGPU baseline is ×1/×4 only).
         if adapter
@@ -51,14 +47,12 @@ impl Renderer {
         }
         required_features |= adapter.features() & crate::profiler::PROFILER_FEATURES;
         let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("redox_device"),
-                    required_features,
-                    required_limits: wgpu::Limits::default(),
-                },
-                None,
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("redox_device"),
+                required_features,
+                required_limits: wgpu::Limits::default(),
+                ..Default::default()
+            })
             .await
             .expect("Failed to create device");
 
@@ -177,7 +171,7 @@ impl Renderer {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             compare: Some(wgpu::CompareFunction::LessEqual),
             ..Default::default()
         });
@@ -252,7 +246,7 @@ impl Renderer {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             ..Default::default()
         });
 
@@ -349,7 +343,7 @@ impl Renderer {
             address_mode_w: wgpu::AddressMode::Repeat,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
 
@@ -434,7 +428,7 @@ impl Renderer {
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             ..Default::default()
         });
 
@@ -444,7 +438,7 @@ impl Renderer {
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             ..Default::default()
         });
 
@@ -454,7 +448,7 @@ impl Renderer {
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             ..Default::default()
         });
 

@@ -100,15 +100,15 @@ impl EntityPicker {
             label: Some("picker_read"),
         });
         encoder.copy_texture_to_buffer(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 texture: tex,
                 mip_level: 0,
                 origin: wgpu::Origin3d { x, y, z: 0 },
                 aspect: wgpu::TextureAspect::All,
             },
-            wgpu::ImageCopyBuffer {
+            wgpu::TexelCopyBufferInfo {
                 buffer: &buf,
-                layout: wgpu::ImageDataLayout {
+                layout: wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(256),
                     rows_per_image: Some(1),
@@ -132,7 +132,7 @@ impl EntityPicker {
         let deadline = Instant::now() + GPU_PICK_TIMEOUT;
         let map_ok = loop {
             // Safe polling only — never `Maintain::Wait`.
-            device.poll(wgpu::Maintain::Poll);
+            let _ = device.poll(wgpu::PollType::Poll);
             match receiver.try_recv() {
                 Ok(Ok(())) => break true,
                 Ok(Err(_)) => break false,
@@ -189,15 +189,15 @@ impl EntityPicker {
             label: Some("picker_try_read"),
         });
         encoder.copy_texture_to_buffer(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 texture: tex,
                 mip_level: 0,
                 origin: wgpu::Origin3d { x, y, z: 0 },
                 aspect: wgpu::TextureAspect::All,
             },
-            wgpu::ImageCopyBuffer {
+            wgpu::TexelCopyBufferInfo {
                 buffer: &buf,
-                layout: wgpu::ImageDataLayout {
+                layout: wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(256),
                     rows_per_image: Some(1),
@@ -216,7 +216,7 @@ impl EntityPicker {
         slice.map_async(wgpu::MapMode::Read, move |r| {
             let _ = sender.send(r);
         });
-        device.poll(wgpu::Maintain::Poll);
+        let _ = device.poll(wgpu::PollType::Poll);
 
         match receiver.try_recv() {
             Ok(Ok(())) => {

@@ -4,13 +4,15 @@
 //! Dino Game 3D — Side-scroller Ultra Edition
 //! Fixes: Input cycle, Vulkan Sync, Side-view camera, High Jump.
 
+// winit 0.30 deprecates the closure event loop; migrating to `ApplicationHandler` is tracked in the roadmap.
+#![allow(deprecated)]
+
 use std::sync::Arc;
 use std::time::Instant;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::EventLoop,
     keyboard::KeyCode,
-    window::WindowBuilder,
 };
 
 use redox_asset::{AssetManager, Handle};
@@ -95,10 +97,13 @@ fn main() {
 async fn run() {
     let event_loop = EventLoop::new().unwrap();
     let window = Arc::new(
-        WindowBuilder::new()
-            .with_title("RedOx Engine — Dino Ultra 2.5D")
-            .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
-            .build(&event_loop)
+        #[allow(deprecated)]
+        event_loop
+            .create_window(
+                winit::window::Window::default_attributes()
+                    .with_title("RedOx Engine — Dino Ultra 2.5D")
+                    .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0)),
+            )
             .unwrap(),
     );
 
@@ -372,7 +377,7 @@ async fn run() {
                 render_ctx.update_model_buffer(&render_objects);
 
                 // --- РЕНДЕР ПАССЫ (Vulkan-safe sequence) ---
-                let output = render_ctx.surface().get_current_texture().unwrap();
+                let output = redox_render::acquire_surface_texture(render_ctx.surface()).unwrap();
                 let view = output
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
@@ -431,6 +436,7 @@ async fn run() {
                     let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("HDR Scene"),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            depth_slice: None,
                             view: &render_ctx.hdr_view,
                             resolve_target: None,
                             ops: wgpu::Operations {
@@ -461,6 +467,7 @@ async fn run() {
                     let mut f_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("Final"),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            depth_slice: None,
                             view: &view,
                             resolve_target: None,
                             ops: wgpu::Operations {

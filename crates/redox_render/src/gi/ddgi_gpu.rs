@@ -147,15 +147,16 @@ impl DdgiGpu {
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("ddgi_trace_layout"),
-            bind_group_layouts: &[&trace_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&trace_bgl)],
+            immediate_size: 0,
         });
         let shader = create_shader_module(device, "ddgi_trace", DDGI_TRACE_WGSL);
         let trace_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            cache: None,
             label: Some("ddgi_trace_pipeline"),
             layout: Some(&layout),
             module: &shader,
-            entry_point: "main",
+            entry_point: Some("main"),
             compilation_options: Default::default(),
         });
         let trace_params = device.create_buffer(&wgpu::BufferDescriptor {

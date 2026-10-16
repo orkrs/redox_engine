@@ -85,14 +85,15 @@ impl PageRequestPass {
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("vsm_request_layout"),
-            bind_group_layouts: &[&bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bgl)],
+            immediate_size: 0,
         });
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            cache: None,
             label: Some("vsm_request_pipeline"),
             layout: Some(&layout),
             module: &shader,
-            entry_point: "cs_request",
+            entry_point: Some("cs_request"),
             compilation_options: Default::default(),
         });
         let params = device.create_buffer(&wgpu::BufferDescriptor {
@@ -138,7 +139,7 @@ impl PageRequestPass {
 
     /// Harvests a finished readback. Call once per frame before using [`Self::latest_bits`].
     pub fn begin_frame(&mut self, device: &wgpu::Device) {
-        device.poll(wgpu::Maintain::Poll);
+        let _ = device.poll(wgpu::PollType::Poll);
         if let Readback::Mapping(done) = &self.state
             && done.load(Ordering::Acquire)
         {
@@ -232,7 +233,7 @@ impl PageRequestPass {
             });
         self.state = Readback::Mapping(done);
         if block {
-            device.poll(wgpu::Maintain::Wait);
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
             if let Readback::Mapping(done) = &self.state
                 && done.load(Ordering::Acquire)
             {

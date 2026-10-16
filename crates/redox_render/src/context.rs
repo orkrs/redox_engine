@@ -37,12 +37,15 @@ impl RenderContext {
         &mut self,
         fv: &FrameView<'_>,
         surface_view: &wgpu::TextureView,
-    ) -> Result<(), wgpu::SurfaceError> {
+    ) -> Result<(), crate::surface::SurfaceError> {
         self.0.render_frame_view(fv, surface_view)
     }
 
     /// Legacy single-call render (acquires surface texture internally).
-    pub fn render_frame(&mut self, objects: &[RenderObject]) -> Result<(), wgpu::SurfaceError> {
+    pub fn render_frame(
+        &mut self,
+        objects: &[RenderObject],
+    ) -> Result<(), crate::surface::SurfaceError> {
         self.0.render_frame(objects)
     }
 

@@ -118,7 +118,7 @@ impl GpuProfiler {
         if !self.is_enabled() {
             return;
         }
-        device.poll(wgpu::Maintain::Poll);
+        let _ = device.poll(wgpu::PollType::Poll);
         if let Readback::Mapping(done) = &self.state
             && done.load(Ordering::Acquire)
         {

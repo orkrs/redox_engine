@@ -171,8 +171,11 @@ impl EditorApp {
             let window_clone = self.window.clone();
             let boot = pollster::block_on(SharedGpu::request(window_clone));
             let host = RenderHost::new(boot.device, boot.queue, &boot.shared.adapter, 1280, 720);
-            let mut renderer =
-                egui_wgpu::Renderer::new(host.device(), boot.shared.config.format, None, 1);
+            let mut renderer = egui_wgpu::Renderer::new(
+                host.device(),
+                boot.shared.config.format,
+                egui_wgpu::RendererOptions::default(),
+            );
             let lp = ViewportLinesPass::new(host.device());
             let tex_id = renderer.register_native_texture(
                 host.device(),
@@ -508,9 +511,9 @@ impl EditorApp {
             label: Some("editor_encoder"),
         });
         renderer.update_buffers(dev, que, &mut encoder, &tris, &screen_desc);
-        let frame = match surf.get_current_texture() {
+        let frame = match redox_render::acquire_surface_texture(surf) {
             Ok(f) => f,
-            Err(wgpu::SurfaceError::Lost) => {
+            Err(redox_render::SurfaceError::Lost) => {
                 surf.configure(dev, cfg);
                 return;
             }
@@ -521,9 +524,10 @@ impl EditorApp {
         };
         let view = frame.texture.create_view(&Default::default());
         {
-            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("editor_egui_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -539,7 +543,9 @@ impl EditorApp {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
+            let mut rpass = rpass.forget_lifetime();
             renderer.render(&mut rpass, &tris, &screen_desc);
         }
         for id in &full_output.textures_delta.free {

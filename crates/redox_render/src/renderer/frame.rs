@@ -8,11 +8,12 @@ mod shadows;
 impl Renderer {
     /// Returns the next available swap-chain texture so callers can render
     /// 3D + UI into the same surface before calling `present()` once.
-    pub fn surface_texture(&self) -> Result<wgpu::SurfaceTexture, wgpu::SurfaceError> {
-        self.surface
-            .as_ref()
-            .ok_or(wgpu::SurfaceError::Lost)?
-            .get_current_texture()
+    pub fn surface_texture(&self) -> Result<wgpu::SurfaceTexture, crate::surface::SurfaceError> {
+        crate::surface::acquire_surface_texture(
+            self.surface
+                .as_ref()
+                .ok_or(crate::surface::SurfaceError::Lost)?,
+        )
     }
 
     /// Renders all 3D passes into `surface_view`.
@@ -23,7 +24,7 @@ impl Renderer {
         &mut self,
         objects: &[RenderObject],
         surface_view: &wgpu::TextureView,
-    ) -> Result<(), wgpu::SurfaceError> {
+    ) -> Result<(), crate::surface::SurfaceError> {
         self.ddgi_gpu.update(
             &self.queue,
             1.0 / 60.0,
@@ -378,6 +379,7 @@ impl Renderer {
                 ),
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
 
             // Skybox background:
@@ -414,6 +416,7 @@ impl Renderer {
                             label: Some("vg_vis_pass"),
                             color_attachments: &[
                                 Some(wgpu::RenderPassColorAttachment {
+                                    depth_slice: None,
                                     view: &self.vg_vis_targets.id_view,
                                     resolve_target: None,
                                     ops: wgpu::Operations {
@@ -430,6 +433,7 @@ impl Renderer {
                                     },
                                 }),
                                 Some(wgpu::RenderPassColorAttachment {
+                                    depth_slice: None,
                                     view: &self.vg_vis_targets.normal_depth_view,
                                     resolve_target: None,
                                     ops: wgpu::Operations {
@@ -438,6 +442,7 @@ impl Renderer {
                                     },
                                 }),
                                 Some(wgpu::RenderPassColorAttachment {
+                                    depth_slice: None,
                                     view: &self.vg_vis_targets.uv_view,
                                     resolve_target: None,
                                     ops: wgpu::Operations {
@@ -458,6 +463,7 @@ impl Renderer {
                             ),
                             timestamp_writes: None,
                             occlusion_query_set: None,
+                            multiview_mask: None,
                         });
                         vg.draw_vis_indirect(
                             &mut vis_pass,
@@ -481,6 +487,7 @@ impl Renderer {
                                 depth_stencil_attachment: None,
                                 timestamp_writes: None,
                                 occlusion_query_set: None,
+                                multiview_mask: None,
                             });
                         self.vg_resolve_pass.draw(
                             &mut resolve_pass,
@@ -506,6 +513,7 @@ impl Renderer {
                 depth_stencil_attachment: Some(self.geometry_depth_attachment(wgpu::LoadOp::Load)),
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             if vg.has_content() {
                 vg.render(&mut render_pass);
@@ -534,6 +542,7 @@ impl Renderer {
                     ),
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
             self.record_draw_transparent(
                 &mut transparent_render_pass,
@@ -556,6 +565,7 @@ impl Renderer {
             let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("reactive_clear"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: reactive,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -566,6 +576,7 @@ impl Renderer {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
         }
         if let Some(ps) = &self.particle_system
@@ -590,13 +601,13 @@ impl Renderer {
         // Copy current depth → prev depth for next frame's TAA disocclusion test.
         if self.taa_enabled {
             encoder.copy_texture_to_texture(
-                wgpu::ImageCopyTexture {
+                wgpu::TexelCopyTextureInfo {
                     texture: &self.depth_texture,
                     mip_level: 0,
                     origin: wgpu::Origin3d::ZERO,
                     aspect: wgpu::TextureAspect::DepthOnly,
                 },
-                wgpu::ImageCopyTexture {
+                wgpu::TexelCopyTextureInfo {
                     texture: &self.prev_depth_texture,
                     mip_level: 0,
                     origin: wgpu::Origin3d::ZERO,
@@ -648,7 +659,7 @@ impl Renderer {
         &mut self,
         fv: &FrameView<'_>,
         surface_view: &wgpu::TextureView,
-    ) -> Result<(), wgpu::SurfaceError> {
+    ) -> Result<(), crate::surface::SurfaceError> {
         self.camera_near = fv.camera.near;
         self.camera_far = fv.camera.far;
         let mut light_u = fv.lights.to_legacy_uniform();
@@ -659,12 +670,15 @@ impl Renderer {
         self.render_frame_into(fv.objects, surface_view)
     }
 
-    pub fn render_frame(&mut self, objects: &[RenderObject]) -> Result<(), wgpu::SurfaceError> {
-        let output = self
-            .surface
-            .as_ref()
-            .ok_or(wgpu::SurfaceError::Lost)?
-            .get_current_texture()?;
+    pub fn render_frame(
+        &mut self,
+        objects: &[RenderObject],
+    ) -> Result<(), crate::surface::SurfaceError> {
+        let output = crate::surface::acquire_surface_texture(
+            self.surface
+                .as_ref()
+                .ok_or(crate::surface::SurfaceError::Lost)?,
+        )?;
         let surface_view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());

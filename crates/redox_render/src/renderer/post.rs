@@ -25,6 +25,7 @@ impl Renderer {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("scatter_light_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: &self.hdr_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -35,6 +36,7 @@ impl Renderer {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             self.scatter_light_pass
                 .draw(&mut pass, &self.scatter_light_bind_group);
@@ -71,6 +73,7 @@ impl Renderer {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("bloom_downsample"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: &self.bloom_mip_views[i],
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -81,6 +84,7 @@ impl Renderer {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             pass.set_pipeline(pipeline);
             pass.set_bind_group(0, bg, &[]);
@@ -91,6 +95,7 @@ impl Renderer {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("bloom_upsample"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: &self.bloom_mip_views[i],
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -101,6 +106,7 @@ impl Renderer {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             pass.set_pipeline(&self.bloom_pass.upsample_pipeline);
             pass.set_bind_group(0, &self.bloom_up_bgs[i], &[]);

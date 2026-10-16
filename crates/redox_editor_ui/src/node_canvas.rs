@@ -328,6 +328,7 @@ impl NodeCanvas {
             frame,
             4.0,
             egui::Stroke::new(1.0, egui::Color32::from_gray(70)),
+            egui::StrokeKind::Inside,
         );
         painter.text(
             frame.left_top() + egui::vec2(6.0, 4.0),
@@ -569,6 +570,7 @@ impl NodeCanvas {
                     r,
                     6.0,
                     egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 255, 140)),
+                    egui::StrokeKind::Inside,
                 );
             }
             let label = if self.mode == GraphMode::AnimGraph && node.id == 2 {
@@ -677,8 +679,8 @@ mod tests {
         let ctx = egui::Context::default();
         let mut shapes_with_preview = 0;
         for _ in 0..3 {
-            let output = ctx.run(egui::RawInput::default(), |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| {
+            let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                egui::CentralPanel::default().show(ui, |ui| {
                     canvas.show(ui, None, None, None, None, 1.0 / 60.0);
                 });
             });

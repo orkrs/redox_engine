@@ -67,6 +67,7 @@ impl Renderer {
         let resolve = msaa_sample_count > 1 && resolve_pass == this_pass;
         if msaa_sample_count > 1 {
             wgpu::RenderPassColorAttachment {
+                depth_slice: None,
                 view: hdr_msaa_view,
                 resolve_target: if resolve { Some(hdr_view) } else { None },
                 ops: wgpu::Operations {
@@ -80,6 +81,7 @@ impl Renderer {
             }
         } else {
             wgpu::RenderPassColorAttachment {
+                depth_slice: None,
                 view: hdr_view,
                 resolve_target: None,
                 ops: wgpu::Operations {

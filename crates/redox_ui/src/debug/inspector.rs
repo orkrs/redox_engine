@@ -80,7 +80,7 @@ impl EntityInspector {
 
         // ── archetype list ───────────────────────────────────────────────────
         egui::ScrollArea::vertical()
-            .id_source("inspector_scroll")
+            .id_salt("inspector_scroll")
             .show(ui, |ui| {
                 for (arch_idx, type_ids, entities) in world.archetype_iter() {
                     if entities.is_empty() {
@@ -91,7 +91,7 @@ impl EntityInspector {
                     let is_open = self.selected_archetype == Some(arch_idx);
 
                     let response = egui::CollapsingHeader::new(&header)
-                        .id_source(arch_idx)
+                        .id_salt(arch_idx)
                         .default_open(is_open)
                         .show(ui, |ui| {
                             for &entity in entities {
@@ -101,7 +101,7 @@ impl EntityInspector {
                                     entity.generation()
                                 );
                                 egui::CollapsingHeader::new(&eid)
-                                    .id_source(egui::Id::new(arch_idx).with(entity.id()))
+                                    .id_salt(egui::Id::new(arch_idx).with(entity.id()))
                                     .show(ui, |ui| {
                                         draw_entity_components(ui, world, entity, type_ids);
                                     });
@@ -168,7 +168,7 @@ fn draw_entity_components(
         if *tid == TypeId::of::<Transform>() {
             if let Some(tf) = world.get_component::<Transform>(entity) {
                 egui::CollapsingHeader::new("Transform")
-                    .id_source(egui::Id::new(entity.id()).with("transform"))
+                    .id_salt(egui::Id::new(entity.id()).with("transform"))
                     .default_open(true)
                     .show(ui, |ui| {
                         draw_transform(ui, tf);

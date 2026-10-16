@@ -3,14 +3,14 @@
 use std::sync::Arc;
 use winit::dpi::LogicalSize;
 use winit::event_loop::EventLoop;
-use winit::window::{Fullscreen, Window, WindowBuilder};
+use winit::window::{Fullscreen, Window};
 
 use crate::config::EngineConfig;
 
 /// Creates an event loop and a configured winit window.
 pub fn create_window(config: &EngineConfig) -> (EventLoop<()>, Arc<Window>) {
     let event_loop = EventLoop::new().unwrap();
-    let mut builder = WindowBuilder::new()
+    let mut builder = Window::default_attributes()
         .with_title(config.window_title.clone())
         .with_inner_size(LogicalSize::new(
             config.window_width as f64,
@@ -22,8 +22,11 @@ pub fn create_window(config: &EngineConfig) -> (EventLoop<()>, Arc<Window>) {
         builder = builder.with_fullscreen(Some(Fullscreen::Borderless(None)));
     }
 
-    let window = builder
-        .build(&event_loop)
+    // winit 0.30 deprecates creating windows outside `ApplicationHandler::resumed`; the
+    // engine still uses the closure-based loop (migration tracked in the roadmap).
+    #[allow(deprecated)]
+    let window = event_loop
+        .create_window(builder)
         .expect("Failed to create winit window");
 
     (event_loop, Arc::new(window))

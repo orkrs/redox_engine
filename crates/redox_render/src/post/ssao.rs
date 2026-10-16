@@ -131,23 +131,24 @@ impl SSAOPass {
         let gtao_fmt = wgpu::TextureFormat::Rgba16Float;
         let shader = create_shader_module(device, "gtao_shader", GTAO_WGSL);
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
             label: Some("gtao_pipeline"),
             layout: Some(
                 &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("gtao_pipeline_layout"),
-                    bind_group_layouts: &[&bind_group_layout],
-                    push_constant_ranges: &[],
+                    bind_group_layouts: &[Some(&bind_group_layout)],
+                    immediate_size: 0,
                 }),
             ),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: gtao_fmt,
                     blend: Some(wgpu::BlendState::REPLACE),
@@ -161,28 +162,29 @@ impl SSAOPass {
             },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
         });
 
         let blur_shader = create_shader_module(device, "gtao_blur_shader", GTAO_BLUR_WGSL);
         let blur_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
             label: Some("gtao_blur_pipeline"),
             layout: Some(
                 &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("gtao_blur_pipeline_layout"),
-                    bind_group_layouts: &[&blur_bind_group_layout],
-                    push_constant_ranges: &[],
+                    bind_group_layouts: &[Some(&blur_bind_group_layout)],
+                    immediate_size: 0,
                 }),
             ),
             vertex: wgpu::VertexState {
                 module: &blur_shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &blur_shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: gtao_fmt,
                     blend: Some(wgpu::BlendState::REPLACE),
@@ -196,29 +198,30 @@ impl SSAOPass {
             },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
         });
 
         let upsample_shader =
             create_shader_module(device, "gtao_upsample_shader", GTAO_UPSAMPLE_WGSL);
         let upsample_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
             label: Some("gtao_upsample_pipeline"),
             layout: Some(
                 &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("gtao_upsample_pipeline_layout"),
-                    bind_group_layouts: &[&upsample_bind_group_layout],
-                    push_constant_ranges: &[],
+                    bind_group_layouts: &[Some(&upsample_bind_group_layout)],
+                    immediate_size: 0,
                 }),
             ),
             vertex: wgpu::VertexState {
                 module: &upsample_shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &upsample_shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: gtao_fmt,
                     blend: Some(wgpu::BlendState::REPLACE),
@@ -232,7 +235,7 @@ impl SSAOPass {
             },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
         });
 
         Self {
@@ -321,14 +324,14 @@ impl SSAOPass {
             view_formats: &[],
         });
         queue.write_texture(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
             bytemuck::cast_slice(noise_data),
-            wgpu::ImageDataLayout {
+            wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(4 * 16),
                 rows_per_image: Some(4),
@@ -341,7 +344,7 @@ impl SSAOPass {
             address_mode_v: wgpu::AddressMode::Repeat,
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             ..Default::default()
         });
         crate::resource::texture::Texture {
@@ -412,23 +415,24 @@ impl VsmShadowPass {
 
         let trace_shader = create_shader_module(device, "vsm_shadow_trace", VSM_SHADOW_TRACE_WGSL);
         let trace_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
             label: Some("vsm_shadow_trace_pipeline"),
             layout: Some(
                 &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("vsm_shadow_trace_pl"),
-                    bind_group_layouts: &[&trace_bgl],
-                    push_constant_ranges: &[],
+                    bind_group_layouts: &[Some(&trace_bgl)],
+                    immediate_size: 0,
                 }),
             ),
             vertex: wgpu::VertexState {
                 module: &trace_shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &trace_shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: wgpu::TextureFormat::R16Float,
                     blend: None,
@@ -442,29 +446,30 @@ impl VsmShadowPass {
             },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
         });
 
         let temporal_shader =
             create_shader_module(device, "vsm_shadow_temporal", VSM_SHADOW_TEMPORAL_WGSL);
         let temporal_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
             label: Some("vsm_shadow_temporal_pipeline"),
             layout: Some(
                 &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("vsm_shadow_temporal_pl"),
-                    bind_group_layouts: &[&temporal_bgl],
-                    push_constant_ranges: &[],
+                    bind_group_layouts: &[Some(&temporal_bgl)],
+                    immediate_size: 0,
                 }),
             ),
             vertex: wgpu::VertexState {
                 module: &temporal_shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &temporal_shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: wgpu::TextureFormat::R16Float,
                     blend: None,
@@ -478,7 +483,7 @@ impl VsmShadowPass {
             },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
         });
 
         let pass_uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {

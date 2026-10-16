@@ -125,29 +125,32 @@ impl ParticleGpuSystem {
 
         let sim_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("particle_sim_layout"),
-            bind_group_layouts: &[&sim_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&sim_bgl)],
+            immediate_size: 0,
         });
 
         let reset_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            cache: None,
             label: Some("particle_reset_pipeline"),
             layout: Some(&sim_layout),
             module: &sim_shader,
-            entry_point: "cs_reset",
+            entry_point: Some("cs_reset"),
             compilation_options: Default::default(),
         });
         let sim_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            cache: None,
             label: Some("particle_sim_pipeline"),
             layout: Some(&sim_layout),
             module: &sim_shader,
-            entry_point: "cs_main",
+            entry_point: Some("cs_main"),
             compilation_options: Default::default(),
         });
         let finalize_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            cache: None,
             label: Some("particle_finalize_pipeline"),
             layout: Some(&sim_layout),
             module: &sim_shader,
-            entry_point: "cs_finalize",
+            entry_point: Some("cs_finalize"),
             compilation_options: Default::default(),
         });
 
@@ -202,8 +205,8 @@ impl ParticleGpuSystem {
 
         let draw_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("particle_draw_layout"),
-            bind_group_layouts: &[&draw_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&draw_bgl)],
+            immediate_size: 0,
         });
 
         let blend = wgpu::BlendState {
@@ -220,17 +223,18 @@ impl ParticleGpuSystem {
         };
 
         let draw_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
             label: Some("particle_draw_pipeline"),
             layout: Some(&draw_layout),
             vertex: wgpu::VertexState {
                 module: &draw_shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &draw_shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: hdr_format,
                     blend: Some(blend),
@@ -244,28 +248,29 @@ impl ParticleGpuSystem {
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: DEPTH_FORMAT,
-                depth_write_enabled: false,
-                depth_compare: wgpu::CompareFunction::LessEqual,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::LessEqual),
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
         });
 
         let draw_pipeline_reactive =
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                cache: None,
                 label: Some("particle_draw_pipeline_reactive"),
                 layout: Some(&draw_layout),
                 vertex: wgpu::VertexState {
                     module: &draw_shader,
-                    entry_point: "vs_main",
+                    entry_point: Some("vs_main"),
                     buffers: &[],
                     compilation_options: Default::default(),
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &draw_shader,
-                    entry_point: "fs_main",
+                    entry_point: Some("fs_main"),
                     targets: &[
                         Some(wgpu::ColorTargetState {
                             format: hdr_format,
@@ -286,13 +291,13 @@ impl ParticleGpuSystem {
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: DEPTH_FORMAT,
-                    depth_write_enabled: false,
-                    depth_compare: wgpu::CompareFunction::LessEqual,
+                    depth_write_enabled: Some(false),
+                    depth_compare: Some(wgpu::CompareFunction::LessEqual),
                     stencil: wgpu::StencilState::default(),
                     bias: wgpu::DepthBiasState::default(),
                 }),
                 multisample: wgpu::MultisampleState::default(),
-                multiview: None,
+                multiview_mask: None,
             });
 
         let draw_bind_group =
@@ -490,6 +495,7 @@ impl ParticleGpuSystem {
             if let Some(reactive) = reactive_view {
                 &[
                     Some(wgpu::RenderPassColorAttachment {
+                        depth_slice: None,
                         view: hdr_view,
                         resolve_target: None,
                         ops: wgpu::Operations {
@@ -498,6 +504,7 @@ impl ParticleGpuSystem {
                         },
                     }),
                     Some(wgpu::RenderPassColorAttachment {
+                        depth_slice: None,
                         view: reactive,
                         resolve_target: None,
                         ops: wgpu::Operations {
@@ -508,6 +515,7 @@ impl ParticleGpuSystem {
                 ]
             } else {
                 &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: hdr_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -530,6 +538,7 @@ impl ParticleGpuSystem {
             }),
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         })
     }
 }

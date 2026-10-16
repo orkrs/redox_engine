@@ -274,6 +274,7 @@ impl SmaaPass {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("smaa_edge_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: &self.edges_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -325,6 +326,7 @@ impl SmaaPass {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("smaa_blend_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: &self.blend_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -372,6 +374,7 @@ impl SmaaPass {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("smaa_neighborhood_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: out_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -416,14 +419,14 @@ fn upload_lut(
         view_formats: &[],
     });
     queue.write_texture(
-        wgpu::ImageCopyTexture {
+        wgpu::TexelCopyTextureInfo {
             texture: &texture,
             mip_level: 0,
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
         },
         data,
-        wgpu::ImageDataLayout {
+        wgpu::TexelCopyBufferLayout {
             offset: 0,
             bytes_per_row: Some(bytes_per_pixel * width),
             rows_per_image: Some(height),
@@ -473,21 +476,22 @@ fn create_fullscreen_pipeline(
     let shader = create_shader_module(device, &format!("{label}_shader"), shader_source);
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some(&format!("{label}_layout")),
-        bind_group_layouts: &[bgl],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(bgl)],
+        immediate_size: 0,
     });
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        cache: None,
         label: Some(label),
         layout: Some(&layout),
         vertex: wgpu::VertexState {
             module: &shader,
-            entry_point: "vs_main",
+            entry_point: Some("vs_main"),
             buffers: &[],
             compilation_options: Default::default(),
         },
         fragment: Some(wgpu::FragmentState {
             module: &shader,
-            entry_point: "fs_main",
+            entry_point: Some("fs_main"),
             targets: &[Some(wgpu::ColorTargetState {
                 format: target_format,
                 blend: None,
@@ -501,7 +505,7 @@ fn create_fullscreen_pipeline(
         },
         depth_stencil: None,
         multisample: wgpu::MultisampleState::default(),
-        multiview: None,
+        multiview_mask: None,
     })
 }
 

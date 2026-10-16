@@ -1,5 +1,8 @@
 //! Engine runner and Application builder.
 
+// winit 0.30 deprecates the closure event loop; migrating to `ApplicationHandler` is tracked in the roadmap.
+#![allow(deprecated)]
+
 use std::sync::Arc;
 use std::time::Instant;
 

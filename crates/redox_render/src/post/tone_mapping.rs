@@ -29,11 +29,8 @@ impl Default for TonemapUniform {
 }
 
 /// Pipeline-override constants telling the tone-mapping shader whether the target is sRGB.
-fn output_srgb_constants(format: wgpu::TextureFormat) -> std::collections::HashMap<String, f64> {
-    std::collections::HashMap::from([(
-        "OUTPUT_SRGB".to_string(),
-        if format.is_srgb() { 1.0 } else { 0.0 },
-    )])
+fn output_srgb_constants(format: wgpu::TextureFormat) -> [(&'static str, f64); 1] {
+    [("OUTPUT_SRGB", if format.is_srgb() { 1.0 } else { 0.0 })]
 }
 
 pub fn create_tone_mapping_pipeline(
@@ -87,22 +84,23 @@ pub fn create_tone_mapping_pipeline(
 
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("tone_mapping_pipeline_layout"),
-        bind_group_layouts: &[&bind_group_layout],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(&bind_group_layout)],
+        immediate_size: 0,
     });
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        cache: None,
         label: Some("tone_mapping_pipeline"),
         layout: Some(&layout),
         vertex: wgpu::VertexState {
             module: &shader,
-            entry_point: "vs_main",
+            entry_point: Some("vs_main"),
             buffers: &[],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
             module: &shader,
-            entry_point: "fs_main",
+            entry_point: Some("fs_main"),
             targets: &[Some(wgpu::ColorTargetState {
                 format: output_format,
                 blend: Some(wgpu::BlendState::REPLACE),
@@ -119,7 +117,7 @@ pub fn create_tone_mapping_pipeline(
         },
         depth_stencil: None,
         multisample: wgpu::MultisampleState::default(),
-        multiview: None,
+        multiview_mask: None,
     })
 }
 
@@ -174,22 +172,23 @@ pub fn create_rcas_present_pipeline(
 
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("rcas_present_pipeline_layout"),
-        bind_group_layouts: &[&bind_group_layout],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(&bind_group_layout)],
+        immediate_size: 0,
     });
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        cache: None,
         label: Some("rcas_present_pipeline"),
         layout: Some(&layout),
         vertex: wgpu::VertexState {
             module: &shader,
-            entry_point: "vs_main",
+            entry_point: Some("vs_main"),
             buffers: &[],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
             module: &shader,
-            entry_point: "fs_present_rcas",
+            entry_point: Some("fs_present_rcas"),
             targets: &[Some(wgpu::ColorTargetState {
                 format: output_format,
                 blend: Some(wgpu::BlendState::REPLACE),
@@ -206,7 +205,7 @@ pub fn create_rcas_present_pipeline(
         },
         depth_stencil: None,
         multisample: wgpu::MultisampleState::default(),
-        multiview: None,
+        multiview_mask: None,
     })
 }
 

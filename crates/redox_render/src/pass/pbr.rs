@@ -390,24 +390,30 @@ impl PbrPass {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("pbr_pipeline_layout"),
-            bind_group_layouts: &[&frame_bgl, &scene_bgl, &material_bgl, &model_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[
+                Some(&frame_bgl),
+                Some(&scene_bgl),
+                Some(&material_bgl),
+                Some(&model_bgl),
+            ],
+            immediate_size: 0,
         });
 
         let shader = create_shader_with_vertex_decode(device, "pbr_shader", PBR_WGSL);
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
             label: Some("pbr_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[CompressedVertex::buffer_layout()],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: surface_format,
                     blend: Some(wgpu::BlendState::REPLACE),
@@ -423,13 +429,13 @@ impl PbrPass {
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::LessEqual,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::LessEqual),
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
             multisample: multisample_state(sample_count),
-            multiview: None,
+            multiview_mask: None,
         });
 
         Self {

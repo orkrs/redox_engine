@@ -232,8 +232,19 @@ pub fn create_shader_module(
 }
 
 /// Prepends shared compressed-vertex decode helpers to a pass shader.
+///
+/// WGSL requires `enable ...;` directives before every other item, so they are hoisted
+/// above the prelude.
 pub fn shader_with_vertex_decode(source: &str) -> String {
-    format!("{}\n{source}", resolve_source(VERTEX_COMPRESSED_WGSL))
+    let (enables, body): (Vec<&str>, Vec<&str>) = source
+        .lines()
+        .partition(|l| l.trim_start().starts_with("enable "));
+    format!(
+        "{}\n{}\n{}",
+        enables.join("\n"),
+        resolve_source(VERTEX_COMPRESSED_WGSL),
+        body.join("\n")
+    )
 }
 
 /// Creates a shader module with compressed-vertex decode helpers included.

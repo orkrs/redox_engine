@@ -8,6 +8,9 @@
 //! WASD orbit · Q/E height · Arrows orbit sun · 1 shadows off · 2 VSM ·
 //! 3 toggle point shadows · Space pause · R reset · ESC quit
 
+// winit 0.30 deprecates the closure event loop; migrating to `ApplicationHandler` is tracked in the roadmap.
+#![allow(deprecated)]
+
 use std::f32::consts::TAU;
 use std::time::Instant;
 
@@ -137,7 +140,7 @@ fn main() {
                         let objects = extract_objects(&world, &ctx);
                         let fv = FrameView::new(&camera, &objects, &lights);
 
-                        let output = match ctx.surface().get_current_texture() {
+                        let output = match redox_render::acquire_surface_texture(ctx.surface()) {
                             Ok(t) => t,
                             Err(e) => {
                                 log::error!("swapchain: {e}");

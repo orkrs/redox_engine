@@ -56,7 +56,7 @@ impl InspectorPanel {
                 if ui.button(name).clicked() {
                     // Spawn default via insert of empty-ish struct from schema isn't available —
                     // Transform already present typically. Skip unregistered defaults.
-                    ui.close_menu();
+                    ui.close();
                 }
             }
         });

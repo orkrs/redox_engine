@@ -22,6 +22,8 @@
 //              unused entries in the layout are fine).
 //   group(1) = VG per-instance storage (`VGInstanceData`), binding 0.
 
+enable primitive_index;
+
 struct Camera {
     // Must mirror rust CameraUniform exactly (464 bytes).
     view_proj: mat4x4<f32>,

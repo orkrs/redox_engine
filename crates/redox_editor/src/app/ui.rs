@@ -9,13 +9,15 @@ impl EditorApp {
     pub(super) fn build_ui(&mut self) -> egui::FullOutput {
         let raw_input = self.egui_winit.take_egui_input(&self.window);
         let ui_ctx_ref = self.ui_ctx.clone();
-        self.egui_ctx.run(raw_input, |ctx| {
+        self.egui_ctx.run_ui(raw_input, |ui| {
+            let ctx = ui.ctx().clone();
+            let ctx = &ctx;
             // Ctrl+P palette
             if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::P)) {
                 ui_ctx_ref.palette.lock().toggle();
             }
 
-            egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
+            egui::Panel::top("top_bar").show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.menu_button("File", |ui| {
                         if ui.button("New World").clicked()
@@ -74,7 +76,7 @@ impl EditorApp {
                                 if ui.button(label).clicked() {
                                     *ui_ctx_ref.status.lock() =
                                         format!("open_world:{}", root.display());
-                                    ui.close_menu();
+                                    ui.close();
                                 }
                             }
                         }
@@ -99,7 +101,7 @@ impl EditorApp {
                         drop(git);
                         if ui.button("Refresh status").clicked() {
                             *ui_ctx_ref.status.lock() = "git_refresh".into();
-                            ui.close_menu();
+                            ui.close();
                         }
                     });
                     ui.menu_button("View", |ui| {
@@ -168,7 +170,7 @@ impl EditorApp {
                 });
             });
 
-            egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+            egui::Panel::bottom("status_bar").show(ui, |ui| {
                 ui.horizontal(|ui| {
                     let git = if ui_ctx_ref.world_session.lock().is_some() {
                         format!("🟢 {}", ui_ctx_ref.git.lock().summary())
@@ -214,8 +216,8 @@ impl EditorApp {
                 });
             });
 
-            self.dock.show_with_ctx(
-                ctx,
+            self.dock.show_with_ui(
+                ui,
                 &ui_ctx_ref,
                 self.viewport_tex_id,
                 Some(self.viewport_rect.clone()),

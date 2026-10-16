@@ -29,11 +29,8 @@ use winit::window::Window;
 /// Adapter features required by the engine HDR MSAA / Sharp AA path.
 pub fn engine_required_features(adapter: &wgpu::Adapter) -> wgpu::Features {
     let mut required = wgpu::Features::empty();
-    if adapter
-        .features()
-        .contains(wgpu::Features::SHADER_PRIMITIVE_INDEX)
-    {
-        required |= wgpu::Features::SHADER_PRIMITIVE_INDEX;
+    if adapter.features().contains(wgpu::Features::PRIMITIVE_INDEX) {
+        required |= wgpu::Features::PRIMITIVE_INDEX;
     }
     if adapter
         .features()
@@ -63,10 +60,9 @@ pub struct SharedGpuBoot {
 
 impl SharedGpu {
     pub async fn request(window: Arc<Window>) -> SharedGpuBoot {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
+        let mut instance_desc = wgpu::InstanceDescriptor::new_without_display_handle();
+        instance_desc.backends = wgpu::Backends::all();
+        let instance = wgpu::Instance::new(instance_desc);
         let surface = instance
             .create_surface(window.clone())
             .expect("editor surface");
@@ -80,14 +76,12 @@ impl SharedGpu {
             .expect("editor adapter");
         let required_features = engine_required_features(&adapter);
         let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("redox_editor_shared_device"),
-                    required_features,
-                    required_limits: wgpu::Limits::default(),
-                },
-                None,
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("redox_editor_shared_device"),
+                required_features,
+                required_limits: wgpu::Limits::default(),
+                ..Default::default()
+            })
             .await
             .expect("editor device");
         let caps = surface.get_capabilities(&adapter);
@@ -394,13 +388,13 @@ impl RenderHost {
                 continue;
             }
             encoder.copy_texture_to_texture(
-                wgpu::ImageCopyTexture {
+                wgpu::TexelCopyTextureInfo {
                     texture: &panes[i].color_tex,
                     mip_level: 0,
                     origin: wgpu::Origin3d::ZERO,
                     aspect: wgpu::TextureAspect::All,
                 },
-                wgpu::ImageCopyTexture {
+                wgpu::TexelCopyTextureInfo {
                     texture: &self.viewport.color_tex,
                     mip_level: 0,
                     origin: wgpu::Origin3d {
@@ -431,6 +425,7 @@ impl RenderHost {
                 }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
         }
         queue.submit(Some(encoder.finish()));
@@ -561,6 +556,7 @@ fn clear_viewport_depth_for_overlay(renderer: &Renderer, viewport: &EditorViewpo
             }),
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         });
     }
     renderer.queue.submit(Some(encoder.finish()));

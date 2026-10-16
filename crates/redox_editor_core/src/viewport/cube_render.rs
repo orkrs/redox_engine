@@ -38,6 +38,7 @@ impl ViewportCubePass {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("editor_clear"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        depth_slice: None,
                         view: &viewport.color_view,
                         resolve_target: None,
                         ops: wgpu::Operations {
@@ -60,6 +61,7 @@ impl ViewportCubePass {
                     }),
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
                 if let Some((x, y, w, h)) = scissor {
                     pass.set_viewport(x as f32, y as f32, w as f32, h as f32, 0.0, 1.0);
@@ -91,6 +93,7 @@ impl ViewportCubePass {
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("editor_wire_pass"),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            depth_slice: None,
                             view: &viewport.color_view,
                             resolve_target: None,
                             ops: wgpu::Operations {
@@ -108,6 +111,7 @@ impl ViewportCubePass {
                         }),
                         timestamp_writes: None,
                         occlusion_query_set: None,
+                        multiview_mask: None,
                     });
                     if let Some((x, y, w, h)) = scissor {
                         pass.set_viewport(x as f32, y as f32, w as f32, h as f32, 0.0, 1.0);
@@ -142,6 +146,7 @@ impl ViewportCubePass {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("editor_lit_pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        depth_slice: None,
                         view: &viewport.color_view,
                         resolve_target: None,
                         ops: wgpu::Operations {
@@ -159,6 +164,7 @@ impl ViewportCubePass {
                     }),
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
                 if let Some((x, y, w, h)) = scissor {
                     pass.set_viewport(x as f32, y as f32, w as f32, h as f32, 0.0, 1.0);
@@ -208,6 +214,7 @@ impl ViewportCubePass {
                 let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("quad_clear"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        depth_slice: None,
                         view: &viewport.color_view,
                         resolve_target: None,
                         ops: wgpu::Operations {
@@ -230,6 +237,7 @@ impl ViewportCubePass {
                     }),
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
             }
             queue.submit(Some(encoder.finish()));
@@ -250,6 +258,7 @@ impl ViewportCubePass {
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("quad_depth_clear"),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            depth_slice: None,
                             view: &viewport.color_view,
                             resolve_target: None,
                             ops: wgpu::Operations {
@@ -267,6 +276,7 @@ impl ViewportCubePass {
                         }),
                         timestamp_writes: None,
                         occlusion_query_set: None,
+                        multiview_mask: None,
                     });
                     pass.set_viewport(sc.0 as f32, sc.1 as f32, sc.2 as f32, sc.3 as f32, 0.0, 1.0);
                     pass.set_scissor_rect(sc.0, sc.1, sc.2, sc.3);
@@ -329,6 +339,7 @@ impl ViewportCubePass {
                 let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("editor_pick_clear"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        depth_slice: None,
                         view: id_view,
                         resolve_target: None,
                         ops: wgpu::Operations {
@@ -351,6 +362,7 @@ impl ViewportCubePass {
                     }),
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
             }
             queue.submit(Some(encoder.finish()));
@@ -369,6 +381,7 @@ impl ViewportCubePass {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("editor_pick_pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        depth_slice: None,
                         view: id_view,
                         resolve_target: None,
                         ops: wgpu::Operations {
@@ -386,6 +399,7 @@ impl ViewportCubePass {
                     }),
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
                 pass.set_pipeline(&self.pick_pipeline);
                 pass.set_bind_group(0, &self.pick_bind_group, &[]);

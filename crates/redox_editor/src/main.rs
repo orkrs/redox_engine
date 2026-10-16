@@ -1,5 +1,8 @@
 //! RedOx Studio editor binary: CLI entry point; the window loop lives in [`app`].
 
+// winit 0.30 deprecates the closure event loop; migrating to `ApplicationHandler` is tracked in the roadmap.
+#![allow(deprecated)]
+
 mod app;
 mod cli;
 mod commands;
@@ -34,10 +37,13 @@ fn main() {
 
     let event_loop = winit::event_loop::EventLoop::new().unwrap();
     let window = Arc::new(
-        winit::window::WindowBuilder::new()
-            .with_title("RedOx Studio — Editor")
-            .with_inner_size(winit::dpi::LogicalSize::new(1600, 900))
-            .build(&event_loop)
+        #[allow(deprecated)]
+        event_loop
+            .create_window(
+                winit::window::Window::default_attributes()
+                    .with_title("RedOx Studio — Editor")
+                    .with_inner_size(winit::dpi::LogicalSize::new(1600, 900)),
+            )
             .unwrap(),
     );
 

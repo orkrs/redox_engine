@@ -61,41 +61,45 @@ impl IBLProcessor {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
 
         let pipeline_equirect_to_cube =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                cache: None,
                 label: Some("equirect_to_cube_pipeline"),
                 layout: None,
                 module: &equirect_shader,
-                entry_point: "equirect_to_cubemap",
+                entry_point: Some("equirect_to_cubemap"),
                 compilation_options: Default::default(),
             });
 
         let pipeline_irradiance =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                cache: None,
                 label: Some("irradiance_pipeline"),
                 layout: None,
                 module: &irradiance_shader,
-                entry_point: "irradiance_convolution",
+                entry_point: Some("irradiance_convolution"),
                 compilation_options: Default::default(),
             });
 
         let pipeline_prefilter = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            cache: None,
             label: Some("prefilter_pipeline"),
             layout: None,
             module: &prefilter_shader,
-            entry_point: "prefilter_convolution",
+            entry_point: Some("prefilter_convolution"),
             compilation_options: Default::default(),
         });
 
         let pipeline_brdf_lut = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            cache: None,
             label: Some("brdf_lut_pipeline"),
             layout: None,
             module: &brdf_lut_shader,
-            entry_point: "brdf_lut",
+            entry_point: Some("brdf_lut"),
             compilation_options: Default::default(),
         });
 
@@ -533,14 +537,14 @@ impl IBLResource {
 fn write_black_2d(queue: &wgpu::Queue, tex: &wgpu::Texture) {
     let row = vec![0u8; wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as usize];
     queue.write_texture(
-        wgpu::ImageCopyTexture {
+        wgpu::TexelCopyTextureInfo {
             texture: tex,
             mip_level: 0,
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
         },
         &row,
-        wgpu::ImageDataLayout {
+        wgpu::TexelCopyBufferLayout {
             offset: 0,
             bytes_per_row: Some(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT),
             rows_per_image: Some(1),
@@ -557,7 +561,7 @@ fn write_black_cube(queue: &wgpu::Queue, tex: &wgpu::Texture) {
     let row = vec![0u8; wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as usize];
     for layer in 0..6u32 {
         queue.write_texture(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 texture: tex,
                 mip_level: 0,
                 origin: wgpu::Origin3d {
@@ -568,7 +572,7 @@ fn write_black_cube(queue: &wgpu::Queue, tex: &wgpu::Texture) {
                 aspect: wgpu::TextureAspect::All,
             },
             &row,
-            wgpu::ImageDataLayout {
+            wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT),
                 rows_per_image: Some(1),

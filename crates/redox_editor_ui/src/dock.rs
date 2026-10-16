@@ -117,17 +117,17 @@ impl EditorDock {
             let anchor = [Tab::AssetBrowser, Tab::Console, Tab::Graph, Tab::TimeTravel]
                 .into_iter()
                 .find_map(|t| self.tree.find_tab(&t));
-            if let Some((surface, node, _)) = anchor {
-                self.tree[surface][node].append_tab(tab.clone());
+            if let Some(path) = anchor {
+                self.tree[path.surface][path.node].append_tab(tab.clone());
             } else {
                 self.tree.push_to_first_leaf(tab.clone());
             }
         }
     }
 
-    pub fn show_with_ctx(
+    pub fn show_with_ui(
         &mut self,
-        ctx: &egui::Context,
+        ui: &mut egui::Ui,
         ui_ctx: &EditorUiCtx,
         viewport_tex_id: Option<egui::TextureId>,
         viewport_rect: Option<Arc<Mutex<Option<egui::Rect>>>>,
@@ -137,9 +137,10 @@ impl EditorDock {
             viewport_tex_id,
             viewport_rect,
         };
+        let style = Style::from_egui(ui.style().as_ref());
         DockArea::new(&mut self.tree)
-            .style(Style::from_egui(ctx.style().as_ref()))
-            .show(ctx, &mut viewer);
+            .style(style)
+            .show_inside(ui, &mut viewer);
     }
 
     pub fn save_to_file(&self, path: &std::path::Path) -> anyhow::Result<()> {

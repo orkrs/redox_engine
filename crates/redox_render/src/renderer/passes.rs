@@ -13,6 +13,7 @@ impl Renderer {
             let mut normal_render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("normal_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: &self.normal_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -35,6 +36,7 @@ impl Renderer {
                 }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             normal_render_pass.set_pipeline(&self.normal_pass.pipeline);
             normal_render_pass.set_bind_group(0, &self.normal_bind_group, &[]);
@@ -64,6 +66,7 @@ impl Renderer {
             let mut gtao_render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("gtao_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: &self.ssao_raw_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -79,6 +82,7 @@ impl Renderer {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             gtao_render_pass.set_pipeline(&self.ssao_pass.pipeline);
             gtao_render_pass.set_bind_group(0, &self.ssao_bind_group, &[]);
@@ -88,6 +92,7 @@ impl Renderer {
             let mut blur_render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("gtao_blur_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: &self.ssao_half_blurred_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -103,6 +108,7 @@ impl Renderer {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             blur_render_pass.set_pipeline(&self.ssao_pass.blur_pipeline);
             blur_render_pass.set_bind_group(0, &self.ssao_blur_bind_group, &[]);
@@ -112,6 +118,7 @@ impl Renderer {
             let mut upsample_render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("gtao_upsample_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: &self.ssao_blurred_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -127,6 +134,7 @@ impl Renderer {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             upsample_render_pass.set_pipeline(&self.ssao_pass.upsample_pipeline);
             upsample_render_pass.set_bind_group(0, &self.ssao_upsample_bind_group, &[]);
@@ -135,6 +143,7 @@ impl Renderer {
             let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("gtao_disabled_clear"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: &self.ssao_blurred_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -150,6 +159,7 @@ impl Renderer {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
         }
     }
@@ -178,6 +188,7 @@ impl Renderer {
             let mut trace_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("vsm_shadow_trace"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: &self.vsm_shadow_raw_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -188,6 +199,7 @@ impl Renderer {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             trace_pass.set_pipeline(&self.vsm_shadow_pass.trace_pipeline);
             trace_pass.set_bind_group(0, &self.vsm_shadow_trace_bind_group, &[]);
@@ -197,6 +209,7 @@ impl Renderer {
             let mut temporal_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("vsm_shadow_temporal"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: &self.vsm_shadow_filtered_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -207,6 +220,7 @@ impl Renderer {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             temporal_pass.set_pipeline(&self.vsm_shadow_pass.temporal_pipeline);
             temporal_pass.set_bind_group(0, &self.vsm_shadow_temporal_bind_group, &[]);
@@ -235,6 +249,7 @@ impl Renderer {
             let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("vsm_shadow_disabled_clear"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: &self.vsm_shadow_filtered_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -245,6 +260,7 @@ impl Renderer {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
         }
     }

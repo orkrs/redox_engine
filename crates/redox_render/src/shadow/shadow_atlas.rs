@@ -77,7 +77,7 @@ impl ShadowAtlas {
             // layout uses a NonFiltering sampler. Keep all filters Nearest to satisfy wgpu.
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             compare: None,
             ..Default::default()
         });

@@ -119,14 +119,14 @@ impl Texture {
             };
             if bytes_per_row as usize == unpadded_bpr {
                 queue.write_texture(
-                    wgpu::ImageCopyTexture {
+                    wgpu::TexelCopyTextureInfo {
                         texture: &texture,
                         mip_level: level as u32,
                         origin: wgpu::Origin3d::ZERO,
                         aspect: wgpu::TextureAspect::All,
                     },
                     data,
-                    wgpu::ImageDataLayout {
+                    wgpu::TexelCopyBufferLayout {
                         offset: 0,
                         bytes_per_row: Some(bytes_per_row),
                         rows_per_image: Some(mip_h),
@@ -141,14 +141,14 @@ impl Texture {
                     padded[dst..dst + unpadded_bpr].copy_from_slice(&data[src..src + unpadded_bpr]);
                 }
                 queue.write_texture(
-                    wgpu::ImageCopyTexture {
+                    wgpu::TexelCopyTextureInfo {
                         texture: &texture,
                         mip_level: level as u32,
                         origin: wgpu::Origin3d::ZERO,
                         aspect: wgpu::TextureAspect::All,
                     },
                     &padded,
-                    wgpu::ImageDataLayout {
+                    wgpu::TexelCopyBufferLayout {
                         offset: 0,
                         bytes_per_row: Some(bytes_per_row),
                         rows_per_image: Some(mip_h),
@@ -168,7 +168,7 @@ impl Texture {
             address_mode_w: wgpu::AddressMode::Repeat,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
 
@@ -257,14 +257,14 @@ impl Texture {
         let bytes_per_row = align256(unpadded_bpr as u32);
         if bytes_per_row as usize == unpadded_bpr {
             queue.write_texture(
-                wgpu::ImageCopyTexture {
+                wgpu::TexelCopyTextureInfo {
                     texture: &texture,
                     mip_level: 0,
                     origin: wgpu::Origin3d::ZERO,
                     aspect: wgpu::TextureAspect::All,
                 },
                 data,
-                wgpu::ImageDataLayout {
+                wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(bytes_per_row as _),
                     rows_per_image: Some(height),
@@ -281,14 +281,14 @@ impl Texture {
                     .copy_from_slice(&data[row * row_len..(row + 1) * row_len]);
             }
             queue.write_texture(
-                wgpu::ImageCopyTexture {
+                wgpu::TexelCopyTextureInfo {
                     texture: &texture,
                     mip_level: 0,
                     origin: wgpu::Origin3d::ZERO,
                     aspect: wgpu::TextureAspect::All,
                 },
                 &padded,
-                wgpu::ImageDataLayout {
+                wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(bytes_per_row as _),
                     rows_per_image: Some(height),
@@ -310,7 +310,7 @@ impl Texture {
             address_mode_w: wgpu::AddressMode::Repeat,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
 
@@ -442,22 +442,23 @@ fn blit_pipeline(device: &wgpu::Device, format: wgpu::TextureFormat) -> Arc<wgpu
     });
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("blit_mipmap_layout"),
-        bind_group_layouts: &[&bgl],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(&bgl)],
+        immediate_size: 0,
     });
     let pipeline = Arc::new(
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
             label: Some("blit_mipmap_pipeline"),
             layout: Some(&layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs",
+                entry_point: Some("vs"),
                 buffers: &[],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs",
+                entry_point: Some("fs"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format,
                     blend: None,
@@ -468,7 +469,7 @@ fn blit_pipeline(device: &wgpu::Device, format: wgpu::TextureFormat) -> Arc<wgpu
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
         }),
     );
     guard.insert(key, pipeline.clone());
@@ -530,6 +531,7 @@ fn generate_mipmaps(
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("mipmap_blit_pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                depth_slice: None,
                 view: &dst_view,
                 resolve_target: None,
                 ops: wgpu::Operations {
@@ -540,6 +542,7 @@ fn generate_mipmaps(
             depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         });
         pass.set_pipeline(&pipeline);
         pass.set_bind_group(0, &bind_group, &[]);

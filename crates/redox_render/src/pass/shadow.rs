@@ -46,18 +46,19 @@ impl ShadowPass {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("shadow_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout, &model_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bind_group_layout), Some(&model_bgl)],
+            immediate_size: 0,
         });
 
         let shader = create_shader_with_vertex_decode(device, "shadow_shader", SHADOW_WGSL);
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
             label: Some("shadow_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[crate::mesh::compress::compressed_position_layout()],
                 compilation_options: Default::default(),
             },
@@ -72,8 +73,8 @@ impl ShadowPass {
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: SHADOW_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::LessEqual,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::LessEqual),
                 stencil: wgpu::StencilState::default(),
                 // Bias kept minimal: large constant/slope on Depth32Float was
                 // pushing caster depth past receivers → cast shadows vanished.
@@ -84,7 +85,7 @@ impl ShadowPass {
                 },
             }),
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
         });
 
         Self {

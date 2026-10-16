@@ -100,14 +100,14 @@ impl SdfGpuAtlas {
         let voxels = (extent * extent * extent) as usize;
         let init_data = vec![far; voxels];
         queue.write_texture(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
             bytemuck::cast_slice(&init_data),
-            wgpu::ImageDataLayout {
+            wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(extent * 4),
                 rows_per_image: Some(extent),
@@ -226,14 +226,14 @@ impl SdfGpuAtlas {
         queue.write_buffer(&self.scene_buffer, 0, bytemuck::bytes_of(&self.scene));
 
         queue.write_texture(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 texture: &self.texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
             bytemuck::cast_slice(&voxels),
-            wgpu::ImageDataLayout {
+            wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(GPU_ATLAS_EXTENT * 4),
                 rows_per_image: Some(GPU_ATLAS_EXTENT),

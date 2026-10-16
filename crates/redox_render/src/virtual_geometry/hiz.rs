@@ -128,31 +128,33 @@ impl HiZPyramid {
 
         let copy_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("hiz_copy_layout"),
-            bind_group_layouts: &[&copy_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&copy_bgl)],
+            immediate_size: 0,
         });
         let down_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("hiz_down_layout"),
-            bind_group_layouts: &[&downsample_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&downsample_bgl)],
+            immediate_size: 0,
         });
 
         let copy_shader = create_shader_module(device, "hiz_copy", HIZ_COPY_WGSL);
         let down_shader = create_shader_module(device, "hiz_downsample", HIZ_DOWNSAMPLE_WGSL);
 
         let copy_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            cache: None,
             label: Some("hiz_copy_pipeline"),
             layout: Some(&copy_layout),
             module: &copy_shader,
-            entry_point: "main",
+            entry_point: Some("main"),
             compilation_options: Default::default(),
         });
         let downsample_pipeline =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                cache: None,
                 label: Some("hiz_downsample_pipeline"),
                 layout: Some(&down_layout),
                 module: &down_shader,
-                entry_point: "main",
+                entry_point: Some("main"),
                 compilation_options: Default::default(),
             });
 
@@ -167,7 +169,7 @@ impl HiZPyramid {
             label: Some("hiz_sampler"),
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             ..Default::default()
         });
 

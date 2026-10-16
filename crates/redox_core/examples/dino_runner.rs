@@ -470,18 +470,20 @@ fn extract_objects(world: &World, ctx: &RenderContext) -> Vec<RenderObject> {
     out
 }
 
-fn handle_surface_err(ctx: &mut RenderContext, err: wgpu::SurfaceError) {
+fn handle_surface_err(ctx: &mut RenderContext, err: redox_render::SurfaceError) {
     match err {
-        wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated => {
+        redox_render::SurfaceError::Lost | redox_render::SurfaceError::Outdated => {
             let w = ctx.config.width;
             let h = ctx.config.height;
             ctx.resize(w, h);
         }
-        wgpu::SurfaceError::OutOfMemory => {
-            log::error!("Out of GPU memory, exiting.");
+        redox_render::SurfaceError::Validation => {
+            log::error!("Surface validation error, exiting.");
             std::process::exit(1);
         }
-        wgpu::SurfaceError::Timeout => log::warn!("Surface timeout, skipping frame."),
+        redox_render::SurfaceError::Timeout | redox_render::SurfaceError::Occluded => {
+            log::warn!("Surface timeout/occluded, skipping frame.");
+        }
     }
 }
 
@@ -693,7 +695,7 @@ fn main() {
                 .unwrap_or_else(|| Camera::new(0.88, 16.0 / 9.0, 0.1, 200.0));
             let scene = lights();
             let fv = FrameView::new(&camera, &objects, &scene);
-            match ctx.surface().get_current_texture() {
+            match redox_render::acquire_surface_texture(ctx.surface()) {
                 Ok(output) => {
                     let view = output
                         .texture

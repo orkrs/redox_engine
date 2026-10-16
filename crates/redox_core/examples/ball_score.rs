@@ -6,6 +6,9 @@
 //!
 //! WASD move · Q/E camera · R restart · ESC quit
 
+// winit 0.30 deprecates the closure event loop; migrating to `ApplicationHandler` is tracked in the roadmap.
+#![allow(deprecated)]
+
 use std::time::Instant;
 
 use redox_core::config::EngineConfig;
@@ -121,7 +124,7 @@ fn main() {
                         let objects = extract_objects(&world, &ctx);
                         let fv = FrameView::new(&camera, &objects, &lights);
 
-                        let output = ctx.surface().get_current_texture().unwrap();
+                        let output = redox_render::acquire_surface_texture(ctx.surface()).unwrap();
                         let view = output.texture.create_view(&Default::default());
                         ctx.render_frame_view(&fv, &view).unwrap();
 

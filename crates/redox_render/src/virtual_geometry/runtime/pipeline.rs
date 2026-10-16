@@ -13,8 +13,8 @@ pub(super) fn build_pipeline(
 ) -> wgpu::RenderPipeline {
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("vg_pipeline_layout"),
-        bind_group_layouts: &[camera_bgl, instances_bgl],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(camera_bgl), Some(instances_bgl)],
+        immediate_size: 0,
     });
 
     let shader_src = crate::shader::shader_with_vertex_decode(crate::shader::VG_WGSL);
@@ -24,17 +24,18 @@ pub(super) fn build_pipeline(
     });
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        cache: None,
         label: Some("vg_pipeline"),
         layout: Some(&layout),
         vertex: wgpu::VertexState {
             module: &shader,
-            entry_point: "vs_main",
+            entry_point: Some("vs_main"),
             buffers: &[CompressedVertex::buffer_layout()],
             compilation_options: Default::default(),
         },
         fragment: Some(wgpu::FragmentState {
             module: &shader,
-            entry_point: "fs_main",
+            entry_point: Some("fs_main"),
             targets: &[Some(wgpu::ColorTargetState {
                 format: surface_format,
                 blend: Some(wgpu::BlendState::REPLACE),
@@ -50,12 +51,12 @@ pub(super) fn build_pipeline(
         },
         depth_stencil: Some(wgpu::DepthStencilState {
             format: depth_format,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::LessEqual,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::LessEqual),
             stencil: wgpu::StencilState::default(),
             bias: wgpu::DepthBiasState::default(),
         }),
         multisample: wgpu::MultisampleState::default(),
-        multiview: None,
+        multiview_mask: None,
     })
 }

@@ -45,23 +45,24 @@ impl BloomPass {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("bloom_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
         });
 
         let make_pipeline = |label: &str, entry: &str, blend: Option<wgpu::BlendState>| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                cache: None,
                 label: Some(label),
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &shader,
-                    entry_point: "vs_main",
+                    entry_point: Some("vs_main"),
                     buffers: &[],
                     compilation_options: Default::default(),
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
-                    entry_point: entry,
+                    entry_point: Some(entry),
                     targets: &[Some(wgpu::ColorTargetState {
                         format,
                         blend,
@@ -72,7 +73,7 @@ impl BloomPass {
                 primitive: wgpu::PrimitiveState::default(),
                 depth_stencil: None,
                 multisample: wgpu::MultisampleState::default(),
-                multiview: None,
+                multiview_mask: None,
             })
         };
 
@@ -111,21 +112,22 @@ impl BloomPass {
         });
         let composite_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("bloom_composite_pipeline_layout"),
-            bind_group_layouts: &[&composite_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&composite_bgl)],
+            immediate_size: 0,
         });
         let composite_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
             label: Some("bloom_composite_pipeline"),
             layout: Some(&composite_layout),
             vertex: wgpu::VertexState {
                 module: &composite_shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &composite_shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format,
                     blend: None,
@@ -136,7 +138,7 @@ impl BloomPass {
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
         });
 
         // Upsample blends ADD into the already-downsampled finer mip.

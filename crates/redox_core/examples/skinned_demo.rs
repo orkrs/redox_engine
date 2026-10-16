@@ -14,6 +14,9 @@
 //!              renders three fixed frames and compares them with the stored images (exit code
 //!              1 on a mismatch); add `--update-golden` to rewrite the references.
 
+// winit 0.30 deprecates the closure event loop; migrating to `ApplicationHandler` is tracked in the roadmap.
+#![allow(deprecated)]
+
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -475,15 +478,18 @@ fn windowed() {
                         let fv = FrameView::new(&camera, &objects, &lights);
                         // A resized, minimised or closing window makes the swapchain outdated:
                         // reconfigure and skip the frame instead of panicking.
-                        let output = match ctx.surface().get_current_texture() {
+                        let output = match redox_render::acquire_surface_texture(ctx.surface()) {
                             Ok(output) => output,
-                            Err(wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Lost) => {
+                            Err(redox_render::SurfaceError::Outdated | redox_render::SurfaceError::Lost) => {
                                 let (w, h) = (ctx.config.width, ctx.config.height);
                                 ctx.resize(w, h);
                                 return;
                             }
-                            Err(wgpu::SurfaceError::Timeout) => return,
-                            Err(wgpu::SurfaceError::OutOfMemory) => {
+                            Err(
+                                redox_render::SurfaceError::Timeout
+                                | redox_render::SurfaceError::Occluded,
+                            ) => return,
+                            Err(redox_render::SurfaceError::Validation) => {
                                 elwt.exit();
                                 return;
                             }
@@ -505,27 +511,24 @@ fn windowed() {
 fn screenshots(dir: &std::path::Path, size: (u32, u32), args: &[String]) -> Vec<(usize, PathBuf)> {
     let mut written = Vec::new();
     std::fs::create_dir_all(dir).expect("create screenshot dir");
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
-    });
+    let mut instance_desc = wgpu::InstanceDescriptor::new_without_display_handle();
+    instance_desc.backends = wgpu::Backends::all();
+    let instance = wgpu::Instance::new(instance_desc);
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
         power_preference: wgpu::PowerPreference::HighPerformance,
         compatible_surface: None,
         force_fallback_adapter: false,
     }))
     .expect("no GPU adapter");
-    let wanted = wgpu::Features::SHADER_PRIMITIVE_INDEX
+    let wanted = wgpu::Features::PRIMITIVE_INDEX
         | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
         | redox_render::PROFILER_FEATURES;
-    let (device, queue) = pollster::block_on(adapter.request_device(
-        &wgpu::DeviceDescriptor {
-            label: Some("skinned_demo_offscreen"),
-            required_features: adapter.features() & wanted,
-            required_limits: wgpu::Limits::default(),
-        },
-        None,
-    ))
+    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        label: Some("skinned_demo_offscreen"),
+        required_features: adapter.features() & wanted,
+        required_limits: wgpu::Limits::default(),
+        ..Default::default()
+    }))
     .expect("device");
 
     let (w, h) = size;
@@ -593,7 +596,7 @@ fn screenshots(dir: &std::path::Path, size: (u32, u32), args: &[String]) -> Vec<
         renderer.render_frame_view(&fv, &view).expect("render");
         // Frame pacing like a presented swapchain: without it the CPU runs arbitrarily far
         // ahead of the GPU and per-frame staging memory can be reused while still in flight.
-        renderer.device.poll(wgpu::Maintain::Wait);
+        let _ = renderer.device.poll(wgpu::PollType::wait_indefinitely());
 
         if shot_frames.contains(&frame) {
             println!("gpu: {}", renderer.gpu_profiler.report());
@@ -745,15 +748,15 @@ fn read_texture(
     });
     let mut encoder = device.create_command_encoder(&Default::default());
     encoder.copy_texture_to_buffer(
-        wgpu::ImageCopyTexture {
+        wgpu::TexelCopyTextureInfo {
             texture,
             mip_level: 0,
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
         },
-        wgpu::ImageCopyBuffer {
+        wgpu::TexelCopyBufferInfo {
             buffer: &buffer,
-            layout: wgpu::ImageDataLayout {
+            layout: wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(bytes_per_row),
                 rows_per_image: Some(h),
@@ -770,7 +773,7 @@ fn read_texture(
     slice.map_async(wgpu::MapMode::Read, |result| {
         result.expect("map screenshot buffer")
     });
-    device.poll(wgpu::Maintain::Wait);
+    let _ = device.poll(wgpu::PollType::wait_indefinitely());
     let data = slice.get_mapped_range().to_vec();
     buffer.unmap();
     data

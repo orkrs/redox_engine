@@ -33,26 +33,27 @@ impl TransparentPass {
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("pbr_transparent_pipeline_layout"),
             bind_group_layouts: &[
-                &pbr_pass.frame_bgl,
-                &pbr_pass.scene_bgl,
-                &pbr_pass.material_bgl,
-                &pbr_pass.model_bgl,
+                Some(&pbr_pass.frame_bgl),
+                Some(&pbr_pass.scene_bgl),
+                Some(&pbr_pass.material_bgl),
+                Some(&pbr_pass.model_bgl),
             ],
-            push_constant_ranges: &[],
+            immediate_size: 0,
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
             label: Some("pbr_transparent_pipeline"),
             layout: Some(&layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[CompressedVertex::buffer_layout()],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: hdr_format,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -70,13 +71,13 @@ impl TransparentPass {
             // written: transparent objects must not occlude one another.
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: DEPTH_FORMAT,
-                depth_write_enabled: false,
-                depth_compare: wgpu::CompareFunction::LessEqual,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::LessEqual),
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
             multisample: multisample_state(sample_count),
-            multiview: None,
+            multiview_mask: None,
         });
 
         Self { pipeline }

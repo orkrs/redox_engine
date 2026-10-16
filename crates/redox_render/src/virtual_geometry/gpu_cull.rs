@@ -73,16 +73,17 @@ impl VgGpuCull {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("vg_cull_pipeline_layout"),
-            bind_group_layouts: &[&bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bgl)],
+            immediate_size: 0,
         });
 
         let shader = create_shader_module(device, "vg_cull_shader", VG_CULL_WGSL);
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            cache: None,
             label: Some("vg_cull_pipeline"),
             layout: Some(&pipeline_layout),
             module: &shader,
-            entry_point: "main",
+            entry_point: Some("main"),
             compilation_options: Default::default(),
         });
 
@@ -252,7 +253,7 @@ impl VgGpuCull {
 
     fn finish_mapped_read(&mut self, device: &wgpu::Device, indirect: &mut IndirectDrawBuffer) {
         if !self.map_ready.load(Ordering::Acquire) {
-            device.poll(wgpu::Maintain::Wait);
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
         }
         if !self.map_ready.load(Ordering::Acquire) {
             return;
@@ -303,7 +304,7 @@ impl VgGpuCull {
         let count = pollster::block_on(async {
             let slice = staging.slice(..);
             slice.map_async(wgpu::MapMode::Read, |_| {});
-            device.poll(wgpu::Maintain::Wait);
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
             let mapped = slice.get_mapped_range();
             u32::from_le_bytes(mapped[0..4].try_into().unwrap())
         });

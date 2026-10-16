@@ -69,15 +69,16 @@ struct VsOut { @builtin(position) clip: vec4<f32>, @location(0) color: vec4<f32>
         });
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("lines_pl"),
-            bind_group_layouts: &[&bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bgl)],
+            immediate_size: 0,
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
             label: Some("editor_lines_pipeline"),
             layout: Some(&pl),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: 28,
                     step_mode: wgpu::VertexStepMode::Vertex,
@@ -98,7 +99,7 @@ struct VsOut { @builtin(position) clip: vec4<f32>, @location(0) color: vec4<f32>
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: wgpu::TextureFormat::Rgba8Unorm,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -112,13 +113,13 @@ struct VsOut { @builtin(position) clip: vec4<f32>, @location(0) color: vec4<f32>
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: false,
-                depth_compare: wgpu::CompareFunction::LessEqual,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::LessEqual),
                 stencil: Default::default(),
                 bias: Default::default(),
             }),
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
         });
         let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("lines_vb"),
@@ -167,6 +168,7 @@ struct VsOut { @builtin(position) clip: vec4<f32>, @location(0) color: vec4<f32>
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("editor_lines_pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                depth_slice: None,
                 view: &viewport.color_view,
                 resolve_target: None,
                 ops: wgpu::Operations {
@@ -184,6 +186,7 @@ struct VsOut { @builtin(position) clip: vec4<f32>, @location(0) color: vec4<f32>
             }),
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         });
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);

@@ -110,12 +110,12 @@ fn compile_error(device: &wgpu::Device, stem: &str, src: &str) -> Option<String>
     } else {
         src.to_string()
     };
-    device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let _module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(stem),
         source: wgpu::ShaderSource::Wgsl(full.into()),
     });
-    pollster::block_on(device.pop_error_scope()).map(|e| e.to_string())
+    pollster::block_on(scope.pop()).map(|e| e.to_string())
 }
 
 #[cfg(test)]

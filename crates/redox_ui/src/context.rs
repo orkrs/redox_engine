@@ -51,9 +51,14 @@ impl UiContext {
             window,
             Some(window.scale_factor() as f32),
             None,
+            None,
         );
 
-        let egui_renderer = egui_wgpu::Renderer::new(device, surface_format, None, 1);
+        let egui_renderer = egui_wgpu::Renderer::new(
+            device,
+            surface_format,
+            egui_wgpu::RendererOptions::default(),
+        );
 
         Self {
             egui_ctx,
@@ -89,7 +94,7 @@ impl UiContext {
     /// Begins a new egui frame. Call before building any UI.
     pub fn begin_frame(&mut self, window: &winit::window::Window) {
         let raw_input = self.egui_state.take_egui_input(window);
-        self.egui_ctx.begin_frame(raw_input);
+        self.egui_ctx.begin_pass(raw_input);
     }
 
     /// Returns the egui context for building custom UI widgets.
@@ -122,7 +127,7 @@ impl UiContext {
         surface_view: &wgpu::TextureView,
         screen_descriptor: egui_wgpu::ScreenDescriptor,
     ) {
-        let full_output = self.egui_ctx.end_frame();
+        let full_output = self.egui_ctx.end_pass();
 
         self.egui_state
             .handle_platform_output(window, full_output.platform_output);
@@ -140,9 +145,10 @@ impl UiContext {
             .update_buffers(device, queue, encoder, &tris, &screen_descriptor);
 
         {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("egui_render_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: surface_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -153,8 +159,10 @@ impl UiContext {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
 
+            let mut render_pass = render_pass.forget_lifetime();
             self.egui_renderer
                 .render(&mut render_pass, &tris, &screen_descriptor);
         }
@@ -170,6 +178,6 @@ mod tests {
     #[test]
     fn egui_context_standalone() {
         let ctx = egui::Context::default();
-        assert!(ctx.style().spacing.item_spacing.x > 0.0);
+        assert!(ctx.global_style().spacing.item_spacing.x > 0.0);
     }
 }

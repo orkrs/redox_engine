@@ -61,6 +61,7 @@ impl EditorApp {
             &window,
             Some(window.scale_factor() as f32),
             None,
+            None,
         );
 
         let selection = Arc::new(Mutex::new(Selection::default()));
@@ -206,7 +207,7 @@ impl EditorApp {
     pub(crate) fn handle_event(
         &mut self,
         event: winit::event::Event<()>,
-        elwt: &winit::event_loop::EventLoopWindowTarget<()>,
+        elwt: &winit::event_loop::ActiveEventLoop,
     ) {
         match event {
             winit::event::Event::WindowEvent { event, .. } => {
@@ -264,9 +265,9 @@ impl EditorApp {
         if let Some(prev) = prev {
             let dx = (pos.x - prev.x) * 0.005;
             let dy = (pos.y - prev.y) * 0.005;
-            if self.rmb_down && !self.egui_ctx.wants_pointer_input() {
+            if self.rmb_down && !self.egui_ctx.egui_wants_pointer_input() {
                 self.camera.lock().look(dx, dy);
-            } else if self.alt_lmb_orbit && !self.egui_ctx.wants_pointer_input() {
+            } else if self.alt_lmb_orbit && !self.egui_ctx.egui_wants_pointer_input() {
                 self.camera.lock().orbit(dx, dy);
             }
         }
@@ -334,7 +335,7 @@ impl EditorApp {
                 } else if !pressed {
                     self.alt_lmb_orbit = false;
                 }
-                if !self.egui_ctx.wants_pointer_input() && pressed && !alt {
+                if !self.egui_ctx.egui_wants_pointer_input() && pressed && !alt {
                     if let (Some(sel), Some(host), Some(rect), Some(pos)) = (
                         self.selection.lock().primary,
                         self.render_host.as_ref(),
@@ -389,7 +390,7 @@ impl EditorApp {
         match event.physical_key {
             winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyW) => {
                 self.keys_wasd[0] = pressed;
-                if pressed && !self.rmb_down && !self.egui_ctx.wants_keyboard_input() {
+                if pressed && !self.rmb_down && !self.egui_ctx.egui_wants_keyboard_input() {
                     self.gizmo.lock().mode = GizmoMode::Translate;
                 }
             }
@@ -407,12 +408,12 @@ impl EditorApp {
             }
             winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyE) => {
                 self.keys_wasd[5] = pressed;
-                if pressed && !self.rmb_down && !self.egui_ctx.wants_keyboard_input() {
+                if pressed && !self.rmb_down && !self.egui_ctx.egui_wants_keyboard_input() {
                     self.gizmo.lock().mode = GizmoMode::Rotate;
                 }
             }
             winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyR) => {
-                if pressed && !self.rmb_down && !self.egui_ctx.wants_keyboard_input() {
+                if pressed && !self.rmb_down && !self.egui_ctx.egui_wants_keyboard_input() {
                     self.gizmo.lock().mode = GizmoMode::Scale;
                 }
             }
@@ -422,22 +423,22 @@ impl EditorApp {
                 self.shift_down = pressed;
             }
             winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::Delete) => {
-                if pressed && !self.egui_ctx.wants_keyboard_input() {
+                if pressed && !self.egui_ctx.egui_wants_keyboard_input() {
                     run_command(&self.ui_ctx, &mut self.dock, "delete");
                 }
             }
             winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyF) => {
-                if pressed && !self.egui_ctx.wants_keyboard_input() {
+                if pressed && !self.egui_ctx.egui_wants_keyboard_input() {
                     focus_selection(&self.ui_ctx);
                 }
             }
             winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::End) => {
-                if pressed && !self.egui_ctx.wants_keyboard_input() {
+                if pressed && !self.egui_ctx.egui_wants_keyboard_input() {
                     run_command(&self.ui_ctx, &mut self.dock, "align_surface");
                 }
             }
             winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyB) => {
-                if pressed && !self.egui_ctx.wants_keyboard_input() {
+                if pressed && !self.egui_ctx.egui_wants_keyboard_input() {
                     let mut b = self.ui_ctx.brush.lock();
                     b.active = !b.active;
                     self.ui_ctx.log(format!(

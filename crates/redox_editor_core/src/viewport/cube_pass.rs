@@ -129,15 +129,16 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("lit_pl"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
             label: Some("editor_lit_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: 24,
                     step_mode: wgpu::VertexStepMode::Vertex,
@@ -158,7 +159,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: wgpu::TextureFormat::Rgba8Unorm,
                     blend: None,
@@ -173,13 +174,13 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Less),
                 stencil: Default::default(),
                 bias: Default::default(),
             }),
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
         });
 
         // Pick (positions only — reuse same VB with stride 24, only loc0)
@@ -210,11 +211,12 @@ struct Uniforms { mvp: mat4x4<f32>, id: u32, _pad0: u32, _pad1: u32, _pad2: u32 
             }],
         });
         let pick_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
             label: Some("editor_pick_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &pick_shader,
-                entry_point: "vs_pick",
+                entry_point: Some("vs_pick"),
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: 24,
                     step_mode: wgpu::VertexStepMode::Vertex,
@@ -235,7 +237,7 @@ struct Uniforms { mvp: mat4x4<f32>, id: u32, _pad0: u32, _pad1: u32, _pad2: u32 
             },
             fragment: Some(wgpu::FragmentState {
                 module: &pick_shader,
-                entry_point: "fs_pick",
+                entry_point: Some("fs_pick"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: wgpu::TextureFormat::R32Uint,
                     blend: None,
@@ -250,13 +252,13 @@ struct Uniforms { mvp: mat4x4<f32>, id: u32, _pad0: u32, _pad1: u32, _pad2: u32 
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Less),
                 stencil: Default::default(),
                 bias: Default::default(),
             }),
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
         });
 
         // 24 face verts: pos + normal
@@ -315,15 +317,16 @@ struct Uniforms { mvp: mat4x4<f32>, color: vec4<f32> }
         });
         let wire_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("wire_pl"),
-            bind_group_layouts: &[&wire_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&wire_bgl)],
+            immediate_size: 0,
         });
         let wire_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
             label: Some("editor_wire_pipeline"),
             layout: Some(&wire_pl),
             vertex: wgpu::VertexState {
                 module: &wire_shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: 12,
                     step_mode: wgpu::VertexStepMode::Vertex,
@@ -337,7 +340,7 @@ struct Uniforms { mvp: mat4x4<f32>, color: vec4<f32> }
             },
             fragment: Some(wgpu::FragmentState {
                 module: &wire_shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: wgpu::TextureFormat::Rgba8Unorm,
                     blend: None,
@@ -351,13 +354,13 @@ struct Uniforms { mvp: mat4x4<f32>, color: vec4<f32> }
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::LessEqual,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::LessEqual),
                 stencil: Default::default(),
                 bias: Default::default(),
             }),
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
         });
         let wire_vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("wire_cube_vb"),

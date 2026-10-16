@@ -55,6 +55,7 @@ impl Renderer {
                 let mut vel_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("velocity_pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        depth_slice: None,
                         view: &self.taa_velocity_view,
                         resolve_target: None,
                         ops: wgpu::Operations {
@@ -70,6 +71,7 @@ impl Renderer {
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
                 vel_pass.set_pipeline(&self.velocity_pass.pipeline);
                 vel_pass.set_bind_group(0, &self.velocity_bg, &[]);
@@ -107,6 +109,7 @@ impl Renderer {
                 let mut taa_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("taa_pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        depth_slice: None,
                         view: &self.taa_history_view[history_write_idx],
                         resolve_target: None,
                         ops: wgpu::Operations {
@@ -117,6 +120,7 @@ impl Renderer {
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
                 taa_pass.set_pipeline(&self.taa_pass.pipeline);
                 taa_pass.set_bind_group(0, taa_bg, &[]);
@@ -133,6 +137,7 @@ impl Renderer {
                 let mut post_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("tone_mapping_pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        depth_slice: None,
                         view: surface_view,
                         resolve_target: None,
                         ops: wgpu::Operations {
@@ -143,6 +148,7 @@ impl Renderer {
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
                 post_pass.set_pipeline(&self.tone_mapping_pipeline);
                 post_pass.set_bind_group(0, taa_tone_bg, &[]);
@@ -173,6 +179,7 @@ impl Renderer {
                 let mut ldr_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("sharp_tonemap_ldr"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        depth_slice: None,
                         view: &self.ldr_view,
                         resolve_target: None,
                         ops: wgpu::Operations {
@@ -183,6 +190,7 @@ impl Renderer {
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
                 ldr_pass.set_pipeline(&self.tone_mapping_ldr_pipeline);
                 ldr_pass.set_bind_group(0, &self.tone_mapping_ldr_bg, &[]);
@@ -214,6 +222,7 @@ impl Renderer {
                 let mut rcas_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("sharp_rcas_present"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        depth_slice: None,
                         view: surface_view,
                         resolve_target: None,
                         ops: wgpu::Operations {
@@ -224,6 +233,7 @@ impl Renderer {
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
                 rcas_pass.set_pipeline(&self.rcas_present_pipeline);
                 rcas_pass.set_bind_group(0, &self.tone_mapping_rcas_bg, &[]);
@@ -235,6 +245,7 @@ impl Renderer {
             let mut post_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("tone_mapping_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: surface_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -245,6 +256,7 @@ impl Renderer {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             post_pass.set_pipeline(&self.tone_mapping_pipeline);
             post_pass.set_bind_group(0, &self.tone_mapping_bind_group, &[]);
