@@ -153,10 +153,8 @@ impl ClusterManager {
         queue: &Queue,
     ) {
         use clustering::cluster_config;
-        let new_clusters_x =
-            (screen_width + cluster_config::CLUSTER_SIZE_X - 1) / cluster_config::CLUSTER_SIZE_X;
-        let new_clusters_y =
-            (screen_height + cluster_config::CLUSTER_SIZE_Y - 1) / cluster_config::CLUSTER_SIZE_Y;
+        let new_clusters_x = screen_width.div_ceil(cluster_config::CLUSTER_SIZE_X);
+        let new_clusters_y = screen_height.div_ceil(cluster_config::CLUSTER_SIZE_Y);
 
         let old_total = self.cluster_info.total_clusters();
 
@@ -341,7 +339,7 @@ impl ClusterManager {
             &self.point_lights_buffer,
             &self.metadata_buffer,
             &self.light_indices_buffer,
-            self.cluster_info.total_clusters as u32,
+            self.cluster_info.total_clusters,
         );
     }
 

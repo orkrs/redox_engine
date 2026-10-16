@@ -439,7 +439,7 @@ impl ParticleGpuSystem {
             pass.dispatch_workgroups(1, 1, 1);
         }
         {
-            let groups = (self.capacity + 255) / 256;
+            let groups = self.capacity.div_ceil(256);
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("particle_sim_integrate"),
                 timestamp_writes: None,

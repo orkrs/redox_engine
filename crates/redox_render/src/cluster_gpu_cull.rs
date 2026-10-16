@@ -134,7 +134,7 @@ impl ClusterGpuCull {
             ],
         });
 
-        let workgroups = (total_clusters + 63) / 64;
+        let workgroups = total_clusters.div_ceil(64);
         {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("cluster_cull_lights"),

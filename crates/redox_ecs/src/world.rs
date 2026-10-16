@@ -167,7 +167,7 @@ impl World {
             return;
         }
 
-        new_infos.push(component_info.clone());
+        new_infos.push(component_info);
         let target_arch_idx = self.find_or_create_archetype(new_infos);
         let tick = self.next_tick();
 
@@ -428,9 +428,9 @@ mod tests {
         let entity = world.spawn();
 
         world.add_component(entity, CompA(42));
-        world.add_component(entity, CompB(3.14));
+        world.add_component(entity, CompB(2.5));
 
         assert_eq!(world.get_component::<CompA>(entity).unwrap().0, 42);
-        assert_eq!(world.get_component::<CompB>(entity).unwrap().0, 3.14);
+        assert_eq!(world.get_component::<CompB>(entity).unwrap().0, 2.5);
     }
 }

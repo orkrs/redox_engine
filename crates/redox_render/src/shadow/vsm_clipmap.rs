@@ -454,7 +454,7 @@ impl VsmClipmap {
                     continue;
                 }
                 let used = self.last_used[li][i];
-                if used < frame && best.map_or(true, |(_, _, b)| used < b) {
+                if used < frame && best.is_none_or(|(_, _, b)| used < b) {
                     best = Some((li, i, used));
                 }
             }

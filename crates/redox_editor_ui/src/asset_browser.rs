@@ -176,10 +176,11 @@ impl AssetBrowserPanel {
                             self.selected = Some(path.clone());
                         }
                     }
-                    if !is_dir && kind == Some(AssetKind::Mesh) {
-                        if ui.small_button("Spawn").clicked() {
-                            spawn_req = Some(AssetSpawnRequest::new(path.clone()));
-                        }
+                    if !is_dir
+                        && kind == Some(AssetKind::Mesh)
+                        && ui.small_button("Spawn").clicked()
+                    {
+                        spawn_req = Some(AssetSpawnRequest::new(path.clone()));
                     }
                 });
             }

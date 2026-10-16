@@ -172,7 +172,7 @@ impl IBLProcessor {
             });
             compute_pass.set_pipeline(&self.pipeline_equirect_to_cube);
             compute_pass.set_bind_group(0, &bind_group, &[]);
-            compute_pass.dispatch_workgroups((size + 7) / 8, (size + 7) / 8, 6);
+            compute_pass.dispatch_workgroups(size.div_ceil(8), size.div_ceil(8), 6);
         }
         queue.submit(Some(encoder.finish()));
 
@@ -393,7 +393,7 @@ impl IBLProcessor {
                 compute_pass.set_bind_group(0, &bind_group, &[]);
                 compute_pass.set_bind_group(1, &output_bind_group, &[]);
                 compute_pass.set_bind_group(2, &uniform_bind_group, &[]);
-                compute_pass.dispatch_workgroups((mip_size + 7) / 8, (mip_size + 7) / 8, 6);
+                compute_pass.dispatch_workgroups(mip_size.div_ceil(8), mip_size.div_ceil(8), 6);
             }
             queue.submit(Some(encoder.finish()));
         }

@@ -147,8 +147,8 @@ async fn run() {
             scale: PLAYER_SIZE,
         },
     );
-    world.add_component(player, MeshHandle(assets.sphere_mesh.clone()));
-    world.add_component(player, MaterialHandle(assets.player_mat.clone()));
+    world.add_component(player, MeshHandle(assets.sphere_mesh));
+    world.add_component(player, MaterialHandle(assets.player_mat));
     world.add_component(player, Player);
 
     let ground = world.spawn();
@@ -160,8 +160,8 @@ async fn run() {
             scale: Vec3::new(2.0, 0.1, 200.0),
         },
     );
-    world.add_component(ground, MeshHandle(assets.cube_mesh.clone()));
-    world.add_component(ground, MaterialHandle(assets.ground_mat.clone()));
+    world.add_component(ground, MeshHandle(assets.cube_mesh));
+    world.add_component(ground, MaterialHandle(assets.ground_mat));
 
     let sun = world.spawn();
     world.add_component(
@@ -284,8 +284,8 @@ async fn run() {
                                 scale: OBSTACLE_SIZE,
                             },
                         );
-                        world.add_component(o, MeshHandle(assets.cube_mesh.clone()));
-                        world.add_component(o, MaterialHandle(assets.obstacle_mat.clone()));
+                        world.add_component(o, MeshHandle(assets.cube_mesh));
+                        world.add_component(o, MaterialHandle(assets.obstacle_mat));
                         world.add_component(o, Obstacle);
                         game.next_spawn_time = game.spawn_interval;
                         game.score += 1;

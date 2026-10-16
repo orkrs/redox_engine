@@ -266,7 +266,7 @@ impl Texture {
                 data,
                 wgpu::ImageDataLayout {
                     offset: 0,
-                    bytes_per_row: Some(bytes_per_row as u32 as _),
+                    bytes_per_row: Some(bytes_per_row as _),
                     rows_per_image: Some(height),
                 },
                 size,
@@ -290,7 +290,7 @@ impl Texture {
                 &padded,
                 wgpu::ImageDataLayout {
                     offset: 0,
-                    bytes_per_row: Some(bytes_per_row as u32 as _),
+                    bytes_per_row: Some(bytes_per_row as _),
                     rows_per_image: Some(height),
                 },
                 size,

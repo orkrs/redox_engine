@@ -11,8 +11,9 @@ pub enum GizmoMode {
     Scale,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum GizmoAxis {
+    #[default]
     X,
     Y,
     Z,
@@ -24,12 +25,6 @@ pub struct GridSettings {
     pub enabled: bool,
     pub step: f32,
     pub angle_step: f32,
-}
-
-impl Default for GizmoAxis {
-    fn default() -> Self {
-        Self::X
-    }
 }
 
 #[derive(Clone, Debug, Default)]

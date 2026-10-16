@@ -118,7 +118,7 @@ impl Renderer {
         let taa_enabled = false;
         let aa_sharp = true;
         let hdr_msaa_target_count =
-            pick_hdr_msaa_sample_count(&adapter, hdr_format, aa_sharp || taa_enabled);
+            pick_hdr_msaa_sample_count(adapter, hdr_format, aa_sharp || taa_enabled);
         let msaa_sample_count = hdr_msaa_target_count;
         log::info!("HDR MSAA sample count: {msaa_sample_count} (TAA enabled: {taa_enabled})");
 

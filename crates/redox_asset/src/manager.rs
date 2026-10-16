@@ -238,10 +238,9 @@ impl AssetManager {
 
     fn storage_mut<T: 'static + Send + Sync>(&mut self) -> &mut AssetStorage<T> {
         let type_id = TypeId::of::<T>();
-        if !self.storages.contains_key(&type_id) {
-            self.storages
-                .insert(type_id, Box::new(AssetStorage::<T>::new()));
-        }
+        self.storages
+            .entry(type_id)
+            .or_insert_with(|| Box::new(AssetStorage::<T>::new()));
         self.storages
             .get_mut(&type_id)
             .and_then(|s| s.downcast_mut::<AssetStorage<T>>())

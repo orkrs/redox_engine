@@ -156,6 +156,11 @@ impl Column {
         self.len
     }
 
+    /// Returns `true` when the column holds no elements.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
     /// Stamps the change tick of the row at `index` (mutation marker).
     pub fn set_tick(&mut self, index: usize, tick: u32) {
         if let Some(slot) = self.ticks.get_mut(index) {

@@ -3,16 +3,9 @@ use redox_editor_core::{Selection, WorldGitTracker, WorldSession};
 use redox_math::Transform;
 use redox_scene::{PartitionCell, StreamedActor};
 
+#[derive(Default)]
 pub struct OutlinerPanel {
     pub filter: String,
-}
-
-impl Default for OutlinerPanel {
-    fn default() -> Self {
-        Self {
-            filter: String::new(),
-        }
-    }
 }
 
 pub enum OutlinerAction {

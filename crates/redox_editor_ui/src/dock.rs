@@ -181,56 +181,6 @@ impl EditorDock {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn dock_save_load_roundtrip() {
-        let dock = EditorDock::new();
-        let s = dock.save_to_string();
-        assert!(!s.is_empty());
-        let mut dock2 = EditorDock::new();
-        dock2.load_from_string(&s);
-        assert_eq!(
-            dock.tree.iter_all_tabs().count(),
-            dock2.tree.iter_all_tabs().count()
-        );
-    }
-
-    #[test]
-    fn ensure_tabs_adds_packager_profiler_graph() {
-        // Old bottom strip: no Packager / Profiler / Graph.
-        let mut tree = DockState::new(vec![Tab::Viewport]);
-        let [_a, _b] = tree.main_surface_mut().split_left(
-            egui_dock::NodeIndex::root(),
-            0.2,
-            vec![Tab::Outliner],
-        );
-        let [_c, _d] = tree.main_surface_mut().split_right(
-            egui_dock::NodeIndex::root(),
-            0.25,
-            vec![Tab::Inspector],
-        );
-        tree.main_surface_mut().split_below(
-            egui_dock::NodeIndex::root(),
-            0.72,
-            vec![Tab::AssetBrowser, Tab::Console, Tab::TimeTravel],
-        );
-        let mut dock = EditorDock { tree };
-        assert!(dock.tree.find_tab(&Tab::Packager).is_none());
-        assert!(dock.tree.find_tab(&Tab::Profiler).is_none());
-        assert!(dock.tree.find_tab(&Tab::Graph).is_none());
-        dock.ensure_tabs();
-        for tab in EditorDock::REQUIRED_TABS {
-            assert!(
-                dock.tree.find_tab(tab).is_some(),
-                "missing tab after ensure_tabs: {tab}"
-            );
-        }
-    }
-}
-
 struct TabViewerImpl<'a> {
     ui_ctx: &'a EditorUiCtx,
     viewport_tex_id: Option<egui::TextureId>,
@@ -297,9 +247,9 @@ impl TabViewer for TabViewerImpl<'_> {
                         }
                     }
                     let mut snap = self.ui_ctx.surface_snap.lock();
-                    ui.checkbox(&mut *snap, "Surface Snap");
+                    ui.checkbox(&mut snap, "Surface Snap");
                     let mut ghosts = self.ui_ctx.show_git_ghosts.lock();
-                    ui.checkbox(&mut *ghosts, "Git Ghosts");
+                    ui.checkbox(&mut ghosts, "Git Ghosts");
                     drop(ghosts);
                     {
                         let mut dbg = self.ui_ctx.debug_flags.lock();
@@ -457,6 +407,56 @@ impl TabViewer for TabViewerImpl<'_> {
             Tab::Packager => {
                 self.ui_ctx.packager.lock().show(ui);
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dock_save_load_roundtrip() {
+        let dock = EditorDock::new();
+        let s = dock.save_to_string();
+        assert!(!s.is_empty());
+        let mut dock2 = EditorDock::new();
+        dock2.load_from_string(&s);
+        assert_eq!(
+            dock.tree.iter_all_tabs().count(),
+            dock2.tree.iter_all_tabs().count()
+        );
+    }
+
+    #[test]
+    fn ensure_tabs_adds_packager_profiler_graph() {
+        // Old bottom strip: no Packager / Profiler / Graph.
+        let mut tree = DockState::new(vec![Tab::Viewport]);
+        let [_a, _b] = tree.main_surface_mut().split_left(
+            egui_dock::NodeIndex::root(),
+            0.2,
+            vec![Tab::Outliner],
+        );
+        let [_c, _d] = tree.main_surface_mut().split_right(
+            egui_dock::NodeIndex::root(),
+            0.25,
+            vec![Tab::Inspector],
+        );
+        tree.main_surface_mut().split_below(
+            egui_dock::NodeIndex::root(),
+            0.72,
+            vec![Tab::AssetBrowser, Tab::Console, Tab::TimeTravel],
+        );
+        let mut dock = EditorDock { tree };
+        assert!(dock.tree.find_tab(&Tab::Packager).is_none());
+        assert!(dock.tree.find_tab(&Tab::Profiler).is_none());
+        assert!(dock.tree.find_tab(&Tab::Graph).is_none());
+        dock.ensure_tabs();
+        for tab in EditorDock::REQUIRED_TABS {
+            assert!(
+                dock.tree.find_tab(tab).is_some(),
+                "missing tab after ensure_tabs: {tab}"
+            );
         }
     }
 }

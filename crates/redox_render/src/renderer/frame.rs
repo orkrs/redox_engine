@@ -194,7 +194,7 @@ impl Renderer {
         );
 
         // Per-cascade caster masks (conservative AABB vs cascade clip volume).
-        let cascade_count = self.csm_state.config.cascade_count.min(4) as usize;
+        let cascade_count = self.csm_state.config.cascade_count.min(4);
         let cascade_vis: Vec<Vec<bool>> = (0..cascade_count)
             .map(|ci| {
                 let vp = Mat4::from_cols_array_2d(&shadow_u.csm_matrices[ci]);
@@ -327,6 +327,7 @@ impl Renderer {
 
         // Render all CSM cascades using pooled buffers/views (written, not recreated).
         if !self.mt_command_recording && render_csm_depth {
+            #[allow(clippy::needless_range_loop)]
             for cascade_idx in 0..self.csm_state.config.cascade_count.min(4) {
                 self.queue.write_buffer(
                     &self.cascade_matrix_buffers[cascade_idx],
@@ -342,7 +343,7 @@ impl Renderer {
                         label: Some(&format!("shadow_pass_csm{}", cascade_idx)),
                         color_attachments: &[],
                         depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                            view: &csm_layer_view,
+                            view: csm_layer_view,
                             depth_ops: Some(wgpu::Operations {
                                 load: wgpu::LoadOp::Clear(1.0),
                                 store: wgpu::StoreOp::Store,
@@ -354,7 +355,7 @@ impl Renderer {
                     });
 
                     shadow_pass.set_pipeline(&self.shadow_pass.pipeline);
-                    shadow_pass.set_bind_group(0, &shadow_matrix_bg, &[]);
+                    shadow_pass.set_bind_group(0, shadow_matrix_bg, &[]);
                     shadow_pass.set_bind_group(1, &self.shadow_model_bind_group, &[]);
 
                     for (i, obj) in objects.iter().enumerate() {
@@ -581,13 +582,6 @@ impl Renderer {
                 mt_cmd_buffers.push(record_vsm_pages(&vsm_ctx, &dirty, &page_vps, objects));
             }
             self.vsm_clipmap.mark_pages_cached(&dirty);
-        } else if self.mt_command_recording {
-            mt_cmd_buffers.push(record_point_atlas_shadows(
-                &atlas_ctx,
-                &atlas_jobs,
-                objects,
-                self.vg_system.as_ref(),
-            ));
         } else {
             mt_cmd_buffers.push(record_point_atlas_shadows(
                 &atlas_ctx,
@@ -992,7 +986,7 @@ impl Renderer {
                     occlusion_query_set: None,
                 });
                 taa_pass.set_pipeline(&self.taa_pass.pipeline);
-                taa_pass.set_bind_group(0, &taa_bg, &[]);
+                taa_pass.set_bind_group(0, taa_bg, &[]);
                 taa_pass.draw(0..3, 0..1);
             }
 
@@ -1006,7 +1000,7 @@ impl Renderer {
                 let mut post_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("tone_mapping_pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &surface_view,
+                        view: surface_view,
                         resolve_target: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -1018,7 +1012,7 @@ impl Renderer {
                     occlusion_query_set: None,
                 });
                 post_pass.set_pipeline(&self.tone_mapping_pipeline);
-                post_pass.set_bind_group(0, &taa_tone_bg, &[]);
+                post_pass.set_bind_group(0, taa_tone_bg, &[]);
                 post_pass.draw(0..3, 0..1);
             }
 
@@ -1087,7 +1081,7 @@ impl Renderer {
                 let mut rcas_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("sharp_rcas_present"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &surface_view,
+                        view: surface_view,
                         resolve_target: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -1108,7 +1102,7 @@ impl Renderer {
             let mut post_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("tone_mapping_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &surface_view,
+                    view: surface_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),

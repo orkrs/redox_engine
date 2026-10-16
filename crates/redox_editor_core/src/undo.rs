@@ -193,19 +193,6 @@ impl UndoStack {
         world: &mut World,
         registry: &TypeRegistry,
     ) -> bool {
-        let mut handled = false;
-        ctx.input(|i| {
-            let ctrl = i.modifiers.ctrl || i.modifiers.command;
-            if ctrl && i.key_pressed(egui::Key::Z) && !i.modifiers.shift {
-                handled = true;
-            } else if ctrl
-                && (i.key_pressed(egui::Key::Y)
-                    || (i.key_pressed(egui::Key::Z) && i.modifiers.shift))
-            {
-                handled = true;
-            }
-        });
-        // Actually need to check again with ctrl
         let ctrl_z =
             ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Z) && !i.modifiers.shift);
         let ctrl_y = ctx.input(|i| {

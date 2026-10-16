@@ -345,8 +345,7 @@ fn pixels_to_rgba8(
     let mut rgba = Vec::with_capacity(pixel_count * 4);
     match format {
         Format::R8 => {
-            for p in 0..pixel_count {
-                let v = pixels[p];
+            for &v in pixels.iter().take(pixel_count) {
                 rgba.extend_from_slice(&[v, v, v, 255]);
             }
         }
@@ -698,10 +697,9 @@ mod tests {
         let uri = base64(&buf);
 
         let uv_parts = if with_uvs {
-            format!(
-                r#","TEXCOORD_0": 1}},
+            r#","TEXCOORD_0": 1},
             "indices": 2"#
-            )
+                .to_string()
         } else {
             String::from("},\n            \"indices\": 1")
         };
@@ -764,7 +762,7 @@ mod tests {
         out.extend_from_slice(&(json_padded as u32).to_le_bytes());
         out.extend_from_slice(b"JSON");
         out.extend_from_slice(json_bytes);
-        out.extend(std::iter::repeat(b' ').take(pad));
+        out.extend(std::iter::repeat_n(b' ', pad));
         out
     }
 

@@ -216,9 +216,9 @@ impl VgGpuCull {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &bind_group, &[]);
         let groups = if params.cull_mode == 1 {
-            (self.reject_capacity + 63) / 64
+            self.reject_capacity.div_ceil(64)
         } else {
-            (instance_count + 63) / 64
+            instance_count.div_ceil(64)
         };
         if groups > 0 {
             pass.dispatch_workgroups(groups, 1, 1);

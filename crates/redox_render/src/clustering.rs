@@ -84,10 +84,8 @@ pub struct ClusterInfo {
 impl ClusterInfo {
     /// Builds cluster info from screen and camera parameters.
     pub fn new(screen_width: u32, screen_height: u32, camera: &Camera) -> Self {
-        let clusters_x =
-            (screen_width + cluster_config::CLUSTER_SIZE_X - 1) / cluster_config::CLUSTER_SIZE_X;
-        let clusters_y =
-            (screen_height + cluster_config::CLUSTER_SIZE_Y - 1) / cluster_config::CLUSTER_SIZE_Y;
+        let clusters_x = screen_width.div_ceil(cluster_config::CLUSTER_SIZE_X);
+        let clusters_y = screen_height.div_ceil(cluster_config::CLUSTER_SIZE_Y);
         let depth_slices = cluster_config::CLUSTER_DEPTH;
         let total_clusters = clusters_x * clusters_y * depth_slices;
 
@@ -362,8 +360,8 @@ mod tests {
         let camera = Camera::new(std::f32::consts::PI / 4.0, 16.0 / 9.0, 0.1, 1000.0);
         let info = ClusterInfo::new(1920, 1080, &camera);
 
-        assert_eq!(info.clusters_x, (1920 + 15) / 16);
-        assert_eq!(info.clusters_y, (1080 + 15) / 16);
+        assert_eq!(info.clusters_x, 1920_u32.div_ceil(16));
+        assert_eq!(info.clusters_y, 1080_u32.div_ceil(16));
         assert_eq!(info.depth_slices, cluster_config::CLUSTER_DEPTH);
         assert_eq!(info.screen_width, 1920);
         assert_eq!(info.screen_height, 1080);

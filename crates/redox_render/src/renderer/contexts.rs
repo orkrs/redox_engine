@@ -102,7 +102,7 @@ pub fn record_csm_shadow_depth(
             if vg.has_content() {
                 vg.draw_shadow_indirect(
                     &mut shadow_pass,
-                    &ctx.vg_shadow_pass,
+                    ctx.vg_shadow_pass,
                     shadow_matrix_bg,
                     ctx.vg_shadow_instances_bg,
                 );
@@ -138,7 +138,7 @@ pub fn record_normal_prepass(
     let mut normal_render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("normal_pass_parallel"),
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-            view: &ctx.normal_view,
+            view: ctx.normal_view,
             resolve_target: None,
             ops: wgpu::Operations {
                 load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -151,7 +151,7 @@ pub fn record_normal_prepass(
             },
         })],
         depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-            view: &ctx.depth_view,
+            view: ctx.depth_view,
             depth_ops: Some(wgpu::Operations {
                 load: wgpu::LoadOp::Clear(1.0),
                 store: wgpu::StoreOp::Store,

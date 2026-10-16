@@ -97,7 +97,7 @@ impl CsmState {
         self.config.near = cam_near.max(1.0e-3);
         self.config.far = cam_far.max(self.config.near + 1.0);
         let cfg = self.config;
-        let cascade_count = cfg.cascade_count.min(CSM_CASCADES).max(1);
+        let cascade_count = cfg.cascade_count.clamp(1, CSM_CASCADES);
 
         // Logarithmic split scheme over the *actual* camera range.
         let n = cfg.near;

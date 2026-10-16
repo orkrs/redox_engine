@@ -196,10 +196,7 @@ impl<'w, Q: QueryData, F: QueryFilter> Iterator for QueryIterMut<'w, Q, F> {
             // aliases nothing (the raw pointer field is never read as a
             // reference outside this deref).
             let archetypes: &'w mut [Archetype] = unsafe { &mut *self.archetypes };
-            let arch = match archetypes.get_mut(self.arch_index) {
-                Some(arch) => arch,
-                None => return None,
-            };
+            let arch = archetypes.get_mut(self.arch_index)?;
 
             if !Q::matches(arch) || !F::matches(arch, self.ctx) {
                 self.arch_index += 1;

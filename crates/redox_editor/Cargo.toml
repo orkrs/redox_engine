@@ -5,6 +5,9 @@ edition = "2024"
 license.workspace = true
 rust-version.workspace = true
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "redox_editor"
 path = "src/main.rs"

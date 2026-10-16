@@ -146,6 +146,6 @@ mod tests {
         let mips = build_normal_mip_chain_toksvig(w, h, &rgba, 0.5);
         assert_eq!(mips.len(), 3); // 4→2→1
         assert_eq!(mips[1].len(), 2 * 2 * 4);
-        assert_eq!(mips[2].len(), 1 * 1 * 4);
+        assert_eq!(mips[2].len(), 4);
     }
 }

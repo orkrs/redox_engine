@@ -225,7 +225,7 @@ where
             let is_sequential = matches!(slots[idx], SystemSlot::Sequential(_));
             if is_sequential {
                 if !parallel_batch.is_empty() {
-                    Self::flush_parallel_batch(&mut parallel_batch, &slots, world, context);
+                    Self::flush_parallel_batch(&mut parallel_batch, slots, world, context);
                 }
                 if let SystemSlot::Sequential(func) = &mut slots[idx] {
                     func(world, context);
@@ -243,7 +243,7 @@ where
                 }
             } else {
                 if !parallel_batch.is_empty() {
-                    Self::flush_parallel_batch(&mut parallel_batch, &slots, world, context);
+                    Self::flush_parallel_batch(&mut parallel_batch, slots, world, context);
                 }
                 if let SystemSlot::Parallel { func, .. } = &slots[idx] {
                     func(world, &*context);
@@ -252,7 +252,7 @@ where
         }
 
         if !parallel_batch.is_empty() {
-            Self::flush_parallel_batch(&mut parallel_batch, &slots, world, context);
+            Self::flush_parallel_batch(&mut parallel_batch, slots, world, context);
         }
     }
 

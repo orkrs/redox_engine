@@ -378,7 +378,7 @@ pub fn expand_billboards(
     for p in particles {
         let origin = p.position_vec3();
         let half = p.size.max(1e-4);
-        let life_alpha = p.life.max(0.0).min(1.0);
+        let life_alpha = p.life.clamp(0.0, 1.0);
         let color = [p.color[0], p.color[1], p.color[2], p.color[3] * life_alpha];
         for (corner, uv) in corners {
             let world = origin + camera_right * (corner.x * half) + camera_up * (corner.y * half);

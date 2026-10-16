@@ -278,7 +278,7 @@ fn main() {
         camera.lock().pivot = spawn;
         {
             let mut w = world.lock();
-            let _ = session.tick(&mut w, spawn);
+            session.tick(&mut w, spawn);
             // Force a few cells around spawn for immediate editing
             for dx in -1..=1 {
                 for dy in -1..=1 {
@@ -689,7 +689,7 @@ fn main() {
                             stream_accum = 0.0;
                             if let Some(session) = ui_ctx.world_session.lock().as_mut() {
                                 let eye = camera.lock().eye;
-                                let _ = session.tick(&mut world.lock(), eye);
+                                session.tick(&mut world.lock(), eye);
                             }
                         }
 

@@ -236,8 +236,8 @@ impl HiZPyramid {
             });
             pass.set_pipeline(&self.copy_pipeline);
             pass.set_bind_group(0, &copy_bg, &[]);
-            let gx = (self.width + 7) / 8;
-            let gy = (self.height + 7) / 8;
+            let gx = self.width.div_ceil(8);
+            let gy = self.height.div_ceil(8);
             pass.dispatch_workgroups(gx, gy, 1);
         }
 
@@ -279,7 +279,7 @@ impl HiZPyramid {
             });
             pass.set_pipeline(&self.downsample_pipeline);
             pass.set_bind_group(0, &down_bg, &[]);
-            pass.dispatch_workgroups((dst_w + 7) / 8, (dst_h + 7) / 8, 1);
+            pass.dispatch_workgroups(dst_w.div_ceil(8), dst_h.div_ceil(8), 1);
 
             src_w = dst_w;
             src_h = dst_h;
