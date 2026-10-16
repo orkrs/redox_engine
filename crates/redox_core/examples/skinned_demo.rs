@@ -358,7 +358,21 @@ fn windowed() {
 
                         let objects = scene.objects(&ctx);
                         let fv = FrameView::new(&camera, &objects, &lights);
-                        let output = ctx.surface().get_current_texture().unwrap();
+                        // A resized, minimised or closing window makes the swapchain outdated:
+                        // reconfigure and skip the frame instead of panicking.
+                        let output = match ctx.surface().get_current_texture() {
+                            Ok(output) => output,
+                            Err(wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Lost) => {
+                                let (w, h) = (ctx.config.width, ctx.config.height);
+                                ctx.resize(w, h);
+                                return;
+                            }
+                            Err(wgpu::SurfaceError::Timeout) => return,
+                            Err(wgpu::SurfaceError::OutOfMemory) => {
+                                elwt.exit();
+                                return;
+                            }
+                        };
                         let view = output.texture.create_view(&Default::default());
                         ctx.render_frame_view(&fv, &view).unwrap();
                         output.present();
