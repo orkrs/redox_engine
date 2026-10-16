@@ -30,29 +30,37 @@ pub fn load_obj<P: AsRef<Path>>(path: P) -> Result<Vec<Mesh>, tobj::LoadError> {
             let has_normals = m.normals.len() == m.positions.len();
             let has_uvs = m.texcoords.len() >= vertex_count * 2;
 
+            // Collect attribute arrays first so tangents can be computed
+            // over the whole indexed surface (Lengyel accumulation needs
+            // triangle connectivity, not per-vertex data).
+            let positions: Vec<[f32; 3]> = m
+                .positions
+                .chunks_exact(3)
+                .map(|c| [c[0], c[1], c[2]])
+                .collect();
+            let normals: Vec<[f32; 3]> = if has_normals {
+                m.normals.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect()
+            } else {
+                vec![[0.0, 1.0, 0.0]; vertex_count]
+            };
+            let uvs: Vec<[f32; 2]> = if has_uvs {
+                m.texcoords.chunks_exact(2).map(|c| [c[0], c[1]]).collect()
+            } else {
+                vec![[0.0, 0.0]; vertex_count]
+            };
+
+            let tangents = super::tangent::compute_tangents(&positions, &normals, &uvs, &m.indices);
+
             let vertices: Vec<Vertex> = (0..vertex_count)
                 .map(|i| {
-                    let px = m.positions[i * 3];
-                    let py = m.positions[i * 3 + 1];
-                    let pz = m.positions[i * 3 + 2];
-
-                    let (nx, ny, nz) = if has_normals {
-                        (m.normals[i * 3], m.normals[i * 3 + 1], m.normals[i * 3 + 2])
-                    } else {
-                        (0.0, 1.0, 0.0) // default up normal
-                    };
-
-                    let (u, v) = if has_uvs {
-                        (m.texcoords[i * 2], m.texcoords[i * 2 + 1])
-                    } else {
-                        (0.0, 0.0)
-                    };
-
+                    let t = tangents[i];
                     Vertex {
-                        position: [px, py, pz],
-                        normal: [nx, ny, nz],
-                        uv: [u, v],
-                        tangent: [1.0, 0.0, 0.0],
+                        position: positions[i],
+                        normal: normals[i],
+                        uv: uvs[i],
+                        // Vertex layout carries xyz only; handedness (w) is
+                        // not part of `Vertex` yet.
+                        tangent: [t[0], t[1], t[2]],
                     }
                 })
                 .collect();

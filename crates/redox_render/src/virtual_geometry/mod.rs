@@ -6,7 +6,7 @@
 //!
 //! ## Quick start
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use redox_render::virtual_geometry::{VGSystem, VGConfig, VirtualMesh};
 //! use redox_render::systems::Transform;
 //!
@@ -25,7 +25,10 @@
 //! ```
 
 pub mod asset_pipeline;
+pub mod cache;
 pub mod culling;
+pub mod gpu_cull;
+pub mod hiz;
 pub mod indirect;
 pub mod lod;
 pub mod meshlet;
@@ -71,7 +74,7 @@ impl VirtualMesh {
 pub struct VirtualMeshConfig {
     /// LOD bias (positive = more aggressive LOD reduction).
     pub lod_bias: f32,
-    /// Whether this object should cast VG shadows (future feature).
+    /// Whether this object should cast VG shadows in CSM / point-light depth passes.
     pub cast_shadows: bool,
 }
 

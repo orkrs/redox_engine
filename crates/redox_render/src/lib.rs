@@ -22,6 +22,7 @@ pub mod gi;
 pub mod resource;
 pub mod sdf;
 pub mod shader;
+pub mod profiler;
 pub mod shadow;
 pub mod skinning;
 pub mod systems;
@@ -35,6 +36,7 @@ pub use light::{DirectionalLight, LightScene, LightUniform, LightingMode, PointL
 pub use material::Material;
 pub use asset_types::{BlendMode, MaterialData, MaterialLayer, MeshData, TextureData};
 pub use mesh::{Mesh, Vertex};
+pub use profiler::{GpuProfiler, GpuTiming, PROFILER_FEATURES};
 pub use skinning::SkinnedMeshBinding;
 pub use systems::{FrameRenderObjects, MaterialHandle, MeshHandle, PreviousTransform, RenderObject, Transform};
 pub use clustering::ClusterInfo;

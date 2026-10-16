@@ -6,6 +6,44 @@
 
 use bytemuck::{Pod, Zeroable};
 
+/// User-facing SMRT quality preset (maps to ray/sample counts).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum SmrtQuality {
+    /// 4×5 — default; contact OK, far penumbra noisier.
+    #[default]
+    Performance,
+    /// 6×8 — 1080p quality tradeoff.
+    Balanced,
+    /// 12×10 — showcase / screenshots.
+    Quality,
+}
+
+impl SmrtQuality {
+    pub fn config(self) -> SmrtConfig {
+        match self {
+            Self::Performance => SmrtConfig {
+                ray_count: 4,
+                samples_per_ray: 5,
+                source_angle: 0.013,
+                max_trace_dist: 16.0,
+                ..SmrtConfig::default_fields()
+            },
+            Self::Balanced => SmrtConfig {
+                ray_count: 6,
+                samples_per_ray: 8,
+                source_angle: 0.015,
+                ..SmrtConfig::default_fields()
+            },
+            Self::Quality => SmrtConfig {
+                ray_count: 16,
+                samples_per_ray: 12,
+                source_angle: 0.05,
+                ..SmrtConfig::default_fields()
+            },
+        }
+    }
+}
+
 /// CPU-side SMRT configuration (subset of `VsmConfig`).
 #[derive(Clone, Debug)]
 pub struct SmrtConfig {
@@ -22,15 +60,21 @@ pub struct SmrtConfig {
     pub max_trace_dist: f32,
 }
 
+impl SmrtConfig {
+    fn default_fields() -> Self {
+        Self {
+            ray_count: 6,
+            samples_per_ray: 8,
+            source_angle: 0.015,
+            source_radius: 0.1,
+            max_trace_dist: 24.0,
+        }
+    }
+}
+
 impl Default for SmrtConfig {
     fn default() -> Self {
-        Self {
-            ray_count: 4,
-            samples_per_ray: 8,
-            source_angle: 0.0087,
-            source_radius: 0.1,
-            max_trace_dist: 50.0,
-        }
+        SmrtQuality::Performance.config()
     }
 }
 
@@ -44,6 +88,12 @@ pub struct SmrtUniform {
     pub source_radius: f32,
     pub max_trace_dist: f32,
     pub _pad: [f32; 3],
+}
+
+/// Builds the GPU uniform from a config (free-function form of
+/// [`SmrtUniform::from_config`]).
+pub fn smrt_sample_params(cfg: &SmrtConfig) -> SmrtUniform {
+    SmrtUniform::from_config(cfg)
 }
 
 impl SmrtUniform {

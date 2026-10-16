@@ -356,6 +356,8 @@ pub struct Renderer {
     pub vsm_sampler: wgpu::Sampler,
     /// Runtime switch: false = classic CSM path, true = VSM + SMRT sampling.
     pub vsm_enabled: bool,
+    /// Per-pass GPU timings (needs timestamp-query features on the device).
+    pub gpu_profiler: crate::profiler::GpuProfiler,
     /// Screen-space VSM trace (1 Vogel ray + temporal, 90-95% history) — default ON.
     /// PBR samples `t_vsm_shadow` (1 filtered fetch) instead of inline 16-ray `vsm_shadow()`.
     pub vsm_screen_shadows: bool,

@@ -41,6 +41,7 @@ pub fn engine_required_features(adapter: &wgpu::Adapter) -> wgpu::Features {
     {
         required |= wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
     }
+    required |= adapter.features() & redox_render::PROFILER_FEATURES;
     required
 }
 

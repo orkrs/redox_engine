@@ -1,11 +1,10 @@
-//! Material description for surface appearance.
+//! Material description for surface appearance (including Substrate lobes).
 
 use redox_math::Vec3;
 
+use crate::asset_types::MaterialLayer;
+
 /// Describes the visual properties of a surface.
-///
-/// In the MVP only `base_color` and an optional texture are used.
-/// `metallic` and `roughness` are stored for future PBR expansion.
 #[derive(Clone, Debug)]
 pub struct Material {
     /// Base albedo colour (linear RGB).
@@ -22,8 +21,18 @@ pub struct Material {
     pub roughness: f32,
     /// Emissive colour.
     pub emissive: Vec3,
+    /// Optional Substrate-style layers (up to two). `None` = single-lobe.
+    pub layers: Option<[MaterialLayer; 2]>,
+    /// Sheen lobe weight for fabric-like surfaces (0 = disabled).
+    pub sheen: f32,
 }
 
+/// GPU material uniform — must stay 16-byte aligned (wgpu validation is fatal).
+///
+/// Layout (112 bytes):
+/// * base_color / emissive (2× vec4)
+/// * metallic, roughness, flags, sheen
+/// * layer0/1 color (rgb + metallic) + params (roughness, weight, pad, pad)
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct MaterialUniform {
@@ -32,13 +41,21 @@ pub struct MaterialUniform {
     pub metallic: f32,
     pub roughness: f32,
     pub flags: u32,
-    pub _padding: u32,
+    pub sheen: f32,
+    pub layer0_color: [f32; 4],
+    pub layer0_params: [f32; 4],
+    pub layer1_color: [f32; 4],
+    pub layer1_params: [f32; 4],
 }
 
 pub mod material_flags {
     pub const HAS_ALBEDO_TEX: u32 = 1 << 0;
     pub const HAS_NORMAL_TEX: u32 = 1 << 1;
     pub const HAS_MR_TEX: u32 = 1 << 2;
+    /// Substrate secondary lobes are active (any layer weight > 0 or sheen > 0).
+    pub const HAS_SUBSTRATE: u32 = 1 << 3;
+    /// Enable stochastic alpha-to-coverage discard path.
+    pub const ALPHA_TEST: u32 = 1 << 4;
 }
 
 impl Material {
@@ -52,6 +69,8 @@ impl Material {
             metallic: 0.0,
             roughness: 0.5,
             emissive: Vec3::ZERO,
+            layers: None,
+            sheen: 0.0,
         }
     }
 
@@ -65,6 +84,8 @@ impl Material {
             metallic: 0.0,
             roughness: 0.5,
             emissive: Vec3::ZERO,
+            layers: None,
+            sheen: 0.0,
         }
     }
 
@@ -93,6 +114,16 @@ impl Material {
         self
     }
 
+    pub fn with_layers(mut self, layers: [MaterialLayer; 2]) -> Self {
+        self.layers = Some(layers);
+        self
+    }
+
+    pub fn sheen(mut self, sheen: f32) -> Self {
+        self.sheen = sheen;
+        self
+    }
+
     pub fn to_uniform(&self, _device: &wgpu::Device) -> MaterialUniform {
         let mut flags = 0;
         if self.texture_index.is_some() {
@@ -105,13 +136,25 @@ impl Material {
             flags |= material_flags::HAS_MR_TEX;
         }
 
+        let (l0, l1) = match &self.layers {
+            Some([a, b]) => (*a, *b),
+            None => (MaterialLayer::default(), MaterialLayer::default()),
+        };
+        if self.sheen > 1e-4 || l0.weight > 1e-4 || l1.weight > 1e-4 {
+            flags |= material_flags::HAS_SUBSTRATE;
+        }
+
         MaterialUniform {
             base_color: [self.base_color.x, self.base_color.y, self.base_color.z, 1.0],
             emissive: [self.emissive.x, self.emissive.y, self.emissive.z, 0.0],
             metallic: self.metallic,
             roughness: self.roughness,
             flags,
-            _padding: 0,
+            sheen: self.sheen,
+            layer0_color: [l0.base_color.x, l0.base_color.y, l0.base_color.z, l0.metallic],
+            layer0_params: [l0.roughness, l0.weight, 0.0, 0.0],
+            layer1_color: [l1.base_color.x, l1.base_color.y, l1.base_color.z, l1.metallic],
+            layer1_params: [l1.roughness, l1.weight, 0.0, 0.0],
         }
     }
 }
@@ -122,3 +165,7 @@ impl Default for Material {
         Self::solid(Vec3::ONE)
     }
 }
+
+const _: () = {
+    assert!(std::mem::size_of::<MaterialUniform>() == 112);
+};

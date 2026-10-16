@@ -83,7 +83,7 @@ fn normalize_plane(p: [f32; 4]) -> [f32; 4] {
 // ── Transform helpers ─────────────────────────────────────────────────────────
 
 /// Transform a point by a column-major 4×4 matrix.
-fn transform_point(m: &[[f32; 4]; 4], p: [f32; 3]) -> [f32; 3] {
+pub fn transform_point(m: &[[f32; 4]; 4], p: [f32; 3]) -> [f32; 3] {
     let w = m[0][3] * p[0] + m[1][3] * p[1] + m[2][3] * p[2] + m[3][3];
     let inv_w = if w.abs() > 1e-6 { 1.0 / w } else { 1.0 };
     [
@@ -94,13 +94,36 @@ fn transform_point(m: &[[f32; 4]; 4], p: [f32; 3]) -> [f32; 3] {
 }
 
 /// Approximate scale factor (max column length) of a 4×4 matrix.
-fn max_scale(m: &[[f32; 4]; 4]) -> f32 {
+pub fn max_scale(m: &[[f32; 4]; 4]) -> f32 {
     let mut max_sq = 0.0f32;
     for col in m.iter().take(3) {
         let sq = col[0] * col[0] + col[1] * col[1] + col[2] * col[2];
         max_sq = max_sq.max(sq);
     }
     max_sq.sqrt()
+}
+
+#[inline]
+fn transform_direction(m: &[[f32; 4]; 4], v: [f32; 3]) -> [f32; 3] {
+    let x = m[0][0] * v[0] + m[1][0] * v[1] + m[2][0] * v[2];
+    let y = m[0][1] * v[0] + m[1][1] * v[1] + m[2][1] * v[2];
+    let z = m[0][2] * v[0] + m[1][2] * v[1] + m[2][2] * v[2];
+    normalize3([x, y, z])
+}
+
+#[inline]
+fn dot3(a: [f32; 3], b: [f32; 3]) -> f32 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+#[inline]
+fn normalize3(v: [f32; 3]) -> [f32; 3] {
+    let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    if len < 1e-8 {
+        v
+    } else {
+        [v[0] / len, v[1] / len, v[2] / len]
+    }
 }
 
 // ── Culling result ────────────────────────────────────────────────────────────
@@ -119,12 +142,36 @@ pub struct CullingResult {
 ///
 /// `global_meshlets` is the flat GPU meshlet array (all assets merged).
 /// `instances` is the list of active instances.
+/// `camera_pos` drives backface-cone rejection per meshlet.
 pub fn cull_meshlets(
     instances: &[VGInstanceData],
     global_meshlets: &[MeshletDescriptor],
     frustum: &Frustum,
+    camera_pos: [f32; 3],
 ) -> CullingResult {
     let mut commands = Vec::new();
+    let stats = cull_meshlets_into(
+        instances,
+        global_meshlets,
+        frustum,
+        camera_pos,
+        &mut commands,
+    );
+    CullingResult {
+        commands,
+        ..stats
+    }
+}
+
+/// Like [`cull_meshlets`], but reuses `commands` (cleared first).
+pub fn cull_meshlets_into(
+    instances: &[VGInstanceData],
+    global_meshlets: &[MeshletDescriptor],
+    frustum: &Frustum,
+    camera_pos: [f32; 3],
+    commands: &mut Vec<DrawIndexedIndirectCmd>,
+) -> CullingResult {
+    commands.clear();
     let mut visible_tris = 0u64;
     let total = global_meshlets.len() as u32;
 
@@ -140,10 +187,24 @@ pub fn cull_meshlets(
         let scale = max_scale(&inst.transform);
 
         for meshlet in &global_meshlets[start..end] {
+            let selected_lod = inst.flags;
+            if meshlet.lod_level != selected_lod {
+                continue;
+            }
             let world_center = transform_point(&inst.transform, meshlet.sphere_center);
             let world_radius = meshlet.sphere_radius * scale;
 
             if !frustum.test_sphere(world_center, world_radius) {
+                continue;
+            }
+
+            let cone_axis = transform_direction(&inst.transform, meshlet.cone_axis);
+            let to_camera = normalize3([
+                camera_pos[0] - world_center[0],
+                camera_pos[1] - world_center[1],
+                camera_pos[2] - world_center[2],
+            ]);
+            if dot3(cone_axis, to_camera) < meshlet.cone_cutoff {
                 continue;
             }
 
@@ -162,6 +223,6 @@ pub fn cull_meshlets(
         visible_meshlet_count: commands.len() as u32,
         visible_triangle_count: visible_tris,
         total_meshlet_count: total,
-        commands,
+        commands: Vec::new(), // caller owns `commands`
     }
 }

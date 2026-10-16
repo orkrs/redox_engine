@@ -25,7 +25,9 @@ impl IndirectDrawBuffer {
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(label),
             size: byte_size.max(64), // wgpu min buffer size
-            usage: wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::INDIRECT
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
         });
         Self { buffer, capacity, count: 0 }

@@ -6,6 +6,8 @@
 use bytemuck::{Pod, Zeroable};
 use redox_math::Vec3;
 
+use crate::pass::shared_layouts::multisample_state;
+
 /// One vertex of a debug line: position and RGBA color.
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -23,33 +25,7 @@ impl DebugLineVertex {
     }
 }
 
-const DEBUG_LINES_SHADER: &str = r#"
-struct CameraUniform {
-    view_proj: mat4x4<f32>,
-    camera_pos: vec4<f32>,
-};
-@group(0) @binding(0) var<uniform> camera: CameraUniform;
-
-struct VertexInput {
-    @location(0) position: vec3<f32>,
-    @location(1) color: vec4<f32>,
-};
-struct VertexOutput {
-    @builtin(position) clip_position: vec4<f32>,
-    @location(0) color: vec4<f32>,
-}
-@vertex
-fn vs_main(in: VertexInput) -> VertexOutput {
-    var out: VertexOutput;
-    out.clip_position = camera.view_proj * vec4<f32>(in.position, 1.0);
-    out.color = in.color;
-    return out;
-}
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return in.color;
-}
-"#;
+// Shader source lives in `shaders/debug_lines.wgsl`, embedded at compile time.
 
 /// Pipeline and buffer for drawing debug lines (e.g. occlusion rays).
 pub struct DebugLinesPass {
@@ -65,10 +41,14 @@ impl DebugLinesPass {
     const VERTEX_SIZE: u64 = std::mem::size_of::<DebugLineVertex>() as u64;
     const BUFFER_SIZE: u64 = Self::VERTEX_SIZE * (Self::MAX_LINES * 2) as u64;
 
-    pub fn new(device: &wgpu::Device, camera_bgl: &wgpu::BindGroupLayout) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        camera_bgl: &wgpu::BindGroupLayout,
+        sample_count: u32,
+    ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("debug_lines_shader"),
-            source: wgpu::ShaderSource::Wgsl(DEBUG_LINES_SHADER.into()),
+            source: wgpu::ShaderSource::Wgsl(crate::shader::DEBUG_LINES_WGSL.into()),
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -127,7 +107,7 @@ impl DebugLinesPass {
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
-            multisample: wgpu::MultisampleState::default(),
+            multisample: multisample_state(sample_count),
             multiview: None,
         });
 
@@ -158,10 +138,11 @@ impl DebugLinesPass {
         }
         let mut vertices: Vec<DebugLineVertex> = Vec::with_capacity(n * 2);
         for (start, end, occluded) in lines.iter().take(n) {
+            // false = cyan (expected shadow) · true = yellow (toward sun)
             let (r, g, b) = if *occluded {
-                (1.0, 0.2, 0.2)
+                (1.0, 0.92, 0.15)
             } else {
-                (0.2, 1.0, 0.3)
+                (0.15, 0.95, 1.0)
             };
             vertices.push(DebugLineVertex::new(*start, r, g, b, 1.0));
             vertices.push(DebugLineVertex::new(*end, r, g, b, 1.0));

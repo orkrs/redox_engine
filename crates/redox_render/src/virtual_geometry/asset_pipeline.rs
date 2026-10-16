@@ -1,165 +1,162 @@
-//! Offline asset pipeline: converts a standard [`Mesh`] into [`VGAssetData`].
+//! Offline asset pipeline: converts a standard [`Mesh`] into [`VGAssetData`]
+//! using the `meshopt` (meshoptimizer) library.
 //!
-//! ## Algorithm
+//! ## Algorithm (per LOD level `L` from [`LodChainConfig`])
 //!
-//! 1. Extract triangles and compute their centroids.
-//! 2. Sort triangles by a 3-D Morton code for spatial locality.
-//! 3. Greedily fill meshlets: keep adding triangles until the meshlet would
-//!    exceed [`MAX_VERTICES_PER_MESHLET`] or [`MAX_TRIANGLES_PER_MESHLET`].
-//! 4. For each meshlet, compute a bounding sphere and backface cone.
-//! 5. For LOD levels > 0, subsample triangles before re-clustering.
+//! 1. **Simplify** — [`meshopt::simplify`] (quadric-error decimation) reduces
+//!    the triangle count towards `triangle_fraction × source_triangles`.
+//!    Each level is simplified from the previous one so the LOD chain stays
+//!    topologically consistent. The result is watertight — unlike triangle
+//!    subsampling, no holes are ever produced. Vertices never move; only the
+//!    index buffer shrinks.
+//! 2. **Cluster** — [`meshopt::build_meshlets`] partitions the level into
+//!    meshlets respecting [`MAX_VERTICES_PER_MESHLET`] /
+//!    [`MAX_TRIANGLES_PER_MESHLET`] (both within meshopt's hard limits of
+//!    256 vertices / 512 triangles, with triangle count divisible by 4).
+//! 3. **Bounds** — [`meshopt::compute_meshlet_bounds`] provides the bounding
+//!    sphere and backface cone for every meshlet.
+//!
+//! Meshlet vertices are direct copies of the *original* source vertices, so
+//! vertex attributes (normals, UVs, tangents) are never re-interpolated —
+//! only topology changes across LODs. Every descriptor is tagged with its
+//! `lod_level`; the runtime picks one level per instance and culls/draws
+//! only meshlets of that level.
 
-use std::collections::HashMap;
+use meshopt::{build_meshlets, compute_meshlet_bounds, simplify, simplify_scale, SimplifyOptions, VertexDataAdapter};
+
 use crate::mesh::{Mesh, Vertex};
-use super::meshlet::{
-    MeshletDescriptor, VGAssetData, MAX_VERTICES_PER_MESHLET, MAX_TRIANGLES_PER_MESHLET,
-};
 use super::lod::LodChainConfig;
+use super::meshlet::{
+    MeshletDescriptor, VGAssetData, MAX_TRIANGLES_PER_MESHLET, MAX_VERTICES_PER_MESHLET,
+};
 
-// ── Morton code ───────────────────────────────────────────────────────────────
+/// Weight for cone tightness during meshlet clustering. 0.0 = purely spatial
+/// fit; larger values produce tighter backface cones (better culling) at a
+/// small packing cost. 0.5 matches the meshoptimizer sample default.
+const MESHLET_CONE_WEIGHT: f32 = 0.5;
 
-fn expand_bits(v: u32) -> u64 {
-    let v = v as u64 & 0x1fffff;
-    let v = (v | (v << 32)) & 0x1f00000000ffff;
-    let v = (v | (v << 16)) & 0x1f0000ff0000ff;
-    let v = (v | (v << 8)) & 0x100f00f00f00f00f;
-    let v = (v | (v << 4)) & 0x10c30c30c30c30c3;
-    (v | (v << 2)) & 0x1249249249249249
+// ── meshopt adapters ─────────────────────────────────────────────────────────
+
+/// Byte view over a vertex pool for meshopt. `Vertex.position` sits at byte
+/// offset 0 (see `Vertex::buffer_layout`).
+fn position_adapter(verts: &[Vertex]) -> VertexDataAdapter<'_> {
+    VertexDataAdapter::new(
+        bytemuck::cast_slice(verts),
+        std::mem::size_of::<Vertex>(),
+        std::mem::offset_of!(Vertex, position),
+    )
+    .expect("vertex slice is evenly divisible by the vertex stride")
 }
 
-fn morton3d(x: f32, y: f32, z: f32) -> u64 {
-    let xi = (x.clamp(0.0, 1.0) * 2097151.0) as u32;
-    let yi = (y.clamp(0.0, 1.0) * 2097151.0) as u32;
-    let zi = (z.clamp(0.0, 1.0) * 2097151.0) as u32;
-    expand_bits(xi) | (expand_bits(yi) << 1) | (expand_bits(zi) << 2)
-}
+// ── Simplification ───────────────────────────────────────────────────────────
 
-/// Sort triangle indices by the Morton code of their centroids.
-fn sort_triangles_spatially(centroids: &[[f32; 3]], aabb_min: [f32; 3], aabb_max: [f32; 3]) -> Vec<usize> {
-    let extent = [
-        (aabb_max[0] - aabb_min[0]).max(1e-6),
-        (aabb_max[1] - aabb_min[1]).max(1e-6),
-        (aabb_max[2] - aabb_min[2]).max(1e-6),
-    ];
-    let mut keyed: Vec<(u64, usize)> = centroids
-        .iter()
-        .enumerate()
-        .map(|(i, c)| {
-            let nx = (c[0] - aabb_min[0]) / extent[0];
-            let ny = (c[1] - aabb_min[1]) / extent[1];
-            let nz = (c[2] - aabb_min[2]) / extent[2];
-            (morton3d(nx, ny, nz), i)
-        })
-        .collect();
-    keyed.sort_unstable_by_key(|&(k, _)| k);
-    keyed.into_iter().map(|(_, i)| i).collect()
-}
-
-// ── Bounding sphere (Ritter's algorithm) ─────────────────────────────────────
-
-fn compute_bounding_sphere(verts: &[Vertex]) -> ([f32; 3], f32) {
-    if verts.is_empty() {
-        return ([0.0; 3], 0.0);
+/// Reduce `indices` to at most `target_triangles` triangles via quadric-error
+/// simplification. Returns the (possibly unchanged) index buffer plus the
+/// resulting geometric error in world-space units.
+///
+/// `max_relative_error` bounds the simplification error relative to the mesh
+/// extent; a generous bound lets the decimation reach the target count, a
+/// tight one trades triangle count for quality.
+fn simplify_level(
+    verts: &[Vertex],
+    indices: &[u32],
+    target_triangles: usize,
+    max_relative_error: f32,
+) -> (Vec<u32>, f32) {
+    let tri_count = indices.len() / 3;
+    if tri_count == 0 || target_triangles >= tri_count {
+        return (indices.to_vec(), 0.0);
     }
 
-    // Initial guess: bounding box centre
-    let mut bmin = verts[0].position;
-    let mut bmax = verts[0].position;
-    for v in verts.iter().skip(1) {
-        for i in 0..3 {
-            bmin[i] = bmin[i].min(v.position[i]);
-            bmax[i] = bmax[i].max(v.position[i]);
-        }
-    }
-    let mut center = [
-        (bmin[0] + bmax[0]) * 0.5,
-        (bmin[1] + bmax[1]) * 0.5,
-        (bmin[2] + bmax[2]) * 0.5,
-    ];
+    let adapter = position_adapter(verts);
+    // `target_count` must be a multiple of 3 (one per triangle).
+    let target_count = (target_triangles.max(1) * 3).min(tri_count * 3);
+    let error_bound = max_relative_error.clamp(1e-6, 1.0);
+    let mut result_error = 0.0_f32;
 
-    // Find max distance from centre
-    let mut radius = 0.0_f32;
-    for v in verts {
-        let d = dist2(center, v.position).sqrt();
-        if d > radius {
-            radius = d;
-        }
-    }
+    // LockBorder pins topological border vertices so open meshes (terrain
+    // chunks, patches) keep a stable silhouette across LODs; it is a no-op
+    // for closed meshes.
+    let simplified = simplify(
+        indices,
+        &adapter,
+        target_count,
+        error_bound,
+        SimplifyOptions::LockBorder,
+        Some(&mut result_error),
+    );
 
-    // Expand to include all vertices
-    for v in verts {
-        let d = dist2(center, v.position).sqrt();
-        if d > radius {
-            let over = d - radius;
-            let inv_d = 1.0 / d;
-            center[0] += (v.position[0] - center[0]) * over * 0.5 * inv_d;
-            center[1] += (v.position[1] - center[1]) * over * 0.5 * inv_d;
-            center[2] += (v.position[2] - center[2]) * over * 0.5 * inv_d;
-            radius = (radius + d) * 0.5;
-        }
-    }
-
-    (center, radius)
+    // meshopt reports error relative to the mesh extent; the descriptor wants
+    // absolute world-space units.
+    let absolute_error = result_error * simplify_scale(&adapter);
+    (simplified, absolute_error)
 }
 
-#[inline]
-fn dist2(a: [f32; 3], b: [f32; 3]) -> f32 {
-    let dx = a[0] - b[0];
-    let dy = a[1] - b[1];
-    let dz = a[2] - b[2];
-    dx * dx + dy * dy + dz * dz
-}
+// ── Clustering ───────────────────────────────────────────────────────────────
 
-// ── Cone computation ─────────────────────────────────────────────────────────
+/// Cluster one LOD level into meshlets, appending vertices, indices and
+/// descriptors to the accumulators. Offsets are rebased onto the running
+/// asset-wide slices.
+fn cluster_level(
+    level_verts: &[Vertex],
+    level_indices: &[u32],
+    lod_level: u32,
+    lod_error: f32,
+    material_index: u32,
+    out_verts: &mut Vec<Vertex>,
+    out_indices: &mut Vec<u32>,
+    out_meshlets: &mut Vec<MeshletDescriptor>,
+) {
+    if level_indices.is_empty() {
+        return;
+    }
 
-/// Compute the backface cone for a meshlet.
-/// Returns (axis, cutoff) where cutoff = cos(half_angle).
-fn compute_cone(local_verts: &[Vertex], local_indices: &[u32]) -> ([f32; 3], f32) {
-    let mut avg_normal = [0.0f32; 3];
-    let tri_count = local_indices.len() / 3;
+    let adapter = position_adapter(level_verts);
+    let built = build_meshlets(
+        level_indices,
+        &adapter,
+        MAX_VERTICES_PER_MESHLET,
+        MAX_TRIANGLES_PER_MESHLET,
+        MESHLET_CONE_WEIGHT,
+    );
 
-    for tri in 0..tri_count {
-        let i0 = local_indices[tri * 3] as usize;
-        let i1 = local_indices[tri * 3 + 1] as usize;
-        let i2 = local_indices[tri * 3 + 2] as usize;
-
-        if i0 >= local_verts.len() || i1 >= local_verts.len() || i2 >= local_verts.len() {
+    for meshlet in built.iter() {
+        if meshlet.triangles.is_empty() {
             continue;
         }
 
-        let n0 = local_verts[i0].normal;
-        let n1 = local_verts[i1].normal;
-        let n2 = local_verts[i2].normal;
+        let vert_base = out_verts.len() as u32;
+        // `meshlet.vertices` lists each unique source vertex exactly once,
+        // already order-optimised by meshopt.
+        for &src in meshlet.vertices {
+            out_verts.push(level_verts[src as usize]);
+        }
 
-        avg_normal[0] += n0[0] + n1[0] + n2[0];
-        avg_normal[1] += n0[1] + n1[1] + n2[1];
-        avg_normal[2] += n0[2] + n1[2] + n2[2];
+        let index_base = out_indices.len() as u32;
+        // `meshlet.triangles` is a micro index buffer of u8 triplets whose
+        // values are slots into `meshlet.vertices`; after appending those
+        // vertices in order, a slot maps to `vert_base + slot`.
+        for &slot in meshlet.triangles {
+            out_indices.push(vert_base + slot as u32);
+        }
+
+        let bounds = compute_meshlet_bounds(meshlet, &adapter);
+
+        out_meshlets.push(MeshletDescriptor {
+            vertex_offset: vert_base,
+            vertex_count: meshlet.vertices.len() as u32,
+            index_offset: index_base,
+            index_count: meshlet.triangles.len() as u32,
+            sphere_center: bounds.center,
+            sphere_radius: bounds.radius.max(0.0),
+            cone_axis: bounds.cone_axis,
+            cone_cutoff: bounds.cone_cutoff.clamp(-1.0, 1.0),
+            lod_error,
+            lod_level,
+            material_index,
+            _pad: 0,
+        });
     }
-
-    let len = (avg_normal[0] * avg_normal[0]
-        + avg_normal[1] * avg_normal[1]
-        + avg_normal[2] * avg_normal[2])
-        .sqrt();
-
-    if len < 1e-6 {
-        return ([0.0, 0.0, 1.0], -1.0); // Degenerate: never cull
-    }
-
-    let axis = [
-        avg_normal[0] / len,
-        avg_normal[1] / len,
-        avg_normal[2] / len,
-    ];
-
-    // Compute maximum deviation
-    let mut max_cos: f32 = 1.0;
-    for v in local_verts {
-        let n = v.normal;
-        let dot = n[0] * axis[0] + n[1] * axis[1] + n[2] * axis[2];
-        max_cos = max_cos.min(dot);
-    }
-
-    (axis, max_cos - 0.1) // small bias for safety
 }
 
 // ── Global AABB ──────────────────────────────────────────────────────────────
@@ -179,174 +176,327 @@ fn compute_aabb(vertices: &[Vertex]) -> [[f32; 3]; 2] {
     [min, max]
 }
 
-// ── LOD triangle subsampling ──────────────────────────────────────────────────
-
-/// Produce a simplified index list by keeping every `1/fraction` triangle.
-fn subsample_triangles(indices: &[u32], fraction: f32) -> Vec<u32> {
-    if fraction >= 1.0 {
-        return indices.to_vec();
-    }
-    let step = (1.0 / fraction).round() as usize;
-    let step = step.max(2);
-    let tri_count = indices.len() / 3;
-    let mut out = Vec::with_capacity(tri_count / step * 3 + 3);
-    for i in (0..tri_count).step_by(step) {
-        out.push(indices[i * 3]);
-        out.push(indices[i * 3 + 1]);
-        out.push(indices[i * 3 + 2]);
-    }
-    out
-}
-
-// ── Core clustering ───────────────────────────────────────────────────────────
-
-/// Cluster a triangle list into meshlets.
-/// Returns (vertices, indices, descriptors) with offsets relative to this
-/// asset's own slices (rebased on GPU upload).
-fn cluster_triangles(
-    source_verts: &[Vertex],
-    source_indices: &[u32],
-    lod_level: u32,
-    lod_error: f32,
-    material_index: u32,
-) -> (Vec<Vertex>, Vec<u32>, Vec<MeshletDescriptor>) {
-    let tri_count = source_indices.len() / 3;
-    if tri_count == 0 {
-        return (vec![], vec![], vec![]);
-    }
-
-    // Compute centroids and AABB
-    let centroids: Vec<[f32; 3]> = (0..tri_count)
-        .map(|i| {
-            let v0 = source_verts[source_indices[i * 3] as usize].position;
-            let v1 = source_verts[source_indices[i * 3 + 1] as usize].position;
-            let v2 = source_verts[source_indices[i * 3 + 2] as usize].position;
-            [
-                (v0[0] + v1[0] + v2[0]) / 3.0,
-                (v0[1] + v1[1] + v2[1]) / 3.0,
-                (v0[2] + v1[2] + v2[2]) / 3.0,
-            ]
-        })
-        .collect();
-
-    let aabb = compute_aabb(source_verts);
-    let sorted = sort_triangles_spatially(&centroids, aabb[0], aabb[1]);
-
-    let mut all_verts: Vec<Vertex> = Vec::new();
-    let mut all_indices: Vec<u32> = Vec::new();
-    let mut meshlets: Vec<MeshletDescriptor> = Vec::new();
-
-    let mut tri_cursor = 0;
-    while tri_cursor < sorted.len() {
-        let v_base = all_verts.len() as u32;
-        let i_base = all_indices.len() as u32;
-
-        let mut local_verts: Vec<Vertex> = Vec::new();
-        let mut local_vert_map: HashMap<u32, u32> = HashMap::new();
-        let mut tri_count_in_meshlet = 0usize;
-
-        while tri_cursor < sorted.len() && tri_count_in_meshlet < MAX_TRIANGLES_PER_MESHLET {
-            let tri_idx = sorted[tri_cursor];
-            let orig = [
-                source_indices[tri_idx * 3],
-                source_indices[tri_idx * 3 + 1],
-                source_indices[tri_idx * 3 + 2],
-            ];
-
-            // Count how many new vertices this triangle would add
-            let new_count = orig.iter().filter(|&&v| !local_vert_map.contains_key(&v)).count();
-            if local_verts.len() + new_count > MAX_VERTICES_PER_MESHLET {
-                break;
-            }
-
-            for &v in &orig {
-                if !local_vert_map.contains_key(&v) {
-                    let local_idx = local_verts.len() as u32;
-                    local_vert_map.insert(v, local_idx);
-                    local_verts.push(source_verts[v as usize]);
-                }
-                // Store global index (v_base + local offset)
-                all_indices.push(v_base + local_vert_map[&v]);
-            }
-            tri_count_in_meshlet += 1;
-            tri_cursor += 1;
-        }
-
-        if local_verts.is_empty() {
-            tri_cursor += 1; // safety to avoid infinite loop
-            continue;
-        }
-
-        let index_count = all_indices.len() as u32 - i_base;
-
-        // Compute bounding sphere and cone over local verts
-        let (center, radius) = compute_bounding_sphere(&local_verts);
-        let local_indices_for_cone: Vec<u32> = (0..local_verts.len() as u32).collect();
-        let (cone_axis, cone_cutoff) = compute_cone(&local_verts, &local_indices_for_cone);
-
-        meshlets.push(MeshletDescriptor {
-            vertex_offset: v_base,
-            vertex_count: local_verts.len() as u32,
-            index_offset: i_base,
-            index_count,
-            sphere_center: center,
-            sphere_radius: radius,
-            cone_axis,
-            cone_cutoff,
-            lod_error,
-            lod_level,
-            material_index,
-            _pad: 0,
-        });
-
-        all_verts.extend_from_slice(&local_verts);
-    }
-
-    (all_verts, all_indices, meshlets)
-}
-
 // ── Public entry point ────────────────────────────────────────────────────────
 
 /// Convert a standard mesh into virtual geometry asset data.
 ///
-/// Generates meshlets for each LOD level defined in `lod_config`.
-/// All LOD meshlets are concatenated into a single flat list;
-/// the LOD level is encoded in [`MeshletDescriptor::lod_level`].
+/// Generates meshlets for each LOD level defined in `lod_config`. All LOD
+/// meshlets are concatenated into a single flat list; the LOD level is
+/// encoded in [`MeshletDescriptor::lod_level`].
 pub fn build_vg_asset(mesh: &Mesh, lod_config: &LodChainConfig, material_index: u32) -> VGAssetData {
     let mut all_verts: Vec<Vertex> = Vec::new();
     let mut all_indices: Vec<u32> = Vec::new();
     let mut all_meshlets: Vec<MeshletDescriptor> = Vec::new();
 
-    for (lod_idx, lod) in lod_config.levels.iter().enumerate() {
-        let lod_indices = subsample_triangles(&mesh.indices, lod.triangle_fraction);
-        let lod_error = 1.0 - lod.triangle_fraction; // simple proxy
-
-        let (verts, indices, mut meshlets) = cluster_triangles(
-            &mesh.vertices,
-            &lod_indices,
-            lod_idx as u32,
-            lod_error,
-            material_index,
-        );
-
-        // Rebase offsets to be relative to the accumulated global slices
-        let vert_base = all_verts.len() as u32;
-        let idx_base = all_indices.len() as u32;
-        for m in &mut meshlets {
-            m.vertex_offset += vert_base;
-            m.index_offset += idx_base;
-        }
-
-        all_verts.extend(verts);
-        all_indices.extend(indices);
-        all_meshlets.extend(meshlets);
+    let source_tris = mesh.indices.len() / 3;
+    if source_tris == 0 {
+        return VGAssetData {
+            vertices: all_verts,
+            indices: all_indices,
+            meshlets: all_meshlets,
+            aabb: [[0.0; 3]; 2],
+        };
     }
 
-    let aabb = compute_aabb(&all_verts);
+    // Each level is simplified from the previous one (chained), which keeps
+    // the LOD chain topologically consistent. `current_tris` tracks the
+    // previous level's *actual* count so successive targets can never grow.
+    let mut current: Vec<u32> = mesh.indices.clone();
+    let mut current_tris = source_tris;
+
+    for (level_idx, level) in lod_config.levels.iter().enumerate() {
+        let fraction = if level.triangle_fraction.is_finite() {
+            level.triangle_fraction
+        } else {
+            1.0
+        };
+
+        let target_tris = if level_idx == 0 || fraction >= 1.0 {
+            current_tris
+        } else {
+            ((source_tris as f32 * fraction).round() as usize)
+                .clamp(1, current_tris.saturating_sub(1))
+        };
+
+        let (indices, lod_error) = simplify_level(
+            &mesh.vertices,
+            &current,
+            target_tris,
+            level.max_relative_error,
+        );
+
+        cluster_level(
+            &mesh.vertices,
+            &indices,
+            level_idx as u32,
+            lod_error,
+            material_index,
+            &mut all_verts,
+            &mut all_indices,
+            &mut all_meshlets,
+        );
+
+        current_tris = indices.len() / 3;
+        current = indices;
+    }
+
+    // All levels reference copies of the original vertices, so the AABB of
+    // the source vertex pool covers every level.
+    let aabb = compute_aabb(&mesh.vertices);
     VGAssetData {
         vertices: all_verts,
         indices: all_indices,
         meshlets: all_meshlets,
         aabb,
+    }
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mesh::Vertex;
+    use std::f32::consts::PI;
+
+    fn vertex(position: [f32; 3], normal: [f32; 3]) -> Vertex {
+        Vertex {
+            position,
+            normal,
+            uv: [0.0, 0.0],
+            tangent: [1.0, 0.0, 0.0],
+        }
+    }
+
+    /// Unit cube (12 triangles, closed manifold).
+    fn cube_mesh() -> Mesh {
+        let corners: [[f32; 3]; 8] = [
+            [-1.0, -1.0, -1.0], [1.0, -1.0, -1.0], [1.0, 1.0, -1.0], [-1.0, 1.0, -1.0],
+            [-1.0, -1.0, 1.0], [1.0, -1.0, 1.0], [1.0, 1.0, 1.0], [-1.0, 1.0, 1.0],
+        ];
+        let faces: [[usize; 4]; 6] = [
+            [0, 3, 2, 1], // -z
+            [4, 5, 6, 7], // +z
+            [0, 1, 5, 4], // -y
+            [2, 3, 7, 6], // +y
+            [1, 2, 6, 5], // +x
+            [0, 4, 7, 3], // -x
+        ];
+        let mut verts: Vec<Vertex> = corners.iter().map(|&p| vertex(p, p)).collect();
+        verts.resize(24, vertex([0.0; 3], [0.0; 3])); // placeholder, replaced below
+        // Flat-shaded cube: 4 unique vertices per face for clean normals.
+        let mut verts: Vec<Vertex> = Vec::with_capacity(24);
+        let mut indices: Vec<u32> = Vec::with_capacity(36);
+        for face in &faces {
+            let base = verts.len() as u32;
+            let n = {
+                let a = corners[face[1]];
+                let b = corners[face[0]];
+                let c = corners[face[2]];
+                let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+                let v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+                [
+                    u[1] * v[2] - u[2] * v[1],
+                    u[2] * v[0] - u[0] * v[2],
+                    u[0] * v[1] - u[1] * v[0],
+                ]
+            };
+            let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+            let n = [n[0] / len, n[1] / len, n[2] / len];
+            for &c in face {
+                verts.push(vertex(corners[c], n));
+            }
+            indices.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
+        }
+        Mesh::new(verts, indices)
+    }
+
+    /// UV-sphere with `rings` latitude rows and `segments` longitude columns.
+    /// `rings = 40, segments = 64` → 4992 triangles (~5k).
+    fn uv_sphere(radius: f32, rings: usize, segments: usize) -> Mesh {
+        let row_len = segments + 1;
+        let mut verts: Vec<Vertex> = Vec::with_capacity((rings + 1) * row_len);
+        for r in 0..=rings {
+            let phi = PI * r as f32 / rings as f32;
+            let (sp, cp) = phi.sin_cos();
+            for s in 0..=segments {
+                let theta = 2.0 * PI * s as f32 / segments as f32;
+                let (st, ct) = theta.sin_cos();
+                let n = [sp * ct, cp, sp * st];
+                verts.push(vertex(
+                    [n[0] * radius, n[1] * radius, n[2] * radius],
+                    n,
+                ));
+            }
+        }
+
+        let mut indices: Vec<u32> = Vec::new();
+        for r in 0..rings {
+            for s in 0..segments {
+                let a = (r * row_len + s) as u32;
+                let b = a + 1;
+                let c = a + row_len as u32;
+                let d = c + 1;
+                // Skip degenerate pole triangles (a == b at north, c == d at
+                // south pole rows).
+                if r > 0 {
+                    indices.extend([a, b, d]);
+                }
+                if r < rings - 1 {
+                    indices.extend([a, d, c]);
+                }
+            }
+        }
+        Mesh::new(verts, indices)
+    }
+
+    fn tri_area(verts: &[Vertex], i0: u32, i1: u32, i2: u32) -> f32 {
+        let a = verts[i0 as usize].position;
+        let b = verts[i1 as usize].position;
+        let c = verts[i2 as usize].position;
+        let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        let v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        let cx = u[1] * v[2] - u[2] * v[1];
+        let cy = u[2] * v[0] - u[0] * v[2];
+        let cz = u[0] * v[1] - u[1] * v[0];
+        0.5 * (cx * cx + cy * cy + cz * cz).sqrt()
+    }
+
+    /// Shared invariants: caps, LOD tags, index ranges, no degenerate
+    /// triangles. Returns per-level (vertex, triangle) counts.
+    fn check_asset(asset: &VGAssetData, level_count: usize) -> Vec<(usize, usize)> {
+        let mut per_level: Vec<(usize, usize)> = vec![(0, 0); level_count];
+
+        for m in &asset.meshlets {
+            assert!((m.lod_level as usize) < level_count, "lod_level out of range");
+            assert_eq!(m.index_count % 3, 0, "meshlet index count must be a multiple of 3");
+            assert!(
+                m.vertex_count as usize <= MAX_VERTICES_PER_MESHLET,
+                "vertex cap violated: {}",
+                m.vertex_count
+            );
+            assert!(
+                (m.index_count / 3) as usize <= MAX_TRIANGLES_PER_MESHLET,
+                "triangle cap violated: {}",
+                m.index_count / 3
+            );
+
+            // Every index must reference a vertex inside the meshlet's own range.
+            let start = m.index_offset as usize;
+            let end = start + m.index_count as usize;
+            for &idx in &asset.indices[start..end] {
+                assert!(
+                    idx >= m.vertex_offset && idx < m.vertex_offset + m.vertex_count,
+                    "index {} escapes meshlet vertex range [{}, {})",
+                    idx,
+                    m.vertex_offset,
+                    m.vertex_offset + m.vertex_count
+                );
+            }
+
+            // No degenerate triangles at any LOD level.
+            let tstart = m.index_offset as usize;
+            for t in (0..m.index_count as usize).step_by(3) {
+                let area = tri_area(
+                    &asset.vertices,
+                    asset.indices[tstart + t],
+                    asset.indices[tstart + t + 1],
+                    asset.indices[tstart + t + 2],
+                );
+                assert!(area > 1e-10, "degenerate triangle (area {area}) in LOD {}", m.lod_level);
+            }
+
+            let slot = &mut per_level[m.lod_level as usize];
+            slot.0 += m.vertex_count as usize;
+            slot.1 += (m.index_count / 3) as usize;
+        }
+        per_level
+    }
+
+    #[test]
+    fn cube_builds_valid_lod_chain() {
+        let mesh = cube_mesh();
+        assert_eq!(mesh.indices.len() / 3, 12);
+        let cfg = LodChainConfig::default();
+        let asset = build_vg_asset(&mesh, &cfg, 0);
+
+        let per_level = check_asset(&asset, cfg.levels.len());
+        assert_eq!(asset.triangle_count() as usize, per_level.iter().map(|p| p.1).sum::<usize>());
+
+        // Every level must be present.
+        for (lvl, (v, t)) in per_level.iter().enumerate() {
+            assert!(*t > 0, "LOD {lvl} produced no triangles");
+            assert!(*v > 0, "LOD {lvl} produced no vertices");
+        }
+
+        // Counts must not grow across levels.
+        for w in per_level.windows(2) {
+            assert!(w[0].1 >= w[1].1, "triangle count grew across LODs: {:?}", w);
+            assert!(w[0].0 >= w[1].0, "vertex count grew across LODs: {:?}", w);
+        }
+    }
+
+    #[test]
+    fn sphere_lods_shrink_monotonically_without_holes() {
+        let mesh = uv_sphere(1.0, 40, 64);
+        let src_tris = mesh.indices.len() / 3;
+        assert_eq!(src_tris, 4992);
+
+        let cfg = LodChainConfig::default();
+        let asset = build_vg_asset(&mesh, &cfg, 7);
+
+        let per_level = check_asset(&asset, cfg.levels.len());
+
+        // LOD 0 is the untouched source.
+        assert_eq!(per_level[0].1, src_tris);
+
+        // Strict shrinkage for a dense sphere (quadric decimation reaches its
+        // targets comfortably).
+        assert!(
+            per_level[1].1 < per_level[0].1,
+            "LOD 1 did not shrink: {} vs {}",
+            per_level[1].1,
+            per_level[0].1
+        );
+        assert!(
+            per_level[2].1 < per_level[1].1,
+            "LOD 2 did not shrink: {} vs {}",
+            per_level[2].1,
+            per_level[1].1
+        );
+        // And it actually decimates towards the configured fractions.
+        assert!(per_level[1].1 as f32 <= src_tris as f32 * 0.55);
+        assert!(per_level[2].1 as f32 <= src_tris as f32 * 0.30);
+
+        // AABB covers the unit sphere.
+        for axis in 0..3 {
+            assert!((asset.aabb[0][axis] + 1.0).abs() < 1e-4);
+            assert!((asset.aabb[1][axis] - 1.0).abs() < 1e-4);
+        }
+    }
+
+    #[test]
+    fn empty_mesh_produces_empty_asset() {
+        let mesh = Mesh::new(vec![], vec![]);
+        let cfg = LodChainConfig::default();
+        let asset = build_vg_asset(&mesh, &cfg, 0);
+        assert!(asset.vertices.is_empty());
+        assert!(asset.indices.is_empty());
+        assert!(asset.meshlets.is_empty());
+        assert_eq!(asset.triangle_count(), 0);
+    }
+
+    #[test]
+    fn single_level_chain_is_identity() {
+        let mesh = uv_sphere(1.0, 8, 12);
+        let src_tris = mesh.indices.len() / 3;
+        let cfg = LodChainConfig {
+            levels: vec![super::super::lod::LodLevelConfig::default()],
+        };
+        let asset = build_vg_asset(&mesh, &cfg, 3);
+        let per_level = check_asset(&asset, 1);
+        assert_eq!(per_level[0].1, src_tris);
+        assert!(asset.meshlets.iter().all(|m| m.lod_error == 0.0));
+        assert!(asset.meshlets.iter().all(|m| m.material_index == 3));
     }
 }

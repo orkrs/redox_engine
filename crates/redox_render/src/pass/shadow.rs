@@ -2,8 +2,7 @@
 //!
 //! Renders the scene from the light's perspective into a depth texture.
 
-use crate::mesh::Vertex;
-use crate::shader::manager::{SHADOW_SHADER_SRC, create_shader_module};
+use crate::shader::{SHADOW_WGSL, create_shader_with_vertex_decode};
 
 pub const SHADOW_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 pub const SHADOW_SIZE: u32 = 2048;
@@ -51,7 +50,7 @@ impl ShadowPass {
             push_constant_ranges: &[],
         });
 
-        let shader = create_shader_module(device, "shadow_shader", SHADOW_SHADER_SRC);
+        let shader = create_shader_with_vertex_decode(device, "shadow_shader", SHADOW_WGSL);
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("shadow_pipeline"),
@@ -59,18 +58,14 @@ impl ShadowPass {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x3], // Only position needed
-                }],
+                buffers: &[crate::mesh::compress::compressed_position_layout()],
                 compilation_options: Default::default(),
             },
             fragment: None, // No fragment shader for classic shadow pass (writes to depth texture)
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
+                cull_mode: None, // dual-face: thin casters / silhouettes stay solid
                 unclipped_depth: false,
                 polygon_mode: wgpu::PolygonMode::Fill,
                 ..Default::default()
@@ -80,9 +75,11 @@ impl ShadowPass {
                 depth_write_enabled: true,
                 depth_compare: wgpu::CompareFunction::LessEqual,
                 stencil: wgpu::StencilState::default(),
+                // Bias kept minimal: large constant/slope on Depth32Float was
+                // pushing caster depth past receivers → cast shadows vanished.
                 bias: wgpu::DepthBiasState {
-                    constant: 2, // depth bias to avoid z-fighting
-                    slope_scale: 2.0,
+                    constant: 0,
+                    slope_scale: 0.0,
                     clamp: 0.0,
                 },
             }),

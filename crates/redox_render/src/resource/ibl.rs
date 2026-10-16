@@ -6,6 +6,13 @@ pub struct IBLResource {
     pub prefiltered_view: wgpu::TextureView,
     pub brdf_lut_view: wgpu::TextureView,
     pub environment_view: wgpu::TextureView, // Original cubemap
+    /// Whether a real environment was loaded (`from_equirect`).
+    /// `dummy()` leaves this false so consumers (e.g. the skybox pass) can
+    /// skip drawing the all-black placeholder.
+    env_loaded: bool,
+    /// Dummy maps must stay alive: dropping them leaves the views pointing at
+    /// freed GPU memory (view-dependent white/cyan flashes).
+    _owned: Vec<wgpu::Texture>,
 }
 
 /// Represents a Skybox (environment map).
@@ -25,21 +32,21 @@ pub struct IBLProcessor {
 
 impl IBLProcessor {
     pub fn new(device: &wgpu::Device) -> Self {
-        use crate::shader::manager::{
-            BRDF_LUT_SRC, EQUIRECT_TO_CUBE_SRC, IRRADIANCE_CONVOLUTION_SRC,
-            PREFILTER_CONVOLUTION_SRC, create_shader_module,
+        use crate::shader::{
+            BRDF_LUT_WGSL, EQUIRECT_TO_CUBE_WGSL, IRRADIANCE_CONVOLUTION_WGSL,
+            PREFILTER_CONVOLUTION_WGSL, create_shader_module,
         };
 
         // Each entry point lives in its own shader module so that naga never
         // sees two variables at the same @group/@binding with different types.
         let equirect_shader =
-            create_shader_module(device, "equirect_to_cube_shader", EQUIRECT_TO_CUBE_SRC);
+            create_shader_module(device, "equirect_to_cube_shader", EQUIRECT_TO_CUBE_WGSL);
         let irradiance_shader =
-            create_shader_module(device, "irradiance_convolution_shader", IRRADIANCE_CONVOLUTION_SRC);
+            create_shader_module(device, "irradiance_convolution_shader", IRRADIANCE_CONVOLUTION_WGSL);
         let prefilter_shader =
-            create_shader_module(device, "prefilter_convolution_shader", PREFILTER_CONVOLUTION_SRC);
+            create_shader_module(device, "prefilter_convolution_shader", PREFILTER_CONVOLUTION_WGSL);
         let brdf_lut_shader =
-            create_shader_module(device, "brdf_lut_shader", BRDF_LUT_SRC);
+            create_shader_module(device, "brdf_lut_shader", BRDF_LUT_WGSL);
 
         // Linear filtering with clamping and trilinear mip blending.
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -174,7 +181,7 @@ impl IBLProcessor {
         &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) -> wgpu::TextureView {
+    ) -> (wgpu::Texture, wgpu::TextureView) {
         let size = 512;
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("ibl_brdf_lut"),
@@ -216,7 +223,7 @@ impl IBLProcessor {
         }
         queue.submit(Some(encoder.finish()));
 
-        view
+        (texture, view)
     }
 
     /// Generates the irradiance map from an environmental cubemap.
@@ -225,7 +232,7 @@ impl IBLProcessor {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         skybox_view: &wgpu::TextureView,
-    ) -> wgpu::TextureView {
+    ) -> (wgpu::Texture, wgpu::TextureView) {
         let size = 32; // Irradiance maps are low resolution
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("ibl_irradiance_map"),
@@ -287,10 +294,11 @@ impl IBLProcessor {
         }
         queue.submit(Some(encoder.finish()));
 
-        texture.create_view(&wgpu::TextureViewDescriptor {
+        let cube = texture.create_view(&wgpu::TextureViewDescriptor {
             dimension: Some(wgpu::TextureViewDimension::Cube),
             ..Default::default()
-        })
+        });
+        (texture, cube)
     }
 
     /// Generates the pre-filtered environment map (Specular IBL).
@@ -299,7 +307,7 @@ impl IBLProcessor {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         skybox_view: &wgpu::TextureView,
-    ) -> wgpu::TextureView {
+    ) -> (wgpu::Texture, wgpu::TextureView) {
         let size = 128;
         let mip_levels = 5;
         let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -387,11 +395,12 @@ impl IBLProcessor {
             queue.submit(Some(encoder.finish()));
         }
 
-        texture.create_view(&wgpu::TextureViewDescriptor {
+        let cube = texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("ibl_prefiltered_view"),
             dimension: Some(wgpu::TextureViewDimension::Cube),
             ..Default::default()
-        })
+        });
+        (texture, cube)
     }
 }
 
@@ -404,25 +413,34 @@ impl IBLResource {
         equirect: &Texture,
     ) -> Self {
         let skybox = processor.generate_cubemap(device, queue, equirect, 1024);
-        let irradiance = processor.generate_irradiance_map(device, queue, &skybox.view);
-        let prefiltered = processor.generate_prefiltered_map(device, queue, &skybox.view);
-        let brdf_lut = processor.generate_brdf_lut(device, queue);
+        let (irradiance_tex, irradiance) =
+            processor.generate_irradiance_map(device, queue, &skybox.view);
+        let (prefiltered_tex, prefiltered) =
+            processor.generate_prefiltered_map(device, queue, &skybox.view);
+        let (brdf_tex, brdf_lut) = processor.generate_brdf_lut(device, queue);
 
         Self {
             irradiance_view: irradiance,
             prefiltered_view: prefiltered,
             brdf_lut_view: brdf_lut,
             environment_view: skybox.view,
+            env_loaded: true,
+            _owned: vec![skybox.cubemap, irradiance_tex, prefiltered_tex, brdf_tex],
         }
+    }
+
+    /// Returns true while no real environment has been loaded
+    /// (i.e. [`Self::dummy`] is in place and the env cubemap is black).
+    pub fn is_dummy(&self) -> bool {
+        !self.env_loaded
     }
 
     /// Creates a dummy (all-black) IBL resource used before any environment is set.
     ///
-    /// Uses the same `Rgba16Float` format as the real IBL textures and includes
-    /// 5 mip levels in the prefiltered cube so that `textureSampleLevel` with
-    /// LOD up to 4.0 never requests a missing mip.
-    pub fn dummy(device: &wgpu::Device) -> Self {
-        // 1×1 2D texture for BRDF LUT
+    /// Textures stay alive and are cleared to zero. Uninitialized cubemap faces
+    /// flash the whole scene white/cyan as the camera samples different directions.
+    pub fn dummy(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+        let tex_usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
         let dummy_lut = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("dummy_ibl_brdf_lut"),
             size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
@@ -430,11 +448,10 @@ impl IBLResource {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: tex_usage,
             view_formats: &[],
         });
 
-        // 1×1×6 cube for irradiance (single mip, always black)
         let dummy_irradiance_cube = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("dummy_ibl_irradiance"),
             size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 6 },
@@ -442,24 +459,21 @@ impl IBLResource {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: tex_usage,
             view_formats: &[],
         });
 
-        // 1×1×6 cube with 5 mip levels for the prefiltered map.
-        // The PBR shader samples it at `roughness * 4.0`, so mips 0–4 must exist.
         let dummy_prefiltered_cube = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("dummy_ibl_prefiltered"),
             size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 6 },
-            mip_level_count: 1, // GPU clamps to mip 0; all channels are zero
+            mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: tex_usage,
             view_formats: &[],
         });
 
-        // Shared environment view (not used in PBR shading, just kept for completeness)
         let dummy_env_cube = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("dummy_ibl_env"),
             size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 6 },
@@ -467,9 +481,14 @@ impl IBLResource {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: tex_usage,
             view_formats: &[],
         });
+
+        write_black_2d(queue, &dummy_lut);
+        write_black_cube(queue, &dummy_irradiance_cube);
+        write_black_cube(queue, &dummy_prefiltered_cube);
+        write_black_cube(queue, &dummy_env_cube);
 
         let cube_view_desc = wgpu::TextureViewDescriptor {
             dimension: Some(wgpu::TextureViewDimension::Cube),
@@ -477,10 +496,69 @@ impl IBLResource {
         };
 
         Self {
-            irradiance_view:  dummy_irradiance_cube.create_view(&cube_view_desc),
+            irradiance_view: dummy_irradiance_cube.create_view(&cube_view_desc),
             prefiltered_view: dummy_prefiltered_cube.create_view(&cube_view_desc),
-            brdf_lut_view:    dummy_lut.create_view(&wgpu::TextureViewDescriptor::default()),
+            brdf_lut_view: dummy_lut.create_view(&wgpu::TextureViewDescriptor::default()),
             environment_view: dummy_env_cube.create_view(&cube_view_desc),
+            env_loaded: false,
+            _owned: vec![
+                dummy_lut,
+                dummy_irradiance_cube,
+                dummy_prefiltered_cube,
+                dummy_env_cube,
+            ],
         }
+    }
+}
+
+fn write_black_2d(queue: &wgpu::Queue, tex: &wgpu::Texture) {
+    let row = vec![0u8; wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as usize];
+    queue.write_texture(
+        wgpu::ImageCopyTexture {
+            texture: tex,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        &row,
+        wgpu::ImageDataLayout {
+            offset: 0,
+            bytes_per_row: Some(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT),
+            rows_per_image: Some(1),
+        },
+        wgpu::Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+    );
+}
+
+fn write_black_cube(queue: &wgpu::Queue, tex: &wgpu::Texture) {
+    let row = vec![0u8; wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as usize];
+    for layer in 0..6u32 {
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: tex,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: 0,
+                    y: 0,
+                    z: layer,
+                },
+                aspect: wgpu::TextureAspect::All,
+            },
+            &row,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT),
+                rows_per_image: Some(1),
+            },
+            wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+        );
     }
 }

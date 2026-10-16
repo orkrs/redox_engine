@@ -3,9 +3,9 @@
 //! Renders world-space normals and linear depth to an RGBA16 texture.
 //! This data is used by SSAO and other post-processing effects.
 
-use crate::mesh::Vertex;
+use crate::mesh::CompressedVertex;
 use crate::pass::forward::DEPTH_FORMAT;
-use crate::shader::manager::{NORMAL_SHADER_SRC, create_shader_module};
+use crate::shader::{NORMAL_WGSL, create_shader_with_vertex_decode};
 
 pub struct NormalPass {
     pub pipeline: wgpu::RenderPipeline,
@@ -48,7 +48,7 @@ impl NormalPass {
             push_constant_ranges: &[],
         });
 
-        let shader = create_shader_module(device, "normal_shader", NORMAL_SHADER_SRC);
+        let shader = create_shader_with_vertex_decode(device, "normal_shader", NORMAL_WGSL);
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("normal_pipeline"),
@@ -56,7 +56,7 @@ impl NormalPass {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[Vertex::buffer_layout()],
+                buffers: &[CompressedVertex::buffer_layout()],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {

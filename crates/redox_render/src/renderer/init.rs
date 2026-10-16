@@ -46,6 +46,7 @@ impl Renderer {
         {
             required_features |= wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
         }
+        required_features |= adapter.features() & crate::profiler::PROFILER_FEATURES;
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
@@ -886,6 +887,8 @@ impl Renderer {
             ],
         });
 
+        let gpu_profiler = crate::profiler::GpuProfiler::new(&device, &queue);
+
         Self {
             device,
             queue,
@@ -1046,6 +1049,7 @@ impl Renderer {
             vsm_info_buffer,
             vsm_sampler,
             vsm_enabled: true,
+            gpu_profiler,
             vsm_screen_shadows: true,
             vsm_dirty_pages_last_frame: 0,
             smrt_config: crate::shadow::smrt::SmrtQuality::Quality.config(),

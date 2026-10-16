@@ -1,9 +1,16 @@
-//! Camera component and GPU uniform for the view-projection matrix.
+//! Camera component and GPU uniform.
 //!
-//! When TAA is enabled the [`RenderContext`] injects a subpixel jitter into
-//! the projection matrix every frame (see [`crate::pass::taa`]).  The
-//! unjittered VP is stored separately so the velocity pass can compute correct
-//! motion vectors.
+//! [`CameraUniform`] carries **separate** view / projection matrices plus their
+//! inverses — this is what lets shadow passes (CSM) build correct cascade
+//! frustums from the real camera instead of a hardcoded guess.
+//!
+//! When TAA is enabled the renderer injects a subpixel jitter into the
+//! projection matrix every frame (see [`crate::pass::taa`]). The unjittered
+//! matrices are stored so the velocity pass can compute correct motion vectors.
+//!
+//! # GPU layout note
+//! `view_proj` + `camera_pos` stay at offsets 0..80 for compatibility with
+//! shaders compiled before the split; new fields are appended after them.
 
 use bytemuck::{Pod, Zeroable};
 use redox_ecs::Entity;
@@ -63,16 +70,28 @@ impl Camera {
 #[derive(Clone, Copy, Debug)]
 pub struct ActiveCamera(pub Entity);
 
-/// GPU-friendly camera uniform.
+/// GPU-friendly camera uniform with separated matrices.
 ///
-/// Uploaded to a uniform buffer and bound in the vertex shader.
+/// Uploaded to a uniform buffer; bound by every pass that needs camera data
+/// (PBR, shadow, velocity, TAA, skybox).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct CameraUniform {
-    /// Combined view-projection matrix (column-major).
+    /// Combined view-projection matrix (column-major). Kept first for
+    /// byte-compatibility with pre-split shaders.
     pub view_proj: [[f32; 4]; 4],
     /// Camera world-space position (padded to 16 bytes).
     pub camera_pos: [f32; 4],
+    /// World→view matrix.
+    pub view: [[f32; 4]; 4],
+    /// View→clip matrix.
+    pub proj: [[f32; 4]; 4],
+    /// Inverse view matrix (clip-independent ray reconstruction).
+    pub inv_view: [[f32; 4]; 4],
+    /// Inverse projection matrix.
+    pub inv_proj: [[f32; 4]; 4],
+    /// Previous frame's **unjittered** view-projection (motion vectors).
+    pub prev_view_proj: [[f32; 4]; 4],
 }
 
 impl CameraUniform {
@@ -81,14 +100,67 @@ impl CameraUniform {
         Self {
             view_proj: Mat4::IDENTITY.to_cols_array_2d(),
             camera_pos: [0.0; 4],
+            view: Mat4::IDENTITY.to_cols_array_2d(),
+            proj: Mat4::IDENTITY.to_cols_array_2d(),
+            inv_view: Mat4::IDENTITY.to_cols_array_2d(),
+            inv_proj: Mat4::IDENTITY.to_cols_array_2d(),
+            prev_view_proj: Mat4::IDENTITY.to_cols_array_2d(),
         }
     }
 
-    /// Updates the uniform from camera parameters and transform.
+    /// Updates all matrices from camera parameters and transform.
+    ///
+    /// `prev_view_proj` keeps its previous value (call
+    /// [`snapshot_prev_view_proj`](Self::snapshot_prev_view_proj) at frame end).
     pub fn update(&mut self, camera: &Camera, position: Vec3, rotation: Quat) {
-        let vp = camera.view_proj_matrix(position, rotation);
-        self.view_proj = vp.to_cols_array_2d();
+        let view = Camera::view_matrix(position, rotation);
+        let proj = camera.projection_matrix();
+        self.view = view.to_cols_array_2d();
+        self.proj = proj.to_cols_array_2d();
+        self.inv_view = view.inverse().to_cols_array_2d();
+        self.inv_proj = proj.inverse().to_cols_array_2d();
+        self.view_proj = (proj * view).to_cols_array_2d();
         self.camera_pos = [position.x, position.y, position.z, 1.0];
+    }
+
+    /// Copies the current combined VP into `prev_view_proj`.
+    ///
+    /// Call once at the end of each rendered frame (after velocity consumed
+    /// the previous value).
+    pub fn snapshot_prev_view_proj(&mut self) {
+        self.prev_view_proj = self.view_proj;
+    }
+
+    /// Applies a subpixel NDC jitter to the projection and refreshes the
+    /// combined `view_proj`. Used by TAA/TAAU before uploading the uniform.
+    pub fn apply_jitter_ndc(&mut self, dx: f32, dy: f32) {
+        let mut proj = Mat4::from_cols_array_2d(&self.proj);
+        // Same derivation as the legacy combined-matrix path: shifting the
+        // z-axis x/y components translates NDC xy.
+        proj.z_axis.x -= dx;
+        proj.z_axis.y -= dy;
+        self.proj = proj.to_cols_array_2d();
+        let view = Mat4::from_cols_array_2d(&self.view);
+        self.view_proj = (proj * view).to_cols_array_2d();
+    }
+
+    /// Returns the current combined view-projection as a glam matrix.
+    pub fn view_proj_matrix(&self) -> Mat4 {
+        Mat4::from_cols_array_2d(&self.view_proj)
+    }
+
+    /// Returns the previous (unjittered) view-projection as a glam matrix.
+    pub fn prev_view_proj_matrix(&self) -> Mat4 {
+        Mat4::from_cols_array_2d(&self.prev_view_proj)
+    }
+
+    /// Returns the unjittered combined view-projection (recomputed from the
+    /// stored view/proj pair, immune to per-frame jitter writes).
+    pub fn unjittered_view_proj(&self, jitter_dx: f32, jitter_dy: f32) -> Mat4 {
+        let mut proj = Mat4::from_cols_array_2d(&self.proj);
+        proj.z_axis.x += jitter_dx;
+        proj.z_axis.y += jitter_dy;
+        proj * Mat4::from_cols_array_2d(&self.view)
     }
 }
 
@@ -102,8 +174,9 @@ impl Default for CameraUniform {
 
 /// ECS resource that stores the previous frame's **unjittered** VP matrix.
 ///
-/// [`RenderContext`] writes this every frame so the velocity pass can compute
-/// per-pixel motion vectors.  Applications never need to touch this directly.
+/// [`RenderContext`](crate::RenderContext) writes this every frame so the
+/// velocity pass can compute per-pixel motion vectors. Applications never need
+/// to touch this directly. Prefer `CameraUniform::prev_view_proj` for new code.
 #[derive(Clone, Debug)]
 pub struct PreviousViewProj {
     /// Column-major 4×4 unjittered VP matrix from the last rendered frame.

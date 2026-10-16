@@ -1,7 +1,11 @@
 //! Core mesh types: vertex layout and mesh data.
 
+pub mod compress;
 pub mod loader;
 pub mod primitive;
+pub mod tangent;
+
+pub use compress::{CompressedVertex, bounds_vectors, compress_vertices};
 
 use bytemuck::{Pod, Zeroable};
 use redox_math::{Aabb, Vec3};

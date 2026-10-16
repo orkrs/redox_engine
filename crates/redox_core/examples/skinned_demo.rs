@@ -2,7 +2,7 @@
 //! target. Pose sampling, blending and skinning run on the CPU (`redox_anim`); the deformed
 //! vertices are streamed into ordinary mesh slots so shadows, GTAO and TAA all see them.
 //!
-//! Keys (window title shows the state): V = sun shadows (VSM), P = point-light shadows (off by
+//! Keys (window title shows the state): V = sun shadows (VSM / off), P = point-light shadows (off by
 //!       default: they duplicate the sun shadows),
 //!       D = re-render sun shadows under deforming meshes every frame, Esc = quit.
 //!
@@ -179,11 +179,36 @@ fn shadowed(mut light: PointLight, enabled: bool) -> PointLight {
     light
 }
 
-fn light_scene(sun_shadows: bool, point_shadows: bool) -> LightScene {
+/// How the sun's shadow is produced.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum SunShadow {
+    Off,
+    /// Virtual shadow map clipmap (cached pages).
+    Vsm,
+}
+
+impl SunShadow {
+    fn next(self) -> Self {
+        match self {
+            Self::Vsm => Self::Off,
+            Self::Off => Self::Vsm,
+        }
+    }
+
+    fn parse(name: &str) -> Option<Self> {
+        match name {
+            "vsm" => Some(Self::Vsm),
+            "off" => Some(Self::Off),
+            _ => None,
+        }
+    }
+}
+
+fn light_scene(sun_shadow: SunShadow, point_shadows: bool) -> LightScene {
     let mut sun = DirectionalLight::new(Vec3::new(-0.45, 1.0, 0.55), Vec3::new(1.0, 0.94, 0.84), 2.0);
     // `vsm` routes the sun through the VSM clipmap; without it the sun casts no shadow.
     sun.soft_shadows = false;
-    sun.vsm = sun_shadows;
+    sun.vsm = sun_shadow == SunShadow::Vsm;
     LightScene {
         directional: sun,
         ambient: Vec3::new(0.10, 0.12, 0.16),
@@ -212,7 +237,7 @@ fn main() {
                 .and_then(|v| v.split_once('x'))
                 .and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)))
                 .unwrap_or(SHOT_SIZE);
-            screenshots(&dir, size);
+            screenshots(&dir, size, &args);
         }
         None => windowed(),
     }
@@ -226,9 +251,9 @@ fn windowed() {
     configure_renderer(&mut ctx);
     let mut scene = DemoScene::new(&mut ctx);
     let mut input = InputState::new();
-    let (mut sun_shadows, mut point_shadows, mut follow_deformation) = (true, false, true);
-    let title = |sun: bool, point: bool, follow: bool| {
-        format!("RedOx skinned demo | V sun shadows: {} | P point shadows: {} | D follow deformation: {}", on_off(sun), on_off(point), on_off(follow))
+    let (mut sun_shadows, mut point_shadows, mut follow_deformation) = (SunShadow::Vsm, false, true);
+    let title = |sun: SunShadow, point: bool, follow: bool| {
+        format!("RedOx skinned demo | V sun shadows: {sun:?} | P point shadows: {} | D follow deformation: {}", on_off(point), on_off(follow))
     };
     window.set_title(&title(sun_shadows, point_shadows, follow_deformation));
     let (start, mut last) = (Instant::now(), Instant::now());
@@ -244,15 +269,23 @@ fn windowed() {
                     // next `NewEvents`, which comes before the redraw that would read it.
                     if key.state == winit::event::ElementState::Pressed && !key.repeat {
                         if let winit::keyboard::PhysicalKey::Code(code) = key.physical_key {
-                            let flag = match code {
-                                KeyCode::KeyV => Some(&mut sun_shadows),
-                                KeyCode::KeyP => Some(&mut point_shadows),
-                                KeyCode::KeyD => Some(&mut follow_deformation),
-                                _ => None,
+                            let changed = match code {
+                                KeyCode::KeyV => {
+                                    sun_shadows = sun_shadows.next();
+                                    true
+                                }
+                                KeyCode::KeyP => {
+                                    point_shadows = !point_shadows;
+                                    true
+                                }
+                                KeyCode::KeyD => {
+                                    follow_deformation = !follow_deformation;
+                                    true
+                                }
+                                _ => false,
                             };
-                            if let Some(flag) = flag {
-                                *flag = !*flag;
-                                ctx.set_vsm_enabled(sun_shadows);
+                            if changed {
+                                ctx.set_vsm_enabled(sun_shadows == SunShadow::Vsm);
                                 window.set_title(&title(sun_shadows, point_shadows, follow_deformation));
                             }
                         }
@@ -267,6 +300,7 @@ fn windowed() {
                         }
                         frame_count += 1;
                         if frame_count % 120 == 0 {
+                            eprintln!("gpu: {}", ctx.gpu_profiler.report());
                             let (stats, free, capacity) = ctx.vsm_diagnostics();
                             eprintln!(
                                 "vsm: pool free {free}/{capacity}, allocated {}, overflow {}, dirty last frame {}",
@@ -304,7 +338,7 @@ fn windowed() {
 }
 
 /// Offscreen render: no window, one PNG per entry of [`SHOT_TIMES`].
-fn screenshots(dir: &std::path::Path, size: (u32, u32)) {
+fn screenshots(dir: &std::path::Path, size: (u32, u32), args: &[String]) {
     std::fs::create_dir_all(dir).expect("create screenshot dir");
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor { backends: wgpu::Backends::all(), ..Default::default() });
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
@@ -313,7 +347,9 @@ fn screenshots(dir: &std::path::Path, size: (u32, u32)) {
         force_fallback_adapter: false,
     }))
     .expect("no GPU adapter");
-    let wanted = wgpu::Features::SHADER_PRIMITIVE_INDEX | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
+    let wanted = wgpu::Features::SHADER_PRIMITIVE_INDEX
+        | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+        | redox_render::PROFILER_FEATURES;
     let (device, queue) = pollster::block_on(adapter.request_device(
         &wgpu::DeviceDescriptor {
             label: Some("skinned_demo_offscreen"),
@@ -352,7 +388,14 @@ fn screenshots(dir: &std::path::Path, size: (u32, u32)) {
 
     configure_renderer(&mut renderer);
     let mut scene = DemoScene::new(&mut renderer);
-    let lights = light_scene(true, false);
+    let sun = args
+        .iter()
+        .position(|a| a == "--sun")
+        .and_then(|i| args.get(i + 1))
+        .and_then(|v| SunShadow::parse(v))
+        .unwrap_or(SunShadow::Vsm);
+    renderer.set_vsm_enabled(sun == SunShadow::Vsm);
+    let lights = light_scene(sun, false);
     let camera = Camera::new(0.9, w as f32 / h as f32, 0.1, 100.0);
     // One continuous 60 fps timeline from t = 0, exactly like the windowed loop, so shadow
     // page streaming, TAA history and camera motion behave the same as on screen.
@@ -372,6 +415,7 @@ fn screenshots(dir: &std::path::Path, size: (u32, u32)) {
         renderer.device.poll(wgpu::Maintain::Wait);
 
         if SHOT_TIMES.iter().any(|shot| (shot * 60.0) as usize == frame) {
+            println!("gpu: {}", renderer.gpu_profiler.report());
             let (stats, free, capacity) = renderer.vsm_diagnostics();
             println!(
                 "t={t:.1}s vsm: pool free {free}/{capacity}, allocated {}, freed {}, overflow {}, dirty {}",

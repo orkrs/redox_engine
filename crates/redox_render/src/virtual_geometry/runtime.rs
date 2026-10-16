@@ -18,100 +18,27 @@
 use std::collections::HashMap;
 use bytemuck;
 
-use crate::mesh::Vertex;
+use crate::mesh::{CompressedVertex, compress_vertices, bounds_vectors};
 use super::asset_pipeline::build_vg_asset;
-use super::culling::{cull_meshlets, Frustum};
+use super::cache;
+use super::culling::{cull_meshlets_into, Frustum};
+use super::gpu_cull::{CullParamsUniform, VgGpuCull};
 use super::indirect::IndirectDrawBuffer;
 use super::lod::LodChainConfig;
 use super::meshlet::{
-    MeshletDescriptor, VGAssetData, VGInstanceData,
+    DrawIndexedIndirectCmd, MeshletDescriptor, VGAssetData, VGInstanceData,
     MAX_GLOBAL_MESHLETS, MAX_VG_INSTANCES, MAX_VISIBLE_COMMANDS,
 };
 
-// ── WGSL shader source ────────────────────────────────────────────────────────
+// ── WGSL shader source ──────────────────────────────────────────────────────
 
-/// Vertex + fragment shader for virtual geometry rendering.
-///
-/// Group 0: camera uniform (binding 0)
-/// Group 1: per-instance storage buffer (binding 0)
-///
-/// The fragment stage renders world-space normals tinted with a VG debug colour
-/// so it is easy to distinguish VG objects from standard PBR objects.
-/// Full PBR integration (IBL, clustered lights, VSM shadows) can be added by
-/// extending the bind groups.
-const VG_SHADER_SRC: &str = r#"
-// ── Shared structures ────────────────────────────────────────────────────
-
-struct CameraUniform {
-    view_proj: mat4x4<f32>,
-    camera_pos: vec4<f32>,
-};
-
-struct VGInstance {
-    transform: mat4x4<f32>,
-    meshlet_offset: u32,
-    meshlet_count: u32,
-    flags: u32,
-    _pad: u32,
-};
-
-// ── Bindings ─────────────────────────────────────────────────────────────
-
-@group(0) @binding(0) var<uniform> camera: CameraUniform;
-
-@group(1) @binding(0) var<storage, read> vg_instances: array<VGInstance>;
-
-// ── Vertex input / output ─────────────────────────────────────────────────
-
-struct VertIn {
-    @location(0) position: vec3<f32>,
-    @location(1) normal:   vec3<f32>,
-    @location(2) uv:       vec2<f32>,
-    @location(3) tangent:  vec3<f32>,
-};
-
-struct VertOut {
-    @builtin(position) clip_pos:    vec4<f32>,
-    @location(0)       world_pos:   vec3<f32>,
-    @location(1)       world_norm:  vec3<f32>,
-    @location(2)       uv:          vec2<f32>,
-};
-
-// ── Vertex shader ─────────────────────────────────────────────────────────
-
-@vertex
-fn vs_main(
-    in: VertIn,
-    @builtin(instance_index) inst_idx: u32,
-) -> VertOut {
-    let inst = vg_instances[inst_idx];
-    let world_pos  = inst.transform * vec4<f32>(in.position, 1.0);
-    let world_norm = normalize((inst.transform * vec4<f32>(in.normal, 0.0)).xyz);
-
-    var out: VertOut;
-    out.clip_pos   = camera.view_proj * world_pos;
-    out.world_pos  = world_pos.xyz;
-    out.world_norm = world_norm;
-    out.uv         = in.uv;
-    return out;
-}
-
-// ── Fragment shader ───────────────────────────────────────────────────────
-// Renders world-space normals as colour with a teal tint, making VG objects
-// visually distinct from PBR objects (useful for debugging + demos).
-
-@fragment
-fn fs_main(in: VertOut) -> @location(0) vec4<f32> {
-    // Normal → colour (0.5*N + 0.5 remaps [-1,1] to [0,1])
-    let n_col = in.world_norm * 0.5 + vec3<f32>(0.5);
-
-    // Teal tint to distinguish VG objects
-    let tint = vec3<f32>(0.2, 0.85, 0.9);
-    let colour = mix(n_col, tint, 0.35);
-
-    return vec4<f32>(colour, 1.0);
-}
-"#;
+// Vertex + fragment shader for virtual geometry rendering. The source lives in
+// `shaders/vg.wgsl` and is embedded at compile time (`crate::shader::VG_WGSL`).
+//
+// Group 0: camera uniform (binding 0); Group 1: per-instance storage buffer
+// (binding 0). The fragment stage renders world-space normals tinted with a
+// VG debug colour so VG objects are easy to distinguish from standard PBR
+// objects; full PBR integration can be added by extending the bind groups.
 
 // ── Config & Stats ────────────────────────────────────────────────────────────
 
@@ -130,17 +57,20 @@ pub struct VGConfig {
     pub max_visible_commands: usize,
     /// LOD chain config used when building new VG assets.
     pub lod_config: LodChainConfig,
+    /// When true, culling runs on GPU via `vg_cull.wgsl` (CPU fallback otherwise).
+    pub gpu_cull: bool,
 }
 
 impl Default for VGConfig {
     fn default() -> Self {
         Self {
-            max_vertices: 1 << 22,   // ~4M
-            max_indices: 1 << 23,    // ~8M
-            max_meshlets: MAX_GLOBAL_MESHLETS,
+            max_vertices: 1 << 18,
+            max_indices: 1 << 19,
+            max_meshlets: MAX_GLOBAL_MESHLETS.min(1 << 16),
             max_instances: MAX_VG_INSTANCES,
             max_visible_commands: MAX_VISIBLE_COMMANDS,
             lod_config: LodChainConfig::default(),
+            gpu_cull: false,
         }
     }
 }
@@ -170,14 +100,12 @@ pub struct VGInstanceHandle(pub u32);
 
 #[allow(dead_code)]
 struct StoredAsset {
-    /// Offset of this asset's meshlets in the global meshlet buffer.
     meshlet_offset: u32,
-    /// Number of meshlets for this asset.
     meshlet_count: u32,
-    /// Offset in global vertex buffer (reserved for future streaming).
     vertex_offset: u32,
-    /// Offset in global index buffer (reserved for future streaming).
     index_offset: u32,
+    bounds_min: [f32; 4],
+    bounds_extent: [f32; 4],
 }
 
 // ── VGSystem ──────────────────────────────────────────────────────────────────
@@ -193,11 +121,17 @@ pub struct VGSystem {
 
     // GPU metadata / instance buffers
     instance_buffer: wgpu::Buffer,
+    meshlet_gpu_buffer: wgpu::Buffer,
 
     // Indirect draw
     indirect: IndirectDrawBuffer,
 
-    // Pipeline
+    // Optional GPU cull
+    gpu_cull: VgGpuCull,
+    /// Reused by CPU cull path each frame.
+    cull_commands_scratch: Vec<DrawIndexedIndirectCmd>,
+
+    // Pipeline (debug path — retained for diagnostics)
     pipeline: wgpu::RenderPipeline,
     #[allow(dead_code)]
     camera_bgl: wgpu::BindGroupLayout,
@@ -209,6 +143,7 @@ pub struct VGSystem {
     // CPU-side state
     /// All meshlet descriptors accumulated from every registered asset.
     global_meshlets: Vec<MeshletDescriptor>,
+    meshlets_dirty: bool,
     /// Per-instance GPU data (transforms + meshlet range).
     instance_data: Vec<VGInstanceData>,
     /// Metadata for each registered asset.
@@ -238,7 +173,7 @@ impl VGSystem {
         depth_format: wgpu::TextureFormat,
     ) -> Self {
         // ── GPU Geometry Buffers ──────────────────────────────────────────────
-        let vb_size = (config.max_vertices * std::mem::size_of::<Vertex>()) as u64;
+        let vb_size = (config.max_vertices * std::mem::size_of::<CompressedVertex>()) as u64;
         let ib_size = (config.max_indices * std::mem::size_of::<u32>()) as u64;
 
         let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -264,8 +199,17 @@ impl VGSystem {
             mapped_at_creation: false,
         });
 
+        let meshlet_bytes = (config.max_meshlets * std::mem::size_of::<MeshletDescriptor>()) as u64;
+        let meshlet_gpu_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("vg_meshlet_storage"),
+            size: meshlet_bytes.max(64),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         // ── Indirect Draw Buffer ──────────────────────────────────────────────
         let indirect = IndirectDrawBuffer::new(device, config.max_visible_commands, "vg_indirect_draw");
+        let gpu_cull = VgGpuCull::new(device);
 
         // ── Camera Bind Group Layout + Bind Group ─────────────────────────────
         let camera_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -328,13 +272,17 @@ impl VGSystem {
             vertex_buffer,
             index_buffer,
             instance_buffer,
+            meshlet_gpu_buffer,
             indirect,
+            gpu_cull,
+            cull_commands_scratch: Vec::new(),
             pipeline,
             camera_bgl,
             camera_bind_group,
             instances_bgl,
             instances_bind_group,
             global_meshlets: Vec::new(),
+            meshlets_dirty: false,
             instance_data: Vec::new(),
             assets: HashMap::new(),
             instance_map: HashMap::new(),
@@ -380,11 +328,17 @@ impl VGSystem {
         let idx_offset = self.index_watermark;
         let meshlet_offset = self.global_meshlets.len() as u32;
 
-        // Upload vertices
+        let aabb = redox_math::Aabb {
+            min: redox_math::Vec3::from_array(data.aabb[0]),
+            max: redox_math::Vec3::from_array(data.aabb[1]),
+        };
+        let compressed = compress_vertices(&data.vertices, &aabb);
+        let (bounds_min, bounds_extent) = bounds_vectors(&aabb);
+
         queue.write_buffer(
             &self.vertex_buffer,
-            (vert_offset as usize * std::mem::size_of::<Vertex>()) as u64,
-            bytemuck::cast_slice(&data.vertices),
+            (vert_offset as usize * std::mem::size_of::<CompressedVertex>()) as u64,
+            bytemuck::cast_slice(&compressed),
         );
 
         // Upload indices
@@ -396,6 +350,7 @@ impl VGSystem {
 
         // Accumulate meshlets into CPU mirror (used every frame for culling)
         self.global_meshlets.extend(data.meshlets);
+        self.meshlets_dirty = true;
 
         self.vertex_watermark += vert_needed as u32;
         self.index_watermark += idx_needed as u32;
@@ -410,6 +365,8 @@ impl VGSystem {
                 meshlet_count,
                 vertex_offset: vert_offset,
                 index_offset: idx_offset,
+                bounds_min,
+                bounds_extent,
             },
         );
 
@@ -428,7 +385,13 @@ impl VGSystem {
         material_index: u32,
         queue: &wgpu::Queue,
     ) -> Option<VGAssetId> {
-        let data = build_vg_asset(mesh, &self.config.lod_config.clone(), material_index);
+        let lod = self.config.lod_config.clone();
+        let key = cache::cache_key(mesh, &lod, material_index);
+        let data = cache::load_cached(key).unwrap_or_else(|| {
+            let built = build_vg_asset(mesh, &lod, material_index);
+            cache::store_cached(key, &built);
+            built
+        });
         self.register_asset(data, queue)
     }
 
@@ -460,6 +423,8 @@ impl VGSystem {
             meshlet_count: stored.meshlet_count,
             flags: 0,
             _pad: 0,
+            bounds_min: stored.bounds_min,
+            bounds_extent: stored.bounds_extent,
         };
 
         if slot < self.instance_data.len() {
@@ -506,11 +471,39 @@ impl VGSystem {
 
     // ── Per-frame update ──────────────────────────────────────────────────────
 
-    /// Prepare the frame: cull meshlets and upload draw commands.
+    /// Prepare the frame: select LOD per instance, cull meshlets, upload draw commands.
     ///
     /// `view_proj` must be the same column-major matrix used by the camera buffer.
-    pub fn prepare_frame(&mut self, queue: &wgpu::Queue, view_proj: &[[f32; 4]; 4]) {
-        // Upload dirty instance data
+    /// `camera_pos` and `fov_y_rad` drive per-instance LOD selection via [`lod::select_lod`].
+    pub fn prepare_frame(
+        &mut self,
+        queue: &wgpu::Queue,
+        view_proj: &[[f32; 4]; 4],
+        camera_pos: redox_math::Vec3,
+        fov_y_rad: f32,
+    ) {
+        // LOD selection per instance (stored in `flags` as selected level index).
+        for inst in &mut self.instance_data {
+            if inst.meshlet_count == 0 {
+                continue;
+            }
+            let start = inst.meshlet_offset as usize;
+            let _end = (inst.meshlet_offset + inst.meshlet_count) as usize;
+            let first = self.global_meshlets.get(start).copied();
+            if let Some(m) = first {
+                let scale = super::culling::max_scale(&inst.transform);
+                let world_center = super::culling::transform_point(
+                    &inst.transform,
+                    m.sphere_center,
+                );
+                let dist = redox_math::Vec3::from_array(world_center).distance(camera_pos);
+                let proj = super::lod::projected_radius(m.sphere_radius * scale, dist, fov_y_rad);
+                inst.flags = super::lod::select_lod(proj, &self.config.lod_config) as u32;
+            }
+        }
+        self.instances_dirty = true;
+
+        // Upload dirty instance data (LOD flags may have changed).
         if self.instances_dirty && !self.instance_data.is_empty() {
             queue.write_buffer(
                 &self.instance_buffer,
@@ -534,25 +527,268 @@ impl VGSystem {
         }
 
         let frustum = Frustum::from_view_proj(view_proj);
-        let result = cull_meshlets(&self.instance_data, &self.global_meshlets, &frustum);
+        let cam = [camera_pos.x, camera_pos.y, camera_pos.z];
 
-        let total_tris: u64 = self.global_meshlets.iter().map(|m| (m.index_count / 3) as u64).sum();
+        if !self.config.gpu_cull {
+            let result = cull_meshlets_into(
+                &self.instance_data,
+                &self.global_meshlets,
+                &frustum,
+                cam,
+                &mut self.cull_commands_scratch,
+            );
+            let total_tris: u64 = self
+                .global_meshlets
+                .iter()
+                .map(|m| (m.index_count / 3) as u64)
+                .sum();
 
-        self.indirect.upload(queue, &result.commands);
+            self.indirect.upload(queue, &self.cull_commands_scratch);
 
-        self.stats = VGStats {
-            total_meshlets: result.total_meshlet_count,
-            visible_meshlets: result.visible_meshlet_count,
-            total_triangles: total_tris,
-            visible_triangles: result.visible_triangle_count,
-            registered_assets: self.assets.len() as u32,
-            active_instances: self.instance_data.iter().filter(|i| i.meshlet_count > 0).count() as u32,
-        };
+            self.stats = VGStats {
+                total_meshlets: result.total_meshlet_count,
+                visible_meshlets: result.visible_meshlet_count,
+                total_triangles: total_tris,
+                visible_triangles: result.visible_triangle_count,
+                registered_assets: self.assets.len() as u32,
+                active_instances: self
+                    .instance_data
+                    .iter()
+                    .filter(|i| i.meshlet_count > 0)
+                    .count() as u32,
+            };
+        } else {
+            // GPU cull runs in Renderer::render_frame_into; seed CPU cull once.
+            if self.indirect.count == 0 {
+                let result = cull_meshlets_into(
+                    &self.instance_data,
+                    &self.global_meshlets,
+                    &frustum,
+                    cam,
+                    &mut self.cull_commands_scratch,
+                );
+                self.indirect.upload(queue, &self.cull_commands_scratch);
+                self.stats.visible_meshlets = result.visible_meshlet_count;
+            }
+            // GPU cull runs in Renderer::render_frame_into before draw calls.
+            self.stats = VGStats {
+                total_meshlets: self.global_meshlets.len() as u32,
+                visible_meshlets: self.indirect.count,
+                total_triangles: self
+                    .global_meshlets
+                    .iter()
+                    .map(|m| (m.index_count / 3) as u64)
+                    .sum(),
+                visible_triangles: 0,
+                registered_assets: self.assets.len() as u32,
+                active_instances: self
+                    .instance_data
+                    .iter()
+                    .filter(|i| i.meshlet_count > 0)
+                    .count() as u32,
+            };
+        }
     }
 
-    // ── Rendering ─────────────────────────────────────────────────────────────
+    /// Upload meshlet SSBO when assets changed.
+    pub fn upload_meshlets_if_dirty(&mut self, queue: &wgpu::Queue) {
+        if !self.meshlets_dirty {
+            return;
+        }
+        if !self.global_meshlets.is_empty() {
+            queue.write_buffer(
+                &self.meshlet_gpu_buffer,
+                0,
+                bytemuck::cast_slice(&self.global_meshlets),
+            );
+        }
+        self.meshlets_dirty = false;
+    }
 
-    /// Issue draw calls for all visible meshlets.
+    /// Poll deferred GPU-cull readback (uses last frame's count for draws).
+    pub fn poll_gpu_cull_count(&mut self, device: &wgpu::Device) {
+        self.gpu_cull
+            .poll_readback(device, &mut self.indirect);
+    }
+
+    /// Record GPU cull into the main frame encoder (no CPU stall).
+    pub fn record_gpu_cull(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        view_proj: &[[f32; 4]; 4],
+        camera_pos: redox_math::Vec3,
+        hiz: &super::hiz::HiZPyramid,
+    ) {
+        self.upload_meshlets_if_dirty(queue);
+        let params = self.cull_params(view_proj, camera_pos, hiz, 0);
+        let inst_count = self.instance_data.len() as u32;
+        self.gpu_cull.record_dispatch(
+            device,
+            encoder,
+            queue,
+            &params,
+            &self.instance_buffer,
+            &self.meshlet_gpu_buffer,
+            &self.indirect,
+            inst_count,
+            hiz.view(0),
+            hiz.sampler(),
+            true,
+        );
+    }
+
+    /// Phase 2 late cull: re-test Hi-Z rejects against the current-frame pyramid.
+    pub fn record_gpu_cull_phase2(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        view_proj: &[[f32; 4]; 4],
+        camera_pos: redox_math::Vec3,
+        hiz: &super::hiz::HiZPyramid,
+    ) {
+        if !self.config.gpu_cull || self.active_instance_count() == 0 {
+            return;
+        }
+        let params = self.cull_params(view_proj, camera_pos, hiz, 1);
+        let inst_count = self.instance_data.len() as u32;
+        self.gpu_cull.record_dispatch(
+            device,
+            encoder,
+            queue,
+            &params,
+            &self.instance_buffer,
+            &self.meshlet_gpu_buffer,
+            &self.indirect,
+            inst_count,
+            hiz.view(0),
+            hiz.sampler(),
+            false,
+        );
+    }
+
+    fn cull_params(
+        &self,
+        view_proj: &[[f32; 4]; 4],
+        camera_pos: redox_math::Vec3,
+        hiz: &super::hiz::HiZPyramid,
+        cull_mode: u32,
+    ) -> CullParamsUniform {
+        let frustum = Frustum::from_view_proj(view_proj);
+        CullParamsUniform {
+            planes: frustum.planes,
+            camera_pos: [camera_pos.x, camera_pos.y, camera_pos.z, 1.0],
+            view_proj: *view_proj,
+            hiz_size: [hiz.width as f32, hiz.height as f32],
+            hiz_mip_count: hiz.mip_count,
+            hiz_enabled: u32::from(hiz.is_ready()),
+            cull_mode,
+            reject_capacity: self.gpu_cull.reject_capacity(),
+            _pad: [0; 2],
+        }
+    }
+
+    /// Schedule async count readback on the main encoder.
+    pub fn schedule_gpu_cull_readback(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        self.gpu_cull.schedule_readback(encoder);
+    }
+
+    /// Begin async map after submit.
+    pub fn kick_gpu_cull_readback(&mut self) {
+        self.gpu_cull.kick_readback();
+    }
+
+    /// Run GPU cull (requires [`VGConfig::gpu_cull`] and a pre-built encoder).
+    #[allow(dead_code)]
+    pub fn run_gpu_cull(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: wgpu::CommandEncoder,
+        view_proj: &[[f32; 4]; 4],
+        camera_pos: redox_math::Vec3,
+        hiz: &super::hiz::HiZPyramid,
+    ) -> u32 {
+        self.upload_meshlets_if_dirty(queue);
+        let params = self.cull_params(view_proj, camera_pos, hiz, 0);
+        let inst_count = self.instance_data.len() as u32;
+        let mut enc = encoder;
+        self.gpu_cull.record_dispatch(
+            device,
+            &mut enc,
+            queue,
+            &params,
+            &self.instance_buffer,
+            &self.meshlet_gpu_buffer,
+            &self.indirect,
+            inst_count,
+            hiz.view(0),
+            hiz.sampler(),
+            true,
+        );
+        let count = self
+            .gpu_cull
+            .read_command_count(device, queue, enc, &mut self.indirect);
+        self.stats.visible_meshlets = count;
+        count
+    }
+
+    /// Issue visibility-buffer indirect draws.
+    pub fn draw_vis_indirect<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        vis: &'a crate::pass::vg_resolve::VgVisPass,
+        frame_bg: &'a wgpu::BindGroup,
+    ) {
+        if self.indirect.count == 0 {
+            return;
+        }
+        crate::pass::vg_resolve::bind_vis_draw_state(
+            pass,
+            vis,
+            frame_bg,
+            &self.instances_bind_group,
+            &self.vertex_buffer,
+            &self.index_buffer,
+        );
+        self.indirect.issue_draws(pass);
+    }
+
+    /// Issue shadow-map indirect draws.
+    pub fn draw_shadow_indirect<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        shadow: &'a crate::pass::vg_resolve::VgShadowPass,
+        shadow_matrix_bg: &'a wgpu::BindGroup,
+        instances_bg: &'a wgpu::BindGroup,
+    ) {
+        shadow.draw(
+            pass,
+            shadow_matrix_bg,
+            instances_bg,
+            &self.vertex_buffer,
+            &self.index_buffer,
+            &self.indirect,
+        );
+    }
+
+    pub fn instance_buffer(&self) -> &wgpu::Buffer {
+        &self.instance_buffer
+    }
+
+    pub fn meshlet_buffer(&self) -> &wgpu::Buffer {
+        &self.meshlet_gpu_buffer
+    }
+
+    pub fn active_instance_count(&self) -> u32 {
+        self.instance_data.iter().filter(|i| i.meshlet_count > 0).count() as u32
+    }
+
+    // ── Rendering (debug forward path) ────────────────────────────────────────
+
+    /// Issue draw calls for all visible meshlets (debug teal-normals path).
     ///
     /// Must be called inside an active `RenderPass` configured for the same
     /// surface format and depth format used during construction.
@@ -597,9 +833,10 @@ fn build_pipeline(
         push_constant_ranges: &[],
     });
 
+    let shader_src = crate::shader::shader_with_vertex_decode(crate::shader::VG_WGSL);
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("vg_shader"),
-        source: wgpu::ShaderSource::Wgsl(VG_SHADER_SRC.into()),
+        source: wgpu::ShaderSource::Wgsl(shader_src.into()),
     });
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -608,7 +845,7 @@ fn build_pipeline(
         vertex: wgpu::VertexState {
             module: &shader,
             entry_point: "vs_main",
-            buffers: &[Vertex::buffer_layout()],
+            buffers: &[CompressedVertex::buffer_layout()],
             compilation_options: Default::default(),
         },
         fragment: Some(wgpu::FragmentState {

@@ -37,11 +37,21 @@ impl Renderer {
             self.light_uniform.dir_color[3],
         );
 
+        self.gpu_profiler.begin_frame(&self.device);
+        let mut ts_encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("gpu_ts_begin"),
+            });
+        self.gpu_profiler.mark(&mut ts_encoder, "frame_start");
+
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("frame_encoder"),
             });
+        // Everything submitted before this encoder (shadow page / atlas passes) ends here.
+        self.gpu_profiler.mark(&mut encoder, "shadow_passes");
 
         self.ddgi_gpu.record_gpu_fill(
             &self.device,
@@ -146,6 +156,7 @@ impl Renderer {
             }
         }
 
+        self.gpu_profiler.mark(&mut encoder, "ddgi_and_cull");
         // 0. Update Light Uniform with Shadow Matrix
         let mut light_u = self.pbr_pass_light_uniform();
         if self.uses_scatter_light() {
@@ -595,15 +606,18 @@ impl Renderer {
             }
         }
 
+        self.gpu_profiler.mark(&mut encoder, "normal_prepass_hiz");
         // 3–5. GTAO (optional — when disabled leave bent normal + AO at defaults)
         self.record_gtao_passes(&mut encoder);
 
+        self.gpu_profiler.mark(&mut encoder, "gtao");
         // 5b. VSM screen-space shadow (1 Vogel ray + temporal) — now default ON.
         // PBR samples filtered R16Float instead of inline 16-ray SMRT.
         // 5b. VSM screen-space shadow (1 Vogel ray + temporal) — now default ON.
         // PBR samples filtered R16Float instead of inline 16-ray SMRT.
         self.record_vsm_screen_shadow(&mut encoder);
 
+        self.gpu_profiler.mark(&mut encoder, "vsm_screen_shadow");
         // 5. Forward pass into HDR. Always clear + draw regular meshes.
         // VG vis/resolve composites on top; skipping this left HDR uninitialized
         // (full-screen white) as soon as any VG instance existed.
@@ -652,6 +666,7 @@ impl Renderer {
             }
         }
 
+        self.gpu_profiler.mark(&mut encoder, "forward");
         // ── 5a. VG visibility buffer + PBR resolve ───────────────────────────
         if self.vg_use_vis_path {
             let vg_has_content = self
@@ -766,6 +781,7 @@ impl Renderer {
                 vg.render(&mut render_pass);
             }
         }
+        self.gpu_profiler.mark(&mut encoder, "vg_visibility_resolve");
         // ── 5b. Transparent pass:
         // Same HDR target and depth buffer as the forward pass, but with
         // depth writes disabled (read-only depth) so transparent surfaces
@@ -789,6 +805,7 @@ impl Renderer {
             self.record_draw_transparent(&mut transparent_render_pass, objects, &self.main_vis_scratch);
         }
 
+        self.gpu_profiler.mark(&mut encoder, "transparent");
         // ── 5c. Smart Resolve (Sharp AA): luma-weighted MSAA resolve → hdr_view ─
         if self.aa_sharp && self.msaa_sample_count > 1 {
             self.msaa_resolve_pass.record(
@@ -826,9 +843,11 @@ impl Renderer {
             }
         }
 
+        self.gpu_profiler.mark(&mut encoder, "msaa_resolve_particles");
         // ── ScatterLight (HDR, pre-TAA) ─────────────────────────────────────
         self.record_scatter_light_pass(&mut encoder);
 
+        self.gpu_profiler.mark(&mut encoder, "scatter_light");
         // ── Tone-mapping uniform (shared by both call sites below) ─────────
         self.queue.write_buffer(
             &self.tonemap_uniform_buffer,
@@ -1070,6 +1089,7 @@ impl Renderer {
             post_pass.draw(0..3, 0..1);
         }
 
+        self.gpu_profiler.mark(&mut encoder, "taa_tonemap_bloom_smaa");
         // Copy current depth → prev depth for next frame's TAA disocclusion test.
         if self.taa_enabled {
             encoder.copy_texture_to_texture(
@@ -1105,11 +1125,14 @@ impl Renderer {
             self.vsm_shadow_frame_count = self.vsm_shadow_frame_count.saturating_add(1);
         }
 
+        self.gpu_profiler.mark(&mut encoder, "frame_tail");
+        self.gpu_profiler.resolve(&mut encoder);
         self.queue.submit(
-            mt_cmd_buffers
-                .into_iter()
+            std::iter::once(ts_encoder.finish())
+                .chain(mt_cmd_buffers)
                 .chain(std::iter::once(encoder.finish())),
         );
+        self.gpu_profiler.after_submit();
         self.staging_ring.end_frame();
         Ok(())
     }

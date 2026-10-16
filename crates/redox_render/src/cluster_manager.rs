@@ -1,8 +1,9 @@
 //! GPU cluster management and light assignment updates.
 
+use crate::cluster_gpu_cull::{ClusterCullParams, ClusterGpuCull};
 use crate::clustering::{self, ClusterInfo, ClusterLightAssignment};
 use crate::light::{PointLight, PointLightGpu};
-use wgpu::{Buffer, Device, Queue};
+use wgpu::{Buffer, CommandEncoder, Device, Queue};
 
 /// Manages cluster data and GPU buffers for clustered forward rendering.
 pub struct ClusterManager {
@@ -20,6 +21,18 @@ pub struct ClusterManager {
     pub info_buffer: Buffer,
     /// Current light assignment (cached for debugging).
     current_assignment: Option<ClusterLightAssignment>,
+    /// Cached cluster depth bounds (rebuilt only when camera range / resolution changes).
+    cached_cluster_bounds: Vec<clustering::ClusterBounds>,
+    bounds_cache_near: f32,
+    bounds_cache_far: f32,
+    bounds_cache_width: u32,
+    bounds_cache_height: u32,
+    /// When true, light→cluster assignment runs on GPU compute; CPU builds AABBs only.
+    pub gpu_cull: bool,
+    gpu_cull_pass: ClusterGpuCull,
+    pending_gpu_lights: u32,
+    pending_cam_pos: redox_math::Vec3,
+    pending_view_proj: redox_math::Mat4,
 }
 
 /// Maximum number of light indices in the flat buffer (cap to avoid huge allocations).
@@ -90,6 +103,42 @@ impl ClusterManager {
             bounds_buffer,
             info_buffer,
             current_assignment: None,
+            cached_cluster_bounds: Vec::new(),
+            bounds_cache_near: f32::NAN,
+            bounds_cache_far: f32::NAN,
+            bounds_cache_width: 0,
+            bounds_cache_height: 0,
+            gpu_cull: true,
+            gpu_cull_pass: ClusterGpuCull::new(device),
+            pending_gpu_lights: 0,
+            pending_cam_pos: redox_math::Vec3::ZERO,
+            pending_view_proj: redox_math::Mat4::IDENTITY,
+        }
+    }
+
+    fn invalidate_bounds_cache(&mut self) {
+        self.cached_cluster_bounds.clear();
+        self.bounds_cache_near = f32::NAN;
+        self.bounds_cache_far = f32::NAN;
+        self.bounds_cache_width = 0;
+        self.bounds_cache_height = 0;
+    }
+
+    fn ensure_cluster_bounds(&mut self, camera: &crate::camera::Camera) {
+        let w = self.cluster_info.screen_width;
+        let h = self.cluster_info.screen_height;
+        if self.cached_cluster_bounds.is_empty()
+            || self.bounds_cache_near != camera.near
+            || self.bounds_cache_far != camera.far
+            || self.bounds_cache_width != w
+            || self.bounds_cache_height != h
+        {
+            self.cached_cluster_bounds =
+                clustering::build_clusters(camera, w, h);
+            self.bounds_cache_near = camera.near;
+            self.bounds_cache_far = camera.far;
+            self.bounds_cache_width = w;
+            self.bounds_cache_height = h;
         }
     }
 
@@ -150,8 +199,8 @@ impl ClusterManager {
 
         queue.write_buffer(&self.info_buffer, 0, bytemuck::bytes_of(&self.cluster_info));
         self.current_assignment = None;
+        self.invalidate_bounds_cache();
     }
-
     /// Rebuilds screen dimensions (e.g., on window resize).
     pub fn rebuild_for_resolution(
         &mut self,
@@ -199,6 +248,7 @@ impl ClusterManager {
         queue.write_buffer(&self.info_buffer, 0, info_bytes);
 
         self.current_assignment = None;
+        self.invalidate_bounds_cache();
     }
 
     /// Updates cluster light assignments based on current lights.
@@ -210,6 +260,7 @@ impl ClusterManager {
         lights: &[PointLight],
         camera: &crate::camera::Camera,
         cam_pos: redox_math::Vec3,
+        view_proj: redox_math::Mat4,
         _device: &Device,
         queue: &Queue,
     ) {
@@ -224,29 +275,79 @@ impl ClusterManager {
             queue.write_buffer(&self.point_lights_buffer, 0, lights_bytes);
         }
 
-        // Build cluster bounds
-        let cluster_bounds = clustering::build_clusters(
-            camera,
-            self.cluster_info.screen_width,
-            self.cluster_info.screen_height,
+        self.ensure_cluster_bounds(camera);
+
+        let bounds_bytes =
+            bytemuck::cast_slice::<clustering::ClusterBounds, u8>(&self.cached_cluster_bounds);
+        queue.write_buffer(&self.bounds_buffer, 0, bounds_bytes);
+
+        if self.gpu_cull {
+            self.pending_gpu_lights = gpu_lights.len() as u32;
+            self.pending_cam_pos = cam_pos;
+            self.pending_view_proj = view_proj;
+            self.current_assignment = None;
+            return;
+        }
+
+        let assignment = clustering::assign_lights_to_clusters(
+            lights,
+            &self.cluster_info,
+            &self.cached_cluster_bounds,
+            cam_pos,
+            view_proj,
         );
 
-        // Assign lights to clusters
-        let assignment = clustering::assign_lights_to_clusters(lights, &self.cluster_info, &cluster_bounds, cam_pos);
-
-        // Write metadata buffer
-        let metadata_bytes = bytemuck::cast_slice::<clustering::ClusterMetadata, u8>(&assignment.cluster_metadata);
+        let metadata_bytes =
+            bytemuck::cast_slice::<clustering::ClusterMetadata, u8>(&assignment.cluster_metadata);
         queue.write_buffer(&self.metadata_buffer, 0, metadata_bytes);
 
-        // Write light indices buffer
         let indices_bytes = bytemuck::cast_slice::<u32, u8>(&assignment.light_indices);
         queue.write_buffer(&self.light_indices_buffer, 0, indices_bytes);
 
-        // Write bounds buffer
-        let bounds_bytes = bytemuck::cast_slice::<clustering::ClusterBounds, u8>(&assignment.cluster_bounds);
-        queue.write_buffer(&self.bounds_buffer, 0, bounds_bytes);
-
         self.current_assignment = Some(assignment);
+    }
+
+    /// Records the GPU cluster light cull into `encoder` (no-op when [`Self::gpu_cull`] is false).
+    pub fn record_gpu_cull(
+        &self,
+        device: &Device,
+        encoder: &mut CommandEncoder,
+        queue: &Queue,
+    ) {
+        if !self.gpu_cull {
+            return;
+        }
+
+        let indices_capacity = (self.light_indices_buffer.size()
+            / std::mem::size_of::<u32>() as u64)
+            .min(u32::MAX as u64) as u32;
+
+        let params = ClusterCullParams {
+            cam_pos: [
+                self.pending_cam_pos.x,
+                self.pending_cam_pos.y,
+                self.pending_cam_pos.z,
+                1.0,
+            ],
+            view_proj: self.pending_view_proj.to_cols_array_2d(),
+            num_lights: self.pending_gpu_lights,
+            max_lights_per_cluster: clustering::cluster_config::MAX_LIGHTS_PER_CLUSTER,
+            indices_capacity,
+            _pad: 0,
+        };
+
+        self.gpu_cull_pass.record_dispatch(
+            device,
+            encoder,
+            queue,
+            &params,
+            &self.info_buffer,
+            &self.bounds_buffer,
+            &self.point_lights_buffer,
+            &self.metadata_buffer,
+            &self.light_indices_buffer,
+            self.cluster_info.total_clusters as u32,
+        );
     }
 
     /// Returns the current cluster info.

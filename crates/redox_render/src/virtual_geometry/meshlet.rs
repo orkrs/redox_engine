@@ -72,7 +72,7 @@ pub struct MeshletDescriptor {
 ///
 /// Written from the CPU once per instance spawn / transform change.
 ///
-/// Total size: 80 bytes.
+/// Total size: 112 bytes.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct VGInstanceData {
@@ -82,9 +82,13 @@ pub struct VGInstanceData {
     pub meshlet_offset: u32,
     /// Total number of meshlets belonging to this instance.
     pub meshlet_count: u32,
-    /// Bitfield flags (reserved for future use).
+    /// Bitfield flags (LOD level in lower bits when culling).
     pub flags: u32,
     pub _pad: u32,
+    /// Local-space AABB min (xyz) for compressed vertex decode.
+    pub bounds_min: [f32; 4],
+    /// Local-space AABB extent (xyz) for compressed vertex decode.
+    pub bounds_extent: [f32; 4],
 }
 
 /// One entry in the indirect draw command buffer, matching the layout expected

@@ -1,23 +1,22 @@
 //! VSM shadow depth pass — renders scene geometry into dirty physical pages.
 //!
-//! For each dirty page we know its physical atlas offset and the
-//! view-projection matrix of the clipmap level it belongs to.  The vertex
-//! shader applies the VP transform, then scales and translates clip-space XY
-//! so the output lands in the correct 128×128 region of the atlas texture.
+//! Each dirty page is a separate render target. The CPU uploads a **page-local**
+//! view-projection (see [`crate::shadow::vsm_clipmap::VsmClipmap::page_view_proj`])
+//! so the page's world slice fills NDC `[-1, 1]`; the vertex shader just applies
+//! that matrix and writes linear depth.
 
 use bytemuck::{Pod, Zeroable};
 use wgpu;
 
 use super::shadow_atlas::VSM_ATLAS_FORMAT;
-use crate::mesh::Vertex;
-use crate::shader::manager::create_shader_module;
+use crate::shader::{VSM_DEPTH_WGSL, create_shader_with_vertex_decode};
 
 /// Per-page info uploaded as a storage buffer so the vertex shader can
 /// position the triangle into the right atlas tile.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct VsmPageDrawInfo {
-    /// View-projection for this page's clipmap level.
+    /// Page-local view-projection (world → NDC for this page only).
     pub view_proj: [[f32; 4]; 4],
     /// Atlas pixel offset X.
     pub atlas_offset_x: f32,
@@ -29,49 +28,6 @@ pub struct VsmPageDrawInfo {
     pub atlas_size_px: f32,
 }
 
-/// WGSL source for the VSM depth shader.
-pub const VSM_DEPTH_SHADER_SRC: &str = r#"
-struct Model {
-    model: mat4x4<f32>,
-    color: vec4<f32>,
-};
-
-struct PageDrawInfo {
-    view_proj: mat4x4<f32>,
-    atlas_offset_x: f32,
-    atlas_offset_y: f32,
-    page_size_px: f32,
-    atlas_size_px: f32,
-};
-
-@group(0) @binding(0) var<storage, read> models: array<Model>;
-@group(0) @binding(1) var<uniform> page_info: PageDrawInfo;
-
-struct VertexInput {
-    @location(0) position: vec3<f32>,
-    @builtin(instance_index) instance_idx: u32,
-};
-
-struct VertexOutput {
-    @builtin(position) clip_pos: vec4<f32>,
-    @location(0) depth: f32,
-};
-
-@vertex
-fn vs_main(input: VertexInput) -> VertexOutput {
-    var out: VertexOutput;
-    let model = models[input.instance_idx].model;
-    let world_pos = model * vec4<f32>(input.position, 1.0);
-    out.clip_pos = page_info.view_proj * world_pos;
-    out.depth = out.clip_pos.z / out.clip_pos.w;
-    return out;
-}
-
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) f32 {
-    return in.depth;
-}
-"#;
 
 /// Holds the GPU pipeline and layouts for the VSM depth pass.
 pub struct VsmDepthPass {
@@ -96,14 +52,14 @@ impl VsmDepthPass {
                         },
                         count: None,
                     },
-                    // 1: page draw info uniform
+                    // 1: page draw info uniform (dynamic offset per dirty page)
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStages::VERTEX,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
+                            has_dynamic_offset: true,
+                            min_binding_size: wgpu::BufferSize::new(256),
                         },
                         count: None,
                     },
@@ -116,7 +72,7 @@ impl VsmDepthPass {
             push_constant_ranges: &[],
         });
 
-        let shader = create_shader_module(device, "vsm_depth_shader", VSM_DEPTH_SHADER_SRC);
+        let shader = create_shader_with_vertex_decode(device, "vsm_depth_shader", VSM_DEPTH_WGSL);
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("vsm_depth_pipeline"),
@@ -124,11 +80,7 @@ impl VsmDepthPass {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x3],
-                }],
+                buffers: &[crate::mesh::compress::compressed_position_layout()],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {

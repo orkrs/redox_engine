@@ -77,6 +77,8 @@ pub struct ClusterInfo {
     pub depth_scale: f32,
     /// Total number of clusters in the 3D grid (clusters_x * clusters_y * depth_slices).
     pub total_clusters: u32,
+    /// WGSL uniform structs round size to 16 bytes.
+    pub _pad: [u32; 3],
 }
 
 impl ClusterInfo {
@@ -101,6 +103,7 @@ impl ClusterInfo {
             far: camera.far,
             depth_scale,
             total_clusters,
+            _pad: [0; 3],
         }
     }
 
@@ -167,16 +170,17 @@ pub fn get_cluster_indices(
     Some((cluster_x, cluster_y, cluster_z))
 }
 
-/// Linearizes depth from NDC (normalized device coordinates).
-/// 
-/// Given a depth value from the depth buffer (typically in [0, 1] in NDC),
-/// this recovers the linear depth in camera space.
+/// Linearizes a hardware depth value (NDC z, **[0, 1]** range as produced by
+/// [`redox_math::perspective`] on wgpu) into positive view-space distance.
 pub fn linearize_depth(depth_ndc: f32, near: f32, far: f32) -> f32 {
-    // Assuming standard perspective projection:
-    // depth_ndc = (near + far) / (far - near) + (2 * near * far) / ((far - near) * depth_linear)
-    // Solve for depth_linear:
-    let depth_linear = (2.0 * near * far) / ((far + near) - depth_ndc * (far - near));
-    depth_linear
+    // Zero-to-one perspective: d = (-f/(f-n) * z - n*f/(f-n)) / z
+    // solved for |z|:
+    //   z = n*f / (f - d*(f-n))
+    let denom = far - depth_ndc * (far - near);
+    if denom.abs() < 1e-6 {
+        return far;
+    }
+    near * far / denom
 }
 
 /// Converts linear depth to a depth slice index.
@@ -188,14 +192,15 @@ pub fn get_depth_slice(linear_depth: f32, cluster_info: &ClusterInfo) -> u32 {
     let z_norm = ((linear_depth / near).max(1.0).ln() / _depth_scale).max(0.0);
     (z_norm as u32).min(cluster_info.depth_slices - 1)
 }
-
 /// Returns true if a point light sphere could illuminate any fragment in the given cluster.
 ///
-/// Uses euclidean distance from the camera to the light to match the WGSL shader's own
-/// depth metric (`length(camera_pos - world_pos)`).  Screen-space X/Y culling is
-/// intentionally omitted because translating a world-space sphere to pixel-space
-/// without a full perspective projection would require the view+proj matrices here;
-/// the depth check alone provides the critical correctness win.
+/// Two-stage conservative test:
+/// 1. **Depth** — the light's near/far extent along the camera→light ray must
+///    overlap the cluster's logarithmic depth band (matches the WGSL metric).
+/// 2. **Screen-space XY** — project the light center to NDC and test a
+///    conservatively enlarged sphere footprint against the cluster's screen
+///    rectangle. Lights outside the frustum (or behind the camera) are only
+///    rejected when provably off-screen; borderline cases pass.
 fn sphere_intersects_cluster(
     light_pos: Vec3,
     light_radius: f32,
@@ -204,9 +209,11 @@ fn sphere_intersects_cluster(
     cluster_z: u32,
     cluster_info: &ClusterInfo,
     cluster_bounds: &[ClusterBounds],
-    cam_pos: Vec3,
+    _cam_pos: Vec3,
+    view_proj: redox_math::Mat4,
 ) -> bool {
-    let cluster_idx = (cluster_z as usize) * (cluster_info.clusters_x as usize)
+    let cluster_idx = (cluster_z as usize)
+        * (cluster_info.clusters_x as usize)
         * (cluster_info.clusters_y as usize)
         + (cluster_y as usize) * (cluster_info.clusters_x as usize)
         + (cluster_x as usize);
@@ -217,14 +224,44 @@ fn sphere_intersects_cluster(
 
     let bounds = &cluster_bounds[cluster_idx];
 
-    // Euclidean distance from camera to light center (same metric as WGSL get_depth_slice).
-    let dist = (light_pos - cam_pos).length();
-    // Near/far extents of the light sphere along the camera-to-light ray.
-    let sphere_near = (dist - light_radius).max(0.0);
-    let sphere_far = dist + light_radius;
+    // ── 1. Depth overlap — view-space Z from clip.w (planar, matches shaders) ──
+    let clip_depth = view_proj * light_pos.extend(1.0);
+    let light_view_z = clip_depth.w;
+    if light_view_z <= 0.0 && light_view_z + light_radius <= 0.0 {
+        return false;
+    }
+    let sphere_near = (light_view_z - light_radius).max(0.0);
+    let sphere_far = light_view_z + light_radius;
+    if !(sphere_near <= bounds.max_depth && sphere_far >= bounds.min_depth) {
+        return false;
+    }
 
-    // Reject if the sphere depth range and cluster depth range do not overlap.
-    sphere_near <= bounds.max_depth && sphere_far >= bounds.min_depth
+    // ── 2. Screen-space XY overlap against THIS cluster's tile ──
+    let clip = clip_depth;
+    let w = clip.w;
+    if w <= 0.0 {
+        return false;
+    }
+    let ndc = clip.truncate() / w;
+
+    let tile_min_x = (cluster_x as f32 / cluster_info.clusters_x as f32) * 2.0 - 1.0;
+    let tile_max_x = ((cluster_x + 1) as f32 / cluster_info.clusters_x as f32) * 2.0 - 1.0;
+    let tile_max_y = 1.0 - (cluster_y as f32 / cluster_info.clusters_y as f32) * 2.0;
+    let tile_min_y = 1.0 - ((cluster_y + 1) as f32 / cluster_info.clusters_y as f32) * 2.0;
+
+    let m = view_proj.to_cols_array_2d();
+    let scale_x = m[0][0].abs().max(m[1][0].abs()).max(m[2][0].abs());
+    let scale_y = m[0][1].abs().max(m[1][1].abs()).max(m[2][1].abs());
+    let r_ndc_x = light_radius * scale_x / w;
+    let r_ndc_y = light_radius * scale_y / w;
+    if ndc.x + r_ndc_x < tile_min_x || ndc.x - r_ndc_x > tile_max_x {
+        return false;
+    }
+    if ndc.y + r_ndc_y < tile_min_y || ndc.y - r_ndc_y > tile_max_y {
+        return false;
+    }
+
+    true
 }
 
 /// Assigns lights to clusters based on spatial intersection.
@@ -238,6 +275,7 @@ pub fn assign_lights_to_clusters(
     cluster_info: &ClusterInfo,
     cluster_bounds: &[ClusterBounds],
     cam_pos: Vec3,
+    view_proj: redox_math::Mat4,
 ) -> ClusterLightAssignment {
     // Derive this from dimensions directly to avoid any mismatch with the cached
     // `total_clusters` field (and to stay safe across resizes).
@@ -278,6 +316,7 @@ pub fn assign_lights_to_clusters(
                         cluster_info,
                         cluster_bounds,
                         cam_pos,
+                        view_proj,
                     ) {
                         light_indices.push(light_idx as u32);
                         light_count += 1;

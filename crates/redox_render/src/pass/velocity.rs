@@ -1,7 +1,7 @@
 //! Velocity (motion-vector) render pass.
 //!
 //! Produces an `Rgba16Float` texture containing per-pixel screen-space motion
-//! vectors (xy = UV delta from previous frame to current, zw = 0/1).
+//! vectors (xy = UV delta from previous frame to current, z = depth, w = 1).
 //!
 //! ## Bind group (group 0)
 //! - binding 0 : `texture_depth_2d`  (current depth buffer)
@@ -14,7 +14,7 @@ use bytemuck::{Pod, Zeroable};
 use redox_math::Mat4;
 
 use crate::resource::buffer::create_uniform_buffer;
-use crate::shader::manager::{VELOCITY_SHADER_SRC, create_shader_module};
+use crate::shader::{VELOCITY_WGSL, create_shader_module};
 
 /// GPU-side uniform for the velocity pass.
 ///
@@ -30,7 +30,9 @@ pub struct VelocityUniform {
     pub prev_vp: [[f32; 4]; 4],
     /// Viewport dimensions (width, height) in pixels.
     pub screen_size: [f32; 2],
-    pub _pad: [f32; 2],
+    /// Current Halton jitter in UV (same conversion as `TaaUniform.jitter_uv`).
+    /// Written into sky pixels so TAA's jitter subtract cancels for the background.
+    pub jitter_uv: [f32; 2],
 }
 
 impl Default for VelocityUniform {
@@ -40,7 +42,7 @@ impl Default for VelocityUniform {
             inv_curr_vp: id,
             prev_vp: id,
             screen_size: [1920.0, 1080.0],
-            _pad: [0.0; 2],
+            jitter_uv: [0.0; 2],
         }
     }
 }
@@ -88,7 +90,7 @@ impl VelocityPass {
             });
 
         // ── Pipeline ────────────────────────────────────────────────────────
-        let shader = create_shader_module(device, "velocity_shader", VELOCITY_SHADER_SRC);
+        let shader = create_shader_module(device, "velocity_shader", VELOCITY_WGSL);
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("velocity_pipeline_layout"),
