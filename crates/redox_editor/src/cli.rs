@@ -5,6 +5,7 @@ pub(crate) const DEFAULT_WORLD_ROOT: &str = "worlds/arena";
 pub(crate) const HELP_TEXT: &str = "RedOx Studio Editor\n  --help            Show this help\n  --bake            Bake meshlets + SDF and write a report (headless, then exit)\n  --world <path>    World root (default worlds/arena)";
 
 /// Parsed command line. `--world <path>` selects the world root.
+#[derive(Debug)]
 pub(crate) struct CliArgs {
     pub(crate) help: bool,
     pub(crate) bake: bool,
