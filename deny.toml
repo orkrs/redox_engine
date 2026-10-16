@@ -1,5 +1,11 @@
 [advisories]
 yanked = "warn"
+ignore = [
+    { id = "RUSTSEC-2026-0293", reason = "ringbuf 0.3 via kira 0.8; only reachable when an element's Drop panics, audio frames are plain floats. Remove with the kira upgrade (roadmap 1.1c)." },
+    { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained; transitive via the graphics stack, no safe upgrade. Revisit with the wgpu/egui upgrade (roadmap 1.1d)." },
+    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error is unmaintained; transitive build-time dependency. Revisit with dependency upgrades (roadmap 1.1)." },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser is unmaintained; transitive via egui text rendering. Revisit with the egui upgrade (roadmap 1.1d)." },
+]
 
 [licenses]
 allow = ["MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Zlib", "Unicode-3.0", "Unicode-DFS-2016", "MPL-2.0", "CC0-1.0", "BSL-1.0", "OFL-1.1", "LicenseRef-UFL-1.0", "Ubuntu-font-1.0"]
