@@ -55,7 +55,9 @@ impl Default for VsmConfig {
     fn default() -> Self {
         Self {
             level_count: 3,
-            page_px: 128,
+            // 256 px pages at the same page count: 4x the texels per level (level 0 texel =
+            // 64 m / (16 * 256) = 1.6 cm). The pool is 256 layers of R32Float = 64 MB.
+            page_px: 256,
             pool_pages: 256,
         }
     }
@@ -819,7 +821,7 @@ mod tests {
         assert_eq!(info.ray_count, 4);
         assert_eq!(info.samples_per_ray, 5);
         assert_eq!(info.page_tables.len(), VSM_PAGE_TABLE_WORDS);
-        assert_eq!(info.page_px, 128);
+        assert_eq!(info.page_px, VsmConfig::default().page_px);
         assert_eq!(info.levels[0].page_table_offset, 0);
         assert_eq!(info.levels[1].page_table_offset, 256);
     }

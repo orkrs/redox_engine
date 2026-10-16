@@ -204,7 +204,8 @@ fn vsm_trace_1ray(world_pos: vec3<f32>, normal: vec3<f32>, light_dir: vec3<f32>,
         let face_on = max(dot(normalize(normal), f), 0.0);
         let bias_ndc = lk.texel_world * (0.35 + 0.55 * slope + 0.9 * face_on)
             * mix(1.0, 0.45, contact) / lk.z_world_per_ndc;
-        let spread = clamp(dist * tan_source / max(lk.texel_world, 1e-4), 1.0, 4.0);
+        // Minimum radius of 2 texels so texel stair-steps blend.
+            let spread = clamp(dist * tan_source / max(lk.texel_world, 1e-4), 2.0, 4.0);
         let lit = vsm_pcf_bilinear(lk, bias_ndc, (1.25 * lk.texel_world) / lk.z_world_per_ndc);
         let occ = 1.0 - lit;
         if (occ > 0.01) {

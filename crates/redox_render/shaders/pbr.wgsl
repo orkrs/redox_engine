@@ -1402,7 +1402,8 @@ fn vsm_shadow(world_pos: vec3<f32>, normal: vec3<f32>, light_dir: vec3<f32>) -> 
             let face_on = max(dot(normalize(normal), f), 0.0);
             let bias_ndc = lk.texel_world * (0.45 + 0.60 * slope + 1.0 * face_on)
                 * mix(1.0, 0.45, contact) / lk.z_world_per_ndc;
-            let spread = clamp(dist * tan_source / max(lk.texel_world, 1e-4), 1.0, 8.0);
+            // Minimum radius of 2 texels: a hard 1-texel bilinear edge shows texel stair-steps.
+            let spread = clamp(dist * tan_source / max(lk.texel_world, 1e-4), 2.0, 8.0);
 
             let lit = vsm_pcf_lit(lk, bias_ndc, spread);
             let occ = 1.0 - lit;

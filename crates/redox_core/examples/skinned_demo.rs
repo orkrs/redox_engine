@@ -57,7 +57,7 @@ struct DemoScene {
 impl DemoScene {
     fn new(r: &mut Renderer) -> Self {
         let ground_mesh = r.upload_mesh(&primitive::create_cube());
-        let ground_mat = r.add_material(Material::solid(Vec3::new(0.30, 0.31, 0.34)));
+        let ground_mat = r.add_material(Material::solid(Vec3::new(0.15, 0.17, 0.20)));
         let target_mesh = r.upload_mesh(&primitive::create_sphere(0.14, 20));
         let mut glow = Material::solid(Vec3::new(1.0, 0.55, 0.15));
         glow.emissive = Vec3::new(2.0, 0.9, 0.2);
@@ -159,6 +159,13 @@ fn object(r: &Renderer, model: Mat4, mesh: usize, material: usize) -> RenderObje
 }
 
 /// Camera slowly swinging around the scene.
+/// Quality settings shared by the window and the screenshot mode.
+fn configure_renderer(r: &mut Renderer) {
+    r.set_ssao_enabled(true);
+    r.bloom_enabled = true;
+    r.set_exposure(1.0);
+}
+
 fn camera_pose(t: f32) -> (Vec3, Quat) {
     let yaw = 0.45 * (0.3 * t).sin();
     let pos = Vec3::new(8.5 * yaw.sin(), 2.8, 8.5 * yaw.cos());
@@ -173,16 +180,16 @@ fn shadowed(mut light: PointLight, enabled: bool) -> PointLight {
 }
 
 fn light_scene(sun_shadows: bool, point_shadows: bool) -> LightScene {
-    let mut sun = DirectionalLight::new(Vec3::new(-0.45, 1.0, 0.55), Vec3::new(1.0, 0.96, 0.90), 1.5);
+    let mut sun = DirectionalLight::new(Vec3::new(-0.45, 1.0, 0.55), Vec3::new(1.0, 0.94, 0.84), 2.0);
     // `vsm` routes the sun through the VSM clipmap; without it the sun casts no shadow.
     sun.soft_shadows = false;
     sun.vsm = sun_shadows;
     LightScene {
         directional: sun,
-        ambient: Vec3::splat(0.08),
+        ambient: Vec3::new(0.10, 0.12, 0.16),
         points: vec![
-            shadowed(PointLight::new(Vec3::new(-4.0, 2.6, 3.0), Vec3::new(0.35, 0.55, 1.0), 40.0, 12.0), point_shadows),
-            shadowed(PointLight::new(Vec3::new(4.0, 2.6, 3.0), Vec3::new(1.0, 0.55, 0.30), 40.0, 12.0), point_shadows),
+            shadowed(PointLight::new(Vec3::new(-4.0, 2.6, 3.0), Vec3::new(0.35, 0.55, 1.0), 26.0, 12.0), point_shadows),
+            shadowed(PointLight::new(Vec3::new(4.0, 2.6, 3.0), Vec3::new(1.0, 0.55, 0.30), 26.0, 12.0), point_shadows),
         ],
         spots: vec![],
     }
@@ -216,6 +223,7 @@ fn windowed() {
     let (event_loop, window) = create_window(&config);
     let mut ctx = pollster::block_on(RenderContext::new(window.clone(), config.wgpu_present_mode()));
     ctx.set_render_scale(config.render_scale);
+    configure_renderer(&mut ctx);
     let mut scene = DemoScene::new(&mut ctx);
     let mut input = InputState::new();
     let (mut sun_shadows, mut point_shadows, mut follow_deformation) = (true, false, true);
@@ -342,6 +350,7 @@ fn screenshots(dir: &std::path::Path, size: (u32, u32)) {
     });
     let view = target.create_view(&Default::default());
 
+    configure_renderer(&mut renderer);
     let mut scene = DemoScene::new(&mut renderer);
     let lights = light_scene(true, false);
     let camera = Camera::new(0.9, w as f32 / h as f32, 0.1, 100.0);
