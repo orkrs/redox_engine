@@ -38,6 +38,9 @@ impl Renderer {
         );
 
         self.gpu_profiler.begin_frame(&self.device);
+        if self.vsm_enabled {
+            self.vsm_page_request.begin_frame(&self.device);
+        }
         let mut ts_encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -250,7 +253,13 @@ impl Renderer {
                 self.prev_dynamic_centers = cur_centers;
                 self.vsm_clipmap.invalidate_aabbs(&dynamic_aabbs);
             }
-            let requested = self.vsm_clipmap.request_bits_covering_aabbs(&aabbs);
+            // Fine pages come from the screen feedback (what the pixels actually see); the
+            // two coarsest levels are requested for the scene bounds as a safety net while
+            // that feedback is a frame or two behind.
+            let mut requested = self.vsm_clipmap.coarse_fallback_bits(&aabbs, 2);
+            for (word, fed) in requested.iter_mut().zip(self.vsm_page_request.latest_bits()) {
+                *word |= *fed;
+            }
             let dirty = self.vsm_clipmap.requested_dirty_pages(&requested);
             self.vsm_dirty_pages_last_frame = dirty.len() as u32;
             self.vsm_warm = dirty.is_empty();
@@ -518,8 +527,10 @@ impl Renderer {
             // Per-page PageDrawInfo packed into the dynamic-offset uniform
             // (256-byte stride, one entry per dirty page).
             let mut pageinfo_scratch: Vec<u8> = Vec::with_capacity(dirty.len() * 256);
+            let mut page_vps: Vec<Mat4> = Vec::with_capacity(dirty.len());
             for &(level, px, py, _phys) in &dirty {
                 let vp = self.vsm_clipmap.page_view_proj(level as usize, px, py);
+                page_vps.push(vp);
                 let mut page_info = [0u8; 80];
                 page_info[..64].copy_from_slice(bytemuck::bytes_of(&vp.to_cols_array_2d()));
                 pageinfo_scratch.extend_from_slice(&page_info);
@@ -546,7 +557,7 @@ impl Renderer {
                             self.vg_system.as_ref(),
                         )
                     },
-                    || record_vsm_pages(&vsm_ctx, &dirty, objects),
+                    || record_vsm_pages(&vsm_ctx, &dirty, &page_vps, objects),
                 );
                 mt_cmd_buffers.push(atlas_cmd);
                 mt_cmd_buffers.push(vsm_cmd);
@@ -557,7 +568,7 @@ impl Renderer {
                     objects,
                     self.vg_system.as_ref(),
                 ));
-                mt_cmd_buffers.push(record_vsm_pages(&vsm_ctx, &dirty, objects));
+                mt_cmd_buffers.push(record_vsm_pages(&vsm_ctx, &dirty, &page_vps, objects));
             }
             self.vsm_clipmap.mark_pages_cached(&dirty);
         } else if self.mt_command_recording {
@@ -579,6 +590,20 @@ impl Renderer {
 
         // 2. Normal pass (normals + linear depth for SSAO)
         self.record_normal_pass(&mut encoder, objects);
+        if self.vsm_enabled {
+            let view_proj = Mat4::from_cols_array_2d(&self.camera_uniform.view_proj);
+            self.vsm_page_request.record(
+                &self.device,
+                &self.queue,
+                &mut encoder,
+                &self.depth_view,
+                &self.vsm_info_buffer,
+                view_proj,
+                cam_eye,
+                self.camera_uniform.proj[1][1],
+                (self.internal_width, self.internal_height),
+            );
+        }
 
         // Build Hi-Z pyramid from this frame's depth, then late-cull meshlets
         // that Hi-Z of the *previous* frame rejected (1-frame disocclusion).
@@ -1133,6 +1158,11 @@ impl Renderer {
                 .chain(std::iter::once(encoder.finish())),
         );
         self.gpu_profiler.after_submit();
+        if self.vsm_enabled {
+            // The first frames wait for the feedback so shadows are fine-grained from the start.
+            self.vsm_page_request.after_submit(&self.device, self.vsm_request_frames < 4);
+            self.vsm_request_frames = self.vsm_request_frames.saturating_add(1);
+        }
         self.staging_ring.end_frame();
         Ok(())
     }

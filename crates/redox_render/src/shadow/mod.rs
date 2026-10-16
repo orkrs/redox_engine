@@ -6,6 +6,7 @@ pub mod atlas_allocator;
 pub mod cache;
 pub mod csm;
 pub mod depth_pass;
+pub mod page_request;
 pub mod page_table;
 pub mod shadow_atlas;
 pub mod smrt;

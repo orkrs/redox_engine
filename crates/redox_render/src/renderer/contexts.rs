@@ -346,9 +346,13 @@ pub struct VsmContext<'a> {
     pub registry: &'a GpuRegistry,
 }
 
+/// Draws every object that can cast into each dirty page. `page_vps[i]` is the view-projection
+/// of `dirty[i]`; objects whose bounds fall outside its xy range are skipped (casters may sit
+/// anywhere along the light ray, so depth is not tested).
 pub fn record_vsm_pages(
     ctx: &VsmContext<'_>,
     dirty: &[(u32, u32, u32, u16)],
+    page_vps: &[Mat4],
     objects: &[RenderObject],
 ) -> wgpu::CommandBuffer {
     let mut encoder = ctx
@@ -373,7 +377,11 @@ pub fn record_vsm_pages(
         });
         page_pass.set_pipeline(&ctx.vsm_depth_pass.pipeline);
         page_pass.set_bind_group(0, ctx.vsm_pageinfo_bg, &[(page_ord as u32) * 256]);
+        let page_vp = page_vps.get(page_ord).copied();
         for (i, obj) in objects.iter().enumerate() {
+            if page_vp.is_some_and(|vp| !aabb_overlaps_clip_xy(obj.bounds, vp)) {
+                continue;
+            }
             if let Some(gpu_mesh) = ctx.registry.mesh_by_slot(obj.mesh_index) {
                 page_pass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));
                 page_pass.set_index_buffer(
@@ -385,4 +393,55 @@ pub fn record_vsm_pages(
         }
     }
     encoder.finish()
+}
+
+/// Whether the projected bounds touch the `[-1, 1]` xy square of `view_proj` (depth ignored).
+fn aabb_overlaps_clip_xy(bounds: redox_math::Aabb, view_proj: Mat4) -> bool {
+    let (mut min_x, mut max_x) = (f32::INFINITY, f32::NEG_INFINITY);
+    let (mut min_y, mut max_y) = (f32::INFINITY, f32::NEG_INFINITY);
+    for x in [bounds.min.x, bounds.max.x] {
+        for y in [bounds.min.y, bounds.max.y] {
+            for z in [bounds.min.z, bounds.max.z] {
+                let clip = view_proj * redox_math::Vec4::new(x, y, z, 1.0);
+                if clip.w.abs() < 1.0e-8 {
+                    return true;
+                }
+                let (nx, ny) = (clip.x / clip.w, clip.y / clip.w);
+                min_x = min_x.min(nx);
+                max_x = max_x.max(nx);
+                min_y = min_y.min(ny);
+                max_y = max_y.max(ny);
+            }
+        }
+    }
+    !(max_x < -1.0 || min_x > 1.0 || max_y < -1.0 || min_y > 1.0)
+}
+
+#[cfg(test)]
+mod page_cull_tests {
+    use super::*;
+    use redox_math::{Aabb, Vec3};
+
+    fn unit_ortho() -> Mat4 {
+        // Maps world x/y in [-2, 2] to NDC [-1, 1]; z untouched.
+        Mat4::from_scale(Vec3::new(0.5, 0.5, 1.0))
+    }
+
+    #[test]
+    fn object_inside_the_page_is_kept() {
+        let b = Aabb { min: Vec3::new(-1.0, -1.0, -9.0), max: Vec3::new(1.0, 1.0, 9.0) };
+        assert!(aabb_overlaps_clip_xy(b, unit_ortho()));
+    }
+
+    #[test]
+    fn object_outside_the_page_is_culled_even_when_deep_in_z() {
+        let b = Aabb { min: Vec3::new(5.0, -1.0, -100.0), max: Vec3::new(6.0, 1.0, 100.0) };
+        assert!(!aabb_overlaps_clip_xy(b, unit_ortho()));
+    }
+
+    #[test]
+    fn object_straddling_the_edge_is_kept() {
+        let b = Aabb { min: Vec3::new(1.5, -0.5, 0.0), max: Vec3::new(3.5, 0.5, 1.0) };
+        assert!(aabb_overlaps_clip_xy(b, unit_ortho()));
+    }
 }

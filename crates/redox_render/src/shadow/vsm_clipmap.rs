@@ -31,8 +31,11 @@ use super::smrt::SmrtConfig;
 /// Pages along one axis of every clipmap level's virtual window.
 pub const VSM_PAGES_PER_SIDE: u32 = 16;
 pub const VSM_MAX_LEVELS: usize = 8;
-/// Full world-space width of level 0; each coarser level doubles it.
-const BASE_WORLD_SIZE: f32 = 64.0;
+/// Full world-space width of level 0; each coarser level doubles it. With 256 px pages and 16
+/// pages per side level 0 has 0.4 cm texels; five levels reach 256 m (6 cm texels).
+const BASE_WORLD_SIZE: f32 = 16.0;
+/// Frames a page may go unrequested before it is returned to the pool.
+const STALE_PAGE_FRAMES: u64 = 240;
 /// Light-direction change (radians) large enough to count as "the light
 /// moved", triggering full invalidation.
 const LIGHT_MOVED_EPSILON: f32 = 1e-4;
@@ -54,7 +57,7 @@ pub struct VsmConfig {
 impl Default for VsmConfig {
     fn default() -> Self {
         Self {
-            level_count: 3,
+            level_count: 5,
             // 256 px pages at the same page count: 4x the texels per level (level 0 texel =
             // 64 m / (16 * 256) = 1.6 cm). The pool is 256 layers of R32Float = 64 MB.
             page_px: 256,
@@ -102,6 +105,10 @@ pub struct VsmClipmap {
     phys_pool: PhysPageAllocator,
     stats: VsmStats,
     prev_light_dir: Option<Vec3>,
+    /// Incremented by every [`Self::requested_dirty_pages`] call.
+    frame: u64,
+    /// Per level and page: the last frame the page was requested (LRU eviction).
+    last_used: Vec<Vec<u64>>,
 }
 
 impl VsmClipmap {
@@ -130,6 +137,10 @@ impl VsmClipmap {
             config,
             stats: VsmStats::default(),
             prev_light_dir: None,
+            frame: 0,
+            last_used: (0..level_count)
+                .map(|_| vec![0; (VSM_PAGES_PER_SIDE * VSM_PAGES_PER_SIDE) as usize])
+                .collect(),
         }
     }
 
@@ -198,8 +209,9 @@ impl VsmClipmap {
             // above/below stay inside; ndc-z→world scale is (far − near).
             let near = -2.0 * half;
             let far = 2.0 * half;
-            let page_world =
-                (VSM_PAGES_PER_SIDE as f32 * self.config.page_px as f32) * texel_world;
+            // One page in world units: the window follows the camera in page steps (not in
+            // whole-window jumps), so fine levels stay centred on the viewer.
+            let page_world = self.config.page_px as f32 * texel_world;
 
             // Camera position expressed in the light basis, xy snapped to
             // page boundaries so shadow texels never swim.
@@ -219,6 +231,7 @@ impl VsmClipmap {
                     self.phys_pool.free(phys);
                     self.stats.pages_freed += 1;
                 }
+                shift_grid(&mut self.last_used[i], VSM_PAGES_PER_SIDE as i32, dx, dy);
                 // Keep overlapping pages CACHED — only newly exposed edge
                 // pages (currently invalid) will be allocated as dirty.
             }
@@ -346,31 +359,87 @@ impl VsmClipmap {
     /// Returns `(level, page_x, page_y, phys_idx)` tuples ready to be turned
     /// into [`VsmPageDrawInfo`](super::depth_pass::VsmPageDrawInfo)s.
     pub fn requested_dirty_pages(&mut self, requested_bits: &[u32]) -> Vec<DirtyPage> {
+        self.frame += 1;
+        let frame = self.frame;
+
+        // Pass 1: stamp every requested page, so the eviction below can never take a page that
+        // is needed this frame.
         let mut bit_offset = 0usize;
-        for pt in self.tables.iter_mut() {
-            for y in 0..pt.pages_y {
-                for x in 0..pt.pages_x {
-                    let flat = bit_offset + (y * pt.pages_x + x) as usize;
-                    if !bit_requested(requested_bits, flat) {
-                        continue;
-                    }
-                    let entry = pt.get(x, y);
-                    if entry & PAGE_VALID_BIT == 0 {
-                        if let Some(phys) = self.phys_pool.alloc() {
-                            pt.set(x, y, (phys as u32) | PAGE_VALID_BIT);
-                            self.stats.pages_allocated += 1;
-                        } else {
-                            self.stats.pages_overflow += 1;
-                        }
-                    }
+        for (li, pt) in self.tables.iter().enumerate() {
+            for i in 0..(pt.pages_x * pt.pages_y) as usize {
+                if bit_requested(requested_bits, bit_offset + i) {
+                    self.last_used[li][i] = frame;
                 }
             }
             bit_offset += (pt.pages_x * pt.pages_y) as usize;
         }
 
+        // Pass 2: back requested pages with physical pages, evicting the least recently
+        // requested page when the pool is exhausted.
+        let mut bit_offset = 0usize;
+        for li in 0..self.tables.len() {
+            let (nx, ny) = (self.tables[li].pages_x, self.tables[li].pages_y);
+            for y in 0..ny {
+                for x in 0..nx {
+                    let flat = bit_offset + (y * nx + x) as usize;
+                    if !bit_requested(requested_bits, flat)
+                        || self.tables[li].get(x, y) & PAGE_VALID_BIT != 0
+                    {
+                        continue;
+                    }
+                    match self.phys_pool.alloc().or_else(|| self.evict_least_recent(frame)) {
+                        Some(phys) => {
+                            self.tables[li].set(x, y, (phys as u32) | PAGE_VALID_BIT);
+                            self.stats.pages_allocated += 1;
+                        }
+                        None => self.stats.pages_overflow += 1,
+                    }
+                }
+            }
+            bit_offset += (nx * ny) as usize;
+        }
+
+        // Pass 3: pages nobody has asked for in a while go back to the pool.
+        self.release_stale_pages(frame);
+
         let dirty = DirtyPageCollector::collect(&self.tables, requested_bits);
         self.stats.pages_dirty = dirty.len();
         dirty
+    }
+
+    /// Frees the valid page that was requested longest ago (never one requested in `frame`)
+    /// and returns its physical page.
+    fn evict_least_recent(&mut self, frame: u64) -> Option<u16> {
+        let mut best: Option<(usize, usize, u64)> = None;
+        for (li, pt) in self.tables.iter().enumerate() {
+            for (i, &entry) in pt.entries.iter().enumerate() {
+                if entry & PAGE_VALID_BIT == 0 {
+                    continue;
+                }
+                let used = self.last_used[li][i];
+                if used < frame && best.map_or(true, |(_, _, b)| used < b) {
+                    best = Some((li, i, used));
+                }
+            }
+        }
+        let (li, i, _) = best?;
+        let entry = std::mem::take(&mut self.tables[li].entries[i]);
+        self.stats.pages_freed += 1;
+        Some(phys_page(entry))
+    }
+
+    fn release_stale_pages(&mut self, frame: u64) {
+        for (li, pt) in self.tables.iter_mut().enumerate() {
+            for (i, entry) in pt.entries.iter_mut().enumerate() {
+                if *entry & PAGE_VALID_BIT != 0
+                    && frame.saturating_sub(self.last_used[li][i]) > STALE_PAGE_FRAMES
+                {
+                    self.phys_pool.free(phys_page(*entry));
+                    self.stats.pages_freed += 1;
+                    *entry = 0;
+                }
+            }
+        }
     }
 
     /// Mark pages as cached after the GPU depth pass has rendered them.
@@ -427,6 +496,20 @@ impl VsmClipmap {
                     }
                 }
             }
+        }
+        bits
+    }
+
+    /// Request bits for only the `coarse_levels` coarsest levels that overlap `aabbs`.
+    ///
+    /// Coarse levels need few pages and always give a lookup something to fall back on while
+    /// GPU visibility feedback (fine pages) is still a frame or two behind.
+    pub fn coarse_fallback_bits(&self, aabbs: &[redox_math::Aabb], coarse_levels: usize) -> Vec<u32> {
+        let mut bits = self.request_bits_covering_aabbs(aabbs);
+        let first_level = self.levels.len().saturating_sub(coarse_levels);
+        let pages_per_level = (VSM_PAGES_PER_SIDE * VSM_PAGES_PER_SIDE) as usize;
+        for flat in 0..first_level * pages_per_level {
+            bits[flat / 32] &= !(1 << (flat % 32));
         }
         bits
     }
@@ -585,6 +668,19 @@ fn shift_entries(pt: &mut VirtualPageTable, dx: i32, dy: i32) -> Vec<u16> {
     dropped
 }
 
+/// Shifts a square `n x n` grid by `(dx, dy)` cells with the same mapping as [`shift_entries`]
+/// (new `(tx, ty)` takes old `(tx + dx, ty + dy)`, cells shifted in from outside become 0).
+fn shift_grid(grid: &mut [u64], n: i32, dx: i32, dy: i32) {
+    let old = grid.to_vec();
+    for ty in 0..n {
+        for tx in 0..n {
+            let (sx, sy) = (tx + dx, ty + dy);
+            grid[(ty * n + tx) as usize] =
+                if (0..n).contains(&sx) && (0..n).contains(&sy) { old[(sy * n + sx) as usize] } else { 0 };
+        }
+    }
+}
+
 /// Reads one bit from the visibility pass' packed request bitfield.
 #[inline]
 fn bit_requested(requested_bits: &[u32], flat: usize) -> bool {
@@ -739,6 +835,83 @@ mod tests {
             cm.phys_pool_mut().free_count(),
             cm.phys_pool_mut().capacity()
         );
+    }
+
+    fn single_level(pool_pages: u32) -> VsmClipmap {
+        let mut cm = VsmClipmap::new(VsmConfig { level_count: 1, pool_pages, ..VsmConfig::default() });
+        cm.update(Vec3::ZERO, Vec3::Y);
+        cm
+    }
+
+    #[test]
+    fn full_pool_evicts_the_least_recently_requested_page() {
+        let mut cm = single_level(2);
+        cm.requested_dirty_pages(&request_bits(0));
+        cm.requested_dirty_pages(&request_bits(1));
+        // Page 2 needs a slot: page 0 was requested longest ago and must be the victim.
+        cm.requested_dirty_pages(&request_bits(2));
+        assert_eq!(cm.stats().pages_overflow, 0);
+        assert_eq!(cm.tables()[0].entries[0], 0, "oldest page evicted");
+        assert_ne!(cm.tables()[0].entries[1], 0, "newer page kept");
+        assert_ne!(cm.tables()[0].entries[2], 0, "new page resident");
+    }
+
+    #[test]
+    fn pages_requested_this_frame_are_never_evicted() {
+        let mut cm = single_level(1);
+        let mut both = request_bits(0);
+        both[0] |= 1 << 1;
+        cm.requested_dirty_pages(&both);
+        assert_eq!(cm.stats().pages_overflow, 1, "second page must overflow, not steal the first");
+        assert_ne!(cm.tables()[0].entries[0], 0);
+    }
+
+    #[test]
+    fn unrequested_pages_are_released_after_the_stale_window() {
+        let mut cm = single_level(4);
+        cm.requested_dirty_pages(&request_bits(0));
+        assert_ne!(cm.tables()[0].entries[0], 0);
+        for _ in 0..=STALE_PAGE_FRAMES {
+            cm.requested_dirty_pages(&[]);
+        }
+        assert_eq!(cm.tables()[0].entries[0], 0, "stale page returned to the pool");
+        assert_eq!(cm.phys_pool_mut().free_count(), cm.phys_pool_mut().capacity());
+    }
+
+    #[test]
+    fn window_follows_the_camera_in_page_steps() {
+        let mut cm = single_level(4);
+        let phys = cm.phys_pool_mut().alloc().unwrap();
+        cm.tables_mut()[0].set(8, 8, phys as u32 | PAGE_VALID_BIT | PAGE_CACHED_BIT);
+        let level = &cm.levels()[0];
+        let page_world = cm.config().page_px as f32 * level.texel_world;
+        // Move one page along the light-plane x axis: the cached page keeps its content but
+        // its virtual index moves by one cell.
+        cm.update(Vec3::new(page_world, 0.0, 0.0), Vec3::Y);
+        let moved = (0..16)
+            .flat_map(|y| (0..16).map(move |x| (x, y)))
+            .filter(|&(x, y)| cm.tables()[0].get(x, y) & PAGE_VALID_BIT != 0)
+            .collect::<Vec<_>>();
+        assert_eq!(moved.len(), 1, "exactly one page survives the shift");
+        assert_ne!(moved[0], (8, 8), "its virtual cell moved with the window");
+    }
+
+    #[test]
+    fn coarse_fallback_keeps_only_the_coarsest_levels() {
+        let mut cm = clipmap();
+        cm.update(Vec3::ZERO, Vec3::Y);
+        let aabb = redox_math::Aabb { min: Vec3::splat(-1.0), max: Vec3::splat(1.0) };
+        let all = cm.request_bits_covering_aabbs(&[aabb]);
+        let coarse = cm.coarse_fallback_bits(&[aabb], 1);
+        let pages_per_level = (VSM_PAGES_PER_SIDE * VSM_PAGES_PER_SIDE) as usize;
+        let count = |bits: &[u32], levels: std::ops::Range<usize>| -> u32 {
+            (levels.start * pages_per_level..levels.end * pages_per_level)
+                .filter(|f| bits[f / 32] & (1 << (f % 32)) != 0)
+                .count() as u32
+        };
+        assert!(count(&all, 0..3) > 0, "the full request reaches fine levels");
+        assert_eq!(count(&coarse, 0..3), 0, "fallback drops the fine levels");
+        assert!(count(&coarse, 3..4) > 0, "and keeps the coarsest");
     }
 
     #[test]

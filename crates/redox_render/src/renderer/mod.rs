@@ -358,6 +358,10 @@ pub struct Renderer {
     pub vsm_enabled: bool,
     /// Per-pass GPU timings (needs timestamp-query features on the device).
     pub gpu_profiler: crate::profiler::GpuProfiler,
+    /// GPU feedback: which VSM pages the visible pixels need.
+    vsm_page_request: crate::shadow::page_request::PageRequestPass,
+    /// Frames rendered with VSM on (the first few block on the feedback readback).
+    vsm_request_frames: u32,
     /// Screen-space VSM trace (1 Vogel ray + temporal, 90-95% history) — default ON.
     /// PBR samples `t_vsm_shadow` (1 filtered fetch) instead of inline 16-ray `vsm_shadow()`.
     pub vsm_screen_shadows: bool,

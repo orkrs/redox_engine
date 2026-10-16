@@ -888,6 +888,7 @@ impl Renderer {
         });
 
         let gpu_profiler = crate::profiler::GpuProfiler::new(&device, &queue);
+        let vsm_page_request = crate::shadow::page_request::PageRequestPass::new(&device);
 
         Self {
             device,
@@ -1050,6 +1051,8 @@ impl Renderer {
             vsm_sampler,
             vsm_enabled: true,
             gpu_profiler,
+            vsm_page_request,
+            vsm_request_frames: 0,
             vsm_screen_shadows: true,
             vsm_dirty_pages_last_frame: 0,
             smrt_config: crate::shadow::smrt::SmrtQuality::Quality.config(),

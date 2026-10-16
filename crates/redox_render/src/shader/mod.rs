@@ -50,6 +50,7 @@ pub const VERTEX_COMPRESSED_WGSL: &str = include_str!("../../shaders/vertex_comp
 pub const SKYBOX_WGSL: &str = include_str!("../../shaders/skybox.wgsl");
 pub const VSM_DEPTH_WGSL: &str = include_str!("../../shaders/vsm_depth.wgsl");
 pub const VSM_VISIBILITY_WGSL: &str = include_str!("../../shaders/vsm_visibility.wgsl");
+pub const VSM_REQUEST_WGSL: &str = include_str!("../../shaders/vsm_request.wgsl");
 pub const SCATTER_LIGHT_WGSL: &str = include_str!("../../shaders/scatter_light.wgsl");
 pub const BLOOM_WGSL: &str = include_str!("../../shaders/bloom.wgsl");
 pub const CLUSTER_CULL_LIGHTS_WGSL: &str = include_str!("../../shaders/cluster_cull_lights.wgsl");
@@ -93,6 +94,7 @@ const EMBEDDED: &[(&str, &str, &str)] = &[
     ("skybox", "skybox.wgsl", SKYBOX_WGSL),
     ("vsm_depth", "vsm_depth.wgsl", VSM_DEPTH_WGSL),
     ("vsm_visibility", "vsm_visibility.wgsl", VSM_VISIBILITY_WGSL),
+    ("vsm_request", "vsm_request.wgsl", VSM_REQUEST_WGSL),
     ("scatter_light", "scatter_light.wgsl", SCATTER_LIGHT_WGSL),
     ("bloom", "bloom.wgsl", BLOOM_WGSL),
     ("cluster_cull_lights", "cluster_cull_lights.wgsl", CLUSTER_CULL_LIGHTS_WGSL),
@@ -266,6 +268,7 @@ mod tests {
             ("hiz_downsample", super::HIZ_DOWNSAMPLE_WGSL),
             ("skybox", super::SKYBOX_WGSL),
             ("vsm_visibility", super::VSM_VISIBILITY_WGSL),
+            ("vsm_request", super::VSM_REQUEST_WGSL),
             ("scatter_light", super::SCATTER_LIGHT_WGSL),
             ("bloom", super::BLOOM_WGSL),
             ("cluster_cull_lights", super::CLUSTER_CULL_LIGHTS_WGSL),
