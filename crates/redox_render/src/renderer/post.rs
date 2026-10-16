@@ -12,6 +12,10 @@ impl Renderer {
                 frame_index: self.taa_frame_count as u32,
                 _pad: 0,
                 resolution: [self.internal_width as f32, self.internal_height as f32],
+                _pad2: [0.0; 2],
+                inv_view_proj: Mat4::from_cols_array_2d(&self.camera_uniform.view_proj)
+                    .inverse()
+                    .to_cols_array_2d(),
             };
             self.queue.write_buffer(
                 &self.scatter_light_pass.uniform_buffer,
