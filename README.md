@@ -322,3 +322,21 @@ light bounce from surfaces), shader hot-reload does not swap pipelines live, dir
 shadows cache pages and do not follow in-place mesh deformation (point-light shadows do), skinning
 runs on the CPU, and normal maps are not skinned. `redox_editor --bake` runs the meshlet/SDF
 bakes headlessly.
+
+## 19) Rendering diagnostics and quality tools
+
+- **GPU timings.** `Renderer::gpu_profiler` writes timestamps between pass groups (needs the
+  `TIMESTAMP_QUERY` features, requested automatically when the adapter has them);
+  `gpu_profiler.report()` prints `shadow_passes 0.07 | gtao 0.22 | forward 0.33 | total ...`.
+- **Headless frames.** `skinned_demo --screenshot <dir> [--size WxH] [--times 5,10]` renders
+  offscreen and writes PNGs. The offscreen path now matches the window (sun shadows used to stay
+  off until the first resize because of a shadowed `vsm_info_buffer`).
+- **Golden frames.** `skinned_demo --golden crates/redox_core/tests/golden` renders three fixed
+  frames and compares them with the stored images (exit code 1 on a mismatch);
+  `--update-golden` rewrites the references after an intentional change.
+- **Sun shadows** come from a virtual shadow map clipmap (5 levels from 16 m, 256 px pages).
+  A compute pass (`vsm_request.wgsl`) tells the CPU which pages the visible pixels need, the
+  pool evicts the least recently used page, and windows follow the camera in page steps.
+  The old CSM path is kept in the source but is not functional; use VSM.
+- **Look.** Tone mapping writes linear values to sRGB targets (it used to be encoded twice);
+  `Renderer::set_ibl_intensity` scales environment lighting.
