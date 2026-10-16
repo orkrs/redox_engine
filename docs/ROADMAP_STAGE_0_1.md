@@ -20,14 +20,20 @@
 Честные оговорки: CI на GitHub ещё ни разу не запускался; `rust-version = "1.85"` выбрана на глаз;
 список лицензий в `deny.toml` составлен по памяти; `cargo deny` и `cargo audit` не запускались.
 
-## Статус выполнения (обновлено 2026-10-16)
+## Статус выполнения (обновлено 2026-10-17)
 
-Сделано: A3 (кроме `init.rs`, исключение в `scripts/check_file_sizes.py`), A4, A5, A9, часть A1
-(MSRV 1.88 проверена, CI-задачи msrv/miri/docs, dependabot, `cargo deny` зелёный), часть A6
-(CONTRIBUTING, CHANGELOG, SECURITY, ADR 0001–0003, предупреждения об устаревании в PROJECT_MAP и
-ARCHITECTURE_REALITY), A7 (кроме loom, не нужен), `cargo doc -D warnings`, из 1.1a: thiserror, image, ron,
-notify, git2, rand, pollster, flume, hashbrown; из 1.3: `Commands`. Не сделано: первый прогон CI на GitHub,
-A2, A8, A10–A12, `glam`, 1.1b–d, 1.2, остальное 1.3, 1.4, 1.5.
+**Сделано и проверено** (fmt, clippy `-D warnings`, тесты, `cargo deny`, golden-кадры):
+- A3 (кроме `init.rs`, исключение в `scripts/check_file_sizes.py`), A4, A5, A7, A9.
+- A1, локальная часть: MSRV 1.95 (egui 0.36), CI-задачи msrv/miri/docs/размер файлов, dependabot, `cargo deny` с обоснованными исключениями, `cargo doc -D warnings`.
+- A6, часть: CONTRIBUTING, CHANGELOG, SECURITY, CODE_OF_CONDUCT, ADR 0001-0003, предупреждения об устаревании в PROJECT_MAP и ARCHITECTURE_REALITY.
+- 1.1 целиком, кроме двух сознательных исключений: wgpu 30, naga 30, winit 0.30, egui 0.36 (+dock 0.21, plot 0.37), rapier3d 0.36, kira 0.12, glam 0.33, thiserror 2, image 0.25, ron 0.12, notify 8, git2 0.21, rand 0.10, pollster 1, flume 0.12, hashbrown 0.17. Не обновлены: egui 0.37 (нет egui_dock/egui_plot под него), glam 0.34 (kira закреплён на 0.33).
+- 1.3, часть: `Commands` / `CommandQueue`.
+
+**Не сделано:**
+- Первый прогон CI на GitHub (нужен пуш), защита ветки `main`.
+- A2 golden в CI на software-адаптере; A6 остаток (PROJECT_MAP, ARCHITECTURE_REALITY, PROGRESS не переписаны); A8 `unwrap` -> ошибки; A10 покрытие и бенчмарки; A11 `missing_docs`; A12 разделение примеров.
+- Переход winit на `ApplicationHandler` (сейчас `#![allow(deprecated)]` в 8 файлах).
+- Этап 1: 1.2 граф рендера и шейдерные модули, 1.3 остаток (`par_iter_mut`, расписание, `derive(Reflect)`), 1.4 ассеты, 1.5 сохранения и ввод.
 
 ---
 
