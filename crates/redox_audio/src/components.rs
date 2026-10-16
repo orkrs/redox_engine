@@ -193,8 +193,10 @@ pub struct ReverbZone {
     pub room_volume: f32,
     /// Surface area in square meters (affects reverb damping)
     pub surface_area: f32,
-    /// Blend factor when multiple zones overlap (0.0-1.0)
+    /// Distance outside the zone volume over which the weight fades from 1.0 to 0.0
     pub blend_distance: f32,
+    /// Half-size of the zone box in the zone entity's local space
+    pub half_extents: Vec3,
     /// Current blend weight (used for interpolation between zones)
     pub current_weight: f32,
     /// Whether listener is currently inside this zone
@@ -203,18 +205,27 @@ pub struct ReverbZone {
 
 impl ReverbZone {
     pub fn new(preset_name: &str) -> Self {
+        let room_volume = 100.0;
         Self {
             preset_name: preset_name.to_string(),
-            room_volume: 100.0,
+            room_volume,
             surface_area: 200.0,
             blend_distance: 2.0,
+            half_extents: cube_half_extents(room_volume),
             current_weight: 0.0,
             listener_inside: false,
         }
     }
 
+    /// Sets the room volume and resets the zone box to a cube of that volume.
     pub fn with_volume(mut self, volume: f32) -> Self {
         self.room_volume = volume.max(1.0);
+        self.half_extents = cube_half_extents(self.room_volume);
+        self
+    }
+
+    pub fn with_half_extents(mut self, half_extents: Vec3) -> Self {
+        self.half_extents = half_extents.abs().max(Vec3::splat(0.01));
         self
     }
 
@@ -222,6 +233,10 @@ impl ReverbZone {
         self.surface_area = area.max(1.0);
         self
     }
+}
+
+fn cube_half_extents(volume: f32) -> Vec3 {
+    Vec3::splat(volume.max(1.0).cbrt() * 0.5)
 }
 
 impl Default for ReverbZone {
