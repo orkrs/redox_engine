@@ -7,7 +7,8 @@ pub fn create_vertex_buffer(device: &wgpu::Device, label: &str, data: &[u8]) -> 
     device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some(label),
         contents: data,
-        usage: wgpu::BufferUsages::VERTEX,
+        // COPY_DST lets skinned / deforming meshes stream new vertices into the same buffer.
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
     })
 }
 

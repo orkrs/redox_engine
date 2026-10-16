@@ -1,6 +1,7 @@
 //! Mesh / texture / material upload and asset-handle lookup.
 
 use super::*;
+use crate::mesh::Vertex;
 
 impl Renderer {
     /// Uploads a CPU [`Mesh`] to the GPU and returns its slot index.
@@ -23,6 +24,27 @@ impl Renderer {
             index_count: mesh.index_count(),
             local_bounds: mesh.aabb,
         })
+    }
+
+    /// Overwrites the vertices of an uploaded mesh in place (skinning, morphing).
+    ///
+    /// Positions are quantised against the bounds the mesh was uploaded with, so deformed
+    /// vertices must stay inside them. Returns `false` (and writes nothing) when `slot` is
+    /// unknown or `vertices` has a different length than the uploaded mesh.
+    pub fn update_mesh_vertices(&self, slot: usize, vertices: &[Vertex]) -> bool {
+        let Some(gpu) = self.registry.mesh_by_slot(slot) else {
+            return false;
+        };
+        let bytes: Vec<u8> = if self.use_compressed_vertices {
+            bytemuck::cast_slice(&compress_vertices(vertices, &gpu.local_bounds)).to_vec()
+        } else {
+            bytemuck::cast_slice(vertices).to_vec()
+        };
+        if bytes.len() as u64 != gpu.vertex_buffer.size() {
+            return false;
+        }
+        self.queue.write_buffer(&gpu.vertex_buffer, 0, &bytes);
+        true
     }
 
     /// Stores a material, creates its GPU resources, and returns its index.

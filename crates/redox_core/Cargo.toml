@@ -11,6 +11,11 @@ redox_input = { path = "../redox_input" }
 redox_asset = { path = "../redox_asset" }
 redox_audio = { path = "../redox_audio" }
 redox_ui = { path = "../redox_ui" }
+redox_physics = { path = "../redox_physics" }
+
+serde = { workspace = true }
+ron = { workspace = true }
+rayon = { workspace = true }
 
 winit = { workspace = true }
 log = "0.4"
@@ -20,12 +25,18 @@ bytemuck = "1.14"
 wgpu = { workspace = true }
 
 [dev-dependencies]
-# Для примеров: физика, UI, рандом
+redox_anim = { path = "../redox_anim" }
+image = { workspace = true }
+# Для примеров: физика, UI, рандом, gameplay/VFX/scene
 redox_physics = { path = "../redox_physics" }
+redox_gameplay = { path = "../redox_gameplay" }
+redox_vfx = { path = "../redox_vfx" }
+redox_scene = { path = "../redox_scene" }
 rapier3d = "0.18"
 pollster = "0.3"
 egui-wgpu = { workspace = true }
 egui = { workspace = true }
 rand = "0.8"
+kira = { workspace = true }
 # Для benchmark: замер памяти (RSS)
 memory-stats = "1.1"

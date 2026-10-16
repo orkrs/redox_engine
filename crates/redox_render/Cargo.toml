@@ -6,15 +6,26 @@ edition = "2024"
 [lib]
 path = "src/lib.rs"
 
+[features]
+# Runtime shader hot-reload: `shader::load()` reads `.wgsl` files from disk
+# instead of the embedded copies. A watcher that recreates shader modules and
+# pipelines on file change is planned follow-up wiring.
+shader-hot-reload = ["dep:notify"]
+
 [dependencies]
+parking_lot = "0.12"
 # Internal crates
 redox_math = { path = "../redox_math" }
 redox_ecs = { path = "../redox_ecs" }
 redox_asset = { path = "../redox_asset" }
+redox_vfx = { path = "../redox_vfx" }
+redox_reflect = { path = "../redox_reflect" }
+redox_anim = { path = "../redox_anim" }
 
 # Graphics
 wgpu = { workspace = true }
 winit = { workspace = true }
+rayon = { workspace = true }
 
 # Data & serialization
 bytemuck = { workspace = true }
@@ -29,4 +40,13 @@ rand = "0.8"
 half = "2.4"
 
 # Blocking async init
+
 pollster = "0.4"
+
+# Mesh optimization (meshlet clustering + LOD simplification)
+meshopt = { workspace = true }
+# Optional: runtime shader hot-reload (feature "shader-hot-reload")
+notify = { workspace = true, optional = true }
+
+[dev-dependencies]
+naga = "0.20"
