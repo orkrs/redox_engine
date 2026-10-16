@@ -28,7 +28,7 @@ redox_render = { path = "../redox_render" }
 redox_physics = { path = "../redox_physics" }
 redox_gameplay = { path = "../redox_gameplay" }
 rapier3d = { workspace = true }
-pollster = "0.3"
+pollster = "1"
 winit = { workspace = true }
 wgpu = { workspace = true }
 egui = { workspace = true }

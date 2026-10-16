@@ -19,5 +19,5 @@ thiserror = "2"
 
 
 [dev-dependencies]
-pollster = "0.3"
+pollster = "1"
 env_logger = "0.11"

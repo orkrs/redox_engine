@@ -46,7 +46,7 @@ half = "2.4"
 
 # Blocking async init
 
-pollster = "0.4"
+pollster = "1"
 
 # Mesh optimization (meshlet clustering + LOD simplification)
 meshopt = { workspace = true }

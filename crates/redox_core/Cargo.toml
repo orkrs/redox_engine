@@ -25,7 +25,7 @@ rayon = { workspace = true }
 winit = { workspace = true }
 log = "0.4"
 env_logger = "0.11"
-pollster = "0.3"
+pollster = "1"
 bytemuck = "1.14"
 wgpu = { workspace = true }
 
@@ -38,7 +38,7 @@ redox_gameplay = { path = "../redox_gameplay" }
 redox_vfx = { path = "../redox_vfx" }
 redox_scene = { path = "../redox_scene" }
 rapier3d = { workspace = true }
-pollster = "0.3"
+pollster = "1"
 egui-wgpu = { workspace = true }
 egui = { workspace = true }
 rand = "0.8"
