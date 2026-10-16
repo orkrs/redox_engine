@@ -4,10 +4,10 @@
 //! is modified, the path is sent to a channel; the asset manager drains
 //! this channel and re-queues the load for that path.
 
+use log::trace;
+use notify::{Config, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
 use std::sync::mpsc;
-use notify::{Config, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use log::trace;
 
 /// Message sent when a watched path has changed.
 #[derive(Debug, Clone)]
@@ -39,8 +39,7 @@ impl HotReloadWatcher {
 
     /// Starts watching the given path (file or directory).
     pub fn watch(&mut self, path: impl AsRef<Path>) -> notify::Result<()> {
-        self._watcher
-            .watch(path.as_ref(), RecursiveMode::Recursive)
+        self._watcher.watch(path.as_ref(), RecursiveMode::Recursive)
     }
 
     /// Stops watching the given path.

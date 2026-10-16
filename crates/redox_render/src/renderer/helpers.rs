@@ -234,10 +234,7 @@ pub(super) fn create_bloom_mip_chain(
         textures.push(tex);
         views.push(view);
     }
-    (
-        textures.try_into().unwrap(),
-        views.try_into().unwrap(),
-    )
+    (textures.try_into().unwrap(), views.try_into().unwrap())
 }
 
 pub(super) fn create_bloom_downsample_bgs(

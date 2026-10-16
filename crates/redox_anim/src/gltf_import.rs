@@ -41,7 +41,11 @@ fn build_model(
     let geometry = build_geometry(buffers, mesh)?;
     geometry.validate(skeleton.len())?;
     let clips = build_clips(document, buffers, &skeleton, &joint_nodes);
-    Ok(SkinnedModel { skeleton, clips, geometry })
+    Ok(SkinnedModel {
+        skeleton,
+        clips,
+        geometry,
+    })
 }
 
 fn build_skeleton(document: &gltf::Document, skin: &gltf::Skin, joint_nodes: &[usize]) -> Skeleton {
@@ -51,8 +55,11 @@ fn build_skeleton(document: &gltf::Document, skin: &gltf::Skin, joint_nodes: &[u
             parent_of.insert(child.index(), node.index());
         }
     }
-    let joint_of: HashMap<usize, usize> =
-        joint_nodes.iter().enumerate().map(|(joint, node)| (*node, joint)).collect();
+    let joint_of: HashMap<usize, usize> = joint_nodes
+        .iter()
+        .enumerate()
+        .map(|(joint, node)| (*node, joint))
+        .collect();
 
     let mut used = std::collections::HashSet::new();
     let bones = skin
@@ -88,18 +95,30 @@ fn nearest_joint_ancestor(
     None
 }
 
-fn build_geometry(buffers: &[gltf::buffer::Data], mesh: &gltf::Mesh) -> Result<SkinnedGeometry, String> {
+fn build_geometry(
+    buffers: &[gltf::buffer::Data],
+    mesh: &gltf::Mesh,
+) -> Result<SkinnedGeometry, String> {
     let mut g = SkinnedGeometry::default();
     for primitive in mesh.primitives() {
         let reader = primitive.reader(|b| Some(&buffers[b.index()]));
-        let positions: Vec<[f32; 3]> = reader.read_positions().ok_or("primitive has no POSITION")?.collect();
+        let positions: Vec<[f32; 3]> = reader
+            .read_positions()
+            .ok_or("primitive has no POSITION")?
+            .collect();
         let count = positions.len();
         let base = g.positions.len() as u32;
 
-        let joints: Vec<[u16; 4]> =
-            reader.read_joints(0).ok_or("primitive has no JOINTS_0")?.into_u16().collect();
-        let weights: Vec<[f32; 4]> =
-            reader.read_weights(0).ok_or("primitive has no WEIGHTS_0")?.into_f32().collect();
+        let joints: Vec<[u16; 4]> = reader
+            .read_joints(0)
+            .ok_or("primitive has no JOINTS_0")?
+            .into_u16()
+            .collect();
+        let weights: Vec<[f32; 4]> = reader
+            .read_weights(0)
+            .ok_or("primitive has no WEIGHTS_0")?
+            .into_f32()
+            .collect();
         let normals: Vec<[f32; 3]> = reader
             .read_normals()
             .map_or_else(|| vec![[0.0, 1.0, 0.0]; count], |n| n.collect());
@@ -110,7 +129,10 @@ fn build_geometry(buffers: &[gltf::buffer::Data], mesh: &gltf::Mesh) -> Result<S
             .read_indices()
             .map_or_else(|| (0..count as u32).collect(), |i| i.into_u32().collect());
 
-        if [joints.len(), weights.len(), normals.len(), uvs.len()].iter().any(|&n| n != count) {
+        if [joints.len(), weights.len(), normals.len(), uvs.len()]
+            .iter()
+            .any(|&n| n != count)
+        {
             return Err("primitive attribute counts differ".to_string());
         }
         g.positions.extend(positions);
@@ -136,8 +158,11 @@ fn build_clips(
     skeleton: &Skeleton,
     joint_nodes: &[usize],
 ) -> Vec<AnimationClip> {
-    let joint_of: HashMap<usize, usize> =
-        joint_nodes.iter().enumerate().map(|(joint, node)| (*node, joint)).collect();
+    let joint_of: HashMap<usize, usize> = joint_nodes
+        .iter()
+        .enumerate()
+        .map(|(joint, node)| (*node, joint))
+        .collect();
     let mut clips = Vec::new();
     for (index, animation) in document.animations().enumerate() {
         let mut channels: HashMap<usize, BoneChannels> = HashMap::new();
@@ -152,14 +177,18 @@ fn build_clips(
             };
             let times: Vec<f32> = times.collect();
             duration = duration.max(times.last().copied().unwrap_or(0.0));
-            let cubic = channel.sampler().interpolation() == gltf::animation::Interpolation::CubicSpline;
+            let cubic =
+                channel.sampler().interpolation() == gltf::animation::Interpolation::CubicSpline;
             let bone = channels.entry(joint).or_default();
             match outputs {
                 gltf::animation::util::ReadOutputs::Translations(v) => {
                     bone.translation = pair(&times, pick(v.map(Vec3::from).collect(), cubic));
                 }
                 gltf::animation::util::ReadOutputs::Rotations(r) => {
-                    let q = r.into_f32().map(|q| Quat::from_array(q).normalize()).collect();
+                    let q = r
+                        .into_f32()
+                        .map(|q| Quat::from_array(q).normalize())
+                        .collect();
                     bone.rotation = pair(&times, pick(q, cubic));
                 }
                 gltf::animation::util::ReadOutputs::Scales(v) => {
@@ -170,12 +199,17 @@ fn build_clips(
         }
 
         let mut clip = AnimationClip {
-            name: animation.name().map_or_else(|| format!("clip_{index}"), str::to_string),
+            name: animation
+                .name()
+                .map_or_else(|| format!("clip_{index}"), str::to_string),
             duration,
             ..Default::default()
         };
         for (joint, data) in channels {
-            clip.tracks.insert(skeleton.bones[joint].name.clone(), keyframes(skeleton, joint, &data));
+            clip.tracks.insert(
+                skeleton.bones[joint].name.clone(),
+                keyframes(skeleton, joint, &data),
+            );
         }
         clips.push(clip);
     }
@@ -223,7 +257,11 @@ fn sample<T: Copy>(keys: &[(f32, T)], time: f32, default: T, lerp: impl Fn(T, T,
         (None, None) => default,
         (None, Some(b)) => b.1,
         (Some(a), None) => a.1,
-        (Some(a), Some(b)) => lerp(a.1, b.1, ((time - a.0) / (b.0 - a.0).max(f32::EPSILON)).clamp(0.0, 1.0)),
+        (Some(a), Some(b)) => lerp(
+            a.1,
+            b.1,
+            ((time - a.0) / (b.0 - a.0).max(f32::EPSILON)).clamp(0.0, 1.0),
+        ),
     }
 }
 
@@ -242,7 +280,9 @@ mod tests {
         bin.extend(bytes_f32(&[0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.2, 0.5, 0.0])); // positions @0
         bin.extend(bytes_f32(&[0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0])); // normals @36
         bin.extend([0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0]); // joints u8 @72
-        bin.extend(bytes_f32(&[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0])); // weights @84
+        bin.extend(bytes_f32(&[
+            1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0,
+        ])); // weights @84
         bin.extend([0u8, 0, 1, 0, 2, 0, 0, 0]); // indices u16 + pad @132
         #[rustfmt::skip]
         bin.extend(bytes_f32(&[
@@ -328,7 +368,10 @@ mod tests {
         assert_eq!(model.skeleton.bones[0].name, "root");
         assert_eq!(model.skeleton.bones[1].parent, Some(0));
         let ibm_tip = model.skeleton.bones[1].inv_bind.transform_point3(Vec3::Y);
-        assert!(ibm_tip.length() < 1.0e-5, "inverse bind moves tip origin back to zero");
+        assert!(
+            ibm_tip.length() < 1.0e-5,
+            "inverse bind moves tip origin back to zero"
+        );
 
         assert_eq!(model.geometry.vertex_count(), 3);
         assert_eq!(model.geometry.indices, vec![0, 1, 2]);
@@ -347,7 +390,9 @@ mod tests {
         let local = model.clips[0].sample(&model.skeleton, 1.0, false);
         let pose = Pose::from_local(&model.skeleton, &local);
         let (mut p, mut n) = (Vec::new(), Vec::new());
-        model.geometry.deform_into(&pose.skin_matrices(&model.skeleton), &mut p, &mut n);
+        model
+            .geometry
+            .deform_into(&pose.skin_matrices(&model.skeleton), &mut p, &mut n);
         // Vertex 1 is fully on the tip joint at (0,1,0): rotating it 90 deg about Z around its
         // own origin leaves it in place.
         assert!(Vec3::from(p[1]).distance(Vec3::Y) < 1.0e-4);

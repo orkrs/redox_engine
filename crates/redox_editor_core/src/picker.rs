@@ -2,7 +2,7 @@
 
 use crate::camera::EditorCamera;
 use crate::gizmo::screen_ray;
-use crate::viewport_mode::{QuadPane, QUAD_ORTHO_HALF};
+use crate::viewport_mode::{QUAD_ORTHO_HALF, QuadPane};
 use redox_math::{Mat4, Transform, Vec2, Vec3};
 use std::time::{Duration, Instant};
 
@@ -165,11 +165,7 @@ impl EntityPicker {
         drop(data);
         buf.unmap();
         self.staging_buffer = Some(buf);
-        if id == u32::MAX {
-            None
-        } else {
-            Some(id)
-        }
+        if id == u32::MAX { None } else { Some(id) }
     }
 
     /// Non-blocking GPU pick: poll once after copy+map. Returns `None` if not ready
@@ -237,11 +233,7 @@ impl EntityPicker {
                 drop(data);
                 buf.unmap();
                 self.staging_buffer = Some(buf);
-                if id == u32::MAX {
-                    None
-                } else {
-                    Some(id)
-                }
+                if id == u32::MAX { None } else { Some(id) }
             }
             _ => {
                 drop(buf);
@@ -384,11 +376,7 @@ pub fn pick_entity_in_quad_pane(
 
 fn invert_affine(m: Mat4) -> Option<Mat4> {
     let inv = m.inverse();
-    if !inv.is_finite() {
-        None
-    } else {
-        Some(inv)
-    }
+    if !inv.is_finite() { None } else { Some(inv) }
 }
 
 /// Ray/AABB intersection in parametric form `o + t*d`. Returns smallest `t >= 0`.
@@ -446,10 +434,7 @@ mod tests {
     #[test]
     fn picks_nothing_on_zero_dir() {
         let entities = [(1, Transform::from_translation(Vec3::new(0.0, 0.0, -2.0)))];
-        assert_eq!(
-            pick_unit_cubes(&entities, Vec3::ZERO, Vec3::ZERO),
-            None
-        );
+        assert_eq!(pick_unit_cubes(&entities, Vec3::ZERO, Vec3::ZERO), None);
     }
 
     #[test]
@@ -464,8 +449,14 @@ mod tests {
     fn quad_pane_uv_corners() {
         let size = (200, 100);
         assert_eq!(quad_pane_at_uv(Vec2::new(0.1, 0.1), size).0, QuadPane::Top);
-        assert_eq!(quad_pane_at_uv(Vec2::new(0.75, 0.1), size).0, QuadPane::Front);
-        assert_eq!(quad_pane_at_uv(Vec2::new(0.1, 0.75), size).0, QuadPane::Right);
+        assert_eq!(
+            quad_pane_at_uv(Vec2::new(0.75, 0.1), size).0,
+            QuadPane::Front
+        );
+        assert_eq!(
+            quad_pane_at_uv(Vec2::new(0.1, 0.75), size).0,
+            QuadPane::Right
+        );
         assert_eq!(
             quad_pane_at_uv(Vec2::new(0.75, 0.75), size).0,
             QuadPane::Perspective
@@ -501,10 +492,6 @@ mod tests {
         let ray = pick_in_quad_pane(Vec2::new(0.25, 0.25), &cam, (200, 100));
         assert_eq!(ray.pane, QuadPane::Top);
         // Top ortho looks roughly −Y.
-        assert!(
-            ray.dir.y < -0.5,
-            "expected downward ray, got {:?}",
-            ray.dir
-        );
+        assert!(ray.dir.y < -0.5, "expected downward ray, got {:?}", ray.dir);
     }
 }

@@ -22,7 +22,13 @@ pub struct Animator {
 
 impl Default for Animator {
     fn default() -> Self {
-        Self { clip: 0, time: 0.0, speed: 1.0, looping: true, playing: true }
+        Self {
+            clip: 0,
+            time: 0.0,
+            speed: 1.0,
+            looping: true,
+            playing: true,
+        }
     }
 }
 
@@ -58,7 +64,11 @@ mod tests {
     use super::*;
 
     fn clips() -> Vec<AnimationClip> {
-        vec![AnimationClip { name: "c".into(), duration: 2.0, ..Default::default() }]
+        vec![AnimationClip {
+            name: "c".into(),
+            duration: 2.0,
+            ..Default::default()
+        }]
     }
 
     #[test]
@@ -71,7 +81,10 @@ mod tests {
 
     #[test]
     fn one_shot_stops_at_end() {
-        let mut a = Animator { looping: false, ..Default::default() };
+        let mut a = Animator {
+            looping: false,
+            ..Default::default()
+        };
         a.advance(5.0, &clips());
         assert_eq!(a.time, 2.0);
         assert!(!a.playing);
@@ -79,14 +92,20 @@ mod tests {
 
     #[test]
     fn speed_scales_time() {
-        let mut a = Animator { speed: 2.0, ..Default::default() };
+        let mut a = Animator {
+            speed: 2.0,
+            ..Default::default()
+        };
         a.advance(0.25, &clips());
         assert!((a.time - 0.5).abs() < 1.0e-5);
     }
 
     #[test]
     fn invalid_clip_index_is_bind_pose() {
-        let a = Animator { clip: 7, ..Default::default() };
+        let a = Animator {
+            clip: 7,
+            ..Default::default()
+        };
         let skeleton = Skeleton::default();
         assert!(a.evaluate(&skeleton, &clips()).bones.is_empty());
     }

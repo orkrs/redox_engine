@@ -78,7 +78,10 @@ impl ShaderWatcher {
             Err(e) => Some(e),
             Ok(src) => compile_error(device, stem, &src),
         };
-        ShaderReloadReport { name: stem.to_string(), error }
+        ShaderReloadReport {
+            name: stem.to_string(),
+            error,
+        }
     }
 
     fn read(&self, stem: &str) -> Result<String, String> {
@@ -122,7 +125,8 @@ mod tests {
     use std::time::Duration;
 
     fn temp_shader_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("redox_shader_watch_{tag}_{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("redox_shader_watch_{tag}_{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(dir.join("smaa")).unwrap();
         dir
@@ -130,7 +134,8 @@ mod tests {
 
     fn touch(path: &Path, offset_secs: u64) {
         let file = fs::OpenOptions::new().write(true).open(path).unwrap();
-        file.set_modified(SystemTime::now() + Duration::from_secs(offset_secs)).unwrap();
+        file.set_modified(SystemTime::now() + Duration::from_secs(offset_secs))
+            .unwrap();
     }
 
     #[test]
@@ -140,7 +145,10 @@ mod tests {
         fs::write(dir.join("bloom.wgsl"), "// b").unwrap();
 
         let mut watcher = ShaderWatcher::with_dir(&dir);
-        assert!(watcher.changed().is_empty(), "baseline must not report anything");
+        assert!(
+            watcher.changed().is_empty(),
+            "baseline must not report anything"
+        );
 
         touch(&dir.join("pbr.wgsl"), 5);
         assert_eq!(watcher.changed(), vec!["pbr"]);
@@ -159,7 +167,8 @@ mod tests {
 
     #[test]
     fn missing_directory_is_quiet() {
-        let mut watcher = ShaderWatcher::with_dir(std::env::temp_dir().join("redox_no_such_shader_dir"));
+        let mut watcher =
+            ShaderWatcher::with_dir(std::env::temp_dir().join("redox_no_such_shader_dir"));
         assert!(watcher.changed().is_empty());
     }
 }

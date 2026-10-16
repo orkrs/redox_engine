@@ -36,23 +36,26 @@ impl Renderer {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-            self.scatter_light_pass.draw(&mut pass, &self.scatter_light_bind_group);
+            self.scatter_light_pass
+                .draw(&mut pass, &self.scatter_light_bind_group);
         }
     }
 
     /// Dual-filter bloom mip chain from a clean HDR source (TAA output or raw HDR).
-    pub(super) fn record_bloom_chain(&self, encoder: &mut wgpu::CommandEncoder, source_view: &wgpu::TextureView) {
+    pub(super) fn record_bloom_chain(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        source_view: &wgpu::TextureView,
+    ) {
         if !self.bloom_enabled {
             return;
         }
 
         use crate::post::bloom::BLOOM_MIP_COUNT;
 
-        let bloom_src_bg = self.bloom_pass.create_bind_group(
-            &self.device,
-            source_view,
-            &self.hdr_sampler,
-        );
+        let bloom_src_bg =
+            self.bloom_pass
+                .create_bind_group(&self.device, source_view, &self.hdr_sampler);
 
         for i in 0..BLOOM_MIP_COUNT {
             let pipeline = if i == 0 {
@@ -107,8 +110,7 @@ impl Renderer {
 
     pub(super) fn rebuild_vg_bind_groups(&mut self) {
         let materials: Vec<Material> = self.registry.legacy_materials().to_vec();
-        self.vg_material_buffer =
-            build_material_storage(&materials, &self.device, &self.queue);
+        self.vg_material_buffer = build_material_storage(&materials, &self.device, &self.queue);
 
         if let Some(vg) = &self.vg_system {
             self.vg_resolve_bind_group = self.vg_resolve_pass.create_resolve_bind_group(

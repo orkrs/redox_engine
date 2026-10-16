@@ -5,9 +5,9 @@ use std::sync::Arc;
 
 use winit::window::Window;
 
-pub use crate::renderer::ShaderDebugVizMode;
 use crate::frame::FrameView;
 use crate::renderer::Renderer;
+pub use crate::renderer::ShaderDebugVizMode;
 use crate::systems::RenderObject;
 use crate::virtual_geometry::runtime::VGConfig;
 

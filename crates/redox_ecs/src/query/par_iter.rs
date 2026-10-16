@@ -6,13 +6,13 @@
 //! on `Q` statically forbids mutable fetches from being distributed across
 //! threads.
 
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use rayon::iter::plumbing::UnindexedConsumer;
-use std::marker::PhantomData;
-use crate::world::World;
-use crate::archetype::Archetype;
-use super::{ReadOnlyQueryData, QueryFilter, NullFilter, TickCtx};
 use super::iter::Query;
+use super::{NullFilter, QueryFilter, ReadOnlyQueryData, TickCtx};
+use crate::archetype::Archetype;
+use crate::world::World;
+use rayon::iter::plumbing::UnindexedConsumer;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use std::marker::PhantomData;
 
 // ---------------------------------------------------------------------------
 // Public trait
@@ -38,7 +38,9 @@ where
     fn par_iter(&self, world: &'w World) -> QueryParIter<'w, Q, F> {
         QueryParIter {
             archetypes: &world.archetypes,
-            ctx: TickCtx { frame_tick: world.frame_tick },
+            ctx: TickCtx {
+                frame_tick: world.frame_tick,
+            },
             _marker: PhantomData,
         }
     }
@@ -62,7 +64,10 @@ pub struct QueryParIter<'w, Q: ReadOnlyQueryData, F: QueryFilter> {
 // The query types `Q` and `F` are zero-sized marker types; we only ever
 // access the data through shared references to `Archetype`, and `Q` is
 // statically guaranteed read-only.
-unsafe impl<'w, Q: ReadOnlyQueryData + Send, F: QueryFilter + Send> Send for QueryParIter<'w, Q, F> {}
+unsafe impl<'w, Q: ReadOnlyQueryData + Send, F: QueryFilter + Send> Send
+    for QueryParIter<'w, Q, F>
+{
+}
 
 impl<'w, Q, F> ParallelIterator for QueryParIter<'w, Q, F>
 where

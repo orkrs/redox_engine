@@ -1,5 +1,5 @@
-use crate::vector::Vec3;
 use crate::quat::Quat;
+use crate::vector::Vec3;
 
 /// A 4×4 column‑major matrix.
 ///

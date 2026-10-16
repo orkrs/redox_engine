@@ -41,12 +41,17 @@ impl IBLProcessor {
         // sees two variables at the same @group/@binding with different types.
         let equirect_shader =
             create_shader_module(device, "equirect_to_cube_shader", EQUIRECT_TO_CUBE_WGSL);
-        let irradiance_shader =
-            create_shader_module(device, "irradiance_convolution_shader", IRRADIANCE_CONVOLUTION_WGSL);
-        let prefilter_shader =
-            create_shader_module(device, "prefilter_convolution_shader", PREFILTER_CONVOLUTION_WGSL);
-        let brdf_lut_shader =
-            create_shader_module(device, "brdf_lut_shader", BRDF_LUT_WGSL);
+        let irradiance_shader = create_shader_module(
+            device,
+            "irradiance_convolution_shader",
+            IRRADIANCE_CONVOLUTION_WGSL,
+        );
+        let prefilter_shader = create_shader_module(
+            device,
+            "prefilter_convolution_shader",
+            PREFILTER_CONVOLUTION_WGSL,
+        );
+        let brdf_lut_shader = create_shader_module(device, "brdf_lut_shader", BRDF_LUT_WGSL);
 
         // Linear filtering with clamping and trilinear mip blending.
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -78,23 +83,21 @@ impl IBLProcessor {
                 compilation_options: Default::default(),
             });
 
-        let pipeline_prefilter =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("prefilter_pipeline"),
-                layout: None,
-                module: &prefilter_shader,
-                entry_point: "prefilter_convolution",
-                compilation_options: Default::default(),
-            });
+        let pipeline_prefilter = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("prefilter_pipeline"),
+            layout: None,
+            module: &prefilter_shader,
+            entry_point: "prefilter_convolution",
+            compilation_options: Default::default(),
+        });
 
-        let pipeline_brdf_lut =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("brdf_lut_pipeline"),
-                layout: None,
-                module: &brdf_lut_shader,
-                entry_point: "brdf_lut",
-                compilation_options: Default::default(),
-            });
+        let pipeline_brdf_lut = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("brdf_lut_pipeline"),
+            layout: None,
+            module: &brdf_lut_shader,
+            entry_point: "brdf_lut",
+            compilation_options: Default::default(),
+        });
 
         Self {
             pipeline_equirect_to_cube,
@@ -443,7 +446,11 @@ impl IBLResource {
         let tex_usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
         let dummy_lut = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("dummy_ibl_brdf_lut"),
-            size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -454,7 +461,11 @@ impl IBLResource {
 
         let dummy_irradiance_cube = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("dummy_ibl_irradiance"),
-            size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 6 },
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 6,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -465,7 +476,11 @@ impl IBLResource {
 
         let dummy_prefiltered_cube = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("dummy_ibl_prefiltered"),
-            size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 6 },
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 6,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -476,7 +491,11 @@ impl IBLResource {
 
         let dummy_env_cube = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("dummy_ibl_env"),
-            size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 6 },
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 6,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,

@@ -4,12 +4,12 @@
 //! attributed to that label. Needs `TIMESTAMP_QUERY` and `TIMESTAMP_QUERY_INSIDE_ENCODERS`;
 //! without them every call is a no-op and [`GpuProfiler::timings`] stays empty.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Features the profiler needs (request them when creating the device if the adapter has them).
-pub const PROFILER_FEATURES: wgpu::Features = wgpu::Features::TIMESTAMP_QUERY
-    .union(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS);
+pub const PROFILER_FEATURES: wgpu::Features =
+    wgpu::Features::TIMESTAMP_QUERY.union(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS);
 
 /// Marks per frame (including the frame-start mark).
 const MAX_MARKS: u32 = 64;
@@ -98,8 +98,12 @@ impl GpuProfiler {
         if self.timings.is_empty() {
             return "gpu timings unavailable".to_string();
         }
-        let mut out: Vec<String> =
-            self.timings.iter().filter(|t| t.ms >= 0.01).map(|t| format!("{} {:.2}", t.label, t.ms)).collect();
+        let mut out: Vec<String> = self
+            .timings
+            .iter()
+            .filter(|t| t.ms >= 0.01)
+            .map(|t| format!("{} {:.2}", t.label, t.ms))
+            .collect();
         out.push(format!("total {:.2} ms", self.total_ms()));
         out.join(" | ")
     }
@@ -167,11 +171,13 @@ impl GpuProfiler {
         let done = Arc::new(AtomicBool::new(false));
         let flag = done.clone();
         let bytes = (self.in_flight.len() as u64 + 1) * TICK_BYTES;
-        readback.slice(0..bytes).map_async(wgpu::MapMode::Read, move |result| {
-            if result.is_ok() {
-                flag.store(true, Ordering::Release);
-            }
-        });
+        readback
+            .slice(0..bytes)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                if result.is_ok() {
+                    flag.store(true, Ordering::Release);
+                }
+            });
         self.state = Readback::Mapping(done);
     }
 
@@ -212,8 +218,20 @@ mod tests {
     fn durations_attribute_each_interval_to_its_label() {
         let t = durations(&["shadows", "forward"], &[1_000, 3_000, 4_000], 1_000.0);
         assert_eq!(t.len(), 2);
-        assert_eq!(t[0], GpuTiming { label: "shadows", ms: 2.0 });
-        assert_eq!(t[1], GpuTiming { label: "forward", ms: 1.0 });
+        assert_eq!(
+            t[0],
+            GpuTiming {
+                label: "shadows",
+                ms: 2.0
+            }
+        );
+        assert_eq!(
+            t[1],
+            GpuTiming {
+                label: "forward",
+                ms: 1.0
+            }
+        );
     }
 
     #[test]

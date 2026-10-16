@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use redox_asset::AssetId;
 
-use crate::asset_types::{MaterialData};
+use crate::asset_types::MaterialData;
 use crate::material::Material;
 use crate::resource::texture::Texture;
 
@@ -85,7 +85,6 @@ impl<T> Pool<T> {
     fn len(&self) -> usize {
         self.slots.len() - self.free.len()
     }
-
 }
 
 impl<T> Default for Pool<T> {
@@ -140,7 +139,9 @@ impl GpuRegistry {
     }
 
     pub fn mesh_by_handle(&self, handle: AssetId) -> Option<&GpuMesh> {
-        self.handle_to_mesh.get(&handle).and_then(|&i| self.meshes.get(i))
+        self.handle_to_mesh
+            .get(&handle)
+            .and_then(|&i| self.meshes.get(i))
     }
 
     pub fn mesh_by_slot(&self, slot: usize) -> Option<&GpuMesh> {
@@ -209,11 +210,7 @@ impl GpuRegistry {
         idx
     }
 
-    pub fn push_legacy_texture(
-        &mut self,
-        texture: Texture,
-        bind_group: wgpu::BindGroup,
-    ) -> usize {
+    pub fn push_legacy_texture(&mut self, texture: Texture, bind_group: wgpu::BindGroup) -> usize {
         let idx = self.legacy_textures.len();
         self.legacy_textures.push(texture);
         self.legacy_texture_bind_groups.push(bind_group);
@@ -247,7 +244,9 @@ impl GpuRegistry {
     }
 
     pub fn material_by_handle(&self, handle: AssetId) -> Option<&MaterialSlot> {
-        self.handle_to_material.get(&handle).and_then(|&i| self.materials.get(i))
+        self.handle_to_material
+            .get(&handle)
+            .and_then(|&i| self.materials.get(i))
     }
 
     // ── Textures ────────────────────────────────────────────────────────────
@@ -264,7 +263,9 @@ impl GpuRegistry {
     }
 
     pub fn texture_by_handle(&self, handle: AssetId) -> Option<&TextureSlot> {
-        self.handle_to_texture.get(&handle).and_then(|&i| self.textures.get(i))
+        self.handle_to_texture
+            .get(&handle)
+            .and_then(|&i| self.textures.get(i))
     }
 
     pub fn texture_slot_mut(&mut self, handle: AssetId) -> Option<&mut TextureSlot> {

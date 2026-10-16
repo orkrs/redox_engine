@@ -16,15 +16,15 @@ use redox_core::window::create_window;
 use redox_ecs::World;
 use redox_input::InputState;
 use redox_math::{Mat4, Quat, Vec3, Vec4};
+use redox_render::SmrtQuality;
 use redox_render::camera::Camera;
 use redox_render::context::RenderContext;
+use redox_render::context::ShaderDebugVizMode;
 use redox_render::frame::FrameView;
 use redox_render::light::{DirectionalLight, LightScene};
 use redox_render::material::Material;
 use redox_render::mesh::primitive::create_cube;
 use redox_render::systems::{RenderObject, Transform};
-use redox_render::context::ShaderDebugVizMode;
-use redox_render::SmrtQuality;
 use redox_ui::context::UiContext;
 use winit::keyboard::KeyCode;
 
@@ -425,9 +425,7 @@ fn log_shadow_probe(
     } else {
         0.0
     };
-    log::info!(
-        "expected tip vs −sun_xz align={align:.3} (want ≈ +1.0 = opposite sun on ground)"
-    );
+    log::info!("expected tip vs −sun_xz align={align:.3} (want ≈ +1.0 = opposite sun on ground)");
 
     for (name, p) in [
         ("pole_base", POLE_BASE + Vec3::new(0.0, 0.02, 0.0)),

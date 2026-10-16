@@ -23,8 +23,14 @@ impl SkinnedGeometry {
     /// Checks that all per-vertex arrays agree in length and indices are in range.
     pub fn validate(&self, bone_count: usize) -> Result<(), String> {
         let n = self.vertex_count();
-        if self.normals.len() != n || self.uvs.len() != n || self.joints.len() != n || self.weights.len() != n {
-            return Err(format!("per-vertex arrays differ in length (positions: {n})"));
+        if self.normals.len() != n
+            || self.uvs.len() != n
+            || self.joints.len() != n
+            || self.weights.len() != n
+        {
+            return Err(format!(
+                "per-vertex arrays differ in length (positions: {n})"
+            ));
         }
         if let Some(bad) = self.indices.iter().find(|&&i| i as usize >= n) {
             return Err(format!("index {bad} out of range for {n} vertices"));
@@ -32,7 +38,9 @@ impl SkinnedGeometry {
         for (v, (joints, weights)) in self.joints.iter().zip(&self.weights).enumerate() {
             for (j, w) in joints.iter().zip(weights) {
                 if *w > 0.0 && *j as usize >= bone_count {
-                    return Err(format!("vertex {v} references bone {j}, skeleton has {bone_count}"));
+                    return Err(format!(
+                        "vertex {v} references bone {j}, skeleton has {bone_count}"
+                    ));
                 }
             }
         }
@@ -52,7 +60,9 @@ impl SkinnedGeometry {
         for v in 0..self.vertex_count() {
             let blended = blend_matrix(skin_matrices, &self.joints[v], &self.weights[v]);
             let p = blended.transform_point3(Vec3::from(self.positions[v]));
-            let n = blended.transform_vector3(Vec3::from(self.normals[v])).normalize_or_zero();
+            let n = blended
+                .transform_vector3(Vec3::from(self.normals[v]))
+                .normalize_or_zero();
             out_positions.push(p.to_array());
             out_normals.push(n.to_array());
         }
@@ -108,7 +118,10 @@ mod tests {
     #[test]
     fn weights_blend_bone_translations() {
         let g = geometry();
-        let skin = [Mat4::IDENTITY, Mat4::from_translation(Vec3::new(2.0, 0.0, 0.0))];
+        let skin = [
+            Mat4::IDENTITY,
+            Mat4::from_translation(Vec3::new(2.0, 0.0, 0.0)),
+        ];
         let (mut p, mut n) = (Vec::new(), Vec::new());
         g.deform_into(&skin, &mut p, &mut n);
         assert_eq!(p[0], [0.0, 0.0, 0.0], "fully on bone 0");

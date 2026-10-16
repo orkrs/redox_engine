@@ -109,7 +109,10 @@ pub fn save_manifest(root: impl AsRef<Path>, manifest: &WorldManifest) -> SceneR
     Ok(())
 }
 
-pub fn load_cell_actors(root: impl AsRef<Path>, cell: PartitionCell) -> SceneResult<Vec<ActorRecord>> {
+pub fn load_cell_actors(
+    root: impl AsRef<Path>,
+    cell: PartitionCell,
+) -> SceneResult<Vec<ActorRecord>> {
     let dir = cell_dir(root, cell);
     let mut actors = Vec::new();
     if !dir.is_dir() {
@@ -143,7 +146,11 @@ pub fn save_cell_actors(
     Ok(())
 }
 
-pub fn save_actor(root: impl AsRef<Path>, cell: PartitionCell, actor: &ActorRecord) -> SceneResult<()> {
+pub fn save_actor(
+    root: impl AsRef<Path>,
+    cell: PartitionCell,
+    actor: &ActorRecord,
+) -> SceneResult<()> {
     let pretty = ron::ser::PrettyConfig::new();
     let serialized = ron::ser::to_string_pretty(actor, pretty)?;
     write_atomic(actor_path(root, cell, &actor.id), serialized.as_bytes())?;
@@ -151,7 +158,9 @@ pub fn save_actor(root: impl AsRef<Path>, cell: PartitionCell, actor: &ActorReco
 }
 
 pub fn cell_mtime(root: impl AsRef<Path>, cell: PartitionCell) -> Option<SystemTime> {
-    fs::metadata(cell_dir(root, cell)).and_then(|m| m.modified()).ok()
+    fs::metadata(cell_dir(root, cell))
+        .and_then(|m| m.modified())
+        .ok()
 }
 
 /// Writes a full OFPA world (manifest + every cell).
@@ -180,7 +189,8 @@ mod tests {
 
     #[test]
     fn test_write_atomic_and_backup() {
-        let temp_dir = std::env::temp_dir().join(format!("redox_atomic_test_{}", std::process::id()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("redox_atomic_test_{}", std::process::id()));
         let _ = fs::remove_dir_all(&temp_dir);
         let test_file = temp_dir.join("test.txt");
 
@@ -192,7 +202,10 @@ mod tests {
         // Second write creates backup
         write_atomic(&test_file, b"version 2").unwrap();
         assert_eq!(fs::read_to_string(&test_file).unwrap(), "version 2");
-        assert_eq!(fs::read_to_string(test_file.with_extension("bak")).unwrap(), "version 1");
+        assert_eq!(
+            fs::read_to_string(test_file.with_extension("bak")).unwrap(),
+            "version 1"
+        );
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
@@ -206,4 +219,3 @@ mod tests {
         assert_eq!(deserialized.version, 1);
     }
 }
-

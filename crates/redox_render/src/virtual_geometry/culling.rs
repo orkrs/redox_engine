@@ -37,12 +37,12 @@ impl Frustum {
         let r2 = row(2);
         let r3 = row(3);
 
-        let left   = add4(r3, r0);
-        let right  = sub4(r3, r0);
+        let left = add4(r3, r0);
+        let right = sub4(r3, r0);
         let bottom = add4(r3, r1);
-        let top    = sub4(r3, r1);
-        let near   = add4(r3, r2);
-        let far    = sub4(r3, r2);
+        let top = sub4(r3, r1);
+        let near = add4(r3, r2);
+        let far = sub4(r3, r2);
 
         let planes = [left, right, bottom, top, near, far].map(normalize_plane);
         Frustum { planes }
@@ -157,10 +157,7 @@ pub fn cull_meshlets(
         camera_pos,
         &mut commands,
     );
-    CullingResult {
-        commands,
-        ..stats
-    }
+    CullingResult { commands, ..stats }
 }
 
 /// Like [`cull_meshlets`], but reuses `commands` (cleared first).

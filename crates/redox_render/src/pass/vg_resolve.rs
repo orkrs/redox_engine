@@ -6,11 +6,13 @@
 //! 1. [`VgVisPass`] — rasterizes VG meshlets into a *visibility buffer*.
 //! 2. [`VgResolvePass`] — fullscreen resolve that shades via the PBR global BG.
 
-use crate::pass::shared_layouts::multisample_state;
 use crate::material::{Material, MaterialUniform};
 use crate::mesh::CompressedVertex;
+use crate::pass::shared_layouts::multisample_state;
+use crate::shader::{
+    VG_RESOLVE_WGSL, VG_VIS_WGSL, create_shader_module, create_shader_with_vertex_decode,
+};
 use crate::virtual_geometry::indirect::IndirectDrawBuffer;
-use crate::shader::{VG_RESOLVE_WGSL, VG_VIS_WGSL, create_shader_module, create_shader_with_vertex_decode};
 use crate::virtual_geometry::meshlet::{MeshletDescriptor, VGInstanceData};
 
 /// RT0: packed `(instance_index << 16) | triangle_id`.
@@ -265,7 +267,10 @@ impl VgResolvePass {
             multiview: None,
         });
 
-        Self { pipeline, resolve_bgl }
+        Self {
+            pipeline,
+            resolve_bgl,
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -336,8 +341,7 @@ pub fn build_material_storage(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
 ) -> wgpu::Buffer {
-    let uniforms: Vec<MaterialUniform> =
-        materials.iter().map(|m| m.to_uniform(device)).collect();
+    let uniforms: Vec<MaterialUniform> = materials.iter().map(|m| m.to_uniform(device)).collect();
     let buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("vg_material_storage"),
         size: (uniforms.len() * std::mem::size_of::<MaterialUniform>()).max(16) as u64,
@@ -388,11 +392,7 @@ pub struct VgVisTargets {
 }
 
 /// Allocates visibility-buffer attachments at internal resolution.
-pub fn create_vg_vis_targets(
-    device: &wgpu::Device,
-    width: u32,
-    height: u32,
-) -> VgVisTargets {
+pub fn create_vg_vis_targets(device: &wgpu::Device, width: u32, height: u32) -> VgVisTargets {
     let make = |format: wgpu::TextureFormat, label: &str| {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some(label),
@@ -471,7 +471,11 @@ impl VgShadowPass {
             push_constant_ranges: &[],
         });
 
-        let shader = create_shader_with_vertex_decode(device, "vg_shadow_shader", crate::shader::VG_SHADOW_WGSL);
+        let shader = create_shader_with_vertex_decode(
+            device,
+            "vg_shadow_shader",
+            crate::shader::VG_SHADOW_WGSL,
+        );
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("vg_shadow_pipeline"),

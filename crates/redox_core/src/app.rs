@@ -17,8 +17,7 @@ use crate::time::Time;
 use crate::window;
 
 type SetupHook = Box<dyn FnOnce(&mut World)>;
-type UiSetupHook =
-    Box<dyn FnOnce(&mut World, &mut RenderContext, Arc<Window>)>;
+type UiSetupHook = Box<dyn FnOnce(&mut World, &mut RenderContext, Arc<Window>)>;
 
 /// A builder linking the context and core systems to launch the engine.
 pub struct AppBuilder {

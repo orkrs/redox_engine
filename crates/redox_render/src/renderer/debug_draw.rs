@@ -6,8 +6,7 @@ impl Renderer {
     /// Creates the optional GPU particle system (`capacity` living particles).
     pub fn init_particle_system(&mut self, capacity: u32) {
         let hdr_format = wgpu::TextureFormat::Rgba16Float;
-        self.particle_system =
-            Some(ParticleGpuSystem::new(&self.device, capacity, hdr_format));
+        self.particle_system = Some(ParticleGpuSystem::new(&self.device, capacity, hdr_format));
         self.ensure_reactive_texture();
     }
 
@@ -15,12 +14,7 @@ impl Renderer {
     pub fn upload_particles_from_vfx(&mut self, system: &ParticleSystem) {
         self.particle_sim_uniforms = system.sim_uniforms(1.0 / 60.0);
         if let Some(ps) = &mut self.particle_system {
-            ps.upload_from_vfx(
-                &self.device,
-                &self.queue,
-                system,
-                &self.camera_uniform,
-            );
+            ps.upload_from_vfx(&self.device, &self.queue, system, &self.camera_uniform);
         }
     }
 

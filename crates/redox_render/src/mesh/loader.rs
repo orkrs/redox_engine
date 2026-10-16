@@ -39,7 +39,10 @@ pub fn load_obj<P: AsRef<Path>>(path: P) -> Result<Vec<Mesh>, tobj::LoadError> {
                 .map(|c| [c[0], c[1], c[2]])
                 .collect();
             let normals: Vec<[f32; 3]> = if has_normals {
-                m.normals.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect()
+                m.normals
+                    .chunks_exact(3)
+                    .map(|c| [c[0], c[1], c[2]])
+                    .collect()
             } else {
                 vec![[0.0, 1.0, 0.0]; vertex_count]
             };

@@ -24,10 +24,10 @@
 //! for (pos, vel) in q.iter(&world) { /* only entities that also have Player */ }
 //! ```
 
-use std::marker::PhantomData;
-use crate::world::World;
+use super::{NullFilter, QueryData, QueryFilter, ReadOnlyQueryData, TickCtx};
 use crate::archetype::Archetype;
-use super::{QueryData, QueryFilter, NullFilter, ReadOnlyQueryData, TickCtx};
+use crate::world::World;
+use std::marker::PhantomData;
 
 /// A sequential query over components stored in the [`World`].
 ///
@@ -48,7 +48,9 @@ where
     /// Creates a new query. Zero-cost; no allocation.
     #[inline]
     pub fn new() -> Self {
-        Self { _marker: PhantomData }
+        Self {
+            _marker: PhantomData,
+        }
     }
 
     /// Returns an iterator that yields one `Q::Item<'_>` per matching entity.
@@ -66,7 +68,9 @@ where
     {
         QueryIter {
             archetypes: &world.archetypes,
-            ctx: TickCtx { frame_tick: world.frame_tick },
+            ctx: TickCtx {
+                frame_tick: world.frame_tick,
+            },
             arch_index: 0,
             row: 0,
             _marker: PhantomData,
@@ -81,7 +85,9 @@ where
     /// Every row yielded stamps its change tick on all components that `Q`
     /// mutates, making them visible to [`Changed`](crate::query::filter::Changed).
     pub fn iter_mut<'w>(&self, world: &'w mut World) -> QueryIterMut<'w, Q, F> {
-        let ctx = TickCtx { frame_tick: world.frame_tick };
+        let ctx = TickCtx {
+            frame_tick: world.frame_tick,
+        };
         // Bump the global tick so rows yielded by this iterator register as
         // changed relative to the frame-start snapshot.
         let stamp_tick = world.next_tick();
@@ -101,7 +107,9 @@ where
     Q: QueryData,
     F: QueryFilter,
 {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ---------------------------------------------------------------------------

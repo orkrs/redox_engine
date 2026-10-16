@@ -93,7 +93,11 @@ pub fn compute_tangents(
         }
         let t = scale(t_unnorm, 1.0 / t_len_sq.sqrt());
 
-        let w = if dot(cross(n, t), bitan_acc[i]) >= 0.0 { 1.0 } else { -1.0 };
+        let w = if dot(cross(n, t), bitan_acc[i]) >= 0.0 {
+            1.0
+        } else {
+            -1.0
+        };
         result.push([t[0], t[1], t[2], w]);
     }
     result
@@ -102,7 +106,9 @@ pub fn compute_tangents(
 /// Returns the UV pair for `index`, defaulting to the origin.
 #[inline]
 fn lookup_uv(uvs: &[[f32; 2]], index: usize) -> (f32, f32) {
-    uvs.get(index).map(|uv| (uv[0], uv[1])).unwrap_or((0.0, 0.0))
+    uvs.get(index)
+        .map(|uv| (uv[0], uv[1]))
+        .unwrap_or((0.0, 0.0))
 }
 
 /// Returns the normal for `index`, falling back to straight up.
@@ -162,7 +168,11 @@ mod tests {
         assert_eq!(tangents.len(), 3);
         for t in &tangents {
             assert!((t[0] - 1.0).abs() < 1e-5, "tx should be 1, got {:?}", t);
-            assert!(t[1].abs() < 1e-5 && t[2].abs() < 1e-5, "ty/tz should be 0, got {:?}", t);
+            assert!(
+                t[1].abs() < 1e-5 && t[2].abs() < 1e-5,
+                "ty/tz should be 0, got {:?}",
+                t
+            );
             assert_eq!(t[3], 1.0);
         }
     }
@@ -196,8 +206,7 @@ mod tests {
     #[test]
     fn out_of_range_indices_are_skipped() {
         let uvs = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
-        let tangents =
-            compute_tangents(&POSITIONS, &NORMALS_Z, &uvs, &[0, 1, 2, 99, 99, 99]);
+        let tangents = compute_tangents(&POSITIONS, &NORMALS_Z, &uvs, &[0, 1, 2, 99, 99, 99]);
 
         assert_eq!(tangents.len(), 3);
     }

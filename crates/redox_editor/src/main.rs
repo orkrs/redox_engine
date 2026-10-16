@@ -1,18 +1,16 @@
 use parking_lot::Mutex;
+use rapier3d::prelude::{ColliderBuilder, RigidBodyBuilder};
 use redox_ecs::{Entity, World};
 use redox_editor_core::{
-    build_editor_overlay_lines, egui_to_viewport_coords, ghost_cube_lines, ghost_move_line,
-    pick_in_quad_pane, place_on_surface, pick_unit_cubes, scatter_poses, EditorCamera,
-    GizmoMode, GizmoState, Selection, UndoStack, ViewportLayout, ViewportLinesPass,
-    ViewportShading, WorldSession,
+    EditorCamera, GizmoMode, GizmoState, Selection, UndoStack, ViewportLayout, ViewportLinesPass,
+    ViewportShading, WorldSession, build_editor_overlay_lines, egui_to_viewport_coords,
+    ghost_cube_lines, ghost_move_line, pick_in_quad_pane, pick_unit_cubes, place_on_surface,
+    scatter_poses,
 };
-use redox_editor_ui::{
-    AssetKind, EditorDock, EditorMeshProxy, EditorUiCtx, OutlinerAction,
-};
+use redox_editor_ui::{AssetKind, EditorDock, EditorMeshProxy, EditorUiCtx, OutlinerAction};
 use redox_math::{Transform, Vec3};
 use redox_physics::PhysicsContext;
-use redox_reflect::{register_engine_defaults, TypeRegistry};
-use rapier3d::prelude::{ColliderBuilder, RigidBodyBuilder};
+use redox_reflect::{TypeRegistry, register_engine_defaults};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -44,7 +42,10 @@ fn focus_selection(ui_ctx: &EditorUiCtx) {
             ui_ctx
                 .camera
                 .lock()
-                .focus_on(redox_math::Aabb::from_center_size(t.translation, Vec3::splat(1.0)));
+                .focus_on(redox_math::Aabb::from_center_size(
+                    t.translation,
+                    Vec3::splat(1.0),
+                ));
         }
     }
 }
@@ -114,7 +115,9 @@ fn run_command(ui_ctx: &EditorUiCtx, dock: &mut EditorDock, id: &str) {
             ui_ctx.time_travel.lock().frames.clear();
             ui_ctx.log("[INFO] PIE stopped — world restored");
         }
-        "bake_meshlets" => ui_ctx.log("[WARN] Bake Meshlets not wired yet — use Packager for OFPA report"),
+        "bake_meshlets" => {
+            ui_ctx.log("[WARN] Bake Meshlets not wired yet — use Packager for OFPA report")
+        }
         "bake_report" => *ui_ctx.status.lock() = "bake_report".into(),
         "spawn_agent" => ui_ctx.spawn_demo_agent(),
         "shading_lit" => {
@@ -290,7 +293,10 @@ fn main() {
         ui_ctx.git.lock().set_world_root(&session.root);
         ui_ctx.git.lock().refresh(&world.lock());
         *ui_ctx.world_session.lock() = Some(session);
-        ui_ctx.log(format!("[INFO] Opened {} — OFPA cells loaded around spawn", cli.world_root));
+        ui_ctx.log(format!(
+            "[INFO] Opened {} — OFPA cells loaded around spawn",
+            cli.world_root
+        ));
     } else {
         let mut w = world.lock();
         let positions = [
@@ -308,7 +314,10 @@ fn main() {
             }
         }
         selection.lock().set_primary(first);
-        ui_ctx.log(format!("[INFO] No world at {} — demo cubes", cli.world_root));
+        ui_ctx.log(format!(
+            "[INFO] No world at {} — demo cubes",
+            cli.world_root
+        ));
     }
 
     ui_ctx.spawn_demo_agent();

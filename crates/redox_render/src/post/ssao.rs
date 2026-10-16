@@ -199,7 +199,8 @@ impl SSAOPass {
             multiview: None,
         });
 
-        let upsample_shader = create_shader_module(device, "gtao_upsample_shader", GTAO_UPSAMPLE_WGSL);
+        let upsample_shader =
+            create_shader_module(device, "gtao_upsample_shader", GTAO_UPSAMPLE_WGSL);
         let upsample_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("gtao_upsample_pipeline"),
             layout: Some(

@@ -25,7 +25,9 @@ use bytemuck::Zeroable;
 use redox_math::{Aabb, Mat4, Vec2, Vec3, Vec4, look_at, orthographic};
 
 use super::cache::{DirtyPageCollector, InvalidationEvent, process_invalidations};
-use super::page_table::{PhysPageAllocator, VirtualPageTable, PAGE_CACHED_BIT, PAGE_VALID_BIT, phys_page};
+use super::page_table::{
+    PAGE_CACHED_BIT, PAGE_VALID_BIT, PhysPageAllocator, VirtualPageTable, phys_page,
+};
 use super::smrt::SmrtConfig;
 
 /// Pages along one axis of every clipmap level's virtual window.
@@ -144,7 +146,11 @@ impl VsmClipmap {
             last_used: (0..level_count)
                 .map(|_| vec![0; (VSM_PAGES_PER_SIDE * VSM_PAGES_PER_SIDE) as usize])
                 .collect(),
-            forced: vec![0; (level_count * (VSM_PAGES_PER_SIDE * VSM_PAGES_PER_SIDE) as usize).div_ceil(32)],
+            forced: vec![
+                0;
+                (level_count * (VSM_PAGES_PER_SIDE * VSM_PAGES_PER_SIDE) as usize)
+                    .div_ceil(32)
+            ],
         }
     }
 
@@ -188,7 +194,10 @@ impl VsmClipmap {
             Vec3::Y
         };
 
-        if self.prev_light_dir.is_some_and(|prev| prev.angle_between(dir) > LIGHT_MOVED_EPSILON) {
+        if self
+            .prev_light_dir
+            .is_some_and(|prev| prev.angle_between(dir) > LIGHT_MOVED_EPSILON)
+        {
             self.invalidate(&[InvalidationEvent::LightMoved]);
         }
         self.prev_light_dir = Some(dir);
@@ -327,15 +336,17 @@ impl VsmClipmap {
                     if clip.w <= 1e-4 {
                         continue;
                     }
-                    let uv = Vec2::new(
-                        clip.x / clip.w * 0.5 + 0.5,
-                        0.5 - clip.y / clip.w * 0.5,
-                    );
+                    let uv = Vec2::new(clip.x / clip.w * 0.5 + 0.5, 0.5 - clip.y / clip.w * 0.5);
                     uv_min = uv_min.min(uv);
                     uv_max = uv_max.max(uv);
                     projected = true;
                 }
-                if !projected || uv_max.x < 0.0 || uv_max.y < 0.0 || uv_min.x > 1.0 || uv_min.y > 1.0 {
+                if !projected
+                    || uv_max.x < 0.0
+                    || uv_max.y < 0.0
+                    || uv_min.x > 1.0
+                    || uv_min.y > 1.0
+                {
                     continue;
                 }
                 let pps_f = pps as f32;
@@ -409,7 +420,11 @@ impl VsmClipmap {
                     {
                         continue;
                     }
-                    match self.phys_pool.alloc().or_else(|| self.evict_least_recent(frame)) {
+                    match self
+                        .phys_pool
+                        .alloc()
+                        .or_else(|| self.evict_least_recent(frame))
+                    {
                         Some(phys) => {
                             self.tables[li].set(x, y, (phys as u32) | PAGE_VALID_BIT);
                             self.stats.pages_allocated += 1;
@@ -526,7 +541,11 @@ impl VsmClipmap {
     ///
     /// Coarse levels need few pages and always give a lookup something to fall back on while
     /// GPU visibility feedback (fine pages) is still a frame or two behind.
-    pub fn coarse_fallback_bits(&self, aabbs: &[redox_math::Aabb], coarse_levels: usize) -> Vec<u32> {
+    pub fn coarse_fallback_bits(
+        &self,
+        aabbs: &[redox_math::Aabb],
+        coarse_levels: usize,
+    ) -> Vec<u32> {
         let mut bits = self.request_bits_covering_aabbs(aabbs);
         let first_level = self.levels.len().saturating_sub(coarse_levels);
         let pages_per_level = (VSM_PAGES_PER_SIDE * VSM_PAGES_PER_SIDE) as usize;
@@ -609,7 +628,10 @@ impl VsmClipmap {
             min_w = min_w.min(w);
             max_w = max_w.max(w);
         }
-        Aabb { min: min_w, max: max_w }
+        Aabb {
+            min: min_w,
+            max: max_w,
+        }
     }
 
     /// Builds the flat GPU uniform consumed by the PBR shader's
@@ -712,8 +734,11 @@ fn shift_grid(grid: &mut [u64], n: i32, dx: i32, dy: i32) {
     for ty in 0..n {
         for tx in 0..n {
             let (sx, sy) = (tx + dx, ty + dy);
-            grid[(ty * n + tx) as usize] =
-                if (0..n).contains(&sx) && (0..n).contains(&sy) { old[(sy * n + sx) as usize] } else { 0 };
+            grid[(ty * n + tx) as usize] = if (0..n).contains(&sx) && (0..n).contains(&sy) {
+                old[(sy * n + sx) as usize]
+            } else {
+                0
+            };
         }
     }
 }
@@ -838,11 +863,10 @@ mod tests {
         cm.update(Vec3::ZERO, Vec3::Y);
         // With 1 page per side, single page covers whole window — sliding by one page drops it.
         let phys = cm.phys_pool_mut().alloc().unwrap();
-        cm.tables_mut()[0]
-            .set(0, 0, phys as u32 | PAGE_VALID_BIT | PAGE_CACHED_BIT);
+        cm.tables_mut()[0].set(0, 0, phys as u32 | PAGE_VALID_BIT | PAGE_CACHED_BIT);
 
-        let page_world = (VSM_PAGES_PER_SIDE as f32 * cm.config().page_px as f32)
-            * cm.levels()[0].texel_world;
+        let page_world =
+            (VSM_PAGES_PER_SIDE as f32 * cm.config().page_px as f32) * cm.levels()[0].texel_world;
         cm.update(Vec3::Z * page_world, Vec3::Y);
 
         let pt = &cm.tables()[0];
@@ -862,8 +886,8 @@ mod tests {
         cm.tables_mut()[0].set(0, 0, phys as u32 | PAGE_VALID_BIT | PAGE_CACHED_BIT);
 
         // Slide the window 1 page: single page falls out.
-        let page_world = (VSM_PAGES_PER_SIDE as f32 * cm.config().page_px as f32)
-            * cm.levels()[0].texel_world;
+        let page_world =
+            (VSM_PAGES_PER_SIDE as f32 * cm.config().page_px as f32) * cm.levels()[0].texel_world;
         cm.update(Vec3::Z * page_world, Vec3::Y);
 
         assert_eq!(cm.stats().pages_freed, 1);
@@ -875,7 +899,11 @@ mod tests {
     }
 
     fn single_level(pool_pages: u32) -> VsmClipmap {
-        let mut cm = VsmClipmap::new(VsmConfig { level_count: 1, pool_pages, ..VsmConfig::default() });
+        let mut cm = VsmClipmap::new(VsmConfig {
+            level_count: 1,
+            pool_pages,
+            ..VsmConfig::default()
+        });
         cm.update(Vec3::ZERO, Vec3::Y);
         cm
     }
@@ -899,7 +927,11 @@ mod tests {
         let mut both = request_bits(0);
         both[0] |= 1 << 1;
         cm.requested_dirty_pages(&both);
-        assert_eq!(cm.stats().pages_overflow, 1, "second page must overflow, not steal the first");
+        assert_eq!(
+            cm.stats().pages_overflow,
+            1,
+            "second page must overflow, not steal the first"
+        );
         assert_ne!(cm.tables()[0].entries[0], 0);
     }
 
@@ -911,8 +943,15 @@ mod tests {
         for _ in 0..=STALE_PAGE_FRAMES {
             cm.requested_dirty_pages(&[]);
         }
-        assert_eq!(cm.tables()[0].entries[0], 0, "stale page returned to the pool");
-        assert_eq!(cm.phys_pool_mut().free_count(), cm.phys_pool_mut().capacity());
+        assert_eq!(
+            cm.tables()[0].entries[0],
+            0,
+            "stale page returned to the pool"
+        );
+        assert_eq!(
+            cm.phys_pool_mut().free_count(),
+            cm.phys_pool_mut().capacity()
+        );
     }
 
     /// Page `(px, py)` of `level` that covers `world`, using the same mapping as the shaders.
@@ -933,7 +972,13 @@ mod tests {
     fn cached_pages_follow_their_world_region_when_the_window_scrolls() {
         let point = Vec3::new(1.3, 0.0, -0.9);
         let step = |cm: &VsmClipmap| cm.config().page_px as f32 * cm.levels()[0].texel_world;
-        for (move_x, move_z) in [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0), (2.0, -3.0)] {
+        for (move_x, move_z) in [
+            (1.0, 0.0),
+            (-1.0, 0.0),
+            (0.0, 1.0),
+            (0.0, -1.0),
+            (2.0, -3.0),
+        ] {
             let mut cm = single_level(4);
             let (px, py) = page_covering(&cm, 0, point).expect("point inside the window");
             let phys = cm.phys_pool_mut().alloc().unwrap();
@@ -965,12 +1010,18 @@ mod tests {
         let mut cm = single_level(8);
         let point = Vec3::new(0.5, 0.0, 0.5);
         let (px, py) = cached_page_covering(&mut cm, point);
-        let aabb = redox_math::Aabb { min: point - Vec3::splat(0.05), max: point + Vec3::splat(0.05) };
+        let aabb = redox_math::Aabb {
+            min: point - Vec3::splat(0.05),
+            max: point + Vec3::splat(0.05),
+        };
 
         cm.invalidate_aabbs(&[aabb]);
         // No screen feedback at all: the forced request alone must re-render the page.
         let dirty = cm.requested_dirty_pages(&[]);
-        assert!(dirty.iter().any(|&(_, x, y, _)| (x, y) == (px, py)), "dirty: {dirty:?}");
+        assert!(
+            dirty.iter().any(|&(_, x, y, _)| (x, y) == (px, py)),
+            "dirty: {dirty:?}"
+        );
         // And it is consumed: the next frame does not re-render it again.
         cm.mark_pages_cached(&dirty);
         assert!(cm.requested_dirty_pages(&[]).is_empty());
@@ -982,7 +1033,10 @@ mod tests {
         let point = Vec3::new(0.5, 0.0, 0.5);
         let (px, py) = cached_page_covering(&mut cm, point);
         // A huge box that covers the window and extends far past its edge in every direction.
-        let aabb = redox_math::Aabb { min: Vec3::splat(-500.0), max: Vec3::splat(500.0) };
+        let aabb = redox_math::Aabb {
+            min: Vec3::splat(-500.0),
+            max: Vec3::splat(500.0),
+        };
         cm.invalidate_aabbs(&[aabb]);
         assert_eq!(
             cm.tables()[0].get(px, py) & PAGE_CACHED_BIT,
@@ -995,7 +1049,10 @@ mod tests {
     fn coarse_fallback_keeps_only_the_coarsest_levels() {
         let mut cm = clipmap();
         cm.update(Vec3::ZERO, Vec3::Y);
-        let aabb = redox_math::Aabb { min: Vec3::splat(-1.0), max: Vec3::splat(1.0) };
+        let aabb = redox_math::Aabb {
+            min: Vec3::splat(-1.0),
+            max: Vec3::splat(1.0),
+        };
         let all = cm.request_bits_covering_aabbs(&[aabb]);
         let coarse = cm.coarse_fallback_bits(&[aabb], 1);
         let pages_per_level = (VSM_PAGES_PER_SIDE * VSM_PAGES_PER_SIDE) as usize;
@@ -1004,7 +1061,10 @@ mod tests {
                 .filter(|f| bits[f / 32] & (1 << (f % 32)) != 0)
                 .count() as u32
         };
-        assert!(count(&all, 0..3) > 0, "the full request reaches fine levels");
+        assert!(
+            count(&all, 0..3) > 0,
+            "the full request reaches fine levels"
+        );
         assert_eq!(count(&coarse, 0..3), 0, "fallback drops the fine levels");
         assert!(count(&coarse, 3..4) > 0, "and keeps the coarsest");
     }
@@ -1019,16 +1079,30 @@ mod tests {
 
         // Drift well below a depth step: the plane does not move, the cached page survives.
         cm.update(Vec3::Y * (0.1 * half), Vec3::Y);
-        assert_ne!(cm.tables()[0].get(0, 0), 0, "small drift must keep cached pages");
+        assert_ne!(
+            cm.tables()[0].get(0, 0),
+            0,
+            "small drift must keep cached pages"
+        );
         assert_eq!(cm.levels()[0].center_light().z, 0.0);
 
         // Moving several steps along the light direction drops the level's stale pages.
         cm.update(Vec3::Y * (3.0 * half), Vec3::Y);
-        assert_eq!(cm.tables()[0].get(0, 0), 0, "stale depth must not survive a plane step");
+        assert_eq!(
+            cm.tables()[0].get(0, 0),
+            0,
+            "stale depth must not survive a plane step"
+        );
         assert_eq!(cm.stats().pages_freed, 1);
-        assert_eq!(cm.phys_pool_mut().free_count(), cm.phys_pool_mut().capacity());
+        assert_eq!(
+            cm.phys_pool_mut().free_count(),
+            cm.phys_pool_mut().capacity()
+        );
         let z = cm.levels()[0].center_light().z;
-        assert!((z / (half * 0.5)).fract().abs() < 1.0e-3, "plane z {z} is on the snap grid");
+        assert!(
+            (z / (half * 0.5)).fract().abs() < 1.0e-3,
+            "plane z {z} is on the snap grid"
+        );
     }
 
     #[test]

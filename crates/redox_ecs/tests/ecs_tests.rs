@@ -365,9 +365,9 @@ mod ecs_core_tests {
 
 #[cfg(test)]
 mod parallel_query_tests {
-    use redox_ecs::*;
-    use redox_ecs::ParallelQuery;
     use rayon::iter::ParallelIterator;
+    use redox_ecs::ParallelQuery;
+    use redox_ecs::*;
 
     #[derive(Debug, Clone, PartialEq)]
     struct Mass(f32);
@@ -564,11 +564,10 @@ mod soundness_tests {
         let a = world.spawn();
         world.add_component(a, Pos(3.0));
 
-        let results: Vec<(Entity, &Pos)> =
-            world.query::<(Entity, &Pos)>().iter(&world).collect();
+        let results: Vec<(Entity, &Pos)> = world.query::<(Entity, &Pos)>().iter(&world).collect();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0, a);
-        assert_eq!(results[0].1 .0, 3.0);
+        assert_eq!(results[0].1.0, 3.0);
     }
 }
 

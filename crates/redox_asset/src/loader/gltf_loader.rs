@@ -178,9 +178,11 @@ fn assemble_scene(
 
     for node in document.nodes() {
         let (translation, rotation_quat, scale) = match node.transform() {
-            gltf::scene::Transform::Decomposed { translation, rotation, scale } => {
-                (translation, rotation, scale)
-            }
+            gltf::scene::Transform::Decomposed {
+                translation,
+                rotation,
+                scale,
+            } => (translation, rotation, scale),
             gltf::scene::Transform::Matrix { matrix } => decompose_trs(matrix),
         };
         scene.nodes.push(GltfNodeData {
@@ -244,8 +246,10 @@ fn read_primitive(
         .collect();
     let vertex_count = positions.len();
 
-    let mut normals: Vec<[f32; 3]> =
-        reader.read_normals().map(Iterator::collect).unwrap_or_default();
+    let mut normals: Vec<[f32; 3]> = reader
+        .read_normals()
+        .map(Iterator::collect)
+        .unwrap_or_default();
     if normals.is_empty() && vertex_count > 0 {
         // Match the OBJ loader convention: default up normal when absent.
         normals = vec![[0.0, 1.0, 0.0]; vertex_count];
@@ -267,8 +271,10 @@ fn read_primitive(
     };
 
     // Authored tangents win; otherwise generate with Lengyel's method.
-    let mut tangents: Vec<[f32; 4]> =
-        reader.read_tangents().map(Iterator::collect).unwrap_or_default();
+    let mut tangents: Vec<[f32; 4]> = reader
+        .read_tangents()
+        .map(Iterator::collect)
+        .unwrap_or_default();
     if tangents.len() != vertex_count {
         tangents = compute_tangents(&positions, &normals, &uvs, &indices);
     }
@@ -287,18 +293,18 @@ fn read_primitive(
 /// URIs only) from a glTF material.
 fn convert_material(material: &gltf::Material<'_>, base_dir: Option<&Path>) -> GltfMaterialData {
     let pbr = material.pbr_metallic_roughness();
-    let base_color_texture_path = pbr.base_color_texture().and_then(|info| {
-        match info.texture().source().source() {
-            gltf::image::Source::Uri { uri, .. } => {
-                let p = PathBuf::from(uri);
-                Some(match base_dir {
-                    Some(dir) if !p.is_absolute() => dir.join(p),
-                    _ => p,
-                })
-            }
-            gltf::image::Source::View { .. } => None,
-        }
-    });
+    let base_color_texture_path =
+        pbr.base_color_texture()
+            .and_then(|info| match info.texture().source().source() {
+                gltf::image::Source::Uri { uri, .. } => {
+                    let p = PathBuf::from(uri);
+                    Some(match base_dir {
+                        Some(dir) if !p.is_absolute() => dir.join(p),
+                        _ => p,
+                    })
+                }
+                gltf::image::Source::View { .. } => None,
+            });
     GltfMaterialData {
         base_color_factor: pbr.base_color_factor(),
         base_color_texture_path,
@@ -418,7 +424,11 @@ fn u16_at(pixels: &[u8], index: usize) -> u16 {
 /// Reads the little-endian f32 at `index`.
 #[inline]
 fn f32_at(pixels: &[u8], index: usize) -> f32 {
-    f32::from_le_bytes(pixels[index * 4..index * 4 + 4].try_into().expect("length checked"))
+    f32::from_le_bytes(
+        pixels[index * 4..index * 4 + 4]
+            .try_into()
+            .expect("length checked"),
+    )
 }
 
 /// Scales 16-bit unorm to 8-bit unorm.
@@ -583,7 +593,11 @@ fn compute_tangents(
         let n = normals.get(i).copied().unwrap_or([0.0, 1.0, 0.0]);
         let n_len_sq = dot3(n, n);
         let n = if n_len_sq > f32::EPSILON {
-            [n[0] / n_len_sq.sqrt(), n[1] / n_len_sq.sqrt(), n[2] / n_len_sq.sqrt()]
+            [
+                n[0] / n_len_sq.sqrt(),
+                n[1] / n_len_sq.sqrt(),
+                n[2] / n_len_sq.sqrt(),
+            ]
         } else {
             [0.0, 1.0, 0.0]
         };
@@ -607,7 +621,11 @@ fn compute_tangents(
             n[2] * t[0] - n[0] * t[2],
             n[0] * t[1] - n[1] * t[0],
         ];
-        let w = if dot3(c, bitan_acc[i]) >= 0.0 { 1.0 } else { -1.0 };
+        let w = if dot3(c, bitan_acc[i]) >= 0.0 {
+            1.0
+        } else {
+            -1.0
+        };
         result.push([t[0], t[1], t[2], w]);
     }
     result
@@ -635,8 +653,16 @@ mod tests {
             let n = (b0 << 16) | (b1 << 8) | b2;
             out.push(BASE64_ALPHABET[(n >> 18) as usize & 63] as char);
             out.push(BASE64_ALPHABET[(n >> 12) as usize & 63] as char);
-            out.push(if chunk.len() > 1 { BASE64_ALPHABET[(n >> 6) as usize & 63] as char } else { '=' });
-            out.push(if chunk.len() > 2 { BASE64_ALPHABET[n as usize & 63] as char } else { '=' });
+            out.push(if chunk.len() > 1 {
+                BASE64_ALPHABET[(n >> 6) as usize & 63] as char
+            } else {
+                '='
+            });
+            out.push(if chunk.len() > 2 {
+                BASE64_ALPHABET[n as usize & 63] as char
+            } else {
+                '='
+            });
         }
         out
     }
@@ -692,11 +718,17 @@ mod tests {
             ""
         };
         let (idx_view, idx_accessor) = if with_uvs {
-            (r#",
-    { "buffer": 0, "byteOffset": 60, "byteLength": 12 }"#, 2)
+            (
+                r#",
+    { "buffer": 0, "byteOffset": 60, "byteLength": 12 }"#,
+                2,
+            )
         } else {
-            (r#",
-    { "buffer": 0, "byteOffset": 36, "byteLength": 12 }"#, 1)
+            (
+                r#",
+    { "buffer": 0, "byteOffset": 36, "byteLength": 12 }"#,
+                1,
+            )
         };
 
         format!(
@@ -740,9 +772,16 @@ mod tests {
         assert_eq!(scene.meshes.len(), 1, "expected exactly one mesh");
         let mesh = &scene.meshes[0];
         assert_eq!(mesh.name, "triangle");
-        assert_eq!(mesh.positions, vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+        assert_eq!(
+            mesh.positions,
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
+        );
         assert_eq!(mesh.indices, vec![0, 1, 2]);
-        assert_eq!(mesh.normals, vec![[0.0, 1.0, 0.0]; 3], "missing normals default to up");
+        assert_eq!(
+            mesh.normals,
+            vec![[0.0, 1.0, 0.0]; 3],
+            "missing normals default to up"
+        );
         assert_eq!(mesh.tangents.len(), 3);
 
         assert_eq!(scene.nodes.len(), 1);
@@ -768,7 +807,8 @@ mod tests {
     #[test]
     fn loads_triangle_gltf_from_temp_file() {
         let json = triangle_gltf_json(false);
-        let path = std::env::temp_dir().join(format!("redox_gltf_triangle_a_{}.gltf", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("redox_gltf_triangle_a_{}.gltf", std::process::id()));
         std::fs::write(&path, &json).expect("write fixture");
         let bytes = std::fs::read(&path).expect("read fixture");
         let _ = std::fs::remove_file(&path);
@@ -785,13 +825,17 @@ mod tests {
     #[test]
     fn computes_tangents_from_uvs() {
         let json = triangle_gltf_json(true);
-        let path = std::env::temp_dir().join(format!("redox_gltf_triangle_b_{}.gltf", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("redox_gltf_triangle_b_{}.gltf", std::process::id()));
         std::fs::write(&path, &json).expect("write fixture");
         let bytes = std::fs::read(&path).expect("read fixture");
         let _ = std::fs::remove_file(&path);
 
         let scene = GltfLoader.load(&bytes).expect("load should succeed");
-        assert_eq!(scene.meshes[0].uvs, vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]);
+        assert_eq!(
+            scene.meshes[0].uvs,
+            vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]
+        );
         for t in &scene.meshes[0].tangents {
             assert!((t[0] - 1.0).abs() < 1e-5, "tx should be 1, got {:?}", t);
             assert!(t[1].abs() < 1e-5 && t[2].abs() < 1e-5, "got {:?}", t);

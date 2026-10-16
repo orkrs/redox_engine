@@ -1,8 +1,8 @@
-use std::any::TypeId;
-use hashbrown::HashMap;
-use crate::entity::Entity;
-use crate::component::ComponentInfo;
 use super::column::Column;
+use crate::component::ComponentInfo;
+use crate::entity::Entity;
+use hashbrown::HashMap;
+use std::any::TypeId;
 
 /// A table storing components for a single archetype.
 pub struct Table {
@@ -43,7 +43,9 @@ impl Table {
         self.entities.swap_remove(row);
 
         for col in self.columns.values_mut() {
-            unsafe { col.swap_remove(row, drop); }
+            unsafe {
+                col.swap_remove(row, drop);
+            }
         }
 
         if row != last_index {
@@ -68,7 +70,9 @@ impl Table {
     /// and `ptr` must point to a valid instance of that component.
     pub unsafe fn push_component_raw(&mut self, type_id: TypeId, ptr: *const u8, tick: u32) {
         if let Some(col) = self.columns.get_mut(&type_id) {
-            unsafe { col.push(ptr, tick); }
+            unsafe {
+                col.push(ptr, tick);
+            }
         }
     }
 
@@ -77,7 +81,9 @@ impl Table {
     /// # Safety
     /// `row` must be within bounds and the component must exist.
     pub unsafe fn get_component_ptr(&self, type_id: TypeId, row: usize) -> Option<*const u8> {
-        self.columns.get(&type_id).map(|col| unsafe { col.get(row) as *const u8 })
+        self.columns
+            .get(&type_id)
+            .map(|col| unsafe { col.get(row) as *const u8 })
     }
 
     /// Returns the column for `type_id`, if present.

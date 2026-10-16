@@ -1,6 +1,6 @@
 //! Dual-filter bloom post-process pass (6-mip downsample / upsample chain).
 
-use crate::shader::{create_shader_module, BLOOM_WGSL};
+use crate::shader::{BLOOM_WGSL, create_shader_module};
 
 const BLOOM_COMPOSITE_WGSL: &str = include_str!("../../shaders/bloom_composite.wgsl");
 

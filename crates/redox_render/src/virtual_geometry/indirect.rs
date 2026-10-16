@@ -4,8 +4,8 @@
 //! and provides helpers for uploading CPU-generated draw commands and issuing
 //! them via `draw_indexed_indirect`.
 
-use bytemuck;
 use super::meshlet::DrawIndexedIndirectCmd;
+use bytemuck;
 
 /// GPU buffer holding an array of [`DrawIndexedIndirectCmd`] entries.
 ///
@@ -30,7 +30,11 @@ impl IndirectDrawBuffer {
                 | wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
         });
-        Self { buffer, capacity, count: 0 }
+        Self {
+            buffer,
+            capacity,
+            count: 0,
+        }
     }
 
     /// Upload `commands` to the GPU buffer (truncated to capacity).
@@ -40,11 +44,7 @@ impl IndirectDrawBuffer {
         if count == 0 {
             return;
         }
-        queue.write_buffer(
-            &self.buffer,
-            0,
-            bytemuck::cast_slice(&commands[..count]),
-        );
+        queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&commands[..count]));
     }
 
     /// Issue one `draw_indexed_indirect` call per uploaded command.

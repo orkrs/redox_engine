@@ -26,13 +26,13 @@ pub mod filter;
 pub mod iter;
 pub mod par_iter;
 
-pub use filter::{QueryFilter, With, Without, NullFilter, TickCtx};
+pub use filter::{NullFilter, QueryFilter, TickCtx, With, Without};
 pub use iter::Query;
 pub use par_iter::ParallelQuery;
 
-use std::any::TypeId;
 use crate::archetype::Archetype;
 use crate::entity::Entity;
+use std::any::TypeId;
 
 // ---------------------------------------------------------------------------
 // QueryData – describes what data a query fetches
@@ -101,7 +101,11 @@ unsafe impl<T: 'static + Send + Sync> QueryData for &T {
     #[inline]
     unsafe fn fetch(archetype: &Archetype, row: usize) -> Self::Item<'_> {
         unsafe {
-            let col = archetype.table.columns.get(&TypeId::of::<T>()).unwrap_unchecked();
+            let col = archetype
+                .table
+                .columns
+                .get(&TypeId::of::<T>())
+                .unwrap_unchecked();
             &*(col.get(row) as *const T)
         }
     }
@@ -133,7 +137,11 @@ unsafe impl<T: 'static + Send + Sync> QueryData for &mut T {
     unsafe fn fetch(archetype: &Archetype, row: usize) -> Self::Item<'_> {
         // SAFETY: caller guarantees exclusive access; documented as such.
         unsafe {
-            let col = archetype.table.columns.get(&TypeId::of::<T>()).unwrap_unchecked();
+            let col = archetype
+                .table
+                .columns
+                .get(&TypeId::of::<T>())
+                .unwrap_unchecked();
             &mut *(col.get(row) as *mut T)
         }
     }
@@ -141,7 +149,11 @@ unsafe impl<T: 'static + Send + Sync> QueryData for &mut T {
     #[inline]
     unsafe fn fetch_mut(archetype: &mut Archetype, row: usize) -> Self::Item<'_> {
         unsafe {
-            let col = archetype.table.columns.get(&TypeId::of::<T>()).unwrap_unchecked();
+            let col = archetype
+                .table
+                .columns
+                .get(&TypeId::of::<T>())
+                .unwrap_unchecked();
             &mut *(col.get(row) as *mut T)
         }
     }

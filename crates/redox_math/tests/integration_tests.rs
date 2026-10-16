@@ -1,13 +1,4 @@
-use redox_math::{
-    Vec3,
-    transform_matrix,
-    look_at,
-    perspective,
-    Quat,
-    Aabb,
-    Sphere,
-    Frustum
-};
+use redox_math::{Aabb, Frustum, Quat, Sphere, Vec3, look_at, perspective, transform_matrix};
 
 #[test]
 fn test_aabb_transformations() {
@@ -18,7 +9,9 @@ fn test_aabb_transformations() {
 
     let transformed_aabb = aabb.transform(matrix);
 
-    assert!(transformed_aabb.size().x * transformed_aabb.size().y * transformed_aabb.size().z > 8.0);
+    assert!(
+        transformed_aabb.size().x * transformed_aabb.size().y * transformed_aabb.size().z > 8.0
+    );
 
     let corner = Vec3::new(1.0, 1.0, 1.0);
     let transformed_corner = matrix.transform_point3(corner);
@@ -117,10 +110,20 @@ mod phase03_tests {
         }
 
         const EPS: f32 = 1e-4;
-        assert!((arvo.min.x - min.x).abs() < EPS, "min.x {} vs {}", arvo.min.x, min.x);
+        assert!(
+            (arvo.min.x - min.x).abs() < EPS,
+            "min.x {} vs {}",
+            arvo.min.x,
+            min.x
+        );
         assert!((arvo.min.y - min.y).abs() < EPS);
         assert!((arvo.min.z - min.z).abs() < EPS);
-        assert!((arvo.max.x - max.x).abs() < EPS, "max.x {} vs {}", arvo.max.x, max.x);
+        assert!(
+            (arvo.max.x - max.x).abs() < EPS,
+            "max.x {} vs {}",
+            arvo.max.x,
+            max.x
+        );
         assert!((arvo.max.y - max.y).abs() < EPS);
         assert!((arvo.max.z - max.z).abs() < EPS);
     }

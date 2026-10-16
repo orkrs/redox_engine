@@ -46,7 +46,11 @@ impl ClusterGpuCull {
             push_constant_ranges: &[],
         });
 
-        let shader = create_shader_module(device, "cluster_cull_lights_shader", CLUSTER_CULL_LIGHTS_WGSL);
+        let shader = create_shader_module(
+            device,
+            "cluster_cull_lights_shader",
+            CLUSTER_CULL_LIGHTS_WGSL,
+        );
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("cluster_cull_pipeline"),
             layout: Some(&pipeline_layout),

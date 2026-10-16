@@ -1,6 +1,6 @@
-use std::sync::atomic::{AtomicU32, Ordering};
 use crossbeam_queue::SegQueue;
 use parking_lot::RwLock;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 /// A unique identifier for an entity.
 ///
@@ -14,15 +14,21 @@ pub struct Entity {
 impl Entity {
     /// Returns the raw index of the entity.
     #[inline]
-    pub fn id(&self) -> u32 { self.id }
+    pub fn id(&self) -> u32 {
+        self.id
+    }
 
     /// Returns the generation of the entity.
     #[inline]
-    pub fn generation(&self) -> u32 { self.generation }
+    pub fn generation(&self) -> u32 {
+        self.generation
+    }
 
     /// Create entity from raw parts (for editor picking).
     #[inline]
-    pub fn from_raw(id: u32, generation: u32) -> Self { Self { id, generation } }
+    pub fn from_raw(id: u32, generation: u32) -> Self {
+        Self { id, generation }
+    }
 }
 
 /// Allocator for entity IDs with generation counters.
@@ -91,10 +97,10 @@ impl EntityAllocator {
         self.free_ids.push(entity.id);
         true
     }
-
-
 }
 
 impl Default for EntityAllocator {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

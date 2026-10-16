@@ -74,9 +74,8 @@ impl OutlinerPanel {
                                 {
                                     continue;
                                 }
-                                let badge = git
-                                    .map(|g| g.status_for(&actor.id).badge())
-                                    .unwrap_or("🔵");
+                                let badge =
+                                    git.map(|g| g.status_for(&actor.id).badge()).unwrap_or("🔵");
                                 let label = format!("{badge} {} ({})", actor.id, actor.kind);
                                 // Find live entity
                                 let live = find_streamed(world, &actor.id);

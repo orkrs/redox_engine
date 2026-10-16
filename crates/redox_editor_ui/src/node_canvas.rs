@@ -254,8 +254,15 @@ impl NodeCanvas {
     /// Names of the two clips the blend node mixes: the active clip and the next one.
     fn blend_clip_names(&self) -> (String, String) {
         let clips = &self.rig.clips;
-        let name = |i: usize| clips.get(i).map_or_else(|| "-".to_string(), |c| c.name.clone());
-        (name(self.active_clip), name((self.active_clip + 1) % clips.len().max(1)))
+        let name = |i: usize| {
+            clips
+                .get(i)
+                .map_or_else(|| "-".to_string(), |c| c.name.clone())
+        };
+        (
+            name(self.active_clip),
+            name((self.active_clip + 1) % clips.len().max(1)),
+        )
     }
 
     /// Local pose of the blend node at the current time: active clip mixed with the next clip.
@@ -263,9 +270,10 @@ impl NodeCanvas {
         let skeleton = &self.rig.skeleton;
         let clips = &self.rig.clips;
         let sample = |i: usize| {
-            clips
-                .get(i)
-                .map_or_else(|| skeleton.bind_local_pose(), |c| c.sample(skeleton, self.anim_time, true))
+            clips.get(i).map_or_else(
+                || skeleton.bind_local_pose(),
+                |c| c.sample(skeleton, self.anim_time, true),
+            )
         };
         let next = (self.active_clip + 1) % clips.len().max(1);
         sample(self.active_clip).blend(&sample(next), self.blend_weight)
@@ -286,7 +294,8 @@ impl NodeCanvas {
         self.active_clip = idx;
         self.anim_time = 0.0;
         let new = Pose::from_local(&self.rig.skeleton, &self.blended_pose());
-        self.inertializer.record_transition(&old, &new, dt.max(1.0 / 60.0));
+        self.inertializer
+            .record_transition(&old, &new, dt.max(1.0 / 60.0));
         self.active_id = Some(4);
     }
 
@@ -306,13 +315,20 @@ impl NodeCanvas {
         let origin = egui::pos2(canvas.right() - 90.0, canvas.bottom() - 18.0);
         let to_screen = |m: &redox_math::Mat4| {
             let p = m.w_axis;
-            egui::pos2(origin.x + p.x * PREVIEW_SCALE, origin.y - p.y * PREVIEW_SCALE)
+            egui::pos2(
+                origin.x + p.x * PREVIEW_SCALE,
+                origin.y - p.y * PREVIEW_SCALE,
+            )
         };
         let frame = egui::Rect::from_min_max(
             egui::pos2(canvas.right() - 180.0, canvas.bottom() - 190.0),
             egui::pos2(canvas.right() - 6.0, canvas.bottom() - 6.0),
         );
-        painter.rect_stroke(frame, 4.0, egui::Stroke::new(1.0, egui::Color32::from_gray(70)));
+        painter.rect_stroke(
+            frame,
+            4.0,
+            egui::Stroke::new(1.0, egui::Color32::from_gray(70)),
+        );
         painter.text(
             frame.left_top() + egui::vec2(6.0, 4.0),
             egui::Align2::LEFT_TOP,
@@ -419,9 +435,7 @@ impl NodeCanvas {
                         .get(self.active_clip)
                         .map(|c| c.duration.max(0.1))
                         .unwrap_or(2.0);
-                    ui.add(
-                        egui::Slider::new(&mut self.anim_time, 0.0..=clip_dur).text("time"),
-                    );
+                    ui.add(egui::Slider::new(&mut self.anim_time, 0.0..=clip_dur).text("time"));
                     if self.anim_playing {
                         self.anim_time = (self.anim_time + dt) % clip_dur;
                     }
@@ -609,7 +623,12 @@ mod tests {
     fn assert_same_pose(actual: &LocalPose, expected: &LocalPose) {
         assert_eq!(actual.bones.len(), expected.bones.len());
         for (a, e) in actual.bones.iter().zip(&expected.bones) {
-            assert!(a.rotation.abs_diff_eq(e.rotation, 1.0e-5), "{:?} vs {:?}", a.rotation, e.rotation);
+            assert!(
+                a.rotation.abs_diff_eq(e.rotation, 1.0e-5),
+                "{:?} vs {:?}",
+                a.rotation,
+                e.rotation
+            );
             assert!(a.translation.abs_diff_eq(e.translation, 1.0e-5));
         }
     }
@@ -666,6 +685,9 @@ mod tests {
             shapes_with_preview = output.shapes.len();
         }
         let bones = canvas.rig.skeleton.len();
-        assert!(shapes_with_preview >= bones * 2, "only {shapes_with_preview} shapes drawn");
+        assert!(
+            shapes_with_preview >= bones * 2,
+            "only {shapes_with_preview} shapes drawn"
+        );
     }
 }

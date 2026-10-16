@@ -14,10 +14,10 @@
 //! To display custom component types, call `world.get_component::<MyType>(entity)`
 //! inside the `draw_entity_components` function and add the matching arm.
 
-use std::any::TypeId;
 use redox_ecs::world::World;
 use redox_math::Transform;
-use redox_render::systems::{MeshHandle, MaterialHandle};
+use redox_render::systems::{MaterialHandle, MeshHandle};
+use std::any::TypeId;
 
 // ─── EntityInspector ──────────────────────────────────────────────────────────
 
@@ -128,10 +128,7 @@ impl Default for EntityInspector {
 /// Builds a human-readable label for an archetype header row.
 fn archetype_label(idx: usize, type_ids: &[TypeId], entity_count: usize) -> String {
     // Map well-known TypeIds to short names.
-    let names: Vec<&str> = type_ids
-        .iter()
-        .map(|tid| type_name_short(tid))
-        .collect();
+    let names: Vec<&str> = type_ids.iter().map(|tid| type_name_short(tid)).collect();
 
     format!(
         "Arch #{idx}  [{count} entities]  {{ {types} }}",

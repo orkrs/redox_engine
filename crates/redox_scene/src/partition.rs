@@ -10,7 +10,7 @@ use redox_ecs::{Changed, Entity};
 use redox_math::{Quat, Transform, Vec3};
 
 use crate::ofpa::{
-    cell_mtime, load_cell_actors, load_manifest, save_actor, ActorRecord, WorldManifest,
+    ActorRecord, WorldManifest, cell_mtime, load_cell_actors, load_manifest, save_actor,
 };
 use crate::{PartitionCell, SceneResult};
 
@@ -119,7 +119,11 @@ impl WorldPartition {
     }
 
     pub fn cell_at(&self, world_pos: Vec3) -> PartitionCell {
-        PartitionCell::from_world(self.manifest.cell_size, self.manifest.origin, world_pos.to_array())
+        PartitionCell::from_world(
+            self.manifest.cell_size,
+            self.manifest.origin,
+            world_pos.to_array(),
+        )
     }
 
     pub fn is_loaded(&self, cell: PartitionCell) -> bool {

@@ -1,6 +1,6 @@
 //! Plugin pattern: `App::new().add_plugin(PhysicsPlugin::default()).run()`.
 
-use redox_ecs::{transform_hierarchy_system, Events, World};
+use redox_ecs::{Events, World, transform_hierarchy_system};
 use redox_math::Vec3;
 
 use crate::app::AppBuilder;

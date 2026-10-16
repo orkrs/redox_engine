@@ -35,7 +35,11 @@ impl BoneTransform {
 
     pub fn from_mat4(m: Mat4) -> Self {
         let (scale, rotation, translation) = m.to_scale_rotation_translation();
-        Self { translation, rotation, scale }
+        Self {
+            translation,
+            rotation,
+            scale,
+        }
     }
 
     pub fn to_mat4(self) -> Mat4 {
@@ -114,7 +118,11 @@ impl Skeleton {
     /// Local bind pose (what unanimated bones fall back to).
     pub fn bind_local_pose(&self) -> LocalPose {
         LocalPose {
-            bones: self.bones.iter().map(|b| BoneTransform::from_mat4(b.bind_pose)).collect(),
+            bones: self
+                .bones
+                .iter()
+                .map(|b| BoneTransform::from_mat4(b.bind_pose))
+                .collect(),
         }
     }
 
@@ -125,15 +133,25 @@ impl Skeleton {
         for i in 0..self.bones.len() {
             self.resolve_global(i, local, &mut out, 0);
         }
-        out.into_iter().map(|m| m.unwrap_or(Mat4::IDENTITY)).collect()
+        out.into_iter()
+            .map(|m| m.unwrap_or(Mat4::IDENTITY))
+            .collect()
     }
 
-    fn resolve_global(&self, i: usize, local: &LocalPose, memo: &mut [Option<Mat4>], depth: usize) -> Mat4 {
+    fn resolve_global(
+        &self,
+        i: usize,
+        local: &LocalPose,
+        memo: &mut [Option<Mat4>],
+        depth: usize,
+    ) -> Mat4 {
         if let Some(m) = memo[i] {
             return m;
         }
         let own = local.bones.get(i).map_or(Mat4::IDENTITY, |t| t.to_mat4());
-        let parent = self.bones[i].parent.filter(|&p| p < self.bones.len() && p != i);
+        let parent = self.bones[i]
+            .parent
+            .filter(|&p| p < self.bones.len() && p != i);
         let global = match parent {
             Some(p) if depth < self.bones.len() => {
                 self.resolve_global(p, local, memo, depth + 1) * own
@@ -206,7 +224,8 @@ fn sample_keys(keys: &[Keyframe], t: f32) -> BoneTransform {
     }
     let (a, b) = (&keys[next - 1], &keys[next]);
     let span = (b.time - a.time).max(f32::EPSILON);
-    a.transform().lerp(b.transform(), ((t - a.time) / span).clamp(0.0, 1.0))
+    a.transform()
+        .lerp(b.transform(), ((t - a.time) / span).clamp(0.0, 1.0))
 }
 
 /// Model-space bone matrices.
@@ -217,11 +236,15 @@ pub struct Pose {
 
 impl Pose {
     pub fn identity(bone_count: usize) -> Self {
-        Self { bone_transforms: vec![Mat4::IDENTITY; bone_count] }
+        Self {
+            bone_transforms: vec![Mat4::IDENTITY; bone_count],
+        }
     }
 
     pub fn from_local(skeleton: &Skeleton, local: &LocalPose) -> Self {
-        Self { bone_transforms: skeleton.global_matrices(local) }
+        Self {
+            bone_transforms: skeleton.global_matrices(local),
+        }
     }
 
     /// Skinning matrices (`model_space * inv_bind`) that move bind-pose vertices to this pose.
@@ -253,7 +276,12 @@ mod tests {
     }
 
     fn key(time: f32, rotation: Quat) -> Keyframe {
-        Keyframe { time, translation: Vec3::Y, rotation, scale: Vec3::ONE }
+        Keyframe {
+            time,
+            translation: Vec3::Y,
+            rotation,
+            scale: Vec3::ONE,
+        }
     }
 
     #[test]
@@ -272,7 +300,10 @@ mod tests {
         local.bones[0].rotation = Quat::from_rotation_z(std::f32::consts::FRAC_PI_2);
         let globals = skeleton.global_matrices(&local);
         let tip = globals[1].transform_point3(Vec3::ZERO);
-        assert!((tip - Vec3::new(-1.0, 0.0, 0.0)).length() < 1.0e-5, "tip at {tip:?}");
+        assert!(
+            (tip - Vec3::new(-1.0, 0.0, 0.0)).length() < 1.0e-5,
+            "tip at {tip:?}"
+        );
     }
 
     #[test]
@@ -282,7 +313,9 @@ mod tests {
             ("root".into(), None, Mat4::from_translation(Vec3::X)),
         ]);
         let globals = skeleton.global_matrices(&skeleton.bind_local_pose());
-        assert!((globals[0].transform_point3(Vec3::ZERO) - Vec3::new(1.0, 1.0, 0.0)).length() < 1.0e-5);
+        assert!(
+            (globals[0].transform_point3(Vec3::ZERO) - Vec3::new(1.0, 1.0, 0.0)).length() < 1.0e-5
+        );
     }
 
     #[test]
@@ -291,17 +324,27 @@ mod tests {
             ("a".into(), Some(1), Mat4::IDENTITY),
             ("b".into(), Some(0), Mat4::IDENTITY),
         ]);
-        assert_eq!(skeleton.global_matrices(&skeleton.bind_local_pose()).len(), 2);
+        assert_eq!(
+            skeleton.global_matrices(&skeleton.bind_local_pose()).len(),
+            2
+        );
     }
 
     #[test]
     fn clip_interpolates_between_keys_and_loops() {
         let skeleton = two_bone();
-        let mut clip = AnimationClip { name: "c".into(), duration: 2.0, ..Default::default() };
+        let mut clip = AnimationClip {
+            name: "c".into(),
+            duration: 2.0,
+            ..Default::default()
+        };
         // 1.2 rad total: stays on the short arc, so the midpoint is unambiguous.
         clip.tracks.insert(
             "root".into(),
-            vec![key(0.0, Quat::IDENTITY), key(2.0, Quat::from_rotation_z(1.2))],
+            vec![
+                key(0.0, Quat::IDENTITY),
+                key(2.0, Quat::from_rotation_z(1.2)),
+            ],
         );
         let mid = clip.sample(&skeleton, 1.0, false).bones[0].rotation;
         assert!(mid.abs_diff_eq(Quat::from_rotation_z(0.6), 1.0e-4));
@@ -314,8 +357,15 @@ mod tests {
     #[test]
     fn untracked_bones_keep_bind_pose() {
         let skeleton = two_bone();
-        let clip = AnimationClip { name: "empty".into(), duration: 1.0, ..Default::default() };
-        assert_eq!(clip.sample(&skeleton, 0.5, true), skeleton.bind_local_pose());
+        let clip = AnimationClip {
+            name: "empty".into(),
+            duration: 1.0,
+            ..Default::default()
+        };
+        assert_eq!(
+            clip.sample(&skeleton, 0.5, true),
+            skeleton.bind_local_pose()
+        );
     }
 
     #[test]
@@ -325,6 +375,10 @@ mod tests {
         let mut b = a.clone();
         b.bones[0].rotation = Quat::from_rotation_z(1.0);
         let mid = a.blend(&b, 0.5);
-        assert!(mid.bones[0].rotation.abs_diff_eq(Quat::from_rotation_z(0.5), 1.0e-5));
+        assert!(
+            mid.bones[0]
+                .rotation
+                .abs_diff_eq(Quat::from_rotation_z(0.5), 1.0e-5)
+        );
     }
 }

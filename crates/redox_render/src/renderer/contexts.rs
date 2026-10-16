@@ -92,15 +92,9 @@ pub fn record_csm_shadow_depth(
             }
             if let Some(gpu_mesh) = ctx.registry.mesh_by_slot(obj.mesh_index) {
                 shadow_pass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));
-                shadow_pass.set_index_buffer(
-                    gpu_mesh.index_buffer.slice(..),
-                    wgpu::IndexFormat::Uint32,
-                );
-                shadow_pass.draw_indexed(
-                    0..gpu_mesh.index_count,
-                    0,
-                    (i as u32)..(i as u32 + 1),
-                );
+                shadow_pass
+                    .set_index_buffer(gpu_mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                shadow_pass.draw_indexed(0..gpu_mesh.index_count, 0, (i as u32)..(i as u32 + 1));
             }
         }
 
@@ -176,15 +170,9 @@ pub fn record_normal_prepass(
         }
         if let Some(gpu_mesh) = ctx.registry.mesh_by_slot(obj.mesh_index) {
             normal_render_pass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));
-            normal_render_pass.set_index_buffer(
-                gpu_mesh.index_buffer.slice(..),
-                wgpu::IndexFormat::Uint32,
-            );
-            normal_render_pass.draw_indexed(
-                0..gpu_mesh.index_count,
-                0,
-                (i as u32)..(i as u32 + 1),
-            );
+            normal_render_pass
+                .set_index_buffer(gpu_mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+            normal_render_pass.draw_indexed(0..gpu_mesh.index_count, 0, (i as u32)..(i as u32 + 1));
         }
     }
     drop(normal_render_pass);
@@ -384,10 +372,8 @@ pub fn record_vsm_pages(
             }
             if let Some(gpu_mesh) = ctx.registry.mesh_by_slot(obj.mesh_index) {
                 page_pass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));
-                page_pass.set_index_buffer(
-                    gpu_mesh.index_buffer.slice(..),
-                    wgpu::IndexFormat::Uint32,
-                );
+                page_pass
+                    .set_index_buffer(gpu_mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 page_pass.draw_indexed(0..gpu_mesh.index_count, 0, (i as u32)..(i as u32 + 1));
             }
         }
@@ -429,19 +415,28 @@ mod page_cull_tests {
 
     #[test]
     fn object_inside_the_page_is_kept() {
-        let b = Aabb { min: Vec3::new(-1.0, -1.0, -9.0), max: Vec3::new(1.0, 1.0, 9.0) };
+        let b = Aabb {
+            min: Vec3::new(-1.0, -1.0, -9.0),
+            max: Vec3::new(1.0, 1.0, 9.0),
+        };
         assert!(aabb_overlaps_clip_xy(b, unit_ortho()));
     }
 
     #[test]
     fn object_outside_the_page_is_culled_even_when_deep_in_z() {
-        let b = Aabb { min: Vec3::new(5.0, -1.0, -100.0), max: Vec3::new(6.0, 1.0, 100.0) };
+        let b = Aabb {
+            min: Vec3::new(5.0, -1.0, -100.0),
+            max: Vec3::new(6.0, 1.0, 100.0),
+        };
         assert!(!aabb_overlaps_clip_xy(b, unit_ortho()));
     }
 
     #[test]
     fn object_straddling_the_edge_is_kept() {
-        let b = Aabb { min: Vec3::new(1.5, -0.5, 0.0), max: Vec3::new(3.5, 0.5, 1.0) };
+        let b = Aabb {
+            min: Vec3::new(1.5, -0.5, 0.0),
+            max: Vec3::new(3.5, 0.5, 1.0),
+        };
         assert!(aabb_overlaps_clip_xy(b, unit_ortho()));
     }
 }

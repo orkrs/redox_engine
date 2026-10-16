@@ -84,13 +84,8 @@ impl Renderer {
         if self.vsm_enabled && self.light_uniform.soft_shadows != 2 {
             self.light_uniform.soft_shadows = 2;
             let bytes = bytemuck::bytes_of(&self.light_uniform).to_vec();
-            self.staging_ring.write_immediate(
-                &self.queue,
-                &self.light_buffer,
-                0,
-                &bytes,
-                false,
-            );
+            self.staging_ring
+                .write_immediate(&self.queue, &self.light_buffer, 0, &bytes, false);
         }
 
         // ── TAA jitter injection ────────────────────────────────────────────
@@ -101,8 +96,11 @@ impl Renderer {
         let unjittered_vp = camera_proj * camera_view;
 
         let jittered_vp = if self.taa_enabled {
-            let jitter =
-                halton_jitter_ndc(self.taa_frame_count, self.internal_width, self.internal_height);
+            let jitter = halton_jitter_ndc(
+                self.taa_frame_count,
+                self.internal_width,
+                self.internal_height,
+            );
             let jittered_proj = apply_jitter_to_projection(camera_proj, jitter);
             let jittered_vp = jittered_proj * camera_view;
 
@@ -122,7 +120,8 @@ impl Renderer {
 
         // ── GPU cluster light cull (optional; CPU fallback in update_clusters) ─
         if self.cluster_manager.gpu_cull {
-            self.cluster_manager.record_gpu_cull(&self.device, &mut encoder, &self.queue);
+            self.cluster_manager
+                .record_gpu_cull(&self.device, &mut encoder, &self.queue);
         }
 
         if let Some(ps) = self.particle_system.as_mut() {
@@ -182,7 +181,7 @@ impl Renderer {
         // origin-camera bug that broke directional shadows).
         let camera_view = Mat4::from_cols_array_2d(&self.camera_uniform.view);
         let camera_proj = Mat4::from_cols_array_2d(&self.camera_uniform.proj);
-        
+
         // Update CSM state and get shadow uniform with all cascade matrices.
         // Use the live camera near/far so cascade splits match projection unprojection.
         let shadow_u = self.csm_state.update(
@@ -213,7 +212,7 @@ impl Renderer {
             bytemuck::bytes_of(&self.shadow_uniform),
         );
 
-        // For backward compatibility, also update light_u.shadow_view_proj 
+        // For backward compatibility, also update light_u.shadow_view_proj
         // with first cascade matrix (legacy single cascade support)
         light_u.shadow_view_proj = shadow_u.csm_matrices[0];
         self.update_light_buffer(&light_u);
@@ -245,11 +244,17 @@ impl Renderer {
                 .map(|o| o.bounds)
                 .collect();
             // Debounce dynamic invalidation: only if centers moved >0.5м (prevents 4м grid thrash)
-            let cur_centers: Vec<redox_math::Vec3> = dynamic_aabbs.iter().map(|a| (a.min + a.max) * 0.5).collect();
+            let cur_centers: Vec<redox_math::Vec3> = dynamic_aabbs
+                .iter()
+                .map(|a| (a.min + a.max) * 0.5)
+                .collect();
             let need_invalidate = if cur_centers.len() != self.prev_dynamic_centers.len() {
                 true
             } else {
-                cur_centers.iter().zip(self.prev_dynamic_centers.iter()).any(|(c, p)| (*c - *p).length() > 0.5)
+                cur_centers
+                    .iter()
+                    .zip(self.prev_dynamic_centers.iter())
+                    .any(|(c, p)| (*c - *p).length() > 0.5)
             };
             if need_invalidate {
                 self.prev_dynamic_centers = cur_centers;
@@ -259,7 +264,10 @@ impl Renderer {
             // two coarsest levels are requested for the scene bounds as a safety net while
             // that feedback is a frame or two behind.
             let mut requested = self.vsm_clipmap.coarse_fallback_bits(&aabbs, 2);
-            for (word, fed) in requested.iter_mut().zip(self.vsm_page_request.latest_bits()) {
+            for (word, fed) in requested
+                .iter_mut()
+                .zip(self.vsm_page_request.latest_bits())
+            {
                 *word |= *fed;
             }
             let dirty = self.vsm_clipmap.requested_dirty_pages(&requested);
@@ -394,7 +402,7 @@ impl Renderer {
         // unshadowed (`NO_TILE` in the GPU light struct).
 
         use crate::shadow::atlas_allocator::{
-            ShadowAtlasAllocator, ATLAS_PX, TILE_PX, TILES_PER_AXIS, NO_TILE,
+            ATLAS_PX, NO_TILE, ShadowAtlasAllocator, TILE_PX, TILES_PER_AXIS,
         };
 
         // Sort casters by distance to the camera (closest first).
@@ -405,8 +413,7 @@ impl Renderer {
             .filter(|(_, l)| l.cast_shadows)
             .map(|(i, l)| (i, (l.position - cam_eye).length_squared()))
             .collect();
-        caster_order
-            .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        caster_order.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
         let mut allocator = ShadowAtlasAllocator::new();
         allocator.begin_frame();
@@ -455,8 +462,12 @@ impl Renderer {
             }
 
             let face_vis: [Vec<bool>; 6] = std::array::from_fn(|face_i| {
-                let frustum = redox_math::Frustum::from_view_projection(local_shadow_matrices[face_i]);
-                objects.iter().map(|o| frustum.intersects_aabb(&o.bounds)).collect()
+                let frustum =
+                    redox_math::Frustum::from_view_projection(local_shadow_matrices[face_i]);
+                objects
+                    .iter()
+                    .map(|o| frustum.intersects_aabb(&o.bounds))
+                    .collect()
             });
             atlas_jobs.push(AtlasCasterJob {
                 face_base,
@@ -482,22 +493,19 @@ impl Renderer {
                 let light = &self.current_point_lights[light_idx];
                 let near = 0.05_f32;
                 let far = light.radius.max(0.5);
-                let proj = redox_math::Mat4::perspective_rh(
-                    std::f32::consts::FRAC_PI_2, 1.0, near, far,
-                );
+                let proj =
+                    redox_math::Mat4::perspective_rh(std::f32::consts::FRAC_PI_2, 1.0, near, far);
                 for (fi, (fwd, up)) in face_forward_up.iter().enumerate() {
-                    let view = redox_math::Mat4::look_at_rh(
-                        light.position,
-                        light.position + *fwd,
-                        *up,
-                    );
+                    let view =
+                        redox_math::Mat4::look_at_rh(light.position, light.position + *fwd, *up);
                     gpu_lights[light_idx].shadow_matrices[fi] = (proj * view).to_cols_array_2d();
                 }
                 gpu_lights[light_idx].shadow_tile_base = tile_base;
             }
 
             let lights_bytes = bytemuck::cast_slice::<PointLightGpu, u8>(&gpu_lights);
-            self.queue.write_buffer(&self.cluster_manager.point_lights_buffer, 0, lights_bytes);
+            self.queue
+                .write_buffer(&self.cluster_manager.point_lights_buffer, 0, lights_bytes);
         }
 
         let atlas_ctx = AtlasContext {
@@ -521,10 +529,9 @@ impl Renderer {
             // Upload page tables AFTER allocation so PBR sees VALID bits
             // this frame (uploading first made moving-sun frames fall back
             // to CSM, then static frames sampled empty cached pages).
-            let info = self
-                .vsm_clipmap
-                .gpu_info(&self.smrt_config);
-            self.queue.write_buffer(&self.vsm_info_buffer, 0, bytemuck::bytes_of(&info));
+            let info = self.vsm_clipmap.gpu_info(&self.smrt_config);
+            self.queue
+                .write_buffer(&self.vsm_info_buffer, 0, bytemuck::bytes_of(&info));
 
             // Per-page PageDrawInfo packed into the dynamic-offset uniform
             // (256-byte stride, one entry per dirty page).
@@ -539,7 +546,8 @@ impl Renderer {
                 pageinfo_scratch.extend_from_slice(&[0u8; 176]);
             }
             if !pageinfo_scratch.is_empty() {
-                self.queue.write_buffer(&self.vsm_pageinfo_buffer, 0, &pageinfo_scratch);
+                self.queue
+                    .write_buffer(&self.vsm_pageinfo_buffer, 0, &pageinfo_scratch);
             }
 
             let vsm_ctx = VsmContext {
@@ -589,7 +597,6 @@ impl Renderer {
             ));
         }
 
-
         // 2. Normal pass (normals + linear depth for SSAO)
         self.record_normal_pass(&mut encoder, objects);
         if self.vsm_enabled {
@@ -609,12 +616,8 @@ impl Renderer {
 
         // Build Hi-Z pyramid from this frame's depth, then late-cull meshlets
         // that Hi-Z of the *previous* frame rejected (1-frame disocclusion).
-        self.hiz.build_from_depth(
-            &self.device,
-            &self.queue,
-            &mut encoder,
-            &self.depth_view,
-        );
+        self.hiz
+            .build_from_depth(&self.device, &self.queue, &mut encoder, &self.depth_view);
         if let Some(vg) = self.vg_system.as_mut() {
             if vg.config.gpu_cull && vg.active_instance_count() > 0 {
                 let cam_pos = Vec3::new(
@@ -648,8 +651,7 @@ impl Renderer {
         // 5. Forward pass into HDR. Always clear + draw regular meshes.
         // VG vis/resolve composites on top; skipping this left HDR uninitialized
         // (full-screen white) as soon as any VG instance existed.
-        let hdr_resolve_pass =
-            self.hdr_geometry_resolve_pass(objects, &self.main_vis_scratch);
+        let hdr_resolve_pass = self.hdr_geometry_resolve_pass(objects, &self.main_vis_scratch);
         let msaa_sample_count = self.msaa_sample_count;
         let debug_lines = std::mem::take(&mut self.current_debug_lines);
         if !debug_lines.is_empty() {
@@ -672,7 +674,9 @@ impl Renderer {
                     hdr_resolve_pass,
                     HdrGeometryResolvePass::Forward,
                 ))],
-                depth_stencil_attachment: Some(self.geometry_depth_attachment(wgpu::LoadOp::Clear(1.0))),
+                depth_stencil_attachment: Some(
+                    self.geometry_depth_attachment(wgpu::LoadOp::Clear(1.0)),
+                ),
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
@@ -795,8 +799,8 @@ impl Renderer {
                 color_attachments: &[Some(Self::hdr_color_attachment(
                     &self.hdr_view,
                     &self.hdr_msaa_view,
-                        msaa_sample_count,
-                        wgpu::LoadOp::Load,
+                    msaa_sample_count,
+                    wgpu::LoadOp::Load,
                     hdr_resolve_pass,
                     HdrGeometryResolvePass::VgDebug,
                 ))],
@@ -808,7 +812,8 @@ impl Renderer {
                 vg.render(&mut render_pass);
             }
         }
-        self.gpu_profiler.mark(&mut encoder, "vg_visibility_resolve");
+        self.gpu_profiler
+            .mark(&mut encoder, "vg_visibility_resolve");
         // ── 5b. Transparent pass:
         // Same HDR target and depth buffer as the forward pass, but with
         // depth writes disabled (read-only depth) so transparent surfaces
@@ -820,26 +825,29 @@ impl Renderer {
                     color_attachments: &[Some(Self::hdr_color_attachment(
                         &self.hdr_view,
                         &self.hdr_msaa_view,
-                    msaa_sample_count,
-                    wgpu::LoadOp::Load,
-                    hdr_resolve_pass,
-                    HdrGeometryResolvePass::Transparent,
+                        msaa_sample_count,
+                        wgpu::LoadOp::Load,
+                        hdr_resolve_pass,
+                        HdrGeometryResolvePass::Transparent,
                     ))],
-                    depth_stencil_attachment: Some(self.geometry_depth_attachment(wgpu::LoadOp::Load)),
+                    depth_stencil_attachment: Some(
+                        self.geometry_depth_attachment(wgpu::LoadOp::Load),
+                    ),
                     timestamp_writes: None,
                     occlusion_query_set: None,
                 });
-            self.record_draw_transparent(&mut transparent_render_pass, objects, &self.main_vis_scratch);
+            self.record_draw_transparent(
+                &mut transparent_render_pass,
+                objects,
+                &self.main_vis_scratch,
+            );
         }
 
         self.gpu_profiler.mark(&mut encoder, "transparent");
         // ── 5c. Smart Resolve (Sharp AA): luma-weighted MSAA resolve → hdr_view ─
         if self.aa_sharp && self.msaa_sample_count > 1 {
-            self.msaa_resolve_pass.record(
-                &mut encoder,
-                &self.msaa_resolve_bg,
-                &self.hdr_view,
-            );
+            self.msaa_resolve_pass
+                .record(&mut encoder, &self.msaa_resolve_bg, &self.hdr_view);
         }
 
         // ── 5d. GPU particles (billboards + reactive mask) ─────────────────
@@ -870,7 +878,8 @@ impl Renderer {
             }
         }
 
-        self.gpu_profiler.mark(&mut encoder, "msaa_resolve_particles");
+        self.gpu_profiler
+            .mark(&mut encoder, "msaa_resolve_particles");
         // ── ScatterLight (HDR, pre-TAA) ─────────────────────────────────────
         self.record_scatter_light_pass(&mut encoder);
 
@@ -913,7 +922,6 @@ impl Renderer {
                 0,
                 bytemuck::bytes_of(&vel_uniform),
             );
-
 
             // --- 6b. Velocity pass ---
             {
@@ -1116,7 +1124,8 @@ impl Renderer {
             post_pass.draw(0..3, 0..1);
         }
 
-        self.gpu_profiler.mark(&mut encoder, "taa_tonemap_bloom_smaa");
+        self.gpu_profiler
+            .mark(&mut encoder, "taa_tonemap_bloom_smaa");
         // Copy current depth → prev depth for next frame's TAA disocclusion test.
         if self.taa_enabled {
             encoder.copy_texture_to_texture(
@@ -1162,7 +1171,8 @@ impl Renderer {
         self.gpu_profiler.after_submit();
         if self.vsm_enabled {
             // The first frames wait for the feedback so shadows are fine-grained from the start.
-            self.vsm_page_request.after_submit(&self.device, self.vsm_request_frames < 4);
+            self.vsm_page_request
+                .after_submit(&self.device, self.vsm_request_frames < 4);
             self.vsm_request_frames = self.vsm_request_frames.saturating_add(1);
         }
         self.staging_ring.end_frame();

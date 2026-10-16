@@ -266,7 +266,12 @@ fn spawn_session(world: &mut World, assets: &Assets) -> Session {
                 material_index: assets.orb_mat,
             },
         );
-        world.add_component(e, Orb { bob: i as f32 * 0.7 });
+        world.add_component(
+            e,
+            Orb {
+                bob: i as f32 * 0.7,
+            },
+        );
         orbs.push(e);
     }
 
@@ -412,11 +417,8 @@ fn update_camera(world: &World, session: &Session, ctx: &RenderContext) -> (Vec3
 }
 
 fn build_lights(world: &World, session: &Session) -> LightScene {
-    let mut sun = DirectionalLight::new(
-        Vec3::new(-0.35, 1.0, 0.4),
-        Vec3::new(1.0, 0.95, 0.88),
-        1.15,
-    );
+    let mut sun =
+        DirectionalLight::new(Vec3::new(-0.35, 1.0, 0.4), Vec3::new(1.0, 0.95, 0.88), 1.15);
     sun.soft_shadows = true;
 
     let mut points = Vec::new();
@@ -501,13 +503,7 @@ fn draw_hud(egui: &egui::Context, session: &Session, dt: f32) {
         });
 }
 
-fn spawn_mesh(
-    world: &mut World,
-    mesh: usize,
-    material: usize,
-    pos: Vec3,
-    scale: Vec3,
-) -> Entity {
+fn spawn_mesh(world: &mut World, mesh: usize, material: usize, pos: Vec3, scale: Vec3) -> Entity {
     let e = world.spawn();
     world.add_component(
         e,

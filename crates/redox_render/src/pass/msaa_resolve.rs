@@ -20,7 +20,7 @@
 use bytemuck::{Pod, Zeroable};
 
 use crate::resource::buffer::create_uniform_buffer;
-use crate::shader::{create_shader_module, MSAA_RESOLVE_WGSL};
+use crate::shader::{MSAA_RESOLVE_WGSL, create_shader_module};
 
 /// Parameters uploaded to the MSAA resolve shader.
 #[repr(C)]
@@ -53,34 +53,31 @@ impl MsaaResolvePass {
     /// `hdr_format` should be `Rgba16Float` (standard RedOx HDR resolve target).
     /// Defaults to 4 MSAA samples; call [`Self::set_sample_count`] for 2× MSAA.
     pub fn new(device: &wgpu::Device, hdr_format: wgpu::TextureFormat) -> Self {
-        let bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("msaa_resolve_bgl"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float {
-                                filterable: false,
-                            },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: true,
-                        },
-                        count: None,
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("msaa_resolve_bgl"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: true,
                     },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
-                ],
-            });
+                    count: None,
+                },
+            ],
+        });
 
         let shader = create_shader_module(device, "msaa_resolve_shader", MSAA_RESOLVE_WGSL);
 
@@ -119,11 +116,8 @@ impl MsaaResolvePass {
         });
 
         let uniform = MsaaResolveUniform::new(4);
-        let uniform_buffer = create_uniform_buffer(
-            device,
-            "msaa_resolve_uniform",
-            bytemuck::bytes_of(&uniform),
-        );
+        let uniform_buffer =
+            create_uniform_buffer(device, "msaa_resolve_uniform", bytemuck::bytes_of(&uniform));
 
         Self {
             pipeline,

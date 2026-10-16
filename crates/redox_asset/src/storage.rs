@@ -1,7 +1,7 @@
 //! Per-type asset storage.
 
-use std::collections::HashMap;
 use crate::handle::{AssetId, AssetStatus, Handle};
+use std::collections::HashMap;
 
 /// Stores loaded assets of a single type `T` along with their status.
 pub struct AssetStorage<T: 'static + Send + Sync> {

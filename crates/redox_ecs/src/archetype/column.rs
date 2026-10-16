@@ -1,6 +1,6 @@
+use crate::component::ComponentInfo;
 use std::alloc::{self, Layout};
 use std::ptr::{self, NonNull};
-use crate::component::ComponentInfo;
 
 /// A column of component data stored in a dense array.
 ///
@@ -98,11 +98,7 @@ impl Column {
 
         if index != last_index {
             unsafe {
-                ptr::copy_nonoverlapping(
-                    self.get(last_index),
-                    self.get(index),
-                    size,
-                );
+                ptr::copy_nonoverlapping(self.get(last_index), self.get(index), size);
             }
             self.ticks.swap_remove(index);
             self.added_ticks.swap_remove(index);
@@ -121,9 +117,7 @@ impl Column {
     /// # Safety
     /// `index` must be within bounds.
     pub unsafe fn get(&self, index: usize) -> *mut u8 {
-        unsafe {
-            self.data.as_ptr().add(index * self.info.size)
-        }
+        unsafe { self.data.as_ptr().add(index * self.info.size) }
     }
 
     fn grow(&mut self) {
@@ -132,10 +126,14 @@ impl Column {
             return;
         }
         let (new_cap, new_layout) = if self.cap == 0 {
-            (8, Layout::from_size_align(8 * self.info.size, self.info.align).unwrap())
+            (
+                8,
+                Layout::from_size_align(8 * self.info.size, self.info.align).unwrap(),
+            )
         } else {
             let new_cap = self.cap * 2;
-            let new_layout = Layout::from_size_align(new_cap * self.info.size, self.info.align).unwrap();
+            let new_layout =
+                Layout::from_size_align(new_cap * self.info.size, self.info.align).unwrap();
             (new_cap, new_layout)
         };
 
@@ -143,7 +141,8 @@ impl Column {
             if self.cap == 0 {
                 alloc::alloc(new_layout)
             } else {
-                let old_layout = Layout::from_size_align(self.cap * self.info.size, self.info.align).unwrap();
+                let old_layout =
+                    Layout::from_size_align(self.cap * self.info.size, self.info.align).unwrap();
                 alloc::realloc(self.data.as_ptr(), old_layout, new_layout.size())
             }
         };
@@ -184,7 +183,8 @@ impl Drop for Column {
             }
         }
         if self.cap > 0 {
-            let layout = Layout::from_size_align(self.cap * self.info.size, self.info.align).unwrap();
+            let layout =
+                Layout::from_size_align(self.cap * self.info.size, self.info.align).unwrap();
             unsafe {
                 alloc::dealloc(self.data.as_ptr(), layout);
             }

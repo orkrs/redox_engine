@@ -4,8 +4,8 @@
 //! `load_async::<AudioData>(path)`. Raw bytes are stored; decoding happens
 //! when synced to [`crate::context::AudioContext`].
 
-use redox_asset::loader::AssetLoader;
 use redox_asset::AssetError;
+use redox_asset::loader::AssetLoader;
 
 use crate::asset_types::AudioData;
 

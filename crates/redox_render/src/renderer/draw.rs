@@ -5,10 +5,7 @@ use super::*;
 impl Renderer {
     /// Renders a single frame given a list of [`RenderObject`]s.
     ///
-    pub fn begin_pass<'a>(
-        &'a self,
-        encoder: &'a mut wgpu::CommandEncoder,
-    ) -> wgpu::RenderPass<'a> {
+    pub fn begin_pass<'a>(&'a self, encoder: &'a mut wgpu::CommandEncoder) -> wgpu::RenderPass<'a> {
         encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("forward_pass"),
             color_attachments: &[Some(Self::hdr_color_attachment(
@@ -57,7 +54,11 @@ impl Renderer {
             let material_bg = self
                 .registry
                 .legacy_material_bind_group(obj.material_index)
-                .unwrap_or_else(|| self.registry.legacy_material_bind_group(0).expect("fallback material"));
+                .unwrap_or_else(|| {
+                    self.registry
+                        .legacy_material_bind_group(0)
+                        .expect("fallback material")
+                });
 
             render_pass.set_bind_group(2, material_bg, &[]);
             if let Some(gpu_mesh) = self.registry.mesh_by_slot(obj.mesh_index) {
@@ -139,7 +140,11 @@ impl Renderer {
             let material_bg = self
                 .registry
                 .legacy_material_bind_group(obj.material_index)
-                .unwrap_or_else(|| self.registry.legacy_material_bind_group(0).expect("fallback material"));
+                .unwrap_or_else(|| {
+                    self.registry
+                        .legacy_material_bind_group(0)
+                        .expect("fallback material")
+                });
 
             render_pass.set_bind_group(2, material_bg, &[]);
             if let Some(gpu_mesh) = self.registry.mesh_by_slot(obj.mesh_index) {

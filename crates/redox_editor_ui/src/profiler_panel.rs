@@ -32,10 +32,7 @@ impl ProfilerPanel {
             let x1 = rect.left() + i as f32 / (n - 1.0).max(1.0) * rect.width();
             let y0 = rect.bottom() - (samples[i - 1] / max_ms) * rect.height();
             let y1 = rect.bottom() - (samples[i] / max_ms) * rect.height();
-            painter.line_segment(
-                [egui::pos2(x0, y0), egui::pos2(x1, y1)],
-                stroke,
-            );
+            painter.line_segment([egui::pos2(x0, y0), egui::pos2(x1, y1)], stroke);
         }
         // 16.6ms line
         let y16 = rect.bottom() - (16.6 / max_ms) * rect.height();

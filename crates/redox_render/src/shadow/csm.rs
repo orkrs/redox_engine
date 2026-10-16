@@ -135,11 +135,8 @@ impl CsmState {
                 for &sx in &[-1.0_f32, 1.0] {
                     for &sy in &[-1.0_f32, 1.0] {
                         // RH view space: camera looks down −Z, depth = −z.
-                        let view_pos = Vec3::new(
-                            sx * tan_half_x * depth,
-                            sy * tan_half_y * depth,
-                            -depth,
-                        );
+                        let view_pos =
+                            Vec3::new(sx * tan_half_x * depth, sy * tan_half_y * depth, -depth);
                         let world = inv_view.transform_point3(view_pos);
                         min_w = min_w.min(world);
                         max_w = max_w.max(world);

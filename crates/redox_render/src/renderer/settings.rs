@@ -73,7 +73,6 @@ impl Renderer {
         }
     }
 
-
     /// Sets SMRT quality for VSM soft shadows (rays × samples per pixel).
     pub fn set_smrt_quality(&mut self, quality: crate::shadow::smrt::SmrtQuality) {
         self.smrt_config = quality.config();
@@ -84,7 +83,6 @@ impl Renderer {
     pub fn set_vsm_temporal_alpha(&mut self, alpha: f32) {
         self.vsm_shadow_temporal_alpha = alpha.clamp(0.05, 0.20);
     }
-
 
     pub fn set_ssao_enabled(&mut self, enabled: bool) {
         self.ssao_enabled = enabled;

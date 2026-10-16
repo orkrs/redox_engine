@@ -19,10 +19,10 @@
 //! - ViewportShading Unlit / Normals / Wireframe: Lit PBR only (selection tint).
 //! - Streaming GpuRegistry assets beyond procedural cubes.
 
-use redox_editor_core::{quad_pane_cameras, EditorCamera, EditorViewport, ViewportShading};
+use redox_editor_core::{EditorCamera, EditorViewport, ViewportShading, quad_pane_cameras};
 use redox_math::{Mat4, Transform, Vec3};
 use redox_render::context::ShaderDebugVizMode;
-use redox_render::{mesh::primitive::create_cube, Material, RenderObject, Renderer};
+use redox_render::{Material, RenderObject, Renderer, mesh::primitive::create_cube};
 use std::sync::Arc;
 use winit::window::Window;
 
@@ -250,19 +250,11 @@ impl RenderHost {
     }
 
     pub fn device(&self) -> &wgpu::Device {
-        &self
-            .renderer
-            .as_ref()
-            .expect("RenderHost renderer")
-            .device
+        &self.renderer.as_ref().expect("RenderHost renderer").device
     }
 
     pub fn queue(&self) -> &wgpu::Queue {
-        &self
-            .renderer
-            .as_ref()
-            .expect("RenderHost renderer")
-            .queue
+        &self.renderer.as_ref().expect("RenderHost renderer").queue
     }
 
     pub fn size(&self) -> (u32, u32) {
@@ -363,8 +355,7 @@ impl RenderHost {
                 return;
             };
 
-            let need_pane_resize =
-                renderer.config.width != hw || renderer.config.height != hh;
+            let need_pane_resize = renderer.config.width != hw || renderer.config.height != hh;
             if need_pane_resize {
                 renderer.resize(hw, hh);
             }
@@ -393,8 +384,12 @@ impl RenderHost {
         let origins = [(0u32, 0u32), (hw, 0), (0, hh), (hw, hh)];
         for (i, (ox, oy)) in origins.iter().enumerate() {
             let (pw, ph) = panes[i].size;
-            let copy_w = pw.min(tw.saturating_sub(*ox)).min(if i % 2 == 0 { hw } else { tw - hw });
-            let copy_h = ph.min(th.saturating_sub(*oy)).min(if i < 2 { hh } else { th - hh });
+            let copy_w = pw
+                .min(tw.saturating_sub(*ox))
+                .min(if i % 2 == 0 { hw } else { tw - hw });
+            let copy_h = ph
+                .min(th.saturating_sub(*oy))
+                .min(if i < 2 { hh } else { th - hh });
             if copy_w == 0 || copy_h == 0 {
                 continue;
             }
@@ -547,9 +542,11 @@ fn push_entities(
 }
 
 fn clear_viewport_depth_for_overlay(renderer: &Renderer, viewport: &EditorViewport) {
-    let mut encoder = renderer.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("host_vp_depth_clear"),
-    });
+    let mut encoder = renderer
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("host_vp_depth_clear"),
+        });
     {
         let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("host_vp_depth_clear"),

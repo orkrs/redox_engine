@@ -13,10 +13,10 @@
 //!   began (see [`World::begin_frame`](crate::World::begin_frame)).
 //! - `Added<T>` — rows whose component was inserted since the current frame began.
 
-use std::marker::PhantomData;
-use std::any::TypeId;
 use crate::archetype::Archetype;
 use crate::component::Component;
+use std::any::TypeId;
+use std::marker::PhantomData;
 
 // ---------------------------------------------------------------------------
 // Tick context

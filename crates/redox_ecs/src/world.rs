@@ -1,7 +1,7 @@
 use crate::archetype::Archetype;
 use crate::component::{Component, ComponentInfo};
 use crate::entity::{Entity, EntityAllocator};
-use crate::query::{Query, QueryData, QueryFilter, NullFilter};
+use crate::query::{NullFilter, Query, QueryData, QueryFilter};
 use hashbrown::HashMap;
 use std::any::{Any, TypeId};
 
@@ -184,7 +184,9 @@ impl World {
                         .table
                         .get_component_ptr(info.type_id, old_row)
                         .unwrap();
-                    new_arch.table.push_component_raw(info.type_id, src_ptr, tick);
+                    new_arch
+                        .table
+                        .push_component_raw(info.type_id, src_ptr, tick);
                 }
 
                 if let Some(moved_entity) = old_arch.table.swap_remove(old_row, false) {
@@ -248,7 +250,9 @@ impl World {
 
             for info in &new_arch.component_infos {
                 if let Some(src_ptr) = old_arch.table.get_component_ptr(info.type_id, row) {
-                    new_arch.table.push_component_raw(info.type_id, src_ptr, tick);
+                    new_arch
+                        .table
+                        .push_component_raw(info.type_id, src_ptr, tick);
                 }
             }
 
@@ -290,7 +294,9 @@ impl World {
     }
 
     pub fn all_entities(&self) -> impl Iterator<Item = Entity> + '_ {
-        self.archetypes.iter().flat_map(|arch| arch.table.entities().iter().copied())
+        self.archetypes
+            .iter()
+            .flat_map(|arch| arch.table.entities().iter().copied())
     }
 
     /// Iterates over all archetypes, yielding for each:
@@ -300,9 +306,10 @@ impl World {
     ///
     /// Useful for building debug / inspector UIs.
     pub fn archetype_iter(&self) -> impl Iterator<Item = (usize, &[TypeId], &[Entity])> + '_ {
-        self.archetypes.iter().enumerate().map(|(i, arch)| {
-            (i, arch.component_types(), arch.entities())
-        })
+        self.archetypes
+            .iter()
+            .enumerate()
+            .map(|(i, arch)| (i, arch.component_types(), arch.entities()))
     }
 
     /// Number of active archetypes.

@@ -23,7 +23,8 @@ impl Renderer {
         }
 
         // Depth (internal)
-        let (dt, dv) = create_depth_texture(&self.device, self.internal_width, self.internal_height);
+        let (dt, dv) =
+            create_depth_texture(&self.device, self.internal_width, self.internal_height);
         self.depth_texture = dt;
         self.depth_view = dv;
         let (pdt, pdv) = create_prev_depth_texture(
@@ -36,7 +37,8 @@ impl Renderer {
         self.prev_depth_view = pdv;
 
         // HDR (internal)
-        let (ht, hv, hs) = create_hdr_texture(&self.device, self.internal_width, self.internal_height);
+        let (ht, hv, hs) =
+            create_hdr_texture(&self.device, self.internal_width, self.internal_height);
         self.hdr_texture = ht;
         self.hdr_view = hv;
         self.hdr_sampler = hs;
@@ -58,20 +60,17 @@ impl Renderer {
             );
             self.depth_msaa_texture = dmt;
             self.depth_msaa_view = dmv;
-            self.msaa_resolve_bg = self.msaa_resolve_pass.create_bind_group(
-                &self.device, &self.hdr_msaa_view,
-            );
+            self.msaa_resolve_bg = self
+                .msaa_resolve_pass
+                .create_bind_group(&self.device, &self.hdr_msaa_view);
         }
 
         // Sharp AA intermediates (output resolution)
-        let (lt, lv) = create_sharp_intermediate(
-            &self.device, new_width, new_height, "sharp_ldr",
-        );
+        let (lt, lv) = create_sharp_intermediate(&self.device, new_width, new_height, "sharp_ldr");
         self.ldr_texture = lt;
         self.ldr_view = lv;
-        let (st, sv) = create_sharp_intermediate(
-            &self.device, new_width, new_height, "sharp_smaa_out",
-        );
+        let (st, sv) =
+            create_sharp_intermediate(&self.device, new_width, new_height, "sharp_smaa_out");
         self.smaa_out_texture = st;
         self.smaa_out_view = sv;
         self.smaa_pass.resize(&self.device, new_width, new_height);
@@ -101,13 +100,8 @@ impl Renderer {
         self.normal_texture = nt;
         self.normal_view = nv;
 
-        let (sr, sv) = create_normal_ssao_texture(
-            &self.device,
-            half_width,
-            half_height,
-            gtao_fmt,
-            "gtao_raw",
-        );
+        let (sr, sv) =
+            create_normal_ssao_texture(&self.device, half_width, half_height, gtao_fmt, "gtao_raw");
         self.ssao_raw_texture = sr;
         self.ssao_raw_view = sv;
 
@@ -257,12 +251,15 @@ impl Renderer {
         self.update_global_bind_group();
 
         // Recreate TAA history at output resolution (full-res)
-        let (vh0, vv0) = create_history_texture(&self.device, new_width, new_height, "taa_history_0");
-        let (vh1, vv1) = create_history_texture(&self.device, new_width, new_height, "taa_history_1");
+        let (vh0, vv0) =
+            create_history_texture(&self.device, new_width, new_height, "taa_history_0");
+        let (vh1, vv1) =
+            create_history_texture(&self.device, new_width, new_height, "taa_history_1");
         self.taa_history_tex = [vh0, vh1];
         self.taa_history_view = [vv0, vv1];
         // Velocity is generated at internal resolution.
-        let (vt, vv) = create_velocity_texture(&self.device, self.internal_width, self.internal_height);
+        let (vt, vv) =
+            create_velocity_texture(&self.device, self.internal_width, self.internal_height);
         self.taa_velocity_tex = vt;
         self.taa_velocity_view = vv;
         // Force history reset so stale data is not blended on the next frame

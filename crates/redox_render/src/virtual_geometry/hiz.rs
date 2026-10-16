@@ -2,9 +2,7 @@
 
 use bytemuck::{Pod, Zeroable};
 
-use crate::shader::{
-    HIZ_COPY_WGSL, HIZ_DOWNSAMPLE_WGSL, create_shader_module,
-};
+use crate::shader::{HIZ_COPY_WGSL, HIZ_DOWNSAMPLE_WGSL, create_shader_module};
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -260,7 +258,9 @@ impl HiZPyramid {
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&self.views[(mip - 1) as usize]),
+                        resource: wgpu::BindingResource::TextureView(
+                            &self.views[(mip - 1) as usize],
+                        ),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,

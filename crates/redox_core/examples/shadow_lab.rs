@@ -286,7 +286,13 @@ fn build_scene(world: &mut World, ctx: &mut RenderContext) {
     });
     let white = ctx.add_material(Material::solid(Vec3::new(0.92, 0.92, 0.94)));
 
-    spawn(world, cube, ground, Vec3::new(0.0, -0.15, 0.0), Vec3::new(36.0, 0.3, 36.0));
+    spawn(
+        world,
+        cube,
+        ground,
+        Vec3::new(0.0, -0.15, 0.0),
+        Vec3::new(36.0, 0.3, 36.0),
+    );
 
     // Checker markers for cascade seams / swimming.
     for z in -3..=3 {
@@ -332,13 +338,43 @@ fn build_scene(world: &mut World, ctx: &mut RenderContext) {
     }
 
     // Stacked boxes — self-shadow contact.
-    spawn(world, cube, teal, Vec3::new(0.0, 0.5, 0.0), Vec3::new(2.2, 1.0, 2.2));
-    spawn(world, cube, teal, Vec3::new(0.4, 1.35, -0.3), Vec3::new(1.4, 0.7, 1.4));
-    spawn(world, cube, teal, Vec3::new(-0.2, 2.0, 0.2), Vec3::new(0.9, 0.6, 0.9));
+    spawn(
+        world,
+        cube,
+        teal,
+        Vec3::new(0.0, 0.5, 0.0),
+        Vec3::new(2.2, 1.0, 2.2),
+    );
+    spawn(
+        world,
+        cube,
+        teal,
+        Vec3::new(0.4, 1.35, -0.3),
+        Vec3::new(1.4, 0.7, 1.4),
+    );
+    spawn(
+        world,
+        cube,
+        teal,
+        Vec3::new(-0.2, 2.0, 0.2),
+        Vec3::new(0.9, 0.6, 0.9),
+    );
 
     // Spheres — rounded contact shadows.
-    spawn(world, sphere, red, Vec3::new(-4.5, 0.7, 1.5), Vec3::splat(1.4));
-    spawn(world, sphere, white, Vec3::new(3.5, 0.55, 4.0), Vec3::splat(1.1));
+    spawn(
+        world,
+        sphere,
+        red,
+        Vec3::new(-4.5, 0.7, 1.5),
+        Vec3::splat(1.4),
+    );
+    spawn(
+        world,
+        sphere,
+        white,
+        Vec3::new(3.5, 0.55, 4.0),
+        Vec3::splat(1.1),
+    );
 
     // “Stairs” ramp of boxes.
     for i in 0..5 {

@@ -1,10 +1,10 @@
 //! Core renderer: owns wgpu device/queue/surface, passes, and GPU registry.
 
-mod contexts;
 mod aa;
 mod accessors;
 mod assets;
 mod attachments;
+mod contexts;
 mod debug_draw;
 mod draw;
 mod frame;
@@ -16,8 +16,8 @@ mod resize;
 mod scene_sync;
 mod settings;
 
-use helpers::*;
 pub use helpers::pick_hdr_msaa_sample_count;
+use helpers::*;
 
 use bytemuck;
 use std::sync::Arc;
@@ -28,9 +28,9 @@ use redox_asset::Handle;
 use redox_vfx::{ParticleSimUniforms, ParticleSystem};
 
 use contexts::{
+    AtlasCasterJob, AtlasContext, PrepassContext, ShadowContext, VsmContext,
     compute_main_visibility, record_csm_shadow_depth, record_normal_prepass,
-    record_point_atlas_shadows, record_vsm_pages, AtlasCasterJob, AtlasContext, PrepassContext,
-    ShadowContext, VsmContext,
+    record_point_atlas_shadows, record_vsm_pages,
 };
 
 use crate::asset_types::{BlendMode, MaterialData, MeshData, TextureData};
@@ -49,48 +49,49 @@ pub enum ShaderDebugVizMode {
     /// Magenta=SSAO · Cyan=CSM · Lime=VSM · Yellow=SDF (darkening amounts).
     ShadowSources = 3,
 }
+use crate::camera::Camera;
+use crate::frame::FrameView;
 use crate::material::Material;
-use crate::mesh::{Mesh, compress_vertices, bounds_vectors};
+use crate::mesh::{Mesh, bounds_vectors, compress_vertices};
 use crate::pass::debug_lines::DebugLinesPass;
-use crate::pass::shared_layouts::{PbrFrameLayouts, SharedLayouts, ModelUniform, create_depth_texture};
-use crate::pass::particles::ParticleGpuSystem;
-use crate::pass::scatter_light::{ScatterLightPass, ScatterLightUniform};
-use crate::pass::normal::NormalPass;
-use crate::pass::pbr::PbrPass;
-use crate::pass::shadow::{SHADOW_FORMAT, SHADOW_SIZE, ShadowPass};
-use crate::pass::skybox::SkyboxPass;
-use crate::pass::transparent::TransparentPass;
-use crate::pass::vg_resolve::{
-    build_material_storage, create_vg_vis_targets, VgResolvePass, VgShadowPass, VgVisPass,
-    VgVisTargets, VIS_ID_SENTINEL,
-};
-use crate::shadow::csm::{CsmConfig, CsmState, ShadowUniform};
-use crate::virtual_geometry::hiz::HiZPyramid;
-use crate::virtual_geometry::runtime::{VGConfig, VGSystem};
-use crate::systems::Transform;
-use crate::virtual_geometry::{VirtualMesh, VGAssetId};
-use crate::pass::taa::{
-    TaaPass, TaaUniform,
-    apply_jitter_to_projection, create_history_texture, create_velocity_texture,
-    halton_jitter_ndc,
-};
-use crate::pass::velocity::{VelocityPass, VelocityUniform};
-use redox_math::{Aabb, Mat3, Mat4, Vec3};
-use crate::post::ssao::{SSAOPass, VsmPassUniform, VsmShadowPass, VsmTemporalUniform};
-use crate::post::bloom::BloomPass;
 use crate::pass::msaa_resolve::MsaaResolvePass;
-use crate::pass::smaa::SmaaPass;
-use crate::post::tone_mapping::{
-    TonemapUniform, create_tone_mapping_pipeline, create_tonemap_bind_group,
-    create_rcas_present_pipeline,
+use crate::pass::normal::NormalPass;
+use crate::pass::particles::ParticleGpuSystem;
+use crate::pass::pbr::PbrPass;
+use crate::pass::scatter_light::{ScatterLightPass, ScatterLightUniform};
+use crate::pass::shadow::{SHADOW_FORMAT, SHADOW_SIZE, ShadowPass};
+use crate::pass::shared_layouts::{
+    ModelUniform, PbrFrameLayouts, SharedLayouts, create_depth_texture,
 };
+use crate::pass::skybox::SkyboxPass;
+use crate::pass::smaa::SmaaPass;
+use crate::pass::taa::{
+    TaaPass, TaaUniform, apply_jitter_to_projection, create_history_texture,
+    create_velocity_texture, halton_jitter_ndc,
+};
+use crate::pass::transparent::TransparentPass;
+use crate::pass::velocity::{VelocityPass, VelocityUniform};
+use crate::pass::vg_resolve::{
+    VIS_ID_SENTINEL, VgResolvePass, VgShadowPass, VgVisPass, VgVisTargets, build_material_storage,
+    create_vg_vis_targets,
+};
+use crate::post::bloom::BloomPass;
+use crate::post::ssao::{SSAOPass, VsmPassUniform, VsmShadowPass, VsmTemporalUniform};
+use crate::post::tone_mapping::{
+    TonemapUniform, create_rcas_present_pipeline, create_tone_mapping_pipeline,
+    create_tonemap_bind_group,
+};
+use crate::registry::{GpuMesh, GpuRegistry};
 use crate::resource::buffer;
 use crate::resource::ibl::{IBLProcessor, IBLResource};
 use crate::resource::texture::Texture;
+use crate::shadow::csm::{CsmConfig, CsmState, ShadowUniform};
 use crate::systems::RenderObject;
-use crate::camera::Camera;
-use crate::frame::FrameView;
-use crate::registry::{GpuMesh, GpuRegistry};
+use crate::systems::Transform;
+use crate::virtual_geometry::hiz::HiZPyramid;
+use crate::virtual_geometry::runtime::{VGConfig, VGSystem};
+use crate::virtual_geometry::{VGAssetId, VirtualMesh};
+use redox_math::{Aabb, Mat3, Mat4, Vec3};
 
 /// HDR geometry pass that owns the MSAA resolve when multisampling is active.
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -439,4 +440,3 @@ pub struct Renderer {
     /// When true, CSM shadow + normal prepass record on worker threads.
     pub mt_command_recording: bool,
 }
-

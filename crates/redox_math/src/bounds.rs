@@ -1,5 +1,5 @@
-use crate::vector::Vec3;
 use crate::matrix::Mat4;
+use crate::vector::Vec3;
 
 /// An axis-aligned bounding box defined by its minimum and maximum corners.
 ///
@@ -107,9 +107,12 @@ impl Aabb {
     ///
     /// Points exactly on the faces are considered inside.
     pub fn contains_point(&self, point: Vec3) -> bool {
-        point.x >= self.min.x && point.x <= self.max.x &&
-            point.y >= self.min.y && point.y <= self.max.y &&
-            point.z >= self.min.z && point.z <= self.max.z
+        point.x >= self.min.x
+            && point.x <= self.max.x
+            && point.y >= self.min.y
+            && point.y <= self.max.y
+            && point.z >= self.min.z
+            && point.z <= self.max.z
     }
 }
 

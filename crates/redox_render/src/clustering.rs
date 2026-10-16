@@ -84,8 +84,10 @@ pub struct ClusterInfo {
 impl ClusterInfo {
     /// Builds cluster info from screen and camera parameters.
     pub fn new(screen_width: u32, screen_height: u32, camera: &Camera) -> Self {
-        let clusters_x = (screen_width + cluster_config::CLUSTER_SIZE_X - 1) / cluster_config::CLUSTER_SIZE_X;
-        let clusters_y = (screen_height + cluster_config::CLUSTER_SIZE_Y - 1) / cluster_config::CLUSTER_SIZE_Y;
+        let clusters_x =
+            (screen_width + cluster_config::CLUSTER_SIZE_X - 1) / cluster_config::CLUSTER_SIZE_X;
+        let clusters_y =
+            (screen_height + cluster_config::CLUSTER_SIZE_Y - 1) / cluster_config::CLUSTER_SIZE_Y;
         let depth_slices = cluster_config::CLUSTER_DEPTH;
         let total_clusters = clusters_x * clusters_y * depth_slices;
 
@@ -115,7 +117,11 @@ impl ClusterInfo {
 }
 
 /// Builds the cluster bounds for the given camera and screen dimensions.
-pub fn build_clusters(camera: &Camera, screen_width: u32, screen_height: u32) -> Vec<ClusterBounds> {
+pub fn build_clusters(
+    camera: &Camera,
+    screen_width: u32,
+    screen_height: u32,
+) -> Vec<ClusterBounds> {
     let cluster_info = ClusterInfo::new(screen_width, screen_height, camera);
     let mut bounds = Vec::with_capacity(cluster_info.total_clusters());
 
@@ -187,7 +193,7 @@ pub fn linearize_depth(depth_ndc: f32, near: f32, far: f32) -> f32 {
 pub fn get_depth_slice(linear_depth: f32, cluster_info: &ClusterInfo) -> u32 {
     let near = cluster_info.near;
     let _depth_scale = cluster_info.depth_scale;
-    
+
     // z_slice = ln(depth / near) / depth_scale
     let z_norm = ((linear_depth / near).max(1.0).ln() / _depth_scale).max(0.0);
     (z_norm as u32).min(cluster_info.depth_slices - 1)
@@ -296,7 +302,8 @@ pub fn assign_lights_to_clusters(
     for cluster_z in 0..cluster_info.depth_slices {
         for cluster_y in 0..cluster_info.clusters_y {
             for cluster_x in 0..cluster_info.clusters_x {
-                let cluster_idx = (cluster_z as usize) * (cluster_info.clusters_x as usize)
+                let cluster_idx = (cluster_z as usize)
+                    * (cluster_info.clusters_x as usize)
                     * (cluster_info.clusters_y as usize)
                     + (cluster_y as usize) * (cluster_info.clusters_x as usize)
                     + (cluster_x as usize);

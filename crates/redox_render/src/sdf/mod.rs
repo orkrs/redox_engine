@@ -34,9 +34,7 @@ pub mod gpu_atlas;
 
 pub use atlas::{BrickRef, SdfBrick, SdfBrickAtlas};
 pub use bake::{DistanceField64, bake_mesh};
-pub use gpu_atlas::{
-    GPU_ATLAS_EXTENT, MAX_SDF_BRICKS, SdfBrickPageGpu, SdfGpuAtlas, SdfSceneGpu,
-};
+pub use gpu_atlas::{GPU_ATLAS_EXTENT, MAX_SDF_BRICKS, SdfBrickPageGpu, SdfGpuAtlas, SdfSceneGpu};
 
 use redox_math::Vec3;
 

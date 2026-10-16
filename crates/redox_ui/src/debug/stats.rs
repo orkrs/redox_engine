@@ -17,8 +17,8 @@
 //! stats_panel.show(ctx);
 //! ```
 
-use std::collections::VecDeque;
 use egui_plot::{Line, Plot, PlotPoints};
+use std::collections::VecDeque;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -74,10 +74,7 @@ impl StatsPanel {
 
     /// Instantaneous FPS (reciprocal of the last frame time).
     fn current_fps(&self) -> f32 {
-        self.frame_times
-            .back()
-            .map(|&dt| 1.0 / dt)
-            .unwrap_or(0.0)
+        self.frame_times.back().map(|&dt| 1.0 / dt).unwrap_or(0.0)
     }
 
     /// Average FPS over the last [`AVG_WINDOW`] frames.
@@ -169,17 +166,11 @@ impl StatsPanel {
                 ui.end_row();
 
                 ui.label("1 % low");
-                ui.label(
-                    egui::RichText::new(format!("{low_1:.1}"))
-                        .color(fps_color(low_1)),
-                );
+                ui.label(egui::RichText::new(format!("{low_1:.1}")).color(fps_color(low_1)));
                 ui.end_row();
 
                 ui.label("0.1 % low");
-                ui.label(
-                    egui::RichText::new(format!("{low_01:.1}"))
-                        .color(fps_color(low_01)),
-                );
+                ui.label(egui::RichText::new(format!("{low_01:.1}")).color(fps_color(low_01)));
                 ui.end_row();
 
                 ui.label("Uptime");

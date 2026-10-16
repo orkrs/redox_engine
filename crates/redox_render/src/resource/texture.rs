@@ -138,8 +138,7 @@ impl Texture {
                 for row in 0..mip_h as usize {
                     let src = row * unpadded_bpr;
                     let dst = row * bytes_per_row as usize;
-                    padded[dst..dst + unpadded_bpr]
-                        .copy_from_slice(&data[src..src + unpadded_bpr]);
+                    padded[dst..dst + unpadded_bpr].copy_from_slice(&data[src..src + unpadded_bpr]);
                 }
                 queue.write_texture(
                     wgpu::ImageCopyTexture {
@@ -338,17 +337,35 @@ impl Texture {
 
     /// Creates a 1×1 white texture (fallback for materials without a texture).
     pub fn white_1x1(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
-        Self::solid_1x1(device, queue, [255, 255, 255, 255], "white_1x1", wgpu::TextureFormat::Rgba8UnormSrgb)
+        Self::solid_1x1(
+            device,
+            queue,
+            [255, 255, 255, 255],
+            "white_1x1",
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+        )
     }
 
     /// Creates a 1×1 flat normal map (0.5, 0.5, 1.0 -> [128, 128, 255]).
     pub fn normal_1x1(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
-        Self::solid_1x1(device, queue, [128, 128, 255, 255], "normal_1x1", wgpu::TextureFormat::Rgba8Unorm)
+        Self::solid_1x1(
+            device,
+            queue,
+            [128, 128, 255, 255],
+            "normal_1x1",
+            wgpu::TextureFormat::Rgba8Unorm,
+        )
     }
 
     /// Creates a 1×1 metallic-roughness map (Metallic=0, Roughness=1.0 -> [255, 255, 0, 255]).
     pub fn mr_1x1(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
-        Self::solid_1x1(device, queue, [255, 255, 0, 255], "mr_1x1", wgpu::TextureFormat::Rgba8Unorm)
+        Self::solid_1x1(
+            device,
+            queue,
+            [255, 255, 0, 255],
+            "mr_1x1",
+            wgpu::TextureFormat::Rgba8Unorm,
+        )
     }
 }
 
@@ -389,11 +406,7 @@ struct Out { @location(0) color: vec4<f32> };
 }
 "#;
 
- 
-fn blit_pipeline(
-    device: &wgpu::Device,
-    format: wgpu::TextureFormat,
-) -> Arc<wgpu::RenderPipeline> {
+fn blit_pipeline(device: &wgpu::Device, format: wgpu::TextureFormat) -> Arc<wgpu::RenderPipeline> {
     static CACHE: LazyLock<Mutex<HashMap<wgpu::TextureFormat, Arc<wgpu::RenderPipeline>>>> =
         LazyLock::new(|| Mutex::new(HashMap::new()));
     let mut guard = CACHE.lock();
@@ -432,30 +445,32 @@ fn blit_pipeline(
         bind_group_layouts: &[&bgl],
         push_constant_ranges: &[],
     });
-    let pipeline = Arc::new(device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("blit_mipmap_pipeline"),
-        layout: Some(&layout),
-        vertex: wgpu::VertexState {
-            module: &shader,
-            entry_point: "vs",
-            buffers: &[],
-            compilation_options: Default::default(),
-        },
-        fragment: Some(wgpu::FragmentState {
-            module: &shader,
-            entry_point: "fs",
-            targets: &[Some(wgpu::ColorTargetState {
-                format,
-                blend: None,
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-            compilation_options: Default::default(),
+    let pipeline = Arc::new(
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("blit_mipmap_pipeline"),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: "vs",
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: "fs",
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
         }),
-        primitive: wgpu::PrimitiveState::default(),
-        depth_stencil: None,
-        multisample: wgpu::MultisampleState::default(),
-        multiview: None,
-    }));
+    );
     guard.insert(key, pipeline.clone());
     pipeline
 }

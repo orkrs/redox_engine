@@ -49,7 +49,13 @@ impl InputState {
     /// Convenience: returns the analog value of an action (0.0 for digital false).
     pub fn action_value(&self, name: &str) -> f32 {
         match self.action(name) {
-            ActionKind::Digital(v) => if v { 1.0 } else { 0.0 },
+            ActionKind::Digital(v) => {
+                if v {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
             ActionKind::Analog(v) => v,
         }
     }
@@ -68,7 +74,8 @@ impl InputState {
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
-                self.mouse.set_position(position.x as f32, position.y as f32);
+                self.mouse
+                    .set_position(position.x as f32, position.y as f32);
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 let btn = crate::mouse::MouseButton::from(*button);
@@ -77,16 +84,14 @@ impl InputState {
                     ElementState::Released => self.mouse.release(btn),
                 }
             }
-            WindowEvent::MouseWheel { delta, .. } => {
-                match delta {
-                    winit::event::MouseScrollDelta::LineDelta(dx, dy) => {
-                        self.mouse.scroll(*dx, *dy);
-                    }
-                    winit::event::MouseScrollDelta::PixelDelta(pos) => {
-                        self.mouse.scroll(pos.x as f32, pos.y as f32);
-                    }
+            WindowEvent::MouseWheel { delta, .. } => match delta {
+                winit::event::MouseScrollDelta::LineDelta(dx, dy) => {
+                    self.mouse.scroll(*dx, *dy);
                 }
-            }
+                winit::event::MouseScrollDelta::PixelDelta(pos) => {
+                    self.mouse.scroll(pos.x as f32, pos.y as f32);
+                }
+            },
             _ => {}
         }
     }

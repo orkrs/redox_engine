@@ -13,27 +13,26 @@
 //! Use [`Handle<AudioData>`] with the asset manager for async loading.
 
 pub mod asset_types;
-pub mod context;
 pub mod components;
+pub mod context;
 pub mod debug;
 pub mod loader;
+pub mod mixer;
 pub mod spatial;
 pub mod systems;
-pub mod mixer;
 
 pub use asset_types::AudioData;
-pub use context::{sync_assets_to_audio, with_audio, AudioContext};
 pub use components::{
-    AudioEmitter, AudioListener, SpatialAudioEmitter, ReverbZone, ReverbPreset, AcousticMaterial,
+    AcousticMaterial, AudioEmitter, AudioListener, ReverbPreset, ReverbZone, SpatialAudioEmitter,
 };
-pub use loader::AudioLoader;
+pub use context::{AudioContext, sync_assets_to_audio, with_audio};
 pub use debug::AudioDebugDraw;
-pub use systems::{
-    check_occlusion, reverb_listener_system, occlusion_raycast_system, compute_active_reverb,
-    OcclusionResult,
-};
+pub use loader::AudioLoader;
 pub use mixer::{
-    MixerBus, MixerBusId, MixerGraph, PlayMode, PlayRequest,
-    linear_to_db, db_to_linear, DuckingController,
+    DuckingController, MixerBus, MixerBusId, MixerGraph, PlayMode, PlayRequest, db_to_linear,
+    linear_to_db,
 };
-
+pub use systems::{
+    OcclusionResult, check_occlusion, compute_active_reverb, occlusion_raycast_system,
+    reverb_listener_system,
+};

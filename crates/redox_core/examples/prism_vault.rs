@@ -14,13 +14,13 @@ use std::time::Instant;
 
 use kira::dsp::Frame;
 use kira::sound::static_sound::{StaticSoundData, StaticSoundSettings};
-use redox_audio::{with_audio, AudioContext, MixerBusId};
+use redox_audio::{AudioContext, MixerBusId, with_audio};
 use redox_core::config::EngineConfig;
 use redox_core::window::create_window;
 use redox_ecs::{Entity, World};
 use redox_gameplay::{
-    ability_cooldown_system, gameplay_effect_system, Ability, ActiveEffects, AttributeSet,
-    GameplayEffect, StateTreeComponent,
+    Ability, ActiveEffects, AttributeSet, GameplayEffect, StateTreeComponent,
+    ability_cooldown_system, gameplay_effect_system,
 };
 use redox_input::InputState;
 use redox_math::{Quat, Vec3};
@@ -32,7 +32,7 @@ use redox_render::material::Material;
 use redox_render::mesh::primitive::{create_cube, create_sphere};
 use redox_render::systems::{RenderObject, Transform};
 use redox_scene::{
-    generate_to, tick_streaming, PcgKind, PcgParams, StreamedActor, StreamingReport, WorldPartition,
+    PcgKind, PcgParams, StreamedActor, StreamingReport, WorldPartition, generate_to, tick_streaming,
 };
 use redox_ui::context::UiContext;
 use redox_vfx::{ParticleEmitter, ParticleEmitterComponent, ParticleSystem};
@@ -177,13 +177,7 @@ fn main() {
                         }
 
                         let input = world.get_resource::<InputState>().cloned();
-                        tick_game(
-                            &mut world,
-                            &assets,
-                            &mut session,
-                            input.as_ref(),
-                            dt,
-                        );
+                        tick_game(&mut world, &assets, &mut session, input.as_ref(), dt);
                         ctx.upload_particles_from_vfx(&session.particles);
                         sync_hud_stats(&mut session, &world);
                         ability_cooldown_system(&mut world, dt);
@@ -393,7 +387,13 @@ fn build_arena(world: &mut World, ctx: &mut RenderContext) -> ArenaAssets {
         m
     });
 
-    spawn_mesh(world, cube, floor_mat, Vec3::ZERO, Vec3::new(ARENA, 0.35, ARENA));
+    spawn_mesh(
+        world,
+        cube,
+        floor_mat,
+        Vec3::ZERO,
+        Vec3::new(ARENA, 0.35, ARENA),
+    );
     let half = ARENA * 0.5;
     // Low curbs, not 5 m slabs: a 34×5 wall fills the FOV whenever the orbit
     // camera looks at it and bloom turns that face into a "glowing roof".
@@ -496,7 +496,12 @@ fn spawn_run(world: &mut World, assets: &ArenaAssets) -> Session {
                 material_index: assets.crystal_mat,
             },
         );
-        world.add_component(e, Crystal { spin: i as f32 * 0.4 });
+        world.add_component(
+            e,
+            Crystal {
+                spin: i as f32 * 0.4,
+            },
+        );
         crystals.push(e);
     }
 
@@ -823,12 +828,10 @@ fn tick_game(
     }
 
     for &crystal_e in &session.crystals {
-        let spin = world
-            .get_component_mut::<Crystal>(crystal_e)
-            .map(|c| {
-                c.spin += dt * 1.4;
-                c.spin
-            });
+        let spin = world.get_component_mut::<Crystal>(crystal_e).map(|c| {
+            c.spin += dt * 1.4;
+            c.spin
+        });
         if let Some(spin) = spin {
             if let Some(t) = world.get_component_mut::<Transform>(crystal_e) {
                 t.rotation = Quat::from_rotation_y(spin);
@@ -955,11 +958,7 @@ fn build_lights(time: f32, vsm: bool) -> LightScene {
     }
 }
 
-fn extract_objects(
-    world: &World,
-    assets: &ArenaAssets,
-    ctx: &RenderContext,
-) -> Vec<RenderObject> {
+fn extract_objects(world: &World, assets: &ArenaAssets, ctx: &RenderContext) -> Vec<RenderObject> {
     let mut out = Vec::new();
     for e in world.all_entities() {
         if let (Some(t), Some(r)) = (
@@ -1048,15 +1047,9 @@ fn draw_hud(
                 ui.add(egui::ProgressBar::new(session.health / 100.0).text("HP"));
                 ui.add(egui::ProgressBar::new(session.stamina / 100.0).text("Stamina"));
                 if session.phase == Phase::Won {
-                    ui.colored_label(
-                        egui::Color32::from_rgb(80, 220, 140),
-                        "VAULT CLEARED!",
-                    );
+                    ui.colored_label(egui::Color32::from_rgb(80, 220, 140), "VAULT CLEARED!");
                 } else if session.phase == Phase::Lost {
-                    ui.colored_label(
-                        egui::Color32::from_rgb(240, 90, 90),
-                        "BREACH — press R",
-                    );
+                    ui.colored_label(egui::Color32::from_rgb(240, 90, 90), "BREACH — press R");
                 }
                 ui.separator();
                 ui.label("WASD · Q/E · Shift dash · R · F1 debug");
@@ -1125,14 +1118,19 @@ fn draw_hud(
                 ));
                 ui.monospace("GTAO: slice AO + bent normals → 5×5 bilateral blur → upsample");
                 ui.monospace("Dir. shadow: VSM trace (1 Vogel ray) → temporal filter → PBR sample");
-                ui.monospace("Bloom: 5-mip downsample → tent upsample → composite (knee 1.2, *0.25)");
+                ui.monospace(
+                    "Bloom: 5-mip downsample → tent upsample → composite (knee 1.2, *0.25)",
+                );
                 ui.monospace("Substrate: eval_substrate_lit in pbr.wgsl (VG resolve = base lobe)");
 
                 if let Some(vg) = &ctx.vg_system {
                     let s = vg.stats();
                     ui.monospace(format!(
                         "VG: {}/{} meshlets  tris {}/{}",
-                        s.visible_meshlets, s.total_meshlets, s.visible_triangles, s.total_triangles
+                        s.visible_meshlets,
+                        s.total_meshlets,
+                        s.visible_triangles,
+                        s.total_triangles
                     ));
                 } else {
                     ui.monospace("VG: runtime not initialised");
@@ -1196,13 +1194,7 @@ fn draw_hud(
     }
 }
 
-fn spawn_mesh(
-    world: &mut World,
-    mesh: usize,
-    material: usize,
-    pos: Vec3,
-    scale: Vec3,
-) -> Entity {
+fn spawn_mesh(world: &mut World, mesh: usize, material: usize, pos: Vec3, scale: Vec3) -> Entity {
     let e = world.spawn();
     world.add_component(
         e,

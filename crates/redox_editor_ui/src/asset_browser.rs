@@ -19,9 +19,8 @@ impl AssetKind {
             .as_deref()
         {
             Some("glb") | Some("gltf") => Self::Mesh,
-            Some("png") | Some("jpg") | Some("jpeg") | Some("webp") | Some("hdr") | Some("ktx2") => {
-                Self::Texture
-            }
+            Some("png") | Some("jpg") | Some("jpeg") | Some("webp") | Some("hdr")
+            | Some("ktx2") => Self::Texture,
             Some("ron") => Self::Scene,
             _ => Self::Other,
         }

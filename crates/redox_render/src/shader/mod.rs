@@ -16,8 +16,8 @@
 
 pub mod slang;
 pub mod watch;
+pub use slang::{SlangCompileOptions, SlangCompiler, SlangOutput, SlangTarget};
 pub use watch::{ShaderReloadReport, ShaderWatcher};
-pub use slang::{SlangCompiler, SlangCompileOptions, SlangTarget, SlangOutput};
 
 pub const FORWARD_WGSL: &str = include_str!("../../shaders/forward.wgsl");
 pub const PBR_WGSL: &str = include_str!("../../shaders/pbr.wgsl");
@@ -72,15 +72,35 @@ const EMBEDDED: &[(&str, &str, &str)] = &[
     ("gtao", "gtao.wgsl", GTAO_WGSL),
     ("gtao_blur", "gtao_blur.wgsl", GTAO_BLUR_WGSL),
     ("gtao_upsample", "gtao_upsample.wgsl", GTAO_UPSAMPLE_WGSL),
-    ("vsm_shadow_trace", "vsm_shadow_trace.wgsl", VSM_SHADOW_TRACE_WGSL),
-    ("vsm_shadow_temporal", "vsm_shadow_temporal.wgsl", VSM_SHADOW_TEMPORAL_WGSL),
+    (
+        "vsm_shadow_trace",
+        "vsm_shadow_trace.wgsl",
+        VSM_SHADOW_TRACE_WGSL,
+    ),
+    (
+        "vsm_shadow_temporal",
+        "vsm_shadow_temporal.wgsl",
+        VSM_SHADOW_TEMPORAL_WGSL,
+    ),
     ("velocity", "velocity.wgsl", VELOCITY_WGSL),
     ("taa", "taa.wgsl", TAA_WGSL),
     ("msaa_resolve", "msaa_resolve.wgsl", MSAA_RESOLVE_WGSL),
     ("tone_mapping", "tone_mapping.wgsl", TONE_MAPPING_WGSL),
-    ("equirect_to_cube", "equirect_to_cube.wgsl", EQUIRECT_TO_CUBE_WGSL),
-    ("irradiance_convolution", "irradiance_convolution.wgsl", IRRADIANCE_CONVOLUTION_WGSL),
-    ("prefilter_convolution", "prefilter_convolution.wgsl", PREFILTER_CONVOLUTION_WGSL),
+    (
+        "equirect_to_cube",
+        "equirect_to_cube.wgsl",
+        EQUIRECT_TO_CUBE_WGSL,
+    ),
+    (
+        "irradiance_convolution",
+        "irradiance_convolution.wgsl",
+        IRRADIANCE_CONVOLUTION_WGSL,
+    ),
+    (
+        "prefilter_convolution",
+        "prefilter_convolution.wgsl",
+        PREFILTER_CONVOLUTION_WGSL,
+    ),
     ("brdf_lut", "brdf_lut.wgsl", BRDF_LUT_WGSL),
     ("debug_lines", "debug_lines.wgsl", DEBUG_LINES_WGSL),
     ("vg", "vg.wgsl", VG_WGSL),
@@ -90,24 +110,48 @@ const EMBEDDED: &[(&str, &str, &str)] = &[
     ("vg_cull", "vg_cull.wgsl", VG_CULL_WGSL),
     ("hiz_copy", "hiz_copy.wgsl", HIZ_COPY_WGSL),
     ("hiz_downsample", "hiz_downsample.wgsl", HIZ_DOWNSAMPLE_WGSL),
-    ("vertex_compressed", "vertex_compressed.wgsl", VERTEX_COMPRESSED_WGSL),
+    (
+        "vertex_compressed",
+        "vertex_compressed.wgsl",
+        VERTEX_COMPRESSED_WGSL,
+    ),
     ("skybox", "skybox.wgsl", SKYBOX_WGSL),
     ("vsm_depth", "vsm_depth.wgsl", VSM_DEPTH_WGSL),
     ("vsm_visibility", "vsm_visibility.wgsl", VSM_VISIBILITY_WGSL),
     ("vsm_request", "vsm_request.wgsl", VSM_REQUEST_WGSL),
     ("scatter_light", "scatter_light.wgsl", SCATTER_LIGHT_WGSL),
     ("bloom", "bloom.wgsl", BLOOM_WGSL),
-    ("cluster_cull_lights", "cluster_cull_lights.wgsl", CLUSTER_CULL_LIGHTS_WGSL),
+    (
+        "cluster_cull_lights",
+        "cluster_cull_lights.wgsl",
+        CLUSTER_CULL_LIGHTS_WGSL,
+    ),
     ("particle_sim", "particle_sim.wgsl", PARTICLE_SIM_WGSL),
-    ("particle_billboard", "particle_billboard.wgsl", PARTICLE_BILLBOARD_WGSL),
+    (
+        "particle_billboard",
+        "particle_billboard.wgsl",
+        PARTICLE_BILLBOARD_WGSL,
+    ),
     ("ddgi_trace", "ddgi_trace.wgsl", DDGI_TRACE_WGSL),
     ("smaa_edge", "smaa/edge.wgsl", SMAA_EDGE_WGSL),
     ("smaa_blend", "smaa/blend_weights.wgsl", SMAA_BLEND_WGSL),
-    ("smaa_neighborhood", "smaa/neighborhood.wgsl", SMAA_NEIGHBORHOOD_WGSL),
+    (
+        "smaa_neighborhood",
+        "smaa/neighborhood.wgsl",
+        SMAA_NEIGHBORHOOD_WGSL,
+    ),
 ];
 
 /// Shaders that are compiled with the shared compressed-vertex decode prelude.
-const WITH_VERTEX_DECODE: &[&str] = &["pbr", "shadow", "normal", "vg", "vg_vis", "vg_shadow", "vsm_depth"];
+const WITH_VERTEX_DECODE: &[&str] = &[
+    "pbr",
+    "shadow",
+    "normal",
+    "vg",
+    "vg_vis",
+    "vg_shadow",
+    "vsm_depth",
+];
 
 /// Compile-time copy of a shader, keyed by file stem (e.g. `"pbr"` -> [`PBR_WGSL`]).
 /// Unknown names yield an empty source; wgpu rejects it with a clear label at module creation.
@@ -198,30 +242,40 @@ pub fn create_shader_with_vertex_decode(
     label: &str,
     source: &str,
 ) -> wgpu::ShaderModule {
-    create_shader_module(device, label, &shader_with_vertex_decode(&resolve_source(source)))
+    create_shader_module(
+        device,
+        label,
+        &shader_with_vertex_decode(&resolve_source(source)),
+    )
 }
 
 #[cfg(test)]
 mod tests {
     fn validate_wgsl(label: &str, source: &str) {
-        let module = naga::front::wgsl::parse_str(source).unwrap_or_else(|e| {
-            panic!("{label}: parse failed: {e}")
-        });
+        let module = naga::front::wgsl::parse_str(source)
+            .unwrap_or_else(|e| panic!("{label}: parse failed: {e}"));
         let mut validator = naga::valid::Validator::new(
             naga::valid::ValidationFlags::all(),
             naga::valid::Capabilities::all(),
         );
-        validator.validate(&module).unwrap_or_else(|e| {
-            panic!("{label}: validation failed: {e:?}")
-        });
+        validator
+            .validate(&module)
+            .unwrap_or_else(|e| panic!("{label}: validation failed: {e:?}"));
     }
 
     #[test]
     fn embedded_table_matches_files_and_constants() {
         for (stem, rel, src) in super::EMBEDDED {
             assert!(!src.is_empty(), "{stem}: embedded source is empty");
-            assert!(super::shaders_dir().join(rel).is_file(), "{stem}: {rel} missing on disk");
-            assert_eq!(super::embedded_stem(src), Some(*stem), "{stem}: content lookup");
+            assert!(
+                super::shaders_dir().join(rel).is_file(),
+                "{stem}: {rel} missing on disk"
+            );
+            assert_eq!(
+                super::embedded_stem(src),
+                Some(*stem),
+                "{stem}: content lookup"
+            );
         }
     }
 
@@ -234,7 +288,10 @@ mod tests {
     #[test]
     fn vertex_decode_list_names_real_shaders() {
         for stem in super::WITH_VERTEX_DECODE {
-            assert!(!super::fallback(stem).is_empty(), "{stem} is not an embedded shader");
+            assert!(
+                !super::fallback(stem).is_empty(),
+                "{stem} is not an embedded shader"
+            );
         }
     }
 

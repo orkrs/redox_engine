@@ -74,9 +74,7 @@ impl WorldSession {
         let root = root.as_ref().to_path_buf();
         std::fs::create_dir_all(&root)?;
         let manifest = WorldManifest::new(
-            root.file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("world"),
+            root.file_name().and_then(|s| s.to_str()).unwrap_or("world"),
             16.0,
             42,
         );

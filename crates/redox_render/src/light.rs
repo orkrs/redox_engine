@@ -38,7 +38,7 @@ pub struct DirectionalLight {
     pub source_angle: f32,
     /// Enables the PCSS soft-shadow path in the PBR shader.
     pub soft_shadows: bool,
-    /// Routes directional shadows through the VSM clipmap (soft_shadows=2) instead of PCSS (1). 
+    /// Routes directional shadows through the VSM clipmap (soft_shadows=2) instead of PCSS (1).
     pub vsm: bool,
 }
 
@@ -64,33 +64,83 @@ impl Default for DirectionalLight {
 }
 
 impl redox_reflect::Reflect for DirectionalLight {
-    fn type_name() -> &'static str { "DirectionalLight" }
+    fn type_name() -> &'static str {
+        "DirectionalLight"
+    }
     fn to_value(&self) -> redox_reflect::ReflectValue {
         use redox_reflect::ReflectValue;
-        ReflectValue::Struct { type_name: Self::type_name().into(), fields: vec![
-            ("direction".into(), ReflectValue::vec3(self.direction.x, self.direction.y, self.direction.z)),
-            ("color".into(), ReflectValue::vec3(self.color.x, self.color.y, self.color.z)),
-            ("intensity".into(), ReflectValue::f32(self.intensity)),
-            ("source_angle".into(), ReflectValue::f32(self.source_angle)),
-            ("soft_shadows".into(), ReflectValue::Bool(self.soft_shadows)),
-            ("vsm".into(), ReflectValue::Bool(self.vsm)),
-        ]}
+        ReflectValue::Struct {
+            type_name: Self::type_name().into(),
+            fields: vec![
+                (
+                    "direction".into(),
+                    ReflectValue::vec3(self.direction.x, self.direction.y, self.direction.z),
+                ),
+                (
+                    "color".into(),
+                    ReflectValue::vec3(self.color.x, self.color.y, self.color.z),
+                ),
+                ("intensity".into(), ReflectValue::f32(self.intensity)),
+                ("source_angle".into(), ReflectValue::f32(self.source_angle)),
+                ("soft_shadows".into(), ReflectValue::Bool(self.soft_shadows)),
+                ("vsm".into(), ReflectValue::Bool(self.vsm)),
+            ],
+        }
     }
-    fn apply(&mut self, value: &redox_reflect::ReflectValue) -> Result<(), redox_reflect::ReflectError> {
-        if let Some(v) = value.field("direction").and_then(redox_reflect::ReflectValue::as_vec3) { self.direction = Vec3::from_array(v).normalize_or_zero(); }
-        if let Some(v) = value.field("color").and_then(redox_reflect::ReflectValue::as_vec3) { self.color = Vec3::from_array(v); }
-        if let Some(v) = value.field("intensity").and_then(redox_reflect::ReflectValue::as_f32) { self.intensity = v; }
-        if let Some(v) = value.field("source_angle").and_then(redox_reflect::ReflectValue::as_f32) { self.source_angle = v; }
-        if let Some(redox_reflect::ReflectValue::Bool(b)) = value.field("soft_shadows") { self.soft_shadows = *b; }
-        if let Some(redox_reflect::ReflectValue::Bool(b)) = value.field("vsm") { self.vsm = *b; }
+    fn apply(
+        &mut self,
+        value: &redox_reflect::ReflectValue,
+    ) -> Result<(), redox_reflect::ReflectError> {
+        if let Some(v) = value
+            .field("direction")
+            .and_then(redox_reflect::ReflectValue::as_vec3)
+        {
+            self.direction = Vec3::from_array(v).normalize_or_zero();
+        }
+        if let Some(v) = value
+            .field("color")
+            .and_then(redox_reflect::ReflectValue::as_vec3)
+        {
+            self.color = Vec3::from_array(v);
+        }
+        if let Some(v) = value
+            .field("intensity")
+            .and_then(redox_reflect::ReflectValue::as_f32)
+        {
+            self.intensity = v;
+        }
+        if let Some(v) = value
+            .field("source_angle")
+            .and_then(redox_reflect::ReflectValue::as_f32)
+        {
+            self.source_angle = v;
+        }
+        if let Some(redox_reflect::ReflectValue::Bool(b)) = value.field("soft_shadows") {
+            self.soft_shadows = *b;
+        }
+        if let Some(redox_reflect::ReflectValue::Bool(b)) = value.field("vsm") {
+            self.vsm = *b;
+        }
         Ok(())
     }
     fn reflect_schema() -> redox_reflect::ReflectSchema {
-        redox_reflect::ReflectSchema { type_name: Self::type_name(), fields: vec![
-            redox_reflect::ReflectField { name: "direction", type_name: "Vec3" },
-            redox_reflect::ReflectField { name: "color", type_name: "Vec3" },
-            redox_reflect::ReflectField { name: "intensity", type_name: "f32" },
-        ]}
+        redox_reflect::ReflectSchema {
+            type_name: Self::type_name(),
+            fields: vec![
+                redox_reflect::ReflectField {
+                    name: "direction",
+                    type_name: "Vec3",
+                },
+                redox_reflect::ReflectField {
+                    name: "color",
+                    type_name: "Vec3",
+                },
+                redox_reflect::ReflectField {
+                    name: "intensity",
+                    type_name: "f32",
+                },
+            ],
+        }
     }
 }
 
@@ -153,28 +203,49 @@ impl redox_reflect::Reflect for PointLight {
                 ("intensity".into(), ReflectValue::f32(self.intensity)),
                 ("radius".into(), ReflectValue::f32(self.radius)),
                 ("cast_shadows".into(), ReflectValue::Bool(self.cast_shadows)),
-                ("source_radius".into(), ReflectValue::f32(self.source_radius)),
+                (
+                    "source_radius".into(),
+                    ReflectValue::f32(self.source_radius),
+                ),
             ],
         }
     }
 
-    fn apply(&mut self, value: &redox_reflect::ReflectValue) -> Result<(), redox_reflect::ReflectError> {
-        if let Some(v) = value.field("position").and_then(redox_reflect::ReflectValue::as_vec3) {
+    fn apply(
+        &mut self,
+        value: &redox_reflect::ReflectValue,
+    ) -> Result<(), redox_reflect::ReflectError> {
+        if let Some(v) = value
+            .field("position")
+            .and_then(redox_reflect::ReflectValue::as_vec3)
+        {
             self.position = Vec3::from_array(v);
         }
-        if let Some(v) = value.field("color").and_then(redox_reflect::ReflectValue::as_vec3) {
+        if let Some(v) = value
+            .field("color")
+            .and_then(redox_reflect::ReflectValue::as_vec3)
+        {
             self.color = Vec3::from_array(v);
         }
-        if let Some(v) = value.field("intensity").and_then(redox_reflect::ReflectValue::as_f32) {
+        if let Some(v) = value
+            .field("intensity")
+            .and_then(redox_reflect::ReflectValue::as_f32)
+        {
             self.intensity = v;
         }
-        if let Some(v) = value.field("radius").and_then(redox_reflect::ReflectValue::as_f32) {
+        if let Some(v) = value
+            .field("radius")
+            .and_then(redox_reflect::ReflectValue::as_f32)
+        {
             self.radius = v;
         }
         if let Some(redox_reflect::ReflectValue::Bool(b)) = value.field("cast_shadows") {
             self.cast_shadows = *b;
         }
-        if let Some(v) = value.field("source_radius").and_then(redox_reflect::ReflectValue::as_f32) {
+        if let Some(v) = value
+            .field("source_radius")
+            .and_then(redox_reflect::ReflectValue::as_f32)
+        {
             self.source_radius = v;
         }
         Ok(())
@@ -266,7 +337,11 @@ impl LightUniform {
             point_lights_pos: [[0.0; 4]; 128],
             point_lights_color: [[0.0; 4]; 128],
             num_point_lights: 0,
-            soft_shadows: if dir_light.vsm { 2u32 } else { u32::from(dir_light.soft_shadows) },
+            soft_shadows: if dir_light.vsm {
+                2u32
+            } else {
+                u32::from(dir_light.soft_shadows)
+            },
             point_light_path: 0,
             vsm_screen_shadows: 0,
         }

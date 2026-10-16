@@ -1,8 +1,8 @@
 //! Action mapping — abstract game actions bound to physical inputs.
 
+use crate::mouse::MouseButton;
 use std::collections::HashMap;
 use winit::keyboard::KeyCode;
-use crate::mouse::MouseButton;
 
 /// The kind of action value.
 #[derive(Debug, Clone)]
@@ -212,4 +212,3 @@ mod tests {
         assert_eq!(y, 0.0);
     }
 }
-

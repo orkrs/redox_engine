@@ -69,15 +69,8 @@ pub fn bounds_vectors(aabb: &Aabb) -> ([f32; 4], [f32; 4]) {
     let min = aabb.min;
     let max = aabb.max;
     let ext = max - min;
-    let ext = Vec3::new(
-        ext.x.max(1e-6),
-        ext.y.max(1e-6),
-        ext.z.max(1e-6),
-    );
-    (
-        [min.x, min.y, min.z, 0.0],
-        [ext.x, ext.y, ext.z, 0.0],
-    )
+    let ext = Vec3::new(ext.x.max(1e-6), ext.y.max(1e-6), ext.z.max(1e-6));
+    ([min.x, min.y, min.z, 0.0], [ext.x, ext.y, ext.z, 0.0])
 }
 
 /// Quantize vertices relative to `aabb` into 16-byte records.
@@ -86,10 +79,7 @@ pub fn compress_vertices(vertices: &[Vertex], aabb: &Aabb) -> Vec<CompressedVert
     let min = Vec3::from_array([min_arr[0], min_arr[1], min_arr[2]]);
     let ext = Vec3::from_array([ext_arr[0], ext_arr[1], ext_arr[2]]);
 
-    vertices
-        .iter()
-        .map(|v| compress_one(v, min, ext))
-        .collect()
+    vertices.iter().map(|v| compress_one(v, min, ext)).collect()
 }
 
 fn compress_one(v: &Vertex, min: Vec3, ext: Vec3) -> CompressedVertex {

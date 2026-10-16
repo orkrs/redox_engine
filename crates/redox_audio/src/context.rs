@@ -18,9 +18,9 @@ use kira::manager::backend::DefaultBackend;
 use kira::manager::{AudioManager, AudioManagerSettings};
 use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle, StaticSoundSettings};
 use kira::spatial::emitter::EmitterSettings;
+use kira::spatial::listener::ListenerHandle;
 use kira::spatial::listener::ListenerSettings;
 use kira::spatial::scene::{SpatialSceneHandle, SpatialSceneSettings};
-use kira::spatial::listener::ListenerHandle;
 use kira::track::effect::filter::{FilterBuilder, FilterHandle, FilterMode};
 use kira::track::effect::reverb::{ReverbBuilder, ReverbHandle};
 use kira::track::{TrackBuilder, TrackHandle};
@@ -209,11 +209,7 @@ impl AudioContext {
         self.play_asset_id(id, request)
     }
 
-    fn play_asset_id(
-        &mut self,
-        id: AssetId,
-        request: PlayRequest,
-    ) -> Option<StaticSoundHandle> {
+    fn play_asset_id(&mut self, id: AssetId, request: PlayRequest) -> Option<StaticSoundHandle> {
         let voice_gain = self.mixer.voice_gain(&request);
         if voice_gain <= 0.0001 {
             return None;
@@ -277,7 +273,9 @@ impl AudioContext {
 
     /// Applies the occlusion curve to the main-track lowpass (muffled when blocked).
     pub fn apply_occlusion_lowpass(&mut self, occlusion: f32) {
-        self.set_lowpass_filter(Self::lowpass_cutoff_from_occlusion(occlusion.clamp(0.0, 1.0)));
+        self.set_lowpass_filter(Self::lowpass_cutoff_from_occlusion(
+            occlusion.clamp(0.0, 1.0),
+        ));
     }
 
     /// Applies reverb decay (seconds) and damping (0..1) to the main-track reverb.

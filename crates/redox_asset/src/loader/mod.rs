@@ -8,8 +8,8 @@ mod gltf_loader;
 mod image_loader;
 
 pub use gltf_loader::{
-    load_scene_from_path, GltfLoader, GltfMaterialData, GltfMeshData, GltfNodeData, GltfSceneData,
-    GltfTextureData,
+    GltfLoader, GltfMaterialData, GltfMeshData, GltfNodeData, GltfSceneData, GltfTextureData,
+    load_scene_from_path,
 };
 pub use image_loader::ImageLoader;
 
@@ -25,7 +25,11 @@ pub trait AssetLoader: Send + Sync + 'static {
 
     /// Loads from a filesystem path (default: read bytes already provided).
     /// glTF uses this to resolve sibling `.bin` / `.png` URIs.
-    fn load_from_path(&self, path: &std::path::Path, bytes: &[u8]) -> Result<Self::Asset, AssetError> {
+    fn load_from_path(
+        &self,
+        path: &std::path::Path,
+        bytes: &[u8],
+    ) -> Result<Self::Asset, AssetError> {
         let _ = path;
         self.load(bytes)
     }

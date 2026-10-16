@@ -40,8 +40,8 @@ pub use asset_pipeline::build_vg_asset;
 pub use culling::Frustum;
 pub use lod::{LodChainConfig, LodLevelConfig};
 pub use meshlet::{
-    DrawIndexedIndirectCmd, MeshletDescriptor, VGAssetData, VGInstanceData,
-    MAX_TRIANGLES_PER_MESHLET, MAX_VERTICES_PER_MESHLET,
+    DrawIndexedIndirectCmd, MAX_TRIANGLES_PER_MESHLET, MAX_VERTICES_PER_MESHLET, MeshletDescriptor,
+    VGAssetData, VGInstanceData,
 };
 pub use runtime::{VGAssetId, VGConfig, VGInstanceHandle, VGStats, VGSystem};
 

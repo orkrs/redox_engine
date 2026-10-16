@@ -6,60 +6,63 @@
 
 pub mod asset_types;
 pub mod camera;
-pub mod clustering;
-pub mod cluster_manager;
 pub mod cluster_gpu_cull;
+pub mod cluster_manager;
+pub mod clustering;
 pub mod context;
 pub mod frame;
+pub mod gi;
 pub mod light;
-pub mod registry;
-pub mod renderer;
 pub mod material;
 pub mod mesh;
 pub mod pass;
 pub mod post;
-pub mod gi;
+pub mod profiler;
+pub mod registry;
+pub mod renderer;
 pub mod resource;
 pub mod sdf;
 pub mod shader;
-pub mod profiler;
 pub mod shadow;
 pub mod skinning;
 pub mod systems;
 pub mod virtual_geometry;
 
+pub use asset_types::{BlendMode, MaterialData, MaterialLayer, MeshData, TextureData};
 pub use camera::{ActiveCamera, Camera, CameraUniform, PreviousViewProj};
+pub use cluster_manager::{ClusterAssignmentStats, ClusterManager};
+pub use clustering::ClusterInfo;
 pub use context::RenderContext;
 pub use frame::FrameView;
-pub use renderer::{Renderer, pick_hdr_msaa_sample_count};
-pub use light::{DirectionalLight, LightScene, LightUniform, LightingMode, PointLight, PointLightGpu, SpotLight};
+pub use light::{
+    DirectionalLight, LightScene, LightUniform, LightingMode, PointLight, PointLightGpu, SpotLight,
+};
 pub use material::Material;
-pub use asset_types::{BlendMode, MaterialData, MaterialLayer, MeshData, TextureData};
 pub use mesh::{Mesh, Vertex};
 pub use profiler::{GpuProfiler, GpuTiming, PROFILER_FEATURES};
+pub use renderer::{Renderer, pick_hdr_msaa_sample_count};
 pub use skinning::SkinnedMeshBinding;
-pub use systems::{FrameRenderObjects, MaterialHandle, MeshHandle, PreviousTransform, RenderObject, Transform};
-pub use clustering::ClusterInfo;
-pub use cluster_manager::{ClusterManager, ClusterAssignmentStats};
+pub use systems::{
+    FrameRenderObjects, MaterialHandle, MeshHandle, PreviousTransform, RenderObject, Transform,
+};
 // TAA public surface
-pub use pass::taa::{halton_jitter_ndc, TaaUniform};
+pub use pass::taa::{TaaUniform, halton_jitter_ndc};
 // Skybox and transparency passes
-pub use pass::skybox::SkyboxPass;
+pub use pass::particles::ParticleGpuSystem;
 pub use pass::shared_layouts::{
     ForwardPass, ModelUniform, PbrBindGroupPlan, PbrFrameLayouts, PbrSceneLayouts, SharedLayouts,
 };
-pub use pass::particles::ParticleGpuSystem;
+pub use pass::skybox::SkyboxPass;
 pub use pass::transparent::TransparentPass;
 // Virtual Geometry visibility-buffer shading (Phase 3)
 pub use pass::vg_resolve::{
-    bind_vis_draw_state, build_material_storage, build_meshlet_storage,
-    VgResolvePass, VgVisPass, VIS_ID_FORMAT, VIS_ID_SENTINEL,
-    VIS_NORMAL_DEPTH_FORMAT, VIS_UV_FORMAT,
+    VIS_ID_FORMAT, VIS_ID_SENTINEL, VIS_NORMAL_DEPTH_FORMAT, VIS_UV_FORMAT, VgResolvePass,
+    VgVisPass, bind_vis_draw_state, build_material_storage, build_meshlet_storage,
 };
 // Tone mapping (ACES filmic + exposure)
 pub use post::tone_mapping::{
-    TonemapUniform, create_tonemap_bind_group, create_tone_mapping_pipeline,
-    create_rcas_present_pipeline,
+    TonemapUniform, create_rcas_present_pipeline, create_tone_mapping_pipeline,
+    create_tonemap_bind_group,
 };
 // Sharp AA passes (MSAA smart resolve + SMAA 1×)
 pub use pass::msaa_resolve::MsaaResolvePass;
@@ -69,13 +72,11 @@ pub use post::bloom::BloomPass;
 // Global illumination (Phase 5)
 pub use gi::{DdgiProbe, DdgiProbeGrid};
 // ScatterLight stochastic lighting (Phase 4)
-pub use pass::scatter_light::{
-    ScatterLightPass, ScatterLightUniform, SCATTER_LIGHT_SAMPLE_COUNT,
-};
+pub use pass::scatter_light::{SCATTER_LIGHT_SAMPLE_COUNT, ScatterLightPass, ScatterLightUniform};
 // Virtual Geometry
 pub use virtual_geometry::{
-    VGAssetId, VGConfig, VGInstanceHandle, VGStats, VGSystem, VGAssetData,
-    VirtualMesh, VirtualMeshConfig,
+    VGAssetData, VGAssetId, VGConfig, VGInstanceHandle, VGStats, VGSystem, VirtualMesh,
+    VirtualMeshConfig,
 };
 // Shadow / VSM quality presets
 pub use shadow::{SmrtConfig, SmrtQuality};

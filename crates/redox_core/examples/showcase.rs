@@ -16,7 +16,7 @@ use redox_render::frame::FrameView;
 use redox_render::light::{LightScene, PointLight};
 use redox_render::material::Material;
 use redox_render::mesh::primitive;
-use redox_render::systems::{prepare_vg_frame, RenderObject, Transform};
+use redox_render::systems::{RenderObject, Transform, prepare_vg_frame};
 use redox_render::virtual_geometry::VirtualMesh;
 use redox_ui::context::UiContext;
 use winit::keyboard::KeyCode;
@@ -56,12 +56,42 @@ fn main() {
     let green_mat = ctx.add_material(Material::solid(Vec3::new(0.15, 0.75, 0.25)));
     let blue_mat = ctx.add_material(Material::solid(Vec3::new(0.2, 0.4, 0.9)));
 
-    spawn(&mut world, ground_mesh, ground_mat, Vec3::ZERO, Vec3::new(24.0, 0.25, 24.0));
+    spawn(
+        &mut world,
+        ground_mesh,
+        ground_mat,
+        Vec3::ZERO,
+        Vec3::new(24.0, 0.25, 24.0),
+    );
     // Non-uniform scale exercises the inverse-transpose normal matrix.
-    spawn(&mut world, box_mesh, red_mat, Vec3::new(-3.0, 1.1, 0.0), Vec3::new(2.0, 0.5, 2.0));
-    spawn(&mut world, box_mesh, green_mat, Vec3::new(0.5, 1.5, -1.5), Vec3::new(1.2, 3.0, 1.2));
-    spawn(&mut world, box_mesh, blue_mat, Vec3::new(3.2, 0.9, 1.8), Vec3::ONE);
-    spawn(&mut world, box_mesh, green_mat, Vec3::new(2.2, 0.45, -3.4), Vec3::splat(0.9));
+    spawn(
+        &mut world,
+        box_mesh,
+        red_mat,
+        Vec3::new(-3.0, 1.1, 0.0),
+        Vec3::new(2.0, 0.5, 2.0),
+    );
+    spawn(
+        &mut world,
+        box_mesh,
+        green_mat,
+        Vec3::new(0.5, 1.5, -1.5),
+        Vec3::new(1.2, 3.0, 1.2),
+    );
+    spawn(
+        &mut world,
+        box_mesh,
+        blue_mat,
+        Vec3::new(3.2, 0.9, 1.8),
+        Vec3::ONE,
+    );
+    spawn(
+        &mut world,
+        box_mesh,
+        green_mat,
+        Vec3::new(2.2, 0.45, -3.4),
+        Vec3::splat(0.9),
+    );
 
     // Phase-3 VG object: visibility buffer + PBR resolve path.
     let vg_asset = ctx
@@ -230,8 +260,7 @@ fn main() {
                                 });
                             });
                         ui.draw_debug(&mut world);
-                        let mut encoder =
-                            ctx.device.create_command_encoder(&Default::default());
+                        let mut encoder = ctx.device.create_command_encoder(&Default::default());
                         ui.end_frame_and_render(
                             ctx.device(),
                             ctx.queue(),
@@ -286,7 +315,17 @@ fn spawn(world: &mut World, mesh: usize, material: usize, pos: Vec3, scale: Vec3
     let e = world.spawn();
     world.add_component(
         e,
-        Transform { translation: pos, rotation: Quat::IDENTITY, scale },
+        Transform {
+            translation: pos,
+            rotation: Quat::IDENTITY,
+            scale,
+        },
     );
-    world.add_component(e, Renderable { mesh_index: mesh, material_index: material });
+    world.add_component(
+        e,
+        Renderable {
+            mesh_index: mesh,
+            material_index: material,
+        },
+    );
 }

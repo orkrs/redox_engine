@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use redox_anim::procedural::{chain_model, demo_rig};
-use redox_anim::{apply_two_bone_ik, Animator, Pose, SkinnedModel};
+use redox_anim::{Animator, Pose, SkinnedModel, apply_two_bone_ik};
 use redox_core::config::EngineConfig;
 use redox_core::window::create_window;
 use redox_input::InputState;
@@ -78,8 +78,22 @@ impl DemoScene {
         let crate_mat = r.add_material(Material::solid(Vec3::new(0.55, 0.38, 0.22)));
 
         let rigs = vec![
-            make_rig(r, demo_rig(), 0, Vec3::new(-3.0, 0.0, 0.0), Vec3::new(0.15, 0.65, 0.65), false),
-            make_rig(r, demo_rig(), 1, Vec3::new(0.0, 0.0, 0.0), Vec3::new(0.80, 0.25, 0.60), false),
+            make_rig(
+                r,
+                demo_rig(),
+                0,
+                Vec3::new(-3.0, 0.0, 0.0),
+                Vec3::new(0.15, 0.65, 0.65),
+                false,
+            ),
+            make_rig(
+                r,
+                demo_rig(),
+                1,
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(0.80, 0.25, 0.60),
+                false,
+            ),
             make_rig(
                 r,
                 chain_model(2, 1.0, 0.14, 16),
@@ -89,7 +103,15 @@ impl DemoScene {
                 true,
             ),
         ];
-        Self { rigs, ground_mesh, ground_mat, target_mesh, target_mat, target_world: Vec3::ZERO, crate_mat }
+        Self {
+            rigs,
+            ground_mesh,
+            ground_mat,
+            target_mesh,
+            target_mat,
+            target_world: Vec3::ZERO,
+            crate_mat,
+        }
     }
 
     /// Poses every rig for animation time `t` (seconds) and uploads the deformed meshes.
@@ -97,11 +119,22 @@ impl DemoScene {
         for rig in &mut self.rigs {
             let skeleton = &rig.model.skeleton;
             let local = if rig.ik {
-                let target_world = rig.base + Vec3::new(0.9 * (0.9 * t).cos(), 0.9 + 0.5 * (0.7 * t).sin(), 0.6 * (0.9 * t).sin());
+                let target_world = rig.base
+                    + Vec3::new(
+                        0.9 * (0.9 * t).cos(),
+                        0.9 + 0.5 * (0.7 * t).sin(),
+                        0.6 * (0.9 * t).sin(),
+                    );
                 self.target_world = target_world;
                 let mut local = skeleton.bind_local_pose();
                 // Pole points at the camera so the elbow bends toward the viewer.
-                apply_two_bone_ik(skeleton, &mut local, [0, 1, 2], target_world - rig.base, Vec3::new(0.0, 1.0, 4.0));
+                apply_two_bone_ik(
+                    skeleton,
+                    &mut local,
+                    [0, 1, 2],
+                    target_world - rig.base,
+                    Vec3::new(0.0, 1.0, 4.0),
+                );
                 local
             } else {
                 rig.animator.time = t;
@@ -112,7 +145,10 @@ impl DemoScene {
                 log::warn!("skinned mesh update rejected");
             }
             if rig.binding.last_overshoot() > 0.0 {
-                log::warn!("skinned mesh left its quantisation bounds by {}", rig.binding.last_overshoot());
+                log::warn!(
+                    "skinned mesh left its quantisation bounds by {}",
+                    rig.binding.last_overshoot()
+                );
             }
         }
     }
@@ -121,16 +157,33 @@ impl DemoScene {
     fn deformed_world_bounds(&self) -> Vec<Aabb> {
         self.rigs
             .iter()
-            .map(|rig| rig.binding.swept_bounds().transform(Mat4::from_translation(rig.base)))
+            .map(|rig| {
+                rig.binding
+                    .swept_bounds()
+                    .transform(Mat4::from_translation(rig.base))
+            })
             .collect()
     }
 
     fn objects(&self, r: &Renderer) -> Vec<RenderObject> {
         let mut out = Vec::new();
-        let ground = Mat4::from_scale_rotation_translation(Vec3::new(24.0, 0.25, 24.0), Quat::IDENTITY, Vec3::new(0.0, -0.125, 0.0));
+        let ground = Mat4::from_scale_rotation_translation(
+            Vec3::new(24.0, 0.25, 24.0),
+            Quat::IDENTITY,
+            Vec3::new(0.0, -0.125, 0.0),
+        );
         out.push(object(r, ground, self.ground_mesh, self.ground_mat));
-        out.push(object(r, Mat4::from_translation(self.target_world), self.target_mesh, self.target_mat));
-        let crate_model = Mat4::from_scale_rotation_translation(Vec3::splat(0.9), Quat::from_rotation_y(0.5), Vec3::new(-1.6, 0.45, 1.8));
+        out.push(object(
+            r,
+            Mat4::from_translation(self.target_world),
+            self.target_mesh,
+            self.target_mat,
+        ));
+        let crate_model = Mat4::from_scale_rotation_translation(
+            Vec3::splat(0.9),
+            Quat::from_rotation_y(0.5),
+            Vec3::new(-1.6, 0.45, 1.8),
+        );
         out.push(object(r, crate_model, self.ground_mesh, self.crate_mat));
         for rig in &self.rigs {
             let model = Mat4::from_translation(rig.base);
@@ -146,7 +199,14 @@ impl DemoScene {
     }
 }
 
-fn make_rig(r: &mut Renderer, model: SkinnedModel, clip: usize, base: Vec3, color: Vec3, ik: bool) -> Rig {
+fn make_rig(
+    r: &mut Renderer,
+    model: SkinnedModel,
+    clip: usize,
+    base: Vec3,
+    color: Vec3,
+    ik: bool,
+) -> Rig {
     let bind = model
         .geometry
         .positions
@@ -159,15 +219,34 @@ fn make_rig(r: &mut Renderer, model: SkinnedModel, clip: usize, base: Vec3, colo
     material.roughness = 0.42;
     material.metallic = 0.1;
     let material = r.add_material(material);
-    Rig { model, binding, animator: Animator { clip, ..Default::default() }, material, base, ik }
+    Rig {
+        model,
+        binding,
+        animator: Animator {
+            clip,
+            ..Default::default()
+        },
+        material,
+        base,
+        ik,
+    }
 }
 
 fn object(r: &Renderer, model: Mat4, mesh: usize, material: usize) -> RenderObject {
     let bounds = r.get_mesh_bounds(mesh).map_or(
-        Aabb { min: Vec3::splat(-1.0e9), max: Vec3::splat(1.0e9) },
+        Aabb {
+            min: Vec3::splat(-1.0e9),
+            max: Vec3::splat(1.0e9),
+        },
         |b| b.transform(model),
     );
-    RenderObject { model_matrix: model, color: [1.0; 4], mesh_index: mesh, material_index: material, bounds }
+    RenderObject {
+        model_matrix: model,
+        color: [1.0; 4],
+        mesh_index: mesh,
+        material_index: material,
+        bounds,
+    }
 }
 
 /// Camera slowly swinging around the scene.
@@ -184,10 +263,15 @@ fn configure_renderer(r: &mut Renderer) {
 fn load_environment(r: &mut Renderer) {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/skybox.hdr");
     let Ok(bytes) = std::fs::read(&path) else {
-        log::warn!("no environment at {}; using the flat clear colour", path.display());
+        log::warn!(
+            "no environment at {}; using the flat clear colour",
+            path.display()
+        );
         return;
     };
-    match redox_render::resource::texture::Texture::from_hdr_bytes(&r.device, &r.queue, &bytes, "skybox") {
+    match redox_render::resource::texture::Texture::from_hdr_bytes(
+        &r.device, &r.queue, &bytes, "skybox",
+    ) {
         Ok(texture) => {
             r.set_environment(&texture);
             r.set_skybox(true);
@@ -235,7 +319,8 @@ impl SunShadow {
 }
 
 fn light_scene(sun_shadow: SunShadow, point_shadows: bool) -> LightScene {
-    let mut sun = DirectionalLight::new(Vec3::new(-0.45, 1.0, 0.55), Vec3::new(1.0, 0.94, 0.84), 2.2);
+    let mut sun =
+        DirectionalLight::new(Vec3::new(-0.45, 1.0, 0.55), Vec3::new(1.0, 0.94, 0.84), 2.2);
     // `vsm` routes the sun through the VSM clipmap; without it the sun casts no shadow.
     sun.soft_shadows = false;
     sun.vsm = sun_shadow == SunShadow::Vsm;
@@ -243,8 +328,24 @@ fn light_scene(sun_shadow: SunShadow, point_shadows: bool) -> LightScene {
         directional: sun,
         ambient: Vec3::new(0.10, 0.12, 0.16),
         points: vec![
-            shadowed(PointLight::new(Vec3::new(-4.0, 2.6, 3.0), Vec3::new(0.35, 0.55, 1.0), 26.0, 12.0), point_shadows),
-            shadowed(PointLight::new(Vec3::new(4.0, 2.6, 3.0), Vec3::new(1.0, 0.55, 0.30), 26.0, 12.0), point_shadows),
+            shadowed(
+                PointLight::new(
+                    Vec3::new(-4.0, 2.6, 3.0),
+                    Vec3::new(0.35, 0.55, 1.0),
+                    26.0,
+                    12.0,
+                ),
+                point_shadows,
+            ),
+            shadowed(
+                PointLight::new(
+                    Vec3::new(4.0, 2.6, 3.0),
+                    Vec3::new(1.0, 0.55, 0.30),
+                    26.0,
+                    12.0,
+                ),
+                point_shadows,
+            ),
         ],
         spots: vec![],
     }
@@ -258,13 +359,17 @@ fn main() {
     env_logger::init();
     let args: Vec<String> = std::env::args().collect();
     if let Some(i) = args.iter().position(|a| a == "--golden") {
-        let dir = args.get(i + 1).map_or_else(|| PathBuf::from("golden"), PathBuf::from);
+        let dir = args
+            .get(i + 1)
+            .map_or_else(|| PathBuf::from("golden"), PathBuf::from);
         let update = args.iter().any(|a| a == "--update-golden");
         std::process::exit(if golden(&dir, update, &args) { 0 } else { 1 });
     }
     match args.iter().position(|a| a == "--screenshot") {
         Some(i) => {
-            let dir = args.get(i + 1).map_or_else(|| PathBuf::from("skinned_demo_shots"), PathBuf::from);
+            let dir = args
+                .get(i + 1)
+                .map_or_else(|| PathBuf::from("skinned_demo_shots"), PathBuf::from);
             let size = args
                 .iter()
                 .position(|a| a == "--size")
@@ -279,16 +384,27 @@ fn main() {
 }
 
 fn windowed() {
-    let config = EngineConfig { window_title: "RedOx — skinned animation demo".to_string(), ..Default::default() };
+    let config = EngineConfig {
+        window_title: "RedOx — skinned animation demo".to_string(),
+        ..Default::default()
+    };
     let (event_loop, window) = create_window(&config);
-    let mut ctx = pollster::block_on(RenderContext::new(window.clone(), config.wgpu_present_mode()));
+    let mut ctx = pollster::block_on(RenderContext::new(
+        window.clone(),
+        config.wgpu_present_mode(),
+    ));
     ctx.set_render_scale(config.render_scale);
     configure_renderer(&mut ctx);
     let mut scene = DemoScene::new(&mut ctx);
     let mut input = InputState::new();
-    let (mut sun_shadows, mut point_shadows, mut follow_deformation) = (SunShadow::Vsm, false, true);
+    let (mut sun_shadows, mut point_shadows, mut follow_deformation) =
+        (SunShadow::Vsm, false, true);
     let title = |sun: SunShadow, point: bool, follow: bool| {
-        format!("RedOx skinned demo | V sun shadows: {sun:?} | P point shadows: {} | D follow deformation: {}", on_off(point), on_off(follow))
+        format!(
+            "RedOx skinned demo | V sun shadows: {sun:?} | P point shadows: {} | D follow deformation: {}",
+            on_off(point),
+            on_off(follow)
+        )
     };
     window.set_title(&title(sun_shadows, point_shadows, follow_deformation));
     let (start, mut last) = (Instant::now(), Instant::now());
@@ -390,7 +506,10 @@ fn windowed() {
 fn screenshots(dir: &std::path::Path, size: (u32, u32), args: &[String]) -> Vec<(usize, PathBuf)> {
     let mut written = Vec::new();
     std::fs::create_dir_all(dir).expect("create screenshot dir");
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor { backends: wgpu::Backends::all(), ..Default::default() });
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::all(),
+        ..Default::default()
+    });
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
         power_preference: wgpu::PowerPreference::HighPerformance,
         compatible_surface: None,
@@ -426,7 +545,11 @@ fn screenshots(dir: &std::path::Path, size: (u32, u32), args: &[String]) -> Vec<
     let mut renderer = Renderer::from_shared_device(device, queue, &adapter, None, config);
     let target = renderer.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("skinned_demo_target"),
-        size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -523,7 +646,8 @@ fn golden(dir: &std::path::Path, update: bool, args: &[String]) -> bool {
             continue;
         }
         let diff = image_difference(a.as_raw(), b.as_raw());
-        let pass = diff.mean_error <= GOLDEN_MAX_MEAN_ERROR && diff.bad_fraction <= GOLDEN_MAX_BAD_FRACTION;
+        let pass = diff.mean_error <= GOLDEN_MAX_MEAN_ERROR
+            && diff.bad_fraction <= GOLDEN_MAX_BAD_FRACTION;
         println!(
             "golden: frame {frame}: mean error {:.2}, {:.3}% pixels off -> {}",
             diff.mean_error,
@@ -571,7 +695,13 @@ mod tests {
     #[test]
     fn identical_images_have_no_difference() {
         let img = vec![10u8, 20, 30, 255, 200, 100, 0, 255];
-        assert_eq!(image_difference(&img, &img), ImageDifference { mean_error: 0.0, bad_fraction: 0.0 });
+        assert_eq!(
+            image_difference(&img, &img),
+            ImageDifference {
+                mean_error: 0.0,
+                bad_fraction: 0.0
+            }
+        );
     }
 
     #[test]
@@ -595,9 +725,19 @@ mod tests {
     }
 }
 
-fn read_texture(device: &wgpu::Device, queue: &wgpu::Queue, texture: &wgpu::Texture, w: u32, h: u32) -> Vec<u8> {
+fn read_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+    w: u32,
+    h: u32,
+) -> Vec<u8> {
     let bytes_per_row = w * 4;
-    assert_eq!(bytes_per_row % wgpu::COPY_BYTES_PER_ROW_ALIGNMENT, 0, "width must keep rows 256-byte aligned");
+    assert_eq!(
+        bytes_per_row % wgpu::COPY_BYTES_PER_ROW_ALIGNMENT,
+        0,
+        "width must keep rows 256-byte aligned"
+    );
     let buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("screenshot_readback"),
         size: u64::from(bytes_per_row * h),
@@ -606,16 +746,31 @@ fn read_texture(device: &wgpu::Device, queue: &wgpu::Queue, texture: &wgpu::Text
     });
     let mut encoder = device.create_command_encoder(&Default::default());
     encoder.copy_texture_to_buffer(
-        wgpu::ImageCopyTexture { texture, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+        wgpu::ImageCopyTexture {
+            texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
         wgpu::ImageCopyBuffer {
             buffer: &buffer,
-            layout: wgpu::ImageDataLayout { offset: 0, bytes_per_row: Some(bytes_per_row), rows_per_image: Some(h) },
+            layout: wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(bytes_per_row),
+                rows_per_image: Some(h),
+            },
         },
-        wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        wgpu::Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        },
     );
     queue.submit(Some(encoder.finish()));
     let slice = buffer.slice(..);
-    slice.map_async(wgpu::MapMode::Read, |result| result.expect("map screenshot buffer"));
+    slice.map_async(wgpu::MapMode::Read, |result| {
+        result.expect("map screenshot buffer")
+    });
     device.poll(wgpu::Maintain::Wait);
     let data = slice.get_mapped_range().to_vec();
     buffer.unmap();

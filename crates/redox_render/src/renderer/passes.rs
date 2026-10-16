@@ -4,7 +4,11 @@ use super::*;
 
 impl Renderer {
     /// Normal prepass (normals + linear depth for GTAO); skipped when pass recording is multi-threaded.
-    pub(super) fn record_normal_pass(&mut self, encoder: &mut wgpu::CommandEncoder, objects: &[RenderObject]) {
+    pub(super) fn record_normal_pass(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        objects: &[RenderObject],
+    ) {
         if !self.mt_command_recording {
             let mut normal_render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("normal_pass"),
@@ -210,8 +214,14 @@ impl Renderer {
             drop(temporal_pass);
 
             // Ping-pong: output buffer becomes next frame's history (no GPU copy).
-            std::mem::swap(&mut self.vsm_shadow_filtered_texture, &mut self.vsm_shadow_history_texture);
-            std::mem::swap(&mut self.vsm_shadow_filtered_view, &mut self.vsm_shadow_history_view);
+            std::mem::swap(
+                &mut self.vsm_shadow_filtered_texture,
+                &mut self.vsm_shadow_history_texture,
+            );
+            std::mem::swap(
+                &mut self.vsm_shadow_filtered_view,
+                &mut self.vsm_shadow_history_view,
+            );
             self.vsm_shadow_temporal_bind_group = self.vsm_shadow_pass.create_temporal_bind_group(
                 &self.device,
                 &self.vsm_shadow_raw_view,

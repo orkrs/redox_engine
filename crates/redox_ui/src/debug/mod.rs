@@ -15,13 +15,13 @@
 //! ui_ctx.debug.show(ctx, &world);
 //! ```
 
-pub mod stats;
-pub mod inspector;
 pub mod audio;
+pub mod inspector;
+pub mod stats;
 
-pub use stats::StatsPanel;
-pub use inspector::EntityInspector;
 pub use audio::AudioDebugPanel;
+pub use inspector::EntityInspector;
+pub use stats::StatsPanel;
 
 use redox_ecs::world::World;
 
@@ -100,7 +100,11 @@ impl DebugOverlay {
             .default_open(false)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    let stats_label = if self.stats.open { "📊 Stats ✓" } else { "📊 Stats" };
+                    let stats_label = if self.stats.open {
+                        "📊 Stats ✓"
+                    } else {
+                        "📊 Stats"
+                    };
                     if ui.small_button(stats_label).clicked() {
                         self.stats.open = !self.stats.open;
                     }

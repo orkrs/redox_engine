@@ -118,10 +118,11 @@ impl Renderer {
             );
             self.depth_msaa_texture = dt;
             self.depth_msaa_view = dv;
-            self.msaa_resolve_pass.set_sample_count(&self.queue, self.msaa_sample_count);
-            self.msaa_resolve_bg = self.msaa_resolve_pass.create_bind_group(
-                &self.device, &self.hdr_msaa_view,
-            );
+            self.msaa_resolve_pass
+                .set_sample_count(&self.queue, self.msaa_sample_count);
+            self.msaa_resolve_bg = self
+                .msaa_resolve_pass
+                .create_bind_group(&self.device, &self.hdr_msaa_view);
         }
     }
 
@@ -129,8 +130,7 @@ impl Renderer {
         let hdr_format = wgpu::TextureFormat::Rgba16Float;
         let sc = self.msaa_sample_count;
         self.pbr_pass = PbrPass::new(&self.device, hdr_format, sc);
-        self.transparent_pass =
-            TransparentPass::new(&self.device, &self.pbr_pass, hdr_format, sc);
+        self.transparent_pass = TransparentPass::new(&self.device, &self.pbr_pass, hdr_format, sc);
         self.debug_lines_pass =
             DebugLinesPass::new(&self.device, &self.shared_layouts.camera_bgl, sc);
         self.vg_resolve_pass = VgResolvePass::new(

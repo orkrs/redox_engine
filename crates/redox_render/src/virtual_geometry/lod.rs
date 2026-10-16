@@ -169,9 +169,24 @@ mod tests {
     fn unsorted_thresholds_still_monotone() {
         let cfg = LodChainConfig {
             levels: vec![
-                super::super::LodLevelConfig { max_triangles: 124, triangle_fraction: 1.0, max_relative_error: 0.0, screen_size_threshold: 0.01 },
-                super::super::LodLevelConfig { max_triangles: 124, triangle_fraction: 0.5, max_relative_error: 0.05, screen_size_threshold: 0.03 },
-                super::super::LodLevelConfig { max_triangles: 124, triangle_fraction: 0.25, max_relative_error: 0.15, screen_size_threshold: 0.0 },
+                super::super::LodLevelConfig {
+                    max_triangles: 124,
+                    triangle_fraction: 1.0,
+                    max_relative_error: 0.0,
+                    screen_size_threshold: 0.01,
+                },
+                super::super::LodLevelConfig {
+                    max_triangles: 124,
+                    triangle_fraction: 0.5,
+                    max_relative_error: 0.05,
+                    screen_size_threshold: 0.03,
+                },
+                super::super::LodLevelConfig {
+                    max_triangles: 124,
+                    triangle_fraction: 0.25,
+                    max_relative_error: 0.15,
+                    screen_size_threshold: 0.0,
+                },
             ],
         };
         // Misordered middle threshold: level 0 qualifies first whenever its

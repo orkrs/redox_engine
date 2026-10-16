@@ -5,8 +5,8 @@
 //! CPU one or two frames later ([`PageRequestPass::latest_bits`]); the clipmap then allocates
 //! and renders exactly those pages.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use bytemuck::{Pod, Zeroable};
 use redox_math::{Mat4, Vec3};
@@ -181,9 +181,18 @@ impl PageRequestPass {
                     binding: 0,
                     resource: wgpu::BindingResource::TextureView(depth_view),
                 },
-                wgpu::BindGroupEntry { binding: 1, resource: self.params.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 2, resource: vsm_info.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 3, resource: self.bits.as_entire_binding() },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: self.params.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: vsm_info.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: self.bits.as_entire_binding(),
+                },
             ],
         });
         {
@@ -214,11 +223,13 @@ impl PageRequestPass {
         }
         let done = Arc::new(AtomicBool::new(false));
         let flag = done.clone();
-        self.readback.slice(..).map_async(wgpu::MapMode::Read, move |result| {
-            if result.is_ok() {
-                flag.store(true, Ordering::Release);
-            }
-        });
+        self.readback
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                if result.is_ok() {
+                    flag.store(true, Ordering::Release);
+                }
+            });
         self.state = Readback::Mapping(done);
         if block {
             device.poll(wgpu::Maintain::Wait);

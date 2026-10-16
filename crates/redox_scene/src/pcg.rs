@@ -1,6 +1,6 @@
 //! Procedural cell/dungeon generation used by the `pcg` CLI and tests.
 
-use crate::ofpa::{write_world, ActorRecord, WorldManifest};
+use crate::ofpa::{ActorRecord, WorldManifest, write_world};
 use crate::{PartitionCell, SceneResult};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -131,13 +131,28 @@ fn generate_cell(
     });
 
     let border = matches!(params.kind, PcgKind::Arena)
-        && (cell.x == 0 || cell.y == 0 || cell.x == params.width - 1 || cell.y == params.height - 1);
+        && (cell.x == 0
+            || cell.y == 0
+            || cell.x == params.width - 1
+            || cell.y == params.height - 1);
     let dungeon_wall = matches!(params.kind, PcgKind::Dungeon)
         && [
-            PartitionCell { x: cell.x + 1, y: cell.y },
-            PartitionCell { x: cell.x - 1, y: cell.y },
-            PartitionCell { x: cell.x, y: cell.y + 1 },
-            PartitionCell { x: cell.x, y: cell.y - 1 },
+            PartitionCell {
+                x: cell.x + 1,
+                y: cell.y,
+            },
+            PartitionCell {
+                x: cell.x - 1,
+                y: cell.y,
+            },
+            PartitionCell {
+                x: cell.x,
+                y: cell.y + 1,
+            },
+            PartitionCell {
+                x: cell.x,
+                y: cell.y - 1,
+            },
         ]
         .iter()
         .any(|n| !occupied.contains(n));

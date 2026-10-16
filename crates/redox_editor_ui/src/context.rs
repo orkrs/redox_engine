@@ -132,7 +132,10 @@ impl EditorUiCtx {
     pub fn spawn_demo_agent(&self) {
         let mut world = self.world.lock();
         let e = world.spawn();
-        world.add_component(e, redox_math::Transform::from_translation(redox_math::Vec3::new(56.0, 1.0, 50.0)));
+        world.add_component(
+            e,
+            redox_math::Transform::from_translation(redox_math::Vec3::new(56.0, 1.0, 50.0)),
+        );
         world.add_component(e, StateTreeComponent::patrol_chase());
         world.add_component(e, AttributeSet::default_character());
         *self.demo_agent.lock() = Some(e);

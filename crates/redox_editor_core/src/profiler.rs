@@ -38,11 +38,7 @@ impl FrameProfiler {
 
     pub fn fps(&self) -> f32 {
         let ms = self.avg_ms();
-        if ms < 1e-4 {
-            0.0
-        } else {
-            1000.0 / ms
-        }
+        if ms < 1e-4 { 0.0 } else { 1000.0 / ms }
     }
 
     /// Approximate 1% low FPS (slowest 1% of frames → FPS).

@@ -178,9 +178,17 @@ impl DuckingController {
         };
 
         let rate = if self.active {
-            if self.attack_time > 1e-4 { dt / self.attack_time } else { 1.0 }
+            if self.attack_time > 1e-4 {
+                dt / self.attack_time
+            } else {
+                1.0
+            }
         } else {
-            if self.release_time > 1e-4 { dt / self.release_time } else { 1.0 }
+            if self.release_time > 1e-4 {
+                dt / self.release_time
+            } else {
+                1.0
+            }
         };
 
         if self.current_gain < target_linear {
@@ -303,7 +311,7 @@ mod tests {
     fn ducking_attenuates_music() {
         let mut g = MixerGraph::new().with_voice_ducking(-6.0);
         let normal_music = g.routed_gain(MixerBusId::Music);
-        
+
         // Trigger voice
         if let Some(duck) = &mut g.ducking {
             duck.active = true;
@@ -331,4 +339,3 @@ mod tests {
         assert!((g.voice_gain(&req) - 0.5).abs() < 1e-4);
     }
 }
-

@@ -96,7 +96,9 @@ impl VgGpuCull {
         let cmd_count_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("vg_cull_cmd_count"),
             size: 4,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 

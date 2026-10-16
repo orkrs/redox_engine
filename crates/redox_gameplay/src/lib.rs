@@ -9,9 +9,9 @@ use redox_ecs::{Query, World};
 use redox_math::Vec3;
 
 pub use state_tree::{
-    sentinel_patrol_chase, sentinel_patrol_chase_ranges, state_tree_system, StateId, StateNode,
-    StateTickResult, StateTransition, StateTree, StateTreeBuilder, StateTreeComponent,
-    StateTreeContext, TransitionCondition,
+    StateId, StateNode, StateTickResult, StateTransition, StateTree, StateTreeBuilder,
+    StateTreeComponent, StateTreeContext, TransitionCondition, sentinel_patrol_chase,
+    sentinel_patrol_chase_ranges, state_tree_system,
 };
 
 /// Named scalar attribute (health, stamina, etc.).

@@ -5,9 +5,9 @@
 //! then be used for fast intersection tests with bounding volumes such
 //! as AABBs and spheres.
 
-use crate::vector::Vec3;
-use crate::matrix::Mat4;
 use crate::bounds::Aabb;
+use crate::matrix::Mat4;
+use crate::vector::Vec3;
 
 /// A plane in 3D space defined by the equation `normal · point + distance = 0`.
 ///
@@ -109,9 +109,7 @@ impl Frustum {
 
         // Helper to create a plane from a Vec4 (row combination)
         // Extracting X, Y, Z for the normal and W for distance
-        let make_plane = |v: glam::Vec4| {
-            Plane::new(Vec3::new(v.x, v.y, v.z), v.w)
-        };
+        let make_plane = |v: glam::Vec4| Plane::new(Vec3::new(v.x, v.y, v.z), v.w);
 
         let mut frustum = Self {
             planes: [
@@ -152,9 +150,15 @@ impl Frustum {
 
             // P-vertex: find the corner most in the direction of the normal
             let mut p = min;
-            if plane.normal.x >= 0.0 { p.x = max.x; }
-            if plane.normal.y >= 0.0 { p.y = max.y; }
-            if plane.normal.z >= 0.0 { p.z = max.z; }
+            if plane.normal.x >= 0.0 {
+                p.x = max.x;
+            }
+            if plane.normal.y >= 0.0 {
+                p.y = max.y;
+            }
+            if plane.normal.z >= 0.0 {
+                p.z = max.z;
+            }
 
             // If the p-vertex is on the negative side of the plane, the AABB is outside
             if plane.dot_point(p) < 0.0 {

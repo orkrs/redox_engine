@@ -16,12 +16,12 @@ pub mod manager;
 pub mod storage;
 
 pub use error::AssetError;
-pub use event::{AssetLoadedEvent, AssetLoadFailedEvent, AssetReloadedEvent};
+pub use event::{AssetLoadFailedEvent, AssetLoadedEvent, AssetReloadedEvent};
 pub use handle::{AssetId, AssetStatus, Handle, WeakHandle};
 pub use hot_reload::{HotReloadWatcher, ReloadRequest};
 pub use loader::{
-    load_scene_from_path, AssetLoader, GltfLoader, GltfMaterialData, GltfMeshData, GltfNodeData,
-    GltfSceneData, GltfTextureData, ImageLoader,
+    AssetLoader, GltfLoader, GltfMaterialData, GltfMeshData, GltfNodeData, GltfSceneData,
+    GltfTextureData, ImageLoader, load_scene_from_path,
 };
 pub use manager::AssetManager;
 pub use storage::AssetStorage;

@@ -30,12 +30,18 @@ impl SkinnedMeshBinding {
     /// must cover how far any animation can move a vertex away from the bind pose.
     pub fn new(renderer: &mut Renderer, geometry: &SkinnedGeometry, bounds_margin: f32) -> Self {
         let vertices = bind_vertices(geometry);
-        let bind_bounds = vertices.iter().fold(Aabb::empty(), |b, v| b.expand(Vec3::from(v.position)));
+        let bind_bounds = vertices
+            .iter()
+            .fold(Aabb::empty(), |b, v| b.expand(Vec3::from(v.position)));
         let bounds = Aabb::from_center_size(
             bind_bounds.center(),
             bind_bounds.half_extents() + Vec3::splat(bounds_margin.max(0.0)),
         );
-        let mesh = Mesh { vertices: vertices.clone(), indices: geometry.indices.clone(), aabb: bounds };
+        let mesh = Mesh {
+            vertices: vertices.clone(),
+            indices: geometry.indices.clone(),
+            aabb: bounds,
+        };
         let mesh_slot = renderer.upload_mesh(&mesh);
         Self {
             geometry: geometry.clone(),
@@ -52,8 +58,14 @@ impl SkinnedMeshBinding {
     /// Returns `false` if the renderer rejected the update.
     pub fn update(&mut self, renderer: &Renderer, skin_matrices: &[Mat4]) -> bool {
         self.previous_bounds = (!self.positions.is_empty()).then(|| self.deformed_bounds());
-        self.geometry.deform_into(skin_matrices, &mut self.positions, &mut self.normals);
-        for ((vertex, position), normal) in self.vertices.iter_mut().zip(&self.positions).zip(&self.normals) {
+        self.geometry
+            .deform_into(skin_matrices, &mut self.positions, &mut self.normals);
+        for ((vertex, position), normal) in self
+            .vertices
+            .iter_mut()
+            .zip(&self.positions)
+            .zip(&self.normals)
+        {
             vertex.position = *position;
             vertex.normal = *normal;
         }
@@ -63,8 +75,14 @@ impl SkinnedMeshBinding {
     /// Tight local-space bounds of the vertices from the last [`Self::update`] (the bind-pose
     /// bounds before the first update).
     pub fn deformed_bounds(&self) -> Aabb {
-        let points: &[[f32; 3]] = if self.positions.is_empty() { &self.geometry.positions } else { &self.positions };
-        points.iter().fold(Aabb::empty(), |b, p| b.expand(Vec3::from(*p)))
+        let points: &[[f32; 3]] = if self.positions.is_empty() {
+            &self.geometry.positions
+        } else {
+            &self.positions
+        };
+        points
+            .iter()
+            .fold(Aabb::empty(), |b, p| b.expand(Vec3::from(*p)))
     }
 
     /// Bounds covering where the mesh was before the last update and where it is now.
@@ -89,7 +107,10 @@ impl SkinnedMeshBinding {
 
     /// Largest distance any deformed vertex of the last [`Self::update`] lies outside `bounds`.
     pub fn last_overshoot(&self) -> f32 {
-        let (min, max) = (self.bounds.center() - self.bounds.half_extents(), self.bounds.center() + self.bounds.half_extents());
+        let (min, max) = (
+            self.bounds.center() - self.bounds.half_extents(),
+            self.bounds.center() + self.bounds.half_extents(),
+        );
         self.positions
             .iter()
             .map(|p| {
@@ -114,8 +135,8 @@ fn bind_vertices(geometry: &SkinnedGeometry) -> Vec<Vertex> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use redox_anim::procedural::chain_model;
     use redox_anim::Pose;
+    use redox_anim::procedural::chain_model;
 
     #[test]
     fn bind_vertices_copy_geometry() {
@@ -131,9 +152,12 @@ mod tests {
     fn demo_animation_stays_inside_inflated_bounds() {
         let model = redox_anim::procedural::demo_rig();
         let vertices = bind_vertices(&model.geometry);
-        let bind = vertices.iter().fold(Aabb::empty(), |b, v| b.expand(Vec3::from(v.position)));
+        let bind = vertices
+            .iter()
+            .fold(Aabb::empty(), |b, v| b.expand(Vec3::from(v.position)));
         let margin = bind.half_extents().max_element();
-        let bounds = Aabb::from_center_size(bind.center(), bind.half_extents() + Vec3::splat(margin));
+        let bounds =
+            Aabb::from_center_size(bind.center(), bind.half_extents() + Vec3::splat(margin));
 
         let (mut p, mut n) = (Vec::new(), Vec::new());
         for clip in &model.clips {
@@ -141,9 +165,15 @@ mod tests {
                 let t = clip.duration * step as f32 / 40.0;
                 let local = clip.sample(&model.skeleton, t, true);
                 let pose = Pose::from_local(&model.skeleton, &local);
-                model.geometry.deform_into(&pose.skin_matrices(&model.skeleton), &mut p, &mut n);
+                model
+                    .geometry
+                    .deform_into(&pose.skin_matrices(&model.skeleton), &mut p, &mut n);
                 for pos in &p {
-                    assert!(bounds.contains_point(Vec3::from(*pos)), "{} t={t}: {pos:?} outside {bounds:?}", clip.name);
+                    assert!(
+                        bounds.contains_point(Vec3::from(*pos)),
+                        "{} t={t}: {pos:?} outside {bounds:?}",
+                        clip.name
+                    );
                 }
             }
         }

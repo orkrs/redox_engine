@@ -22,10 +22,7 @@ impl InspectorPanel {
         if let Some(attrs) = world.get_component::<AttributeSet>(e) {
             ui.label(format!(
                 "GAS  HP {:.0}/{:.0}  STA {:.0}/{:.0}",
-                attrs.health.current,
-                attrs.health.max,
-                attrs.stamina.current,
-                attrs.stamina.max
+                attrs.health.current, attrs.health.max, attrs.stamina.current, attrs.stamina.max
             ));
         }
 

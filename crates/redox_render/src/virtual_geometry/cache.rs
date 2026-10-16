@@ -9,9 +9,9 @@ use std::path::{Path, PathBuf};
 
 use bytemuck::Zeroable;
 
-use crate::mesh::{Mesh, Vertex};
 use super::lod::LodChainConfig;
 use super::meshlet::{MeshletDescriptor, VGAssetData};
+use crate::mesh::{Mesh, Vertex};
 
 const MAGIC: &[u8; 8] = b"RMESH1\0\0";
 const VERSION: u32 = 1;

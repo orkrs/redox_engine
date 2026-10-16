@@ -1,13 +1,23 @@
-use redox_math::{Vec3, Quat, Mat4, Transform};
+use redox_ecs::{Entity, World};
+use redox_math::{Mat4, Quat, Transform, Vec3};
 use redox_reflect::Reflect;
-use redox_ecs::{World, Entity};
 use redox_reflect::TypeRegistry;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum GizmoMode { #[default] Translate, Rotate, Scale }
+pub enum GizmoMode {
+    #[default]
+    Translate,
+    Rotate,
+    Scale,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum GizmoAxis { X, Y, Z, Screen }
+pub enum GizmoAxis {
+    X,
+    Y,
+    Z,
+    Screen,
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct GridSettings {
@@ -16,7 +26,11 @@ pub struct GridSettings {
     pub angle_step: f32,
 }
 
-impl Default for GizmoAxis { fn default() -> Self { Self::X } }
+impl Default for GizmoAxis {
+    fn default() -> Self {
+        Self::X
+    }
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct GizmoState {
@@ -28,19 +42,43 @@ pub struct GizmoState {
 }
 
 impl GizmoState {
-    pub fn new() -> Self { Self { mode: GizmoMode::Translate, grid: GridSettings { enabled: true, step: 0.5, angle_step: 15.0 }, ..Default::default() } }
+    pub fn new() -> Self {
+        Self {
+            mode: GizmoMode::Translate,
+            grid: GridSettings {
+                enabled: true,
+                step: 0.5,
+                angle_step: 15.0,
+            },
+            ..Default::default()
+        }
+    }
 
-    pub fn start_drag(&mut self, ray_origin: Vec3, ray_dir: Vec3, entity_pos: Vec3, transform: Transform, camera_forward: Vec3) -> bool {
+    pub fn start_drag(
+        &mut self,
+        ray_origin: Vec3,
+        ray_dir: Vec3,
+        entity_pos: Vec3,
+        transform: Transform,
+        camera_forward: Vec3,
+    ) -> bool {
         // Simple axis pick: test 3 axes as cylinders (approx with ray distance)
-        let axes = [(GizmoAxis::X, Vec3::X), (GizmoAxis::Y, Vec3::Y), (GizmoAxis::Z, Vec3::Z)];
+        let axes = [
+            (GizmoAxis::X, Vec3::X),
+            (GizmoAxis::Y, Vec3::Y),
+            (GizmoAxis::Z, Vec3::Z),
+        ];
         let mut best: Option<(GizmoAxis, f32)> = None;
         for (axis, dir) in axes {
             if let Some(t) = ray_intersect_axis(ray_origin, ray_dir, entity_pos, dir) {
                 let hit = ray_origin + ray_dir * t;
                 let dist = (hit - entity_pos).length();
-                if dist < 1.5 { // within gizmo length
+                if dist < 1.5 {
+                    // within gizmo length
                     let score = (hit - ray_origin).length();
-                    if best.is_none() || score < best.unwrap().1 { best = Some((axis, score)); }
+                    if best.is_none() || score < best.unwrap().1 {
+                        best = Some((axis, score));
+                    }
                 }
             }
         }
@@ -57,13 +95,24 @@ impl GizmoState {
         false
     }
 
-    pub fn update_drag(&self, ray_origin: Vec3, ray_dir: Vec3, entity_pos: Vec3, camera_forward: Vec3) -> Option<Vec3> {
+    pub fn update_drag(
+        &self,
+        ray_origin: Vec3,
+        ray_dir: Vec3,
+        entity_pos: Vec3,
+        camera_forward: Vec3,
+    ) -> Option<Vec3> {
         let axis = self.axis?;
         let start = self.drag_start?;
         let plane_normal = camera_forward;
         let cur = ray_plane_intersect(ray_origin, ray_dir, entity_pos, plane_normal)?;
         let delta = cur - start;
-        let axis_dir = match axis { GizmoAxis::X => Vec3::X, GizmoAxis::Y => Vec3::Y, GizmoAxis::Z => Vec3::Z, GizmoAxis::Screen => plane_normal };
+        let axis_dir = match axis {
+            GizmoAxis::X => Vec3::X,
+            GizmoAxis::Y => Vec3::Y,
+            GizmoAxis::Z => Vec3::Z,
+            GizmoAxis::Screen => plane_normal,
+        };
         let mut offset = axis_dir * delta.dot(axis_dir);
         if self.grid.enabled {
             let step = self.grid.step.max(0.001);
@@ -72,13 +121,28 @@ impl GizmoState {
         Some(offset)
     }
 
-    pub fn apply_drag(&self, world: &mut World, entity: Entity, offset: Vec3, _registry: &TypeRegistry, undo: &mut crate::undo::UndoStack) {
+    pub fn apply_drag(
+        &self,
+        world: &mut World,
+        entity: Entity,
+        offset: Vec3,
+        _registry: &TypeRegistry,
+        undo: &mut crate::undo::UndoStack,
+    ) {
         if let Some(start) = self.entity_start {
             let new_transform = self.dragged_transform(start, offset);
             // Record undo
-            if let Some(old_val) = world.get_component::<Transform>(entity).map(|t| t.to_value()) {
+            if let Some(old_val) = world
+                .get_component::<Transform>(entity)
+                .map(|t| t.to_value())
+            {
                 let new_val = new_transform.to_value();
-                undo.push(crate::undo::UndoCommand::SetComponent { entity, type_name: "Transform".into(), before: Some(old_val), after: Some(new_val) });
+                undo.push(crate::undo::UndoCommand::SetComponent {
+                    entity,
+                    type_name: "Transform".into(),
+                    before: Some(old_val),
+                    after: Some(new_val),
+                });
             }
             if let Some(t) = world.get_component_mut::<Transform>(entity) {
                 *t = new_transform;
@@ -137,7 +201,12 @@ fn snap_angle(angle_rad: f32, grid: &GridSettings) -> f32 {
     }
 }
 
-pub fn ray_intersect_axis(ray_origin: Vec3, ray_dir: Vec3, axis_origin: Vec3, axis_dir: Vec3) -> Option<f32> {
+pub fn ray_intersect_axis(
+    ray_origin: Vec3,
+    ray_dir: Vec3,
+    axis_origin: Vec3,
+    axis_dir: Vec3,
+) -> Option<f32> {
     // Closest distance between two lines
     let w0 = ray_origin - axis_origin;
     let a = ray_dir.dot(ray_dir);
@@ -146,25 +215,49 @@ pub fn ray_intersect_axis(ray_origin: Vec3, ray_dir: Vec3, axis_origin: Vec3, ax
     let d = ray_dir.dot(w0);
     let e = axis_dir.dot(w0);
     let denom = a * c - b * b;
-    if denom.abs() < 1e-6 { return None; }
+    if denom.abs() < 1e-6 {
+        return None;
+    }
     let t = (b * e - c * d) / denom;
     if t < 0.0 { None } else { Some(t) }
 }
-pub fn ray_plane_intersect(ray_origin: Vec3, ray_dir: Vec3, plane_point: Vec3, plane_normal: Vec3) -> Option<Vec3> {
+pub fn ray_plane_intersect(
+    ray_origin: Vec3,
+    ray_dir: Vec3,
+    plane_point: Vec3,
+    plane_normal: Vec3,
+) -> Option<Vec3> {
     let denom = plane_normal.dot(ray_dir);
-    if denom.abs() < 1e-6 { return None; }
+    if denom.abs() < 1e-6 {
+        return None;
+    }
     let t = (plane_point - ray_origin).dot(plane_normal) / denom;
-    if t < 0.0 { None } else { Some(ray_origin + ray_dir * t) }
+    if t < 0.0 {
+        None
+    } else {
+        Some(ray_origin + ray_dir * t)
+    }
 }
 pub fn screen_project(pos: Vec3, view_proj: Mat4, viewport_size: (u32, u32)) -> Option<Vec3> {
     let clip = view_proj * pos.extend(1.0);
-    if clip.w.abs() < 1e-6 { return None; }
+    if clip.w.abs() < 1e-6 {
+        return None;
+    }
     let ndc = clip.truncate() / clip.w;
-    Some(Vec3::new((ndc.x * 0.5 + 0.5) * viewport_size.0 as f32, (1.0 - (ndc.y * 0.5 + 0.5)) * viewport_size.1 as f32, ndc.z))
+    Some(Vec3::new(
+        (ndc.x * 0.5 + 0.5) * viewport_size.0 as f32,
+        (1.0 - (ndc.y * 0.5 + 0.5)) * viewport_size.1 as f32,
+        ndc.z,
+    ))
 }
 
 /// Generate world ray from viewport UV (0-1) and camera matrices
-pub fn screen_ray(uv: redox_math::Vec2, view: Mat4, proj: Mat4, viewport_size: (u32, u32)) -> (Vec3, Vec3) {
+pub fn screen_ray(
+    uv: redox_math::Vec2,
+    view: Mat4,
+    proj: Mat4,
+    viewport_size: (u32, u32),
+) -> (Vec3, Vec3) {
     // Convert UV to NDC
     let ndc_x = uv.x * 2.0 - 1.0;
     let ndc_y = 1.0 - uv.y * 2.0;
@@ -182,21 +275,29 @@ pub fn screen_ray(uv: redox_math::Vec2, view: Mat4, proj: Mat4, viewport_size: (
 }
 
 /// Focus camera on AABB (called on F)
-pub fn focus_camera_on_aabb(camera: &mut crate::camera::EditorCamera, aabb_center: Vec3, aabb_size: f32) {
+pub fn focus_camera_on_aabb(
+    camera: &mut crate::camera::EditorCamera,
+    aabb_center: Vec3,
+    aabb_size: f32,
+) {
     let center = aabb_center;
     let dist = (aabb_size * 0.6).max(2.0) / (camera.fov_y * 0.5).tan();
     let dir = (camera.eye - center).normalize_or_zero();
-    let dir = if dir.length_squared() < 1e-6 { Vec3::new(0.0, 0.3, 1.0).normalize() } else { dir };
+    let dir = if dir.length_squared() < 1e-6 {
+        Vec3::new(0.0, 0.3, 1.0).normalize()
+    } else {
+        dir
+    };
     camera.eye = center + dir * dist;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use redox_math::{Vec3, Transform};
-    use redox_ecs::World;
-    use redox_reflect::TypeRegistry;
     use crate::undo::UndoStack;
+    use redox_ecs::World;
+    use redox_math::{Transform, Vec3};
+    use redox_reflect::TypeRegistry;
     #[test]
     fn gizmo_translate_with_snap() {
         let mut world = World::new();
@@ -240,7 +341,11 @@ mod tests {
         GizmoState {
             mode,
             axis: Some(axis),
-            grid: GridSettings { enabled: snap, step: 0.5, angle_step: 15.0 },
+            grid: GridSettings {
+                enabled: snap,
+                step: 0.5,
+                angle_step: 15.0,
+            },
             ..Default::default()
         }
     }

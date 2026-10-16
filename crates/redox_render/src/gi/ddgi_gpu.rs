@@ -4,7 +4,7 @@ use bytemuck::{Pod, Zeroable};
 use redox_math::Vec3;
 
 use super::ddgi::{DdgiProbeGrid, GridDimensions};
-use crate::shader::{create_shader_module, DDGI_TRACE_WGSL};
+use crate::shader::{DDGI_TRACE_WGSL, create_shader_module};
 use crate::systems::RenderObject;
 
 /// Octahedral irradiance samples stored per probe (2×4 atlas).
@@ -304,15 +304,14 @@ fn oct_encode(n: Vec3) -> (f32, f32) {
         u = (1.0 - v.abs()) * sign_nonzero(ou);
         v = (1.0 - ou.abs()) * sign_nonzero(v);
     }
-    ((u * 0.5 + 0.5).clamp(0.0, 1.0), (v * 0.5 + 0.5).clamp(0.0, 1.0))
+    (
+        (u * 0.5 + 0.5).clamp(0.0, 1.0),
+        (v * 0.5 + 0.5).clamp(0.0, 1.0),
+    )
 }
 
 fn sign_nonzero(x: f32) -> f32 {
-    if x >= 0.0 {
-        1.0
-    } else {
-        -1.0
-    }
+    if x >= 0.0 { 1.0 } else { -1.0 }
 }
 
 #[allow(dead_code)]

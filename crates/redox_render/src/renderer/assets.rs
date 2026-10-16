@@ -60,7 +60,12 @@ impl Renderer {
             .texture_index
             .and_then(|idx| self.registry.legacy_texture(idx))
             .map(|t| &t.view)
-            .unwrap_or_else(|| self.registry.legacy_texture(0).map(|t| &t.view).expect("fallback texture"));
+            .unwrap_or_else(|| {
+                self.registry
+                    .legacy_texture(0)
+                    .map(|t| &t.view)
+                    .expect("fallback texture")
+            });
 
         let normal_view = material
             .normal_texture_index
@@ -83,7 +88,9 @@ impl Renderer {
             &self.common_sampler,
         );
 
-        let idx = self.registry.push_legacy_material(material, buffer, bind_group);
+        let idx = self
+            .registry
+            .push_legacy_material(material, buffer, bind_group);
         self.material_blend_flags.push(BlendMode::Opaque);
         self.vg_bind_groups_dirty = true;
         idx
@@ -184,10 +191,13 @@ impl Renderer {
         let bg = self
             .shared_layouts
             .create_texture_bind_group(&self.device, &tex);
-        let idx = self.registry.insert_texture(handle.id(), crate::registry::TextureSlot {
-            texture: tex,
-            bind_group: Some(bg),
-        });
+        let idx = self.registry.insert_texture(
+            handle.id(),
+            crate::registry::TextureSlot {
+                texture: tex,
+                bind_group: Some(bg),
+            },
+        );
         Ok(Some(idx))
     }
 

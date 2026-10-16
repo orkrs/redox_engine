@@ -8,15 +8,15 @@
 
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
-use std::io::Read;
 
 use flume::{Receiver, Sender};
 use redox_ecs::World;
 
 use crate::error::AssetError;
-use crate::event::{AssetLoadedEvent, AssetLoadFailedEvent, AssetReloadedEvent};
+use crate::event::{AssetLoadFailedEvent, AssetLoadedEvent, AssetReloadedEvent};
 use crate::handle::{AssetId, AssetStatus, Handle};
 use crate::hot_reload::HotReloadWatcher;
 use crate::loader::{AssetLoader, GltfLoader, GltfSceneData, ImageLoader};
@@ -210,23 +210,19 @@ impl AssetManager {
             r.insert(type_id, Box::new(LoaderWrapper { inner: loader }));
         }
 
-        self.inserters
-            .entry(type_id)
-            .or_insert(|any, id, boxed| {
-                if let Some(s) = any.downcast_mut::<AssetStorage<T>>() {
-                    if let Ok(asset) = boxed.downcast::<T>() {
-                        s.insert(Handle::new(id), *asset);
-                    }
+        self.inserters.entry(type_id).or_insert(|any, id, boxed| {
+            if let Some(s) = any.downcast_mut::<AssetStorage<T>>() {
+                if let Ok(asset) = boxed.downcast::<T>() {
+                    s.insert(Handle::new(id), *asset);
                 }
-            });
+            }
+        });
 
-        self.failed_markers
-            .entry(type_id)
-            .or_insert(|any, id| {
-                if let Some(s) = any.downcast_mut::<AssetStorage<T>>() {
-                    s.mark_failed(Handle::new(id));
-                }
-            });
+        self.failed_markers.entry(type_id).or_insert(|any, id| {
+            if let Some(s) = any.downcast_mut::<AssetStorage<T>>() {
+                s.mark_failed(Handle::new(id));
+            }
+        });
 
         self.storages
             .entry(type_id)
@@ -298,7 +294,12 @@ impl AssetManager {
             }
         }
 
-        if !self.loaders.read().map(|r| r.contains_key(&type_id)).unwrap_or(false) {
+        if !self
+            .loaders
+            .read()
+            .map(|r| r.contains_key(&type_id))
+            .unwrap_or(false)
+        {
             return Err(AssetError::UnsupportedFormat(format!(
                 "no loader registered for type_id {:?}",
                 type_id
@@ -350,7 +351,9 @@ impl AssetManager {
                         inserter(storage_box.as_mut(), item.id, boxed);
                         log::trace!("Asset {:?} loaded: {:?}", item.id, item.path);
 
-                        if let Some(ev) = world.get_resource_mut::<redox_ecs::Events<AssetLoadedEvent>>() {
+                        if let Some(ev) =
+                            world.get_resource_mut::<redox_ecs::Events<AssetLoadedEvent>>()
+                        {
                             ev.send(AssetLoadedEvent {
                                 type_id: item.type_id,
                                 id: item.id,
@@ -358,7 +361,9 @@ impl AssetManager {
                             });
                         }
                         if item.is_reload {
-                            if let Some(ev) = world.get_resource_mut::<redox_ecs::Events<AssetReloadedEvent>>() {
+                            if let Some(ev) =
+                                world.get_resource_mut::<redox_ecs::Events<AssetReloadedEvent>>()
+                            {
                                 ev.send(AssetReloadedEvent {
                                     type_id: item.type_id,
                                     id: item.id,
@@ -376,7 +381,9 @@ impl AssetManager {
                         marker(storage_box.as_mut(), item.id);
                     }
                     log::error!("Asset {:?} failed: {} ({:?})", item.id, msg, item.path);
-                    if let Some(ev) = world.get_resource_mut::<redox_ecs::Events<AssetLoadFailedEvent>>() {
+                    if let Some(ev) =
+                        world.get_resource_mut::<redox_ecs::Events<AssetLoadFailedEvent>>()
+                    {
                         ev.send(AssetLoadFailedEvent {
                             type_id: item.type_id,
                             id: item.id,

@@ -301,19 +301,16 @@ impl StateTreeBuilder {
         }
     }
 
-    pub fn add_transition(
-        &mut self,
-        from: StateId,
-        to: StateId,
-        condition: TransitionCondition,
-    ) {
+    pub fn add_transition(&mut self, from: StateId, to: StateId, condition: TransitionCondition) {
         if let Some(node) = self.nodes.iter_mut().find(|n| n.id == from) {
             node.transitions.push(StateTransition::new(to, condition));
         }
     }
 
     pub fn build(self) -> StateTree {
-        let root = self.root.expect("StateTreeBuilder requires at least one state");
+        let root = self
+            .root
+            .expect("StateTreeBuilder requires at least one state");
         StateTree::new(root, self.nodes)
     }
 }

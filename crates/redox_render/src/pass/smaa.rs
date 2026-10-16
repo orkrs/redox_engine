@@ -12,17 +12,15 @@
 //! 2. **Blend weight calculation**: edges + area/search LUTs → `blend_tex` (Rgba8Unorm)
 //! 3. **Neighborhood blending**: LDR input + blend weights → anti-aliased output
 
-use bytemuck::{Pod, Zeroable};
 use crate::shader::{
-    SMAA_EDGE_WGSL, SMAA_BLEND_WGSL, SMAA_NEIGHBORHOOD_WGSL, create_shader_module,
+    SMAA_BLEND_WGSL, SMAA_EDGE_WGSL, SMAA_NEIGHBORHOOD_WGSL, create_shader_module,
 };
+use bytemuck::{Pod, Zeroable};
 
 // ─── Precomputed lookup textures (embedded at compile time) ──────────────────
 
-const AREA_TEX_BYTES: &[u8] =
-    include_bytes!("../../assets/smaa/AreaTexDX10.bin");
-const SEARCH_TEX_BYTES: &[u8] =
-    include_bytes!("../../assets/smaa/SearchTex.bin");
+const AREA_TEX_BYTES: &[u8] = include_bytes!("../../assets/smaa/AreaTexDX10.bin");
+const SEARCH_TEX_BYTES: &[u8] = include_bytes!("../../assets/smaa/SearchTex.bin");
 
 const AREA_TEX_WIDTH: u32 = 160;
 const AREA_TEX_HEIGHT: u32 = 560;
@@ -119,9 +117,9 @@ impl SmaaPass {
         let edge_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("smaa_edge_bgl"),
             entries: &[
-                tex_entry(0, true),       // t_color (filterable)
-                sampler_entry(1, true),   // s_linear
-                uniform_entry(2),         // uniform
+                tex_entry(0, true),     // t_color (filterable)
+                sampler_entry(1, true), // s_linear
+                uniform_entry(2),       // uniform
             ],
         });
         let edge_pipeline = create_fullscreen_pipeline(
@@ -136,12 +134,12 @@ impl SmaaPass {
         let blend_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("smaa_blend_bgl"),
             entries: &[
-                tex_entry(0, true),       // t_edges
-                tex_entry(1, true),       // t_area
-                tex_entry(2, true),       // t_search
-                sampler_entry(3, true),   // s_linear
-                sampler_entry(4, false),  // s_point
-                uniform_entry(5),         // uniform
+                tex_entry(0, true),      // t_edges
+                tex_entry(1, true),      // t_area
+                tex_entry(2, true),      // t_search
+                sampler_entry(3, true),  // s_linear
+                sampler_entry(4, false), // s_point
+                uniform_entry(5),        // uniform
             ],
         });
         let blend_pipeline = create_fullscreen_pipeline(
@@ -156,11 +154,11 @@ impl SmaaPass {
         let neighborhood_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("smaa_neighborhood_bgl"),
             entries: &[
-                tex_entry(0, true),       // t_color
-                tex_entry(1, true),       // t_blend
-                sampler_entry(2, true),   // s_linear
-                sampler_entry(3, false),  // s_point
-                uniform_entry(4),         // uniform
+                tex_entry(0, true),      // t_color
+                tex_entry(1, true),      // t_blend
+                sampler_entry(2, true),  // s_linear
+                sampler_entry(3, false), // s_point
+                uniform_entry(4),        // uniform
             ],
         });
         let neighborhood_pipeline = create_fullscreen_pipeline(
@@ -172,20 +170,10 @@ impl SmaaPass {
         );
 
         // ── Intermediate textures (1×1 placeholder, resized on first use) ───
-        let (edges_tex, edges_view) = create_intermediate(
-            device,
-            "smaa_edges",
-            1,
-            1,
-            wgpu::TextureFormat::Rg8Unorm,
-        );
-        let (blend_tex, blend_view) = create_intermediate(
-            device,
-            "smaa_blend",
-            1,
-            1,
-            wgpu::TextureFormat::Rgba8Unorm,
-        );
+        let (edges_tex, edges_view) =
+            create_intermediate(device, "smaa_edges", 1, 1, wgpu::TextureFormat::Rg8Unorm);
+        let (blend_tex, blend_view) =
+            create_intermediate(device, "smaa_blend", 1, 1, wgpu::TextureFormat::Rgba8Unorm);
 
         Self {
             edge_pipeline,

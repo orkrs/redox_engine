@@ -13,7 +13,7 @@ pub mod smrt;
 pub mod vsm_clipmap;
 
 pub use atlas_allocator::{
-    MAX_CASTERS, NO_TILE, ShadowAtlasAllocator, TILE_PX, TILES_PER_AXIS, TOTAL_TILES, ATLAS_PX,
+    ATLAS_PX, MAX_CASTERS, NO_TILE, ShadowAtlasAllocator, TILE_PX, TILES_PER_AXIS, TOTAL_TILES,
 };
 pub use page_table::{PhysPageAllocator, VirtualPageTable};
 pub use smrt::{SmrtConfig, SmrtQuality, SmrtUniform, smrt_sample_params};

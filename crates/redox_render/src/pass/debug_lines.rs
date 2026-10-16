@@ -152,7 +152,11 @@ impl DebugLinesPass {
     }
 
     /// Records the debug line draw into the current render pass. Call after [`upload_lines`](Self::upload_lines).
-    pub fn draw<'a>(&'a self, camera_bind_group: &'a wgpu::BindGroup, pass: &mut wgpu::RenderPass<'a>) {
+    pub fn draw<'a>(
+        &'a self,
+        camera_bind_group: &'a wgpu::BindGroup,
+        pass: &mut wgpu::RenderPass<'a>,
+    ) {
         if self.vertex_count == 0 {
             return;
         }

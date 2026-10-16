@@ -462,12 +462,60 @@ struct Uniforms { mvp: mat4x4<f32>, color: vec4<f32> }
     pub fn upload_geometry(&self, queue: &wgpu::Queue) {
         // Face-expanded cube with normals
         let faces: [([f32; 3], [[f32; 3]; 4]); 6] = [
-            ([0.0, 0.0, -1.0], [[-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [-0.5, 0.5, -0.5]]),
-            ([0.0, 0.0, 1.0], [[0.5, -0.5, 0.5], [-0.5, -0.5, 0.5], [-0.5, 0.5, 0.5], [0.5, 0.5, 0.5]]),
-            ([-1.0, 0.0, 0.0], [[-0.5, -0.5, 0.5], [-0.5, -0.5, -0.5], [-0.5, 0.5, -0.5], [-0.5, 0.5, 0.5]]),
-            ([1.0, 0.0, 0.0], [[0.5, -0.5, -0.5], [0.5, -0.5, 0.5], [0.5, 0.5, 0.5], [0.5, 0.5, -0.5]]),
-            ([0.0, -1.0, 0.0], [[-0.5, -0.5, 0.5], [0.5, -0.5, 0.5], [0.5, -0.5, -0.5], [-0.5, -0.5, -0.5]]),
-            ([0.0, 1.0, 0.0], [[-0.5, 0.5, -0.5], [0.5, 0.5, -0.5], [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5]]),
+            (
+                [0.0, 0.0, -1.0],
+                [
+                    [-0.5, -0.5, -0.5],
+                    [0.5, -0.5, -0.5],
+                    [0.5, 0.5, -0.5],
+                    [-0.5, 0.5, -0.5],
+                ],
+            ),
+            (
+                [0.0, 0.0, 1.0],
+                [
+                    [0.5, -0.5, 0.5],
+                    [-0.5, -0.5, 0.5],
+                    [-0.5, 0.5, 0.5],
+                    [0.5, 0.5, 0.5],
+                ],
+            ),
+            (
+                [-1.0, 0.0, 0.0],
+                [
+                    [-0.5, -0.5, 0.5],
+                    [-0.5, -0.5, -0.5],
+                    [-0.5, 0.5, -0.5],
+                    [-0.5, 0.5, 0.5],
+                ],
+            ),
+            (
+                [1.0, 0.0, 0.0],
+                [
+                    [0.5, -0.5, -0.5],
+                    [0.5, -0.5, 0.5],
+                    [0.5, 0.5, 0.5],
+                    [0.5, 0.5, -0.5],
+                ],
+            ),
+            (
+                [0.0, -1.0, 0.0],
+                [
+                    [-0.5, -0.5, 0.5],
+                    [0.5, -0.5, 0.5],
+                    [0.5, -0.5, -0.5],
+                    [-0.5, -0.5, -0.5],
+                ],
+            ),
+            (
+                [0.0, 1.0, 0.0],
+                [
+                    [-0.5, 0.5, -0.5],
+                    [0.5, 0.5, -0.5],
+                    [0.5, 0.5, 0.5],
+                    [-0.5, 0.5, 0.5],
+                ],
+            ),
         ];
         let mut verts = Vec::with_capacity(24 * 6);
         let mut indices = Vec::with_capacity(36);
@@ -503,7 +551,11 @@ struct Uniforms { mvp: mat4x4<f32>, color: vec4<f32> }
         for c in &corners {
             wire_verts.extend_from_slice(c);
         }
-        queue.write_buffer(&self.wire_vertex_buffer, 0, bytemuck::cast_slice(&wire_verts));
+        queue.write_buffer(
+            &self.wire_vertex_buffer,
+            0,
+            bytemuck::cast_slice(&wire_verts),
+        );
         queue.write_buffer(&self.wire_index_buffer, 0, bytemuck::cast_slice(&edge_idx));
     }
 
@@ -530,10 +582,9 @@ struct Uniforms { mvp: mat4x4<f32>, color: vec4<f32> }
         let mode = shading.as_u32();
 
         if clear {
-            let mut encoder =
-                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("editor_clear"),
-                });
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("editor_clear"),
+            });
             {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("editor_clear"),
@@ -584,10 +635,9 @@ struct Uniforms { mvp: mat4x4<f32>, color: vec4<f32> }
                     color,
                 };
                 queue.write_buffer(&self.wire_uniform_buffer, 0, bytemuck::bytes_of(&wu));
-                let mut encoder =
-                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("editor_wire_draw"),
-                    });
+                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("editor_wire_draw"),
+                });
                 {
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("editor_wire_pass"),
@@ -617,7 +667,10 @@ struct Uniforms { mvp: mat4x4<f32>, color: vec4<f32> }
                     pass.set_pipeline(&self.wire_pipeline);
                     pass.set_bind_group(0, &self.wire_bind_group, &[]);
                     pass.set_vertex_buffer(0, self.wire_vertex_buffer.slice(..));
-                    pass.set_index_buffer(self.wire_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                    pass.set_index_buffer(
+                        self.wire_index_buffer.slice(..),
+                        wgpu::IndexFormat::Uint16,
+                    );
                     pass.draw_indexed(0..self.wire_index_count, 0, 0..1);
                 }
                 queue.submit(Some(encoder.finish()));
@@ -633,10 +686,9 @@ struct Uniforms { mvp: mat4x4<f32>, color: vec4<f32> }
                 mode,
             };
             queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&u));
-            let mut encoder =
-                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("editor_lit_draw"),
-                });
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("editor_lit_draw"),
+            });
             {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("editor_lit_pass"),
@@ -700,10 +752,9 @@ struct Uniforms { mvp: mat4x4<f32>, color: vec4<f32> }
         persp.set_viewport_size(hw, hh);
 
         {
-            let mut encoder =
-                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("quad_clear"),
-                });
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("quad_clear"),
+            });
             {
                 let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("quad_clear"),
@@ -743,10 +794,9 @@ struct Uniforms { mvp: mat4x4<f32>, color: vec4<f32> }
         ];
         for (cam, sc) in panes {
             {
-                let mut encoder =
-                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("quad_depth_clear"),
-                    });
+                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("quad_depth_clear"),
+                });
                 {
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("quad_depth_clear"),
@@ -823,10 +873,9 @@ struct Uniforms { mvp: mat4x4<f32>, color: vec4<f32> }
         let id_view = picker.id_view.as_ref().expect("picker view");
 
         {
-            let mut encoder =
-                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("editor_pick_clear"),
-                });
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("editor_pick_clear"),
+            });
             {
                 let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("editor_pick_clear"),
@@ -864,10 +913,9 @@ struct Uniforms { mvp: mat4x4<f32>, color: vec4<f32> }
             data[0..64].copy_from_slice(bytemuck::bytes_of(&mvp.to_cols_array_2d()));
             data[64..68].copy_from_slice(&entity_id.to_ne_bytes());
             queue.write_buffer(&self.pick_uniform_buffer, 0, &data);
-            let mut encoder =
-                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("editor_pick_draw"),
-                });
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("editor_pick_draw"),
+            });
             {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("editor_pick_pass"),
@@ -1147,11 +1195,7 @@ pub fn build_editor_overlay_lines(
         let col = if i == 0 { axis_z } else { grid_col };
         lines.push((Vec3::new(p, 0.0, -half), Vec3::new(p, 0.0, half), col));
     }
-    lines.push((
-        Vec3::ZERO,
-        Vec3::Y * half * 0.35,
-        [0.25, 0.9, 0.35, 1.0],
-    ));
+    lines.push((Vec3::ZERO, Vec3::Y * half * 0.35, [0.25, 0.9, 0.35, 1.0]));
 
     if let Some(o) = gizmo_origin {
         let len = 1.35;

@@ -1,10 +1,10 @@
-use std::cell::RefCell;
-use rapier3d::prelude::RigidBodyHandle;
-use redox_ecs::Entity;
 use crate::components::{Kinematic, Velocity};
 use crate::context::PhysicsContext;
+use rapier3d::prelude::RigidBodyHandle;
+use redox_ecs::Entity;
 use redox_ecs::world::World;
 use redox_math::{Quat, Transform, Vec3};
+use std::cell::RefCell;
 
 thread_local! {
     static TO_PHYSICS_SCRATCH: RefCell<Vec<(RigidBodyHandle, Option<Transform>, Option<Velocity>)>> =
@@ -36,11 +36,7 @@ pub fn sync_to_physics(world: &mut World) {
         if let Some(context) = world.get_resource_mut::<PhysicsContext>() {
             for (body_handle, transform, velocity) in updates.drain(..) {
                 if let Some(t) = transform {
-                    context.set_rigid_body_transform(
-                        body_handle,
-                        t.translation,
-                        t.rotation,
-                    );
+                    context.set_rigid_body_transform(body_handle, t.translation, t.rotation);
                 } else if let Some(v) = velocity {
                     context.set_rigid_body_velocity(body_handle, v.linvel, v.angvel);
                 }
@@ -75,7 +71,9 @@ pub fn sync_from_physics(world: &mut World) {
                 transform.rotation = rot;
 
                 // Update PreviousTransform if present, or add it for render interpolation
-                if let Some(prev) = world.get_component_mut::<crate::components::PreviousTransform>(entity) {
+                if let Some(prev) =
+                    world.get_component_mut::<crate::components::PreviousTransform>(entity)
+                {
                     prev.0 = current_transform;
                 }
             }
@@ -106,21 +104,28 @@ pub fn tick_physics(world: &mut World, dt: f32) {
 
     let (triggers, raycasts) = {
         if let Some(context) = world.get_resource_mut::<PhysicsContext>() {
-            (context.drain_trigger_events(), context.drain_raycast_results())
+            (
+                context.drain_trigger_events(),
+                context.drain_raycast_results(),
+            )
         } else {
             (Vec::new(), Vec::new())
         }
     };
 
     if !triggers.is_empty() {
-        if let Some(events) = world.get_resource_mut::<redox_ecs::Events<crate::trigger::TriggerEnter>>() {
+        if let Some(events) =
+            world.get_resource_mut::<redox_ecs::Events<crate::trigger::TriggerEnter>>()
+        {
             for (started, enter) in &triggers {
                 if *started {
                     events.send(*enter);
                 }
             }
         }
-        if let Some(events) = world.get_resource_mut::<redox_ecs::Events<crate::trigger::TriggerExit>>() {
+        if let Some(events) =
+            world.get_resource_mut::<redox_ecs::Events<crate::trigger::TriggerExit>>()
+        {
             for (started, enter) in &triggers {
                 if !*started {
                     events.send(crate::trigger::TriggerExit {
@@ -133,7 +138,9 @@ pub fn tick_physics(world: &mut World, dt: f32) {
     }
 
     if !raycasts.is_empty() {
-        if let Some(events) = world.get_resource_mut::<redox_ecs::Events<crate::raycast::RaycastResult>>() {
+        if let Some(events) =
+            world.get_resource_mut::<redox_ecs::Events<crate::raycast::RaycastResult>>()
+        {
             for res in raycasts {
                 events.send(res);
             }

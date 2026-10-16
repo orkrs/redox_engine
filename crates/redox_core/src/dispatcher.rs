@@ -370,9 +370,15 @@ mod tests {
     #[test]
     fn parallel_layers_orders_conflicts() {
         let metas = vec![
-            SystemMeta::default().writes(&[TypeId::of::<u32>()]).parallel(true),
-            SystemMeta::default().writes(&[TypeId::of::<u32>()]).parallel(true),
-            SystemMeta::default().writes(&[TypeId::of::<i32>()]).parallel(true),
+            SystemMeta::default()
+                .writes(&[TypeId::of::<u32>()])
+                .parallel(true),
+            SystemMeta::default()
+                .writes(&[TypeId::of::<u32>()])
+                .parallel(true),
+            SystemMeta::default()
+                .writes(&[TypeId::of::<i32>()])
+                .parallel(true),
         ];
         let layers = parallel_layers(&metas);
         assert_eq!(layers.len(), 2);
@@ -383,9 +389,15 @@ mod tests {
     #[test]
     fn parallel_layers_independent_systems_single_layer() {
         let metas = vec![
-            SystemMeta::default().writes(&[TypeId::of::<u32>()]).parallel(true),
-            SystemMeta::default().writes(&[TypeId::of::<i32>()]).parallel(true),
-            SystemMeta::default().writes(&[TypeId::of::<f32>()]).parallel(true),
+            SystemMeta::default()
+                .writes(&[TypeId::of::<u32>()])
+                .parallel(true),
+            SystemMeta::default()
+                .writes(&[TypeId::of::<i32>()])
+                .parallel(true),
+            SystemMeta::default()
+                .writes(&[TypeId::of::<f32>()])
+                .parallel(true),
         ];
         let layers = parallel_layers(&metas);
         assert_eq!(layers.len(), 1);
@@ -395,8 +407,12 @@ mod tests {
     #[test]
     fn parallel_layers_reader_waits_for_writer() {
         let metas = vec![
-            SystemMeta::default().writes(&[TypeId::of::<u32>()]).parallel(true),
-            SystemMeta::default().writes(&[TypeId::of::<i32>()]).parallel(true),
+            SystemMeta::default()
+                .writes(&[TypeId::of::<u32>()])
+                .parallel(true),
+            SystemMeta::default()
+                .writes(&[TypeId::of::<i32>()])
+                .parallel(true),
             SystemMeta::default()
                 .reads(&[TypeId::of::<u32>()])
                 .parallel(true),

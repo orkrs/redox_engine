@@ -6,7 +6,7 @@
 use redox_ecs::World;
 use redox_math::{GlobalTransform, Mat4, Transform, Vec3};
 
-use crate::components::{AudioListener, ReverbZone, ReverbPreset, SpatialAudioEmitter};
+use crate::components::{AudioListener, ReverbPreset, ReverbZone, SpatialAudioEmitter};
 
 /// Result of occlusion/obstruction raycast check.
 #[derive(Debug, Clone, Copy)]
@@ -36,11 +36,7 @@ impl Default for OcclusionResult {
 ///
 /// Used as fallback when [`redox_physics::PhysicsContext`] is not in the world (no physics).
 /// When physics is available, [`occlusion_raycast_system`] uses real rapier3d raycasts instead.
-pub fn check_occlusion(
-    listener_pos: Vec3,
-    emitter_pos: Vec3,
-    _world: &World,
-) -> OcclusionResult {
+pub fn check_occlusion(listener_pos: Vec3, emitter_pos: Vec3, _world: &World) -> OcclusionResult {
     let distance = (emitter_pos - listener_pos).length();
     OcclusionResult {
         has_line_of_sight: true,
@@ -59,7 +55,7 @@ const OCCLUSION_COEFFICIENT_PER_HIT: f32 = 0.8;
 pub fn reverb_listener_system(world: &mut World) {
     // Find listener position
     let mut listener_pos = None;
-    
+
     for entity in world.all_entities() {
         if let Some(listener) = world.get_component::<AudioListener>(entity) {
             listener_pos = Some(listener.position);
@@ -143,24 +139,25 @@ pub fn occlusion_raycast_system(world: &mut World) {
         })
         .collect();
 
-    let use_physics = world.get_resource::<redox_physics::PhysicsContext>().is_some();
+    let use_physics = world
+        .get_resource::<redox_physics::PhysicsContext>()
+        .is_some();
     let mut results: Vec<(redox_ecs::Entity, Vec3, f32, f32)> = Vec::with_capacity(emitters.len());
 
     if use_physics {
-        let physics = world.get_resource::<redox_physics::PhysicsContext>().unwrap();
+        let physics = world
+            .get_resource::<redox_physics::PhysicsContext>()
+            .unwrap();
         for (entity, emitter_pos) in &emitters {
             let mut exclude = vec![*entity];
             if let Some(le) = listener_entity {
                 exclude.push(le);
             }
-            let (occlusion, obstruction) = match physics.cast_ray_excluding(
-                listener_pos,
-                *emitter_pos,
-                &exclude,
-            ) {
-                Some((_toi, _hit_entity)) => (OCCLUSION_COEFFICIENT_PER_HIT, 0.0),
-                None => (0.0, 0.0),
-            };
+            let (occlusion, obstruction) =
+                match physics.cast_ray_excluding(listener_pos, *emitter_pos, &exclude) {
+                    Some((_toi, _hit_entity)) => (OCCLUSION_COEFFICIENT_PER_HIT, 0.0),
+                    None => (0.0, 0.0),
+                };
             results.push((*entity, *emitter_pos, occlusion, obstruction));
         }
     } else {
@@ -174,7 +171,9 @@ pub fn occlusion_raycast_system(world: &mut World) {
         if debug.draw_rays {
             debug.rays.clear();
             for (_entity, emitter_pos, occlusion, _) in &results {
-                debug.rays.push((listener_pos, *emitter_pos, *occlusion > 0.0));
+                debug
+                    .rays
+                    .push((listener_pos, *emitter_pos, *occlusion > 0.0));
             }
         }
     }
@@ -204,7 +203,10 @@ pub fn compute_active_reverb(world: &World) -> Option<ReverbPreset> {
     for entity in world.all_entities() {
         if let Some(zone) = world.get_component::<ReverbZone>(entity) {
             if zone.current_weight > 0.001 {
-                weighted.push((ReverbPreset::from_name(&zone.preset_name), zone.current_weight));
+                weighted.push((
+                    ReverbPreset::from_name(&zone.preset_name),
+                    zone.current_weight,
+                ));
             }
         }
     }
@@ -214,7 +216,10 @@ pub fn compute_active_reverb(world: &World) -> Option<ReverbPreset> {
 
 /// Weighted average of the zone presets, faded in from `neutral` by the total coverage
 /// (sum of weights, clamped to 1.0). Returns `None` when no zone contributes.
-pub fn blend_presets(neutral: &ReverbPreset, zones: &[(ReverbPreset, f32)]) -> Option<ReverbPreset> {
+pub fn blend_presets(
+    neutral: &ReverbPreset,
+    zones: &[(ReverbPreset, f32)],
+) -> Option<ReverbPreset> {
     let total_weight: f32 = zones.iter().map(|(_, w)| w).sum();
     if zones.is_empty() || total_weight <= f32::EPSILON {
         return None;
@@ -252,11 +257,8 @@ mod tests {
         let preset1 = ReverbPreset::cathedral();
         let preset2 = ReverbPreset::studio();
 
-        let blended = blend_presets(
-            &ReverbPreset::outdoor(),
-            &[(preset1, 0.5), (preset2, 0.5)],
-        )
-        .expect("two active zones");
+        let blended = blend_presets(&ReverbPreset::outdoor(), &[(preset1, 0.5), (preset2, 0.5)])
+            .expect("two active zones");
         assert!(blended.decay_time > preset2.decay_time);
         assert!(blended.decay_time < preset1.decay_time);
     }

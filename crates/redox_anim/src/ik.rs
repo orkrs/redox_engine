@@ -125,7 +125,10 @@ mod tests {
         let target = Vec3::new(0.3, 0.4, 0.5);
         let rot = solve_two_bone_ik(ROOT, MID, FOOT, target, POLE_FRONT);
         let (_, effector) = apply(ROOT, MID, FOOT, rot);
-        assert!((effector - target).length() < 1.0e-3, "effector at {effector:?}");
+        assert!(
+            (effector - target).length() < 1.0e-3,
+            "effector at {effector:?}"
+        );
     }
 
     #[test]
@@ -167,14 +170,25 @@ mod tests {
 
     #[test]
     fn apply_moves_tip_bone_onto_target() {
-        use crate::procedural::chain_model;
         use crate::Pose;
+        use crate::procedural::chain_model;
 
         let model = chain_model(2, 1.0, 0.1, 8);
         let mut local = model.skeleton.bind_local_pose();
         let target = Vec3::new(0.6, 1.1, 0.5);
-        apply_two_bone_ik(&model.skeleton, &mut local, [0, 1, 2], target, Vec3::new(0.0, 1.0, 3.0));
-        let tip = Pose::from_local(&model.skeleton, &local).bone_transforms[2].w_axis.truncate();
-        assert!(tip.distance(target) < 1.0e-3, "tip at {tip:?}, wanted {target:?}");
+        apply_two_bone_ik(
+            &model.skeleton,
+            &mut local,
+            [0, 1, 2],
+            target,
+            Vec3::new(0.0, 1.0, 3.0),
+        );
+        let tip = Pose::from_local(&model.skeleton, &local).bone_transforms[2]
+            .w_axis
+            .truncate();
+        assert!(
+            tip.distance(target) < 1.0e-3,
+            "tip at {tip:?}, wanted {target:?}"
+        );
     }
 }

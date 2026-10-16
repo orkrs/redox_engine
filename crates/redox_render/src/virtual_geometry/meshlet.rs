@@ -8,8 +8,8 @@
 //! - Automatic LOD selection per cluster.
 //! - Efficient indirect rendering with `multi_draw_indexed_indirect`.
 
-use bytemuck::{Pod, Zeroable};
 use crate::mesh::Vertex;
+use bytemuck::{Pod, Zeroable};
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -128,6 +128,9 @@ pub struct VGAssetData {
 impl VGAssetData {
     /// Total number of triangles across all meshlets.
     pub fn triangle_count(&self) -> u64 {
-        self.meshlets.iter().map(|m| (m.index_count / 3) as u64).sum()
+        self.meshlets
+            .iter()
+            .map(|m| (m.index_count / 3) as u64)
+            .sum()
     }
 }

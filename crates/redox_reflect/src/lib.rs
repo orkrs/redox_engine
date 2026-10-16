@@ -68,11 +68,19 @@ impl ReflectValue {
     }
 
     pub fn as_bool(&self) -> Option<bool> {
-        if let Self::Bool(b) = self { Some(*b) } else { None }
+        if let Self::Bool(b) = self {
+            Some(*b)
+        } else {
+            None
+        }
     }
 
     pub fn as_i64(&self) -> Option<i64> {
-        if let Self::I64(v) = self { Some(*v) } else { None }
+        if let Self::I64(v) = self {
+            Some(*v)
+        } else {
+            None
+        }
     }
 
     pub fn as_u32(&self) -> Option<u32> {
@@ -84,26 +92,42 @@ impl ReflectValue {
     }
 
     pub fn as_string(&self) -> Option<&str> {
-        if let Self::String(s) = self { Some(s) } else { None }
+        if let Self::String(s) = self {
+            Some(s)
+        } else {
+            None
+        }
     }
 
     pub fn handle(type_name: impl Into<String>, asset_path: Option<String>) -> Self {
-        Self::Struct { type_name: type_name.into(), fields: vec![("path".into(), asset_path.map(Self::String).unwrap_or(Self::Null))] }
+        Self::Struct {
+            type_name: type_name.into(),
+            fields: vec![(
+                "path".into(),
+                asset_path.map(Self::String).unwrap_or(Self::Null),
+            )],
+        }
     }
 
     pub fn as_handle_path(&self) -> Option<Option<String>> {
         match self {
-            Self::Struct { fields, .. } => fields.iter().find(|(k,_)| k=="path").map(|(_,v)| match v { Self::String(s) => Some(s.clone()), Self::Null => None, _ => None }),
+            Self::Struct { fields, .. } => {
+                fields
+                    .iter()
+                    .find(|(k, _)| k == "path")
+                    .map(|(_, v)| match v {
+                        Self::String(s) => Some(s.clone()),
+                        Self::Null => None,
+                        _ => None,
+                    })
+            }
             _ => None,
         }
     }
 
     pub fn field(&self, name: &str) -> Option<&ReflectValue> {
         match self {
-            Self::Struct { fields, .. } => fields
-                .iter()
-                .find(|(n, _)| n == name)
-                .map(|(_, v)| v),
+            Self::Struct { fields, .. } => fields.iter().find(|(n, _)| n == name).map(|(_, v)| v),
             _ => None,
         }
     }
@@ -121,7 +145,6 @@ pub struct ReflectField {
     pub name: &'static str,
     pub type_name: &'static str,
 }
-
 
 #[derive(Debug)]
 pub enum ReflectError {
@@ -155,7 +178,10 @@ pub trait Reflect: Send + Sync + 'static {
     where
         Self: Sized,
     {
-        ReflectSchema { type_name: Self::type_name(), fields: Vec::new() }
+        ReflectSchema {
+            type_name: Self::type_name(),
+            fields: Vec::new(),
+        }
     }
 }
 
@@ -225,7 +251,12 @@ impl TypeRegistry {
         (reg.insert)(world, entity, value)
     }
 
-    pub fn read_component(&self, world: &World, entity: Entity, type_name: &str) -> Option<ReflectValue> {
+    pub fn read_component(
+        &self,
+        world: &World,
+        entity: Entity,
+        type_name: &str,
+    ) -> Option<ReflectValue> {
         let reg = self.by_name.get(type_name)?;
         (reg.read)(world, entity)
     }
@@ -261,7 +292,11 @@ impl TypeRegistry {
         WorldSnapshot { entities }
     }
 
-    pub fn apply_snapshot(&self, world: &mut World, snap: &WorldSnapshot) -> Result<(), ReflectError> {
+    pub fn apply_snapshot(
+        &self,
+        world: &mut World,
+        snap: &WorldSnapshot,
+    ) -> Result<(), ReflectError> {
         for ent in &snap.entities {
             let e = world.spawn();
             for c in &ent.components {
@@ -272,7 +307,10 @@ impl TypeRegistry {
     }
 
     pub fn to_ron(&self, world: &World) -> Result<String, ron::Error> {
-        ron::ser::to_string_pretty(&self.snapshot_world(world), ron::ser::PrettyConfig::default())
+        ron::ser::to_string_pretty(
+            &self.snapshot_world(world),
+            ron::ser::PrettyConfig::default(),
+        )
     }
 
     pub fn from_ron(&self, world: &mut World, ron_src: &str) -> Result<(), ReflectError> {

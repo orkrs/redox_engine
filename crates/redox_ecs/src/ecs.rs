@@ -17,22 +17,22 @@
 //! for (pos, vel) in q.iter_mut(&mut world) { ... }
 //! ```
 
-pub mod entity;
-pub mod component;
 pub mod archetype;
-pub mod world;
-pub mod query;
+pub mod component;
+pub mod entity;
 pub mod event;
 pub mod hierarchy;
+pub mod query;
+pub mod world;
 
-pub use entity::{Entity, EntityAllocator};
 pub use component::Component;
-pub use world::{World, Bundle};
-pub use query::{Query, ParallelQuery, QueryData, ReadOnlyQueryData, QueryFilter};
-pub use query::{With, Without, NullFilter};
-pub use query::filter::{Changed, Added};
-pub use event::{Events, EventReader};
-pub use hierarchy::{set_parent, transform_hierarchy_system, Children, Parent};
+pub use entity::{Entity, EntityAllocator};
+pub use event::{EventReader, Events};
+pub use hierarchy::{Children, Parent, set_parent, transform_hierarchy_system};
+pub use query::filter::{Added, Changed};
+pub use query::{NullFilter, With, Without};
+pub use query::{ParallelQuery, Query, QueryData, QueryFilter, ReadOnlyQueryData};
+pub use world::{Bundle, World};
 
 /// The current version of the `redox_ecs` crate.
 pub const REDOX_ECS_VERSION: &str = env!("CARGO_PKG_VERSION");

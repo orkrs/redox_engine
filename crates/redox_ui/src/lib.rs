@@ -11,5 +11,5 @@ pub mod debug;
 
 pub use context::UiContext;
 pub use debug::DebugOverlay;
-pub use debug::stats::StatsPanel;
 pub use debug::inspector::EntityInspector;
+pub use debug::stats::StatsPanel;

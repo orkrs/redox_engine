@@ -8,8 +8,8 @@
 
 use crate::mesh::CompressedVertex;
 use crate::pass::forward::DEPTH_FORMAT;
-use crate::pass::shared_layouts::multisample_state;
 use crate::pass::pbr::PbrPass;
+use crate::pass::shared_layouts::multisample_state;
 use crate::shader::{PBR_WGSL, create_shader_with_vertex_decode};
 
 /// Alpha-blended variant of the PBR pipeline.

@@ -71,13 +71,23 @@ impl EditorDock {
                 return dock;
             }
         }
-        Self { tree: Self::default_tree() }
+        Self {
+            tree: Self::default_tree(),
+        }
     }
 
     pub fn default_tree() -> DockState<Tab> {
         let mut tree = DockState::new(vec![Tab::Viewport]);
-        let [_a, _b] = tree.main_surface_mut().split_left(egui_dock::NodeIndex::root(), 0.2, vec![Tab::Outliner]);
-        let [_c, _d] = tree.main_surface_mut().split_right(egui_dock::NodeIndex::root(), 0.25, vec![Tab::Inspector]);
+        let [_a, _b] = tree.main_surface_mut().split_left(
+            egui_dock::NodeIndex::root(),
+            0.2,
+            vec![Tab::Outliner],
+        );
+        let [_c, _d] = tree.main_surface_mut().split_right(
+            egui_dock::NodeIndex::root(),
+            0.25,
+            vec![Tab::Inspector],
+        );
         tree.main_surface_mut().split_below(
             egui_dock::NodeIndex::root(),
             0.72,
@@ -104,14 +114,9 @@ impl EditorDock {
                 continue;
             }
             // Prefer the bottom strip (Assets / Console / Graph / Time-Travel).
-            let anchor = [
-                Tab::AssetBrowser,
-                Tab::Console,
-                Tab::Graph,
-                Tab::TimeTravel,
-            ]
-            .into_iter()
-            .find_map(|t| self.tree.find_tab(&t));
+            let anchor = [Tab::AssetBrowser, Tab::Console, Tab::Graph, Tab::TimeTravel]
+                .into_iter()
+                .find_map(|t| self.tree.find_tab(&t));
             if let Some((surface, node, _)) = anchor {
                 self.tree[surface][node].append_tab(tab.clone());
             } else {
@@ -187,19 +192,26 @@ mod tests {
         assert!(!s.is_empty());
         let mut dock2 = EditorDock::new();
         dock2.load_from_string(&s);
-        assert_eq!(dock.tree.iter_all_tabs().count(), dock2.tree.iter_all_tabs().count());
+        assert_eq!(
+            dock.tree.iter_all_tabs().count(),
+            dock2.tree.iter_all_tabs().count()
+        );
     }
 
     #[test]
     fn ensure_tabs_adds_packager_profiler_graph() {
         // Old bottom strip: no Packager / Profiler / Graph.
         let mut tree = DockState::new(vec![Tab::Viewport]);
-        let [_a, _b] =
-            tree.main_surface_mut()
-                .split_left(egui_dock::NodeIndex::root(), 0.2, vec![Tab::Outliner]);
-        let [_c, _d] =
-            tree.main_surface_mut()
-                .split_right(egui_dock::NodeIndex::root(), 0.25, vec![Tab::Inspector]);
+        let [_a, _b] = tree.main_surface_mut().split_left(
+            egui_dock::NodeIndex::root(),
+            0.2,
+            vec![Tab::Outliner],
+        );
+        let [_c, _d] = tree.main_surface_mut().split_right(
+            egui_dock::NodeIndex::root(),
+            0.25,
+            vec![Tab::Inspector],
+        );
         tree.main_surface_mut().split_below(
             egui_dock::NodeIndex::root(),
             0.72,
@@ -237,13 +249,22 @@ impl TabViewer for TabViewerImpl<'_> {
             Tab::Viewport => {
                 ui.horizontal(|ui| {
                     let mut g = self.ui_ctx.gizmo.lock();
-                    if ui.selectable_label(g.mode == GizmoMode::Translate, "Translate (W)").clicked() {
+                    if ui
+                        .selectable_label(g.mode == GizmoMode::Translate, "Translate (W)")
+                        .clicked()
+                    {
                         g.mode = GizmoMode::Translate;
                     }
-                    if ui.selectable_label(g.mode == GizmoMode::Rotate, "Rotate (E)").clicked() {
+                    if ui
+                        .selectable_label(g.mode == GizmoMode::Rotate, "Rotate (E)")
+                        .clicked()
+                    {
                         g.mode = GizmoMode::Rotate;
                     }
-                    if ui.selectable_label(g.mode == GizmoMode::Scale, "Scale (R)").clicked() {
+                    if ui
+                        .selectable_label(g.mode == GizmoMode::Scale, "Scale (R)")
+                        .clicked()
+                    {
                         g.mode = GizmoMode::Scale;
                     }
                     drop(g);
@@ -256,7 +277,10 @@ impl TabViewer for TabViewerImpl<'_> {
                             ViewportShading::Normals,
                             ViewportShading::Wireframe,
                         ] {
-                            if ui.selectable_label(*shading == mode, mode.label()).clicked() {
+                            if ui
+                                .selectable_label(*shading == mode, mode.label())
+                                .clicked()
+                            {
                                 *shading = mode;
                             }
                         }
@@ -307,13 +331,8 @@ impl TabViewer for TabViewerImpl<'_> {
                 let mut selection = self.ui_ctx.selection.lock();
                 let session = self.ui_ctx.world_session.lock();
                 let git = self.ui_ctx.git.lock();
-                let actions = outliner.show(
-                    ui,
-                    &world,
-                    &mut selection,
-                    session.as_ref(),
-                    Some(&git),
-                );
+                let actions =
+                    outliner.show(ui, &world, &mut selection, session.as_ref(), Some(&git));
                 drop(git);
                 drop(session);
                 drop(selection);
@@ -341,11 +360,13 @@ impl TabViewer for TabViewerImpl<'_> {
                     *self.ui_ctx.status.lock() = "git_refresh".into();
                 }
                 ui.separator();
-                egui::ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui| {
-                    for line in self.ui_ctx.console.lock().iter() {
-                        ui.monospace(line);
-                    }
-                });
+                egui::ScrollArea::vertical()
+                    .stick_to_bottom(true)
+                    .show(ui, |ui| {
+                        for line in self.ui_ctx.console.lock().iter() {
+                            ui.monospace(line);
+                        }
+                    });
             }
             Tab::Graph => {
                 let agent_e = self.ui_ctx.resolve_graph_agent_entity();
@@ -390,7 +411,10 @@ impl TabViewer for TabViewerImpl<'_> {
                 let pie = self.ui_ctx.pie.lock();
                 let len = tt.len();
                 ui.label(format!("Frames buffered: {len} / {}", tt.capacity));
-                ui.label(format!("PIE: running={} paused={}", pie.running, pie.paused));
+                ui.label(format!(
+                    "PIE: running={} paused={}",
+                    pie.running, pie.paused
+                ));
                 ui.separator();
                 if len == 0 {
                     ui.label("Play PIE to record frames. Scrub when paused.");
@@ -416,7 +440,8 @@ impl TabViewer for TabViewerImpl<'_> {
                         .add(egui::Slider::new(&mut idx, 0..=len.saturating_sub(1)).text("Scrub"))
                         .changed()
                         || ui.input(|i| {
-                            i.key_pressed(egui::Key::ArrowLeft) || i.key_pressed(egui::Key::ArrowRight)
+                            i.key_pressed(egui::Key::ArrowLeft)
+                                || i.key_pressed(egui::Key::ArrowRight)
                         })
                     {
                         *self.ui_ctx.status.lock() = format!("tt_scrub:{idx}");

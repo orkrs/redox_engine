@@ -22,13 +22,16 @@
 //! `lod_level`; the runtime picks one level per instance and culls/draws
 //! only meshlets of that level.
 
-use meshopt::{build_meshlets, compute_meshlet_bounds, simplify, simplify_scale, SimplifyOptions, VertexDataAdapter};
+use meshopt::{
+    SimplifyOptions, VertexDataAdapter, build_meshlets, compute_meshlet_bounds, simplify,
+    simplify_scale,
+};
 
-use crate::mesh::{Mesh, Vertex};
 use super::lod::LodChainConfig;
 use super::meshlet::{
-    MeshletDescriptor, VGAssetData, MAX_TRIANGLES_PER_MESHLET, MAX_VERTICES_PER_MESHLET,
+    MAX_TRIANGLES_PER_MESHLET, MAX_VERTICES_PER_MESHLET, MeshletDescriptor, VGAssetData,
 };
+use crate::mesh::{Mesh, Vertex};
 
 /// Weight for cone tightness during meshlet clustering. 0.0 = purely spatial
 /// fit; larger values produce tighter backface cones (better culling) at a
@@ -183,7 +186,11 @@ fn compute_aabb(vertices: &[Vertex]) -> [[f32; 3]; 2] {
 /// Generates meshlets for each LOD level defined in `lod_config`. All LOD
 /// meshlets are concatenated into a single flat list; the LOD level is
 /// encoded in [`MeshletDescriptor::lod_level`].
-pub fn build_vg_asset(mesh: &Mesh, lod_config: &LodChainConfig, material_index: u32) -> VGAssetData {
+pub fn build_vg_asset(
+    mesh: &Mesh,
+    lod_config: &LodChainConfig,
+    material_index: u32,
+) -> VGAssetData {
     let mut all_verts: Vec<Vertex> = Vec::new();
     let mut all_indices: Vec<u32> = Vec::new();
     let mut all_meshlets: Vec<MeshletDescriptor> = Vec::new();
@@ -271,8 +278,14 @@ mod tests {
     /// Unit cube (12 triangles, closed manifold).
     fn cube_mesh() -> Mesh {
         let corners: [[f32; 3]; 8] = [
-            [-1.0, -1.0, -1.0], [1.0, -1.0, -1.0], [1.0, 1.0, -1.0], [-1.0, 1.0, -1.0],
-            [-1.0, -1.0, 1.0], [1.0, -1.0, 1.0], [1.0, 1.0, 1.0], [-1.0, 1.0, 1.0],
+            [-1.0, -1.0, -1.0],
+            [1.0, -1.0, -1.0],
+            [1.0, 1.0, -1.0],
+            [-1.0, 1.0, -1.0],
+            [-1.0, -1.0, 1.0],
+            [1.0, -1.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [-1.0, 1.0, 1.0],
         ];
         let faces: [[usize; 4]; 6] = [
             [0, 3, 2, 1], // -z
@@ -323,10 +336,7 @@ mod tests {
                 let theta = 2.0 * PI * s as f32 / segments as f32;
                 let (st, ct) = theta.sin_cos();
                 let n = [sp * ct, cp, sp * st];
-                verts.push(vertex(
-                    [n[0] * radius, n[1] * radius, n[2] * radius],
-                    n,
-                ));
+                verts.push(vertex([n[0] * radius, n[1] * radius, n[2] * radius], n));
             }
         }
 
@@ -368,8 +378,15 @@ mod tests {
         let mut per_level: Vec<(usize, usize)> = vec![(0, 0); level_count];
 
         for m in &asset.meshlets {
-            assert!((m.lod_level as usize) < level_count, "lod_level out of range");
-            assert_eq!(m.index_count % 3, 0, "meshlet index count must be a multiple of 3");
+            assert!(
+                (m.lod_level as usize) < level_count,
+                "lod_level out of range"
+            );
+            assert_eq!(
+                m.index_count % 3,
+                0,
+                "meshlet index count must be a multiple of 3"
+            );
             assert!(
                 m.vertex_count as usize <= MAX_VERTICES_PER_MESHLET,
                 "vertex cap violated: {}",
@@ -403,7 +420,11 @@ mod tests {
                     asset.indices[tstart + t + 1],
                     asset.indices[tstart + t + 2],
                 );
-                assert!(area > 1e-10, "degenerate triangle (area {area}) in LOD {}", m.lod_level);
+                assert!(
+                    area > 1e-10,
+                    "degenerate triangle (area {area}) in LOD {}",
+                    m.lod_level
+                );
             }
 
             let slot = &mut per_level[m.lod_level as usize];
@@ -421,7 +442,10 @@ mod tests {
         let asset = build_vg_asset(&mesh, &cfg, 0);
 
         let per_level = check_asset(&asset, cfg.levels.len());
-        assert_eq!(asset.triangle_count() as usize, per_level.iter().map(|p| p.1).sum::<usize>());
+        assert_eq!(
+            asset.triangle_count() as usize,
+            per_level.iter().map(|p| p.1).sum::<usize>()
+        );
 
         // Every level must be present.
         for (lvl, (v, t)) in per_level.iter().enumerate() {

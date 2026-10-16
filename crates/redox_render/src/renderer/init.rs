@@ -36,7 +36,10 @@ impl Renderer {
 
         // --- Device & Queue ---
         let mut required_features = wgpu::Features::empty();
-        if adapter.features().contains(wgpu::Features::SHADER_PRIMITIVE_INDEX) {
+        if adapter
+            .features()
+            .contains(wgpu::Features::SHADER_PRIMITIVE_INDEX)
+        {
             required_features |= wgpu::Features::SHADER_PRIMITIVE_INDEX;
         }
         // Rgba16Float MSAA×2 needs adapter-specific format features (WebGPU baseline is ×1/×4 only).
@@ -94,10 +97,8 @@ impl Renderer {
         surface: Option<wgpu::Surface<'static>>,
         config: wgpu::SurfaceConfiguration,
     ) -> Self {
-        let staging_ring = crate::resource::StagingRing::new(
-            &device,
-            crate::resource::DEFAULT_RING_CAPACITY,
-        );
+        let staging_ring =
+            crate::resource::StagingRing::new(&device, crate::resource::DEFAULT_RING_CAPACITY);
 
         if let Some(ref surface) = surface {
             surface.configure(&device, &config);
@@ -116,7 +117,8 @@ impl Renderer {
         let taa_blend_alpha = 0.08_f32;
         let taa_enabled = false;
         let aa_sharp = true;
-        let hdr_msaa_target_count = pick_hdr_msaa_sample_count(&adapter, hdr_format, aa_sharp || taa_enabled);
+        let hdr_msaa_target_count =
+            pick_hdr_msaa_sample_count(&adapter, hdr_format, aa_sharp || taa_enabled);
         let msaa_sample_count = hdr_msaa_target_count;
         log::info!("HDR MSAA sample count: {msaa_sample_count} (TAA enabled: {taa_enabled})");
 
@@ -278,18 +280,10 @@ impl Renderer {
         });
         let hdr_view = hdr_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        let (hdr_msaa_texture, hdr_msaa_view) = create_hdr_msaa_texture(
-            &device,
-            internal_width,
-            internal_height,
-            msaa_sample_count,
-        );
-        let (depth_msaa_texture, depth_msaa_view) = create_depth_msaa_texture(
-            &device,
-            internal_width,
-            internal_height,
-            msaa_sample_count,
-        );
+        let (hdr_msaa_texture, hdr_msaa_view) =
+            create_hdr_msaa_texture(&device, internal_width, internal_height, msaa_sample_count);
+        let (depth_msaa_texture, depth_msaa_view) =
+            create_depth_msaa_texture(&device, internal_width, internal_height, msaa_sample_count);
 
         let hdr_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("hdr_sampler"),
@@ -352,12 +346,10 @@ impl Renderer {
         let mut smaa_pass = SmaaPass::new(&device, &queue);
         smaa_pass.resize(&device, config.width, config.height);
 
-        let (ldr_texture, ldr_view) = create_sharp_intermediate(
-            &device, config.width, config.height, "sharp_ldr",
-        );
-        let (smaa_out_texture, smaa_out_view) = create_sharp_intermediate(
-            &device, config.width, config.height, "sharp_smaa_out",
-        );
+        let (ldr_texture, ldr_view) =
+            create_sharp_intermediate(&device, config.width, config.height, "sharp_ldr");
+        let (smaa_out_texture, smaa_out_view) =
+            create_sharp_intermediate(&device, config.width, config.height, "sharp_smaa_out");
 
         let tone_mapping_ldr_pipeline =
             create_tone_mapping_pipeline(&device, wgpu::TextureFormat::Rgba8Unorm);
@@ -437,13 +429,8 @@ impl Renderer {
             wgpu::TextureFormat::Rgba16Float,
             "normal",
         );
-        let (ssao_raw_texture, ssao_raw_view) = create_normal_ssao_texture(
-            &device,
-            half_width,
-            half_height,
-            gtao_fmt,
-            "gtao_raw",
-        );
+        let (ssao_raw_texture, ssao_raw_view) =
+            create_normal_ssao_texture(&device, half_width, half_height, gtao_fmt, "gtao_raw");
         let (ssao_half_blurred_texture, ssao_half_blurred_view) = create_normal_ssao_texture(
             &device,
             half_width,
@@ -603,8 +590,10 @@ impl Renderer {
                 &tonemap_uniform_buffer,
             )
         };
-        let taa_tone_bgs: [wgpu::BindGroup; 2] =
-            [make_tone_bg(&taa_history_view0), make_tone_bg(&taa_history_view1)];
+        let taa_tone_bgs: [wgpu::BindGroup; 2] = [
+            make_tone_bg(&taa_history_view0),
+            make_tone_bg(&taa_history_view1),
+        ];
 
         // --- IBL ---
         let ibl_processor = IBLProcessor::new(&device);
@@ -612,7 +601,13 @@ impl Renderer {
 
         // --- Clustered Forward Rendering ---
         let dummy_camera = Camera::new(std::f32::consts::PI / 4.0, 16.0 / 9.0, 0.1, 1000.0);
-        let cluster_manager = ClusterManager::new(internal_width, internal_height, &dummy_camera, &device, &queue);
+        let cluster_manager = ClusterManager::new(
+            internal_width,
+            internal_height,
+            &dummy_camera,
+            &device,
+            &queue,
+        );
 
         let scatter_light_bind_group = scatter_light_pass.create_bind_group(
             &device,
@@ -814,14 +809,13 @@ impl Renderer {
             .collect();
         let csm_layer_views: Vec<wgpu::TextureView> = (0..4)
             .map(|i| {
-                csm_texture
-                    .create_view(&wgpu::TextureViewDescriptor {
-                        label: Some(&format!("csm_layer{i}_view")),
-                        base_array_layer: i,
-                        array_layer_count: Some(1),
-                        dimension: Some(wgpu::TextureViewDimension::D2),
-                        ..Default::default()
-                    })
+                csm_texture.create_view(&wgpu::TextureViewDescriptor {
+                    label: Some(&format!("csm_layer{i}_view")),
+                    base_array_layer: i,
+                    array_layer_count: Some(1),
+                    dimension: Some(wgpu::TextureViewDimension::D2),
+                    ..Default::default()
+                })
             })
             .collect();
         use crate::shadow::atlas_allocator::MAX_CASTERS;
@@ -831,11 +825,7 @@ impl Renderer {
         let face_slots = (MAX_CASTERS as usize) * 6;
         let face_matrix_buffers: Vec<wgpu::Buffer> = (0..face_slots)
             .map(|i| {
-                buffer::create_uniform_buffer(
-                    &device,
-                    &format!("face_matrix_buf{i}"),
-                    &[0u8; 64],
-                )
+                buffer::create_uniform_buffer(&device, &format!("face_matrix_buf{i}"), &[0u8; 64])
             })
             .collect();
         let face_matrix_bgs: Vec<wgpu::BindGroup> = face_matrix_buffers

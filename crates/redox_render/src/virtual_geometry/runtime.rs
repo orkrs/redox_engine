@@ -15,20 +15,20 @@
 //!     3. Loop: draw_indexed_indirect per visible command
 //! ```
 
-use std::collections::HashMap;
 use bytemuck;
+use std::collections::HashMap;
 
-use crate::mesh::{CompressedVertex, compress_vertices, bounds_vectors};
 use super::asset_pipeline::build_vg_asset;
 use super::cache;
-use super::culling::{cull_meshlets_into, Frustum};
+use super::culling::{Frustum, cull_meshlets_into};
 use super::gpu_cull::{CullParamsUniform, VgGpuCull};
 use super::indirect::IndirectDrawBuffer;
 use super::lod::LodChainConfig;
 use super::meshlet::{
-    DrawIndexedIndirectCmd, MeshletDescriptor, VGAssetData, VGInstanceData,
-    MAX_GLOBAL_MESHLETS, MAX_VG_INSTANCES, MAX_VISIBLE_COMMANDS,
+    DrawIndexedIndirectCmd, MAX_GLOBAL_MESHLETS, MAX_VG_INSTANCES, MAX_VISIBLE_COMMANDS,
+    MeshletDescriptor, VGAssetData, VGInstanceData,
 };
+use crate::mesh::{CompressedVertex, bounds_vectors, compress_vertices};
 
 // ── WGSL shader source ──────────────────────────────────────────────────────
 
@@ -208,7 +208,8 @@ impl VGSystem {
         });
 
         // ── Indirect Draw Buffer ──────────────────────────────────────────────
-        let indirect = IndirectDrawBuffer::new(device, config.max_visible_commands, "vg_indirect_draw");
+        let indirect =
+            IndirectDrawBuffer::new(device, config.max_visible_commands, "vg_indirect_draw");
         let gpu_cull = VgGpuCull::new(device);
 
         // ── Camera Bind Group Layout + Bind Group ─────────────────────────────
@@ -301,11 +302,7 @@ impl VGSystem {
     /// Register a pre-built [`VGAssetData`] and upload it to the GPU.
     ///
     /// Returns the [`VGAssetId`] needed to spawn instances.
-    pub fn register_asset(
-        &mut self,
-        data: VGAssetData,
-        queue: &wgpu::Queue,
-    ) -> Option<VGAssetId> {
+    pub fn register_asset(&mut self, data: VGAssetData, queue: &wgpu::Queue) -> Option<VGAssetId> {
         let vert_needed = data.vertices.len();
         let idx_needed = data.indices.len();
         let meshlet_count = data.meshlets.len() as u32;
@@ -372,7 +369,10 @@ impl VGSystem {
 
         log::info!(
             "[VGSystem] Registered VG asset {:?}: {} meshlets, {} verts, {} indices",
-            id, meshlet_count, vert_needed, idx_needed
+            id,
+            meshlet_count,
+            vert_needed,
+            idx_needed
         );
 
         Some(id)
@@ -492,10 +492,8 @@ impl VGSystem {
             let first = self.global_meshlets.get(start).copied();
             if let Some(m) = first {
                 let scale = super::culling::max_scale(&inst.transform);
-                let world_center = super::culling::transform_point(
-                    &inst.transform,
-                    m.sphere_center,
-                );
+                let world_center =
+                    super::culling::transform_point(&inst.transform, m.sphere_center);
                 let dist = redox_math::Vec3::from_array(world_center).distance(camera_pos);
                 let proj = super::lod::projected_radius(m.sphere_radius * scale, dist, fov_y_rad);
                 inst.flags = super::lod::select_lod(proj, &self.config.lod_config) as u32;
@@ -518,10 +516,18 @@ impl VGSystem {
             self.stats = VGStats {
                 total_meshlets: self.global_meshlets.len() as u32,
                 visible_meshlets: 0,
-                total_triangles: self.global_meshlets.iter().map(|m| (m.index_count / 3) as u64).sum(),
+                total_triangles: self
+                    .global_meshlets
+                    .iter()
+                    .map(|m| (m.index_count / 3) as u64)
+                    .sum(),
                 visible_triangles: 0,
                 registered_assets: self.assets.len() as u32,
-                active_instances: self.instance_data.iter().filter(|i| i.meshlet_count > 0).count() as u32,
+                active_instances: self
+                    .instance_data
+                    .iter()
+                    .filter(|i| i.meshlet_count > 0)
+                    .count() as u32,
             };
             return;
         }
@@ -607,8 +613,7 @@ impl VGSystem {
 
     /// Poll deferred GPU-cull readback (uses last frame's count for draws).
     pub fn poll_gpu_cull_count(&mut self, device: &wgpu::Device) {
-        self.gpu_cull
-            .poll_readback(device, &mut self.indirect);
+        self.gpu_cull.poll_readback(device, &mut self.indirect);
     }
 
     /// Record GPU cull into the main frame encoder (no CPU stall).
@@ -783,7 +788,10 @@ impl VGSystem {
     }
 
     pub fn active_instance_count(&self) -> u32 {
-        self.instance_data.iter().filter(|i| i.meshlet_count > 0).count() as u32
+        self.instance_data
+            .iter()
+            .filter(|i| i.meshlet_count > 0)
+            .count() as u32
     }
 
     // ── Rendering (debug forward path) ────────────────────────────────────────
@@ -875,4 +883,3 @@ fn build_pipeline(
         multiview: None,
     })
 }
-

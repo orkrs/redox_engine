@@ -24,10 +24,7 @@ pub enum InvalidationEvent {
 
 /// Processes invalidation events, marking affected pages as dirty (clearing
 /// the `CACHED` bit) so they are re-rendered next frame.
-pub fn process_invalidations(
-    events: &[InvalidationEvent],
-    page_tables: &mut [VirtualPageTable],
-) {
+pub fn process_invalidations(events: &[InvalidationEvent], page_tables: &mut [VirtualPageTable]) {
     for event in events {
         match event {
             InvalidationEvent::Full | InvalidationEvent::LightMoved => {
@@ -76,8 +73,8 @@ impl DirtyPageCollector {
                     let flat = bit_offset + y * pt.pages_x + x;
                     let word = (flat / 32) as usize;
                     let bit = flat % 32;
-                    let requested = word < requested_bits.len()
-                        && (requested_bits[word] & (1 << bit)) != 0;
+                    let requested =
+                        word < requested_bits.len() && (requested_bits[word] & (1 << bit)) != 0;
 
                     if requested {
                         let entry = pt.get(x, y);

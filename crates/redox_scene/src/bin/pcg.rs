@@ -8,7 +8,7 @@
 use std::env;
 use std::process::ExitCode;
 
-use redox_scene::{generate_to, PcgKind, PcgParams};
+use redox_scene::{PcgKind, PcgParams, generate_to};
 
 fn main() -> ExitCode {
     match run() {
@@ -58,7 +58,10 @@ fn run() -> Result<(), String> {
 
     let out = out.ok_or("missing --out <dir>")?;
     if params.name == "world" {
-        if let Some(stem) = std::path::Path::new(&out).file_name().and_then(|s| s.to_str()) {
+        if let Some(stem) = std::path::Path::new(&out)
+            .file_name()
+            .and_then(|s| s.to_str())
+        {
             params.name = stem.to_string();
         }
     }

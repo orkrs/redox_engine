@@ -4,12 +4,10 @@ use std::path::{Path, PathBuf};
 
 use redox_math::Vec3;
 use redox_render::mesh::primitive::create_cube;
-use redox_render::sdf::{bake_mesh, SdfBrick, SdfBrickAtlas};
-use redox_render::virtual_geometry::{
-    build_vg_asset, cache as vg_cache, LodChainConfig,
-};
+use redox_render::sdf::{SdfBrick, SdfBrickAtlas, bake_mesh};
+use redox_render::virtual_geometry::{LodChainConfig, build_vg_asset, cache as vg_cache};
 use redox_scene::{
-    generate_to, load_cell_actors, load_manifest, parse_cell_dir, CELLS_DIR, PcgKind, PcgParams,
+    CELLS_DIR, PcgKind, PcgParams, generate_to, load_cell_actors, load_manifest, parse_cell_dir,
 };
 
 #[derive(Clone, Debug)]
@@ -141,11 +139,13 @@ impl PackagerPanel {
         if let Some(report) = &self.last_report {
             ui.separator();
             ui.label(format!("Last: {}", report.report_path.display()));
-            egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
-                for line in &report.lines {
-                    ui.monospace(line);
-                }
-            });
+            egui::ScrollArea::vertical()
+                .max_height(220.0)
+                .show(ui, |ui| {
+                    for line in &report.lines {
+                        ui.monospace(line);
+                    }
+                });
         }
     }
 
@@ -251,10 +251,7 @@ impl PackagerPanel {
         );
         std::fs::write(&report_path, &body)?;
 
-        let msg = format!(
-            "SDF OK: 64³ → {} (GPU atlas deferred)",
-            bin_path.display()
-        );
+        let msg = format!("SDF OK: 64³ → {} (GPU atlas deferred)", bin_path.display());
         self.bake_status.sdf = msg.clone();
         Ok(msg)
     }
@@ -373,7 +370,10 @@ fn scan_ofpa(root: &Path) -> anyhow::Result<BakeReport> {
             };
 
             match parsed {
-                Some(c) => lines.push(format!("cell {}_{} ({}): {n_actors} actors", c.x, c.y, name)),
+                Some(c) => lines.push(format!(
+                    "cell {}_{} ({}): {n_actors} actors",
+                    c.x, c.y, name
+                )),
                 None => lines.push(format!("cell {name}: {n_actors} actors (unparsed)")),
             }
         }

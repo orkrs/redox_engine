@@ -6,8 +6,8 @@
 
 use bytemuck::{Pod, Zeroable};
 
-use super::bake::SDF_RESOLUTION;
 use super::SdfBrick;
+use super::bake::SDF_RESOLUTION;
 
 /// Side length of the global 3D atlas texture (texels per axis).
 pub const GPU_ATLAS_EXTENT: u32 = 128;

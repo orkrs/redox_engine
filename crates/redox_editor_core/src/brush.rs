@@ -52,7 +52,11 @@ pub fn scatter_poses(center: Vec3, radius: f32, density: f32, seed: u64) -> Vec<
         rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
         let yaw = (rng as f32 / u64::MAX as f32) * std::f32::consts::TAU;
         out.push((
-            Vec3::new(center.x + r * angle.cos(), center.y, center.z + r * angle.sin()),
+            Vec3::new(
+                center.x + r * angle.cos(),
+                center.y,
+                center.z + r * angle.sin(),
+            ),
             yaw,
         ));
     }
@@ -68,11 +72,14 @@ pub fn place_on_surface(
 ) -> (Vec3, Quat) {
     if let Some(phys) = physics {
         let origin = pos + Vec3::Y * 80.0;
-        if let Some((hit, normal, _)) =
-            phys.cast_ray_with_normal(origin, -Vec3::Y, 200.0, exclude)
+        if let Some((hit, normal, _)) = phys.cast_ray_with_normal(origin, -Vec3::Y, 200.0, exclude)
         {
             let n = normal.normalize_or_zero();
-            let n = if n.length_squared() < 1e-6 { Vec3::Y } else { n };
+            let n = if n.length_squared() < 1e-6 {
+                Vec3::Y
+            } else {
+                n
+            };
             let rot = Quat::from_rotation_arc(Vec3::Y, n);
             return (hit + n * half_height, rot);
         }

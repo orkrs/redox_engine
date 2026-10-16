@@ -4,9 +4,9 @@
 //! / [`Events<AssetLoadFailedEvent>`] as resources, then run [`AssetManager::update`]
 //! each frame. Systems can read these events to react to finished loads or hot-reloads.
 
-use std::path::PathBuf;
 use crate::handle::AssetId;
 use std::any::TypeId;
+use std::path::PathBuf;
 
 /// Type-erased payload for "asset finished loading".
 ///

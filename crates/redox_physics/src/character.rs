@@ -27,7 +27,16 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
             &Collider,
         )>()
         .iter(world)
-        .map(|(e, c, t, rb, col)| (e, c.desired_translation, c.gravity, *t, rb.handle, col.handle))
+        .map(|(e, c, t, rb, col)| {
+            (
+                e,
+                c.desired_translation,
+                c.gravity,
+                *t,
+                rb.handle,
+                col.handle,
+            )
+        })
         .collect();
 
     let mut results = Vec::with_capacity(entities.len());
@@ -102,7 +111,11 @@ mod kcc_tests {
         world.add_component(e, Transform::from_translation(translation));
         let mut phys = world.remove_resource::<PhysicsContext>().unwrap();
         let (bh, cols) = phys
-            .add_rigid_body(e, body.translation(vec3_to_rapier(translation)), vec![collider])
+            .add_rigid_body(
+                e,
+                body.translation(vec3_to_rapier(translation)),
+                vec![collider],
+            )
             .unwrap();
         world.insert_resource(phys);
         world.add_component(e, RigidBody { handle: bh });
@@ -139,8 +152,15 @@ mod kcc_tests {
         for _ in 0..40 {
             tick_physics(&mut world, 1.0 / 60.0);
         }
-        let y = world.get_component::<Transform>(player).unwrap().translation.y;
-        let grounded = world.get_component::<CharacterController>(player).unwrap().grounded;
+        let y = world
+            .get_component::<Transform>(player)
+            .unwrap()
+            .translation
+            .y;
+        let grounded = world
+            .get_component::<CharacterController>(player)
+            .unwrap()
+            .grounded;
         assert!(y > 0.2 && y < 1.6, "landed y={y}");
         assert!(grounded, "expected grounded after falling onto the floor");
     }
@@ -177,7 +197,11 @@ mod kcc_tests {
                 .desired_translation = Vec3::new(8.0 / 60.0, 0.0, 0.0);
             tick_physics(&mut world, 1.0 / 60.0);
         }
-        let x = world.get_component::<Transform>(player).unwrap().translation.x;
+        let x = world
+            .get_component::<Transform>(player)
+            .unwrap()
+            .translation
+            .x;
         assert!(x < 1.6, "walked through wall, x={x}");
     }
 
@@ -194,11 +218,7 @@ mod kcc_tests {
         let crystal = world.spawn();
         let mut phys = world.remove_resource::<PhysicsContext>().unwrap();
         let (bh, col) = phys
-            .add_trigger(
-                crystal,
-                Vec3::ZERO,
-                ColliderBuilder::ball(0.5),
-            )
+            .add_trigger(crystal, Vec3::ZERO, ColliderBuilder::ball(0.5))
             .unwrap();
         world.insert_resource(phys);
         world.add_component(crystal, RigidBody { handle: bh });
@@ -220,4 +240,3 @@ mod kcc_tests {
         );
     }
 }
-

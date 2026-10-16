@@ -68,8 +68,10 @@ impl ClusterManager {
         });
 
         // Flat array of light indices per cluster; worst case num_clusters * MAX_LIGHTS_PER_CLUSTER.
-        let indices_capacity = (num_clusters as u64) * (clustering::cluster_config::MAX_LIGHTS_PER_CLUSTER as u64);
-        let light_indices_buffer_size = (indices_capacity.min(MAX_INDICES_CAP)) * std::mem::size_of::<u32>() as u64;
+        let indices_capacity =
+            (num_clusters as u64) * (clustering::cluster_config::MAX_LIGHTS_PER_CLUSTER as u64);
+        let light_indices_buffer_size =
+            (indices_capacity.min(MAX_INDICES_CAP)) * std::mem::size_of::<u32>() as u64;
         let light_indices_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("cluster_light_indices_buffer"),
             size: light_indices_buffer_size,
@@ -133,8 +135,7 @@ impl ClusterManager {
             || self.bounds_cache_width != w
             || self.bounds_cache_height != h
         {
-            self.cached_cluster_bounds =
-                clustering::build_clusters(camera, w, h);
+            self.cached_cluster_bounds = clustering::build_clusters(camera, w, h);
             self.bounds_cache_near = camera.near;
             self.bounds_cache_far = camera.far;
             self.bounds_cache_width = w;
@@ -179,14 +180,13 @@ impl ClusterManager {
 
             self.bounds_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("cluster_bounds_buffer"),
-                size: (new_total as u64)
-                    * std::mem::size_of::<clustering::ClusterBounds>() as u64,
+                size: (new_total as u64) * std::mem::size_of::<clustering::ClusterBounds>() as u64,
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
 
-            let indices_cap = (new_total as u64)
-                * (clustering::cluster_config::MAX_LIGHTS_PER_CLUSTER as u64);
+            let indices_cap =
+                (new_total as u64) * (clustering::cluster_config::MAX_LIGHTS_PER_CLUSTER as u64);
             let indices_size =
                 (indices_cap.min(MAX_INDICES_CAP)) * std::mem::size_of::<u32>() as u64;
             self.light_indices_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -231,8 +231,10 @@ impl ClusterManager {
                 mapped_at_creation: false,
             });
 
-            let indices_cap = (new_total as u64) * (clustering::cluster_config::MAX_LIGHTS_PER_CLUSTER as u64);
-            let indices_size = (indices_cap.min(MAX_INDICES_CAP)) * std::mem::size_of::<u32>() as u64;
+            let indices_cap =
+                (new_total as u64) * (clustering::cluster_config::MAX_LIGHTS_PER_CLUSTER as u64);
+            let indices_size =
+                (indices_cap.min(MAX_INDICES_CAP)) * std::mem::size_of::<u32>() as u64;
             self.light_indices_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("cluster_light_indices_buffer"),
                 size: indices_size,
@@ -242,7 +244,7 @@ impl ClusterManager {
         }
 
         self.cluster_info = new_info;
-        
+
         // Write updated cluster info
         let info_bytes = bytemuck::bytes_of(&self.cluster_info);
         queue.write_buffer(&self.info_buffer, 0, info_bytes);
@@ -265,11 +267,9 @@ impl ClusterManager {
         queue: &Queue,
     ) {
         // Convert PointLight to PointLightGpu and serialize to GPU
-        let gpu_lights: Vec<PointLightGpu> = lights
-            .iter()
-            .map(PointLightGpu::from_point_light)
-            .collect();
-        
+        let gpu_lights: Vec<PointLightGpu> =
+            lights.iter().map(PointLightGpu::from_point_light).collect();
+
         if !gpu_lights.is_empty() {
             let lights_bytes = bytemuck::cast_slice::<PointLightGpu, u8>(&gpu_lights);
             queue.write_buffer(&self.point_lights_buffer, 0, lights_bytes);
@@ -308,12 +308,7 @@ impl ClusterManager {
     }
 
     /// Records the GPU cluster light cull into `encoder` (no-op when [`Self::gpu_cull`] is false).
-    pub fn record_gpu_cull(
-        &self,
-        device: &Device,
-        encoder: &mut CommandEncoder,
-        queue: &Queue,
-    ) {
+    pub fn record_gpu_cull(&self, device: &Device, encoder: &mut CommandEncoder, queue: &Queue) {
         if !self.gpu_cull {
             return;
         }

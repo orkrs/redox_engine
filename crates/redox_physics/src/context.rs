@@ -258,14 +258,15 @@ impl PhysicsContext {
                 vec3_to_rapier(req.direction),
             );
 
-            let result = if let Some((handle, intersection)) = self.query_pipeline.cast_ray_and_get_normal(
-                &self.rigid_bodies,
-                &self.colliders,
-                &ray,
-                req.max_distance,
-                true,
-                QueryFilter::default(),
-            ) {
+            let result = if let Some((handle, intersection)) =
+                self.query_pipeline.cast_ray_and_get_normal(
+                    &self.rigid_bodies,
+                    &self.colliders,
+                    &ray,
+                    req.max_distance,
+                    true,
+                    QueryFilter::default(),
+                ) {
                 let hit_point = req.origin + req.direction * intersection.toi;
                 let mut normal = Vec3::new(
                     intersection.normal.x,

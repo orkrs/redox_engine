@@ -113,10 +113,16 @@ pub fn transform_hierarchy_system(world: &mut World) {
             }
         }
 
-        for e in world.query_filtered::<Entity, Changed<Transform>>().iter(world) {
+        for e in world
+            .query_filtered::<Entity, Changed<Transform>>()
+            .iter(world)
+        {
             dirty.insert(e);
         }
-        for e in world.query_filtered::<Entity, Changed<Parent>>().iter(world) {
+        for e in world
+            .query_filtered::<Entity, Changed<Parent>>()
+            .iter(world)
+        {
             dirty.insert(e);
         }
 
@@ -186,7 +192,10 @@ mod tests {
         world.begin_frame();
         let parent = world.spawn();
         let child = world.spawn();
-        world.add_component(parent, Transform::from_translation(Vec3::new(10.0, 0.0, 0.0)));
+        world.add_component(
+            parent,
+            Transform::from_translation(Vec3::new(10.0, 0.0, 0.0)),
+        );
         world.add_component(child, Transform::from_translation(Vec3::new(1.0, 0.0, 0.0)));
         set_parent(&mut world, child, parent);
 

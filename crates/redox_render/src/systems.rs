@@ -129,10 +129,7 @@ pub fn extract_render_objects_into(
 /// Extracts render data from the ECS world. Entities with [`MeshHandle`] and
 /// [`MaterialHandle`] are included only if the render context has already
 /// uploaded those assets (e.g. after [`sync_assets_to_render`]).
-pub fn extract_render_objects(
-    world: &World,
-    render_context: &RenderContext,
-) -> Vec<RenderObject> {
+pub fn extract_render_objects(world: &World, render_context: &RenderContext) -> Vec<RenderObject> {
     let mut render_objects = Vec::new();
     extract_render_objects_into(world, render_context, &mut render_objects);
     render_objects
@@ -165,11 +162,8 @@ pub fn sync_assets_to_render(
             continue;
         }
         if let Some(img) = asset_manager.get(handle) {
-            let _ = render_ctx.add_texture_from_asset(
-                handle,
-                img,
-                &format!("tex_{:?}", handle.id()),
-            );
+            let _ =
+                render_ctx.add_texture_from_asset(handle, img, &format!("tex_{:?}", handle.id()));
         }
     }
 

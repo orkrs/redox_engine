@@ -19,7 +19,9 @@ pub struct PieSession {
 }
 
 impl PieSession {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn start(&mut self, world: &World, registry: &TypeRegistry) {
         self.snapshot = Some(registry.snapshot_world(world));
@@ -35,8 +37,12 @@ impl PieSession {
         self.paused = false;
     }
 
-    pub fn pause(&mut self) { self.paused = true; }
-    pub fn resume(&mut self) { self.paused = false; }
+    pub fn pause(&mut self) {
+        self.paused = true;
+    }
+    pub fn resume(&mut self) {
+        self.paused = false;
+    }
 
     pub fn stop(&mut self, world: &mut World, registry: &TypeRegistry) {
         if self.snapshot.take().is_some() {
@@ -45,7 +51,11 @@ impl PieSession {
                 world.despawn(*spawned);
             }
             for (entity, components) in std::mem::take(&mut self.saved) {
-                let target = if alive.contains(&entity) { entity } else { world.spawn() };
+                let target = if alive.contains(&entity) {
+                    entity
+                } else {
+                    world.spawn()
+                };
                 for comp in &components {
                     if let Err(e) = registry.insert_component(world, target, comp) {
                         log::warn!("PIE restore: failed to reapply component: {e:?}");
@@ -58,7 +68,9 @@ impl PieSession {
         self.paused = false;
     }
 
-    pub fn is_running(&self) -> bool { self.running && !self.paused }
+    pub fn is_running(&self) -> bool {
+        self.running && !self.paused
+    }
 }
 
 #[cfg(test)]
@@ -84,7 +96,9 @@ mod tests {
         world.get_component_mut::<Transform>(e).unwrap().translation = Vec3::new(9.0, 9.0, 9.0);
         pie.stop(&mut world, &registry);
 
-        let restored = world.get_component::<Transform>(e).expect("same entity id survives");
+        let restored = world
+            .get_component::<Transform>(e)
+            .expect("same entity id survives");
         assert_eq!(restored.translation, Vec3::new(1.0, 2.0, 3.0));
         assert!(!pie.running);
     }

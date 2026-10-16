@@ -34,7 +34,11 @@ pub struct RaycastResult {
 
 /// System that consumes `RaycastRequest` events, performs the checks,
 /// and emits `RaycastResult` events.
-pub fn raycast_system(reader: &mut EventReader<RaycastRequest>, context: &mut PhysicsContext, world: &mut World) {
+pub fn raycast_system(
+    reader: &mut EventReader<RaycastRequest>,
+    context: &mut PhysicsContext,
+    world: &mut World,
+) {
     // 1. Читаем все входящие запросы из ресурса событий
     if let Some(events) = world.get_resource::<Events<RaycastRequest>>() {
         for req in reader.iter(events) {

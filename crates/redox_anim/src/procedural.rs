@@ -21,7 +21,11 @@ pub fn chain_model(segments: usize, segment_len: f32, radius: f32, sides: usize)
     let skeleton = Skeleton::from_local_bind(
         (0..=segments)
             .map(|i| {
-                let local = if i == 0 { Mat4::IDENTITY } else { Mat4::from_translation(Vec3::Y * segment_len) };
+                let local = if i == 0 {
+                    Mat4::IDENTITY
+                } else {
+                    Mat4::from_translation(Vec3::Y * segment_len)
+                };
                 (format!("bone_{i}"), i.checked_sub(1), local)
             })
             .collect(),
@@ -58,7 +62,11 @@ pub fn chain_model(segments: usize, segment_len: f32, radius: f32, sides: usize)
     }
 
     let clips = demo_clips(&skeleton, segment_len);
-    SkinnedModel { skeleton, clips, geometry }
+    SkinnedModel {
+        skeleton,
+        clips,
+        geometry,
+    }
 }
 
 /// Three looping clips ("Sway", "Wave", "Coil") that bend every bone with a travelling phase.
@@ -84,9 +92,17 @@ fn wave_clip(
     duration: f32,
 ) -> AnimationClip {
     const KEYS_PER_LOOP: usize = 12;
-    let mut clip = AnimationClip { name: name.into(), duration, ..Default::default() };
+    let mut clip = AnimationClip {
+        name: name.into(),
+        duration,
+        ..Default::default()
+    };
     for (i, bone) in skeleton.bones.iter().enumerate() {
-        let translation = if i == 0 { Vec3::ZERO } else { Vec3::Y * segment_len };
+        let translation = if i == 0 {
+            Vec3::ZERO
+        } else {
+            Vec3::Y * segment_len
+        };
         // Last key repeats the first so the loop is seamless.
         let keys = (0..=KEYS_PER_LOOP)
             .map(|k| {
@@ -119,7 +135,10 @@ mod tests {
     fn chain_geometry_is_consistent() {
         let model = chain_model(3, 0.5, 0.1, 8);
         assert_eq!(model.skeleton.len(), 4);
-        model.geometry.validate(model.skeleton.len()).expect("valid geometry");
+        model
+            .geometry
+            .validate(model.skeleton.len())
+            .expect("valid geometry");
         assert_eq!(model.clips.len(), 3);
         assert_eq!(model.geometry.indices.len() % 3, 0);
     }
@@ -129,7 +148,9 @@ mod tests {
         let model = chain_model(3, 0.5, 0.1, 8);
         let pose = Pose::from_local(&model.skeleton, &model.skeleton.bind_local_pose());
         let (mut p, mut n) = (Vec::new(), Vec::new());
-        model.geometry.deform_into(&pose.skin_matrices(&model.skeleton), &mut p, &mut n);
+        model
+            .geometry
+            .deform_into(&pose.skin_matrices(&model.skeleton), &mut p, &mut n);
         for (a, b) in p.iter().zip(&model.geometry.positions) {
             assert!(Vec3::from(*a).distance(Vec3::from(*b)) < 1.0e-5);
         }
@@ -142,7 +163,11 @@ mod tests {
             let start = clip.sample(&model.skeleton, 0.0, true);
             let end = clip.sample(&model.skeleton, clip.duration - 1.0e-4, true);
             for (a, b) in start.bones.iter().zip(&end.bones) {
-                assert!(a.rotation.abs_diff_eq(b.rotation, 1.0e-2), "{} does not loop", clip.name);
+                assert!(
+                    a.rotation.abs_diff_eq(b.rotation, 1.0e-2),
+                    "{} does not loop",
+                    clip.name
+                );
             }
         }
     }
@@ -153,8 +178,13 @@ mod tests {
         let tip = model.skeleton.len() - 1;
         let at = |t: f32| {
             let local = model.clips[1].sample(&model.skeleton, t, true);
-            Pose::from_local(&model.skeleton, &local).bone_transforms[tip].w_axis.truncate()
+            Pose::from_local(&model.skeleton, &local).bone_transforms[tip]
+                .w_axis
+                .truncate()
         };
-        assert!(at(0.0).distance(at(0.4)) > 0.05, "tip must move during the clip");
+        assert!(
+            at(0.0).distance(at(0.4)) > 0.05,
+            "tip must move during the clip"
+        );
     }
 }

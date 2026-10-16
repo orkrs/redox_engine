@@ -6,13 +6,8 @@ impl Renderer {
     /// Writes the current camera uniform to the GPU.
     pub fn update_camera_buffer(&mut self) {
         let bytes = bytemuck::bytes_of(&self.camera_uniform).to_vec();
-        self.staging_ring.write_immediate(
-            &self.queue,
-            &self.camera_buffer,
-            0,
-            &bytes,
-            false,
-        );
+        self.staging_ring
+            .write_immediate(&self.queue, &self.camera_buffer, 0, &bytes, false);
     }
 
     /// Returns the current light uniform.
@@ -31,13 +26,8 @@ impl Renderer {
         }
         self.light_uniform = light;
         let bytes = bytemuck::bytes_of(&light).to_vec();
-        self.staging_ring.write_immediate(
-            &self.queue,
-            &self.light_buffer,
-            0,
-            &bytes,
-            false,
-        );
+        self.staging_ring
+            .write_immediate(&self.queue, &self.light_buffer, 0, &bytes, false);
     }
 
     /// Writes the shader debug uniform (debug_viz_mode) to the GPU.
@@ -48,13 +38,8 @@ impl Renderer {
         u.ibl_enabled = u32::from(!self.ibl_resource.is_dummy());
         u.gtao_enabled = u32::from(self.ssao_enabled);
         let bytes = bytemuck::bytes_of(&u).to_vec();
-        self.staging_ring.write_immediate(
-            &self.queue,
-            &self.shader_debug_buffer,
-            0,
-            &bytes,
-            false,
-        );
+        self.staging_ring
+            .write_immediate(&self.queue, &self.shader_debug_buffer, 0, &bytes, false);
     }
 
     pub fn update_model_buffer(&mut self, objects: &[RenderObject]) {
@@ -85,13 +70,8 @@ impl Renderer {
             });
         }
         let bytes = bytemuck::cast_slice(&self.model_uniform_scratch).to_vec();
-        self.staging_ring.write_immediate(
-            &self.queue,
-            &self.model_buffer,
-            0,
-            &bytes,
-            false,
-        );
+        self.staging_ring
+            .write_immediate(&self.queue, &self.model_buffer, 0, &bytes, false);
     }
 
     /// Updates cluster light assignments. Call this when lights change or camera is updated.
@@ -127,7 +107,13 @@ impl Renderer {
         // Use HDR format since VG objects are rendered into the HDR buffer in the forward pass
         let hdr_fmt = wgpu::TextureFormat::Rgba16Float;
         let depth_fmt = crate::pass::forward::DEPTH_FORMAT;
-        let vg = VGSystem::new(&self.device, config, &self.camera_buffer, hdr_fmt, depth_fmt);
+        let vg = VGSystem::new(
+            &self.device,
+            config,
+            &self.camera_buffer,
+            hdr_fmt,
+            depth_fmt,
+        );
         self.vg_system = Some(vg);
         self.rebuild_vg_bind_groups();
     }
@@ -140,7 +126,9 @@ impl Renderer {
         mesh: &crate::mesh::Mesh,
         material_index: u32,
     ) -> Option<VGAssetId> {
-        self.vg_system.as_mut()?.register_mesh(mesh, material_index, &self.queue)
+        self.vg_system
+            .as_mut()?
+            .register_mesh(mesh, material_index, &self.queue)
     }
 
     /// Prepare the VG system for this frame and synchronise transforms from ECS.

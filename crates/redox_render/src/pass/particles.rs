@@ -253,53 +253,50 @@ impl ParticleGpuSystem {
             multiview: None,
         });
 
-        let draw_pipeline_reactive = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("particle_draw_pipeline_reactive"),
-            layout: Some(&draw_layout),
-            vertex: wgpu::VertexState {
-                module: &draw_shader,
-                entry_point: "vs_main",
-                buffers: &[],
-                compilation_options: Default::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &draw_shader,
-                entry_point: "fs_main",
-                targets: &[
-                    Some(wgpu::ColorTargetState {
-                        format: hdr_format,
-                        blend: Some(blend),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    }),
-                    Some(wgpu::ColorTargetState {
-                        format: wgpu::TextureFormat::R8Unorm,
-                        blend: Some(wgpu::BlendState::REPLACE),
-                        write_mask: wgpu::ColorWrites::RED,
-                    }),
-                ],
-                compilation_options: Default::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: false,
-                depth_compare: wgpu::CompareFunction::LessEqual,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
+        let draw_pipeline_reactive =
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("particle_draw_pipeline_reactive"),
+                layout: Some(&draw_layout),
+                vertex: wgpu::VertexState {
+                    module: &draw_shader,
+                    entry_point: "vs_main",
+                    buffers: &[],
+                    compilation_options: Default::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &draw_shader,
+                    entry_point: "fs_main",
+                    targets: &[
+                        Some(wgpu::ColorTargetState {
+                            format: hdr_format,
+                            blend: Some(blend),
+                            write_mask: wgpu::ColorWrites::ALL,
+                        }),
+                        Some(wgpu::ColorTargetState {
+                            format: wgpu::TextureFormat::R8Unorm,
+                            blend: Some(wgpu::BlendState::REPLACE),
+                            write_mask: wgpu::ColorWrites::RED,
+                        }),
+                    ],
+                    compilation_options: Default::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleStrip,
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: false,
+                    depth_compare: wgpu::CompareFunction::LessEqual,
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+            });
 
-        let draw_bind_group = Self::make_draw_bind_group(
-            device,
-            &draw_bgl,
-            &camera_buffer,
-            &particle_buffer_a,
-        );
+        let draw_bind_group =
+            Self::make_draw_bind_group(device, &draw_bgl, &camera_buffer, &particle_buffer_a);
 
         Self {
             capacity,
@@ -381,12 +378,8 @@ impl ParticleGpuSystem {
 
     fn refresh_draw_bind_group(&mut self, device: &wgpu::Device) {
         let draw_bgl = self.draw_pipeline.get_bind_group_layout(0);
-        self.draw_bind_group = Self::make_draw_bind_group(
-            device,
-            &draw_bgl,
-            &self.camera_buffer,
-            self.draw_buffer(),
-        );
+        self.draw_bind_group =
+            Self::make_draw_bind_group(device, &draw_bgl, &self.camera_buffer, self.draw_buffer());
     }
 
     fn make_draw_bind_group(

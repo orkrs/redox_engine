@@ -151,9 +151,19 @@ impl Material {
             roughness: self.roughness,
             flags,
             sheen: self.sheen,
-            layer0_color: [l0.base_color.x, l0.base_color.y, l0.base_color.z, l0.metallic],
+            layer0_color: [
+                l0.base_color.x,
+                l0.base_color.y,
+                l0.base_color.z,
+                l0.metallic,
+            ],
             layer0_params: [l0.roughness, l0.weight, 0.0, 0.0],
-            layer1_color: [l1.base_color.x, l1.base_color.y, l1.base_color.z, l1.metallic],
+            layer1_color: [
+                l1.base_color.x,
+                l1.base_color.y,
+                l1.base_color.z,
+                l1.metallic,
+            ],
             layer1_params: [l1.roughness, l1.weight, 0.0, 0.0],
         }
     }

@@ -17,11 +17,7 @@ pub struct FrameView<'a> {
 }
 
 impl<'a> FrameView<'a> {
-    pub fn new(
-        camera: &'a Camera,
-        objects: &'a [RenderObject],
-        lights: &'a LightScene,
-    ) -> Self {
+    pub fn new(camera: &'a Camera, objects: &'a [RenderObject], lights: &'a LightScene) -> Self {
         Self {
             camera,
             objects,

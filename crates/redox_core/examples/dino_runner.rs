@@ -15,12 +15,13 @@ use redox_audio::AudioContext;
 use redox_core::config::EngineConfig;
 use redox_core::dispatcher::Stage;
 use redox_core::{AppBuilder, AudioPlugin, PhysicsPlugin, RenderPlugin, Time};
-use redox_ecs::{set_parent, Entity, EventReader, Events, World};
+use redox_ecs::{Entity, EventReader, Events, World, set_parent};
 use redox_input::InputState;
 use redox_math::{GlobalTransform, Quat, Vec3};
 use redox_physics::{
     CharacterController, Collider, Kinematic, PhysicsContext, RigidBody, Trigger, TriggerEnter,
 };
+use redox_render::FrameRenderObjects;
 use redox_render::camera::Camera;
 use redox_render::context::RenderContext;
 use redox_render::frame::FrameView;
@@ -28,7 +29,6 @@ use redox_render::light::{DirectionalLight, LightScene, PointLight};
 use redox_render::material::Material;
 use redox_render::mesh::primitive::create_cube;
 use redox_render::systems::{RenderObject, Transform};
-use redox_render::FrameRenderObjects;
 use winit::keyboard::KeyCode;
 
 const PLAYER_X: f32 = -7.5;
@@ -267,12 +267,13 @@ fn init_scene(world: &mut World, ctx: &mut RenderContext, game: &mut DinoGame) {
         let (bh, cols) = phys
             .add_rigid_body(
                 player,
-                RigidBodyBuilder::kinematic_position_based().translation(
-                    rapier3d::na::Vector3::new(PLAYER_X, player_y, 0.0),
-                ),
-                vec![ColliderBuilder::capsule_y(0.35, 0.32)
-                    .active_collision_types(ActiveCollisionTypes::all())
-                    .active_events(ActiveEvents::COLLISION_EVENTS)],
+                RigidBodyBuilder::kinematic_position_based()
+                    .translation(rapier3d::na::Vector3::new(PLAYER_X, player_y, 0.0)),
+                vec![
+                    ColliderBuilder::capsule_y(0.35, 0.32)
+                        .active_collision_types(ActiveCollisionTypes::all())
+                        .active_events(ActiveEvents::COLLISION_EVENTS),
+                ],
             )
             .expect("player body");
         world.insert_resource(phys);
@@ -280,7 +281,14 @@ fn init_scene(world: &mut World, ctx: &mut RenderContext, game: &mut DinoGame) {
         world.add_component(player, Collider { handle: cols[0] });
     }
 
-    attach_part(world, player, cube, dino, Vec3::ZERO, Vec3::new(1.1, 1.0, 1.0));
+    attach_part(
+        world,
+        player,
+        cube,
+        dino,
+        Vec3::ZERO,
+        Vec3::new(1.1, 1.0, 1.0),
+    );
     attach_part(
         world,
         player,
@@ -632,7 +640,10 @@ fn main() {
             }
 
             let whole = game.score.floor() as i32;
-            if game.phase == Phase::Running && whole > 0 && whole % 50 == 0 && whole != game.last_logged
+            if game.phase == Phase::Running
+                && whole > 0
+                && whole % 50 == 0
+                && whole != game.last_logged
             {
                 game.last_logged = whole;
                 log::info!("score={whole} speed={:.1} best={}", game.speed, game.best);

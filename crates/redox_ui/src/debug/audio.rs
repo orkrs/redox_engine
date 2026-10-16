@@ -58,7 +58,12 @@ impl AudioDebugPanel {
                 zone_count += 1;
                 let pos = world
                     .get_component::<Transform>(entity)
-                    .map(|t| format!("({:.1}, {:.1}, {:.1})", t.translation.x, t.translation.y, t.translation.z))
+                    .map(|t| {
+                        format!(
+                            "({:.1}, {:.1}, {:.1})",
+                            t.translation.x, t.translation.y, t.translation.z
+                        )
+                    })
                     .unwrap_or_else(|| "—".to_string());
                 ui.horizontal(|ui| {
                     ui.label(format!("• {} @ {}", zone.preset_name, pos));
@@ -90,7 +95,11 @@ impl AudioDebugPanel {
                         "Entity {:?}  occlusion: {:.2}  {}",
                         entity.id(),
                         occl,
-                        if occluded { "🔴 blocked" } else { "🟢 clear" }
+                        if occluded {
+                            "🔴 blocked"
+                        } else {
+                            "🟢 clear"
+                        }
                     ));
                     ui.label(egui::RichText::new("").color(color));
                 });
