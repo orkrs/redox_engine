@@ -1051,6 +1051,7 @@ impl Renderer {
             vsm_sampler,
             vsm_enabled: true,
             gpu_profiler,
+            ibl_intensity: 1.0,
             vsm_page_request,
             vsm_request_frames: 0,
             vsm_screen_shadows: true,

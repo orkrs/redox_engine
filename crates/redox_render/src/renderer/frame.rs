@@ -1178,7 +1178,8 @@ impl Renderer {
     ) -> Result<(), wgpu::SurfaceError> {
         self.camera_near = fv.camera.near;
         self.camera_far = fv.camera.far;
-        let light_u = fv.lights.to_legacy_uniform();
+        let mut light_u = fv.lights.to_legacy_uniform();
+        light_u.ambient[3] = self.ibl_intensity;
         self.update_light_buffer(&light_u);
         self.current_point_lights = fv.lights.points.clone();
         self.update_cluster_lights(&fv.lights.points, fv.camera);

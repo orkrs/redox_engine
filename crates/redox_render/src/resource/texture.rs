@@ -211,14 +211,14 @@ impl Texture {
             height,
             wgpu::TextureFormat::Rgba16Float,
             bytemuck::cast_slice(&data),
-            2,
+            8, // four f16 channels; passing 2 made every HDR upload fail validation
             label,
         ))
     }
 
     /// Core upload path: padded staging copy + mip chain + default sampler.
     ///
-    /// `bytes_per_pixel` is 4 for both Rgba8* and Rgba16Float.
+    /// `bytes_per_pixel` is 4 for Rgba8* and 8 for Rgba16Float.
     #[allow(clippy::too_many_arguments)]
     pub fn upload_2d(
         device: &wgpu::Device,

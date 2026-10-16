@@ -42,6 +42,12 @@ impl Renderer {
         (self.vsm_clipmap.stats(), free, capacity)
     }
 
+    /// Scales the environment (image-based) lighting; lower values give more contrast between
+    /// sun-lit and shaded surfaces under a bright sky.
+    pub fn set_ibl_intensity(&mut self, intensity: f32) {
+        self.ibl_intensity = intensity.max(0.0);
+    }
+
     /// Marks directional (VSM) shadow pages under `bounds` stale so they re-render next frame.
     ///
     /// The VSM caches pages until an object moves more than 0.5 m; call this every frame for

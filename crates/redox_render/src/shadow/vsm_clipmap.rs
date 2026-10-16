@@ -224,8 +224,11 @@ impl VsmClipmap {
             // Scroll by whole pages when the window moved. On the very first
             // update every table is still empty, so shifting is a harmless
             // no-op and needs no special case.
+            // Page rows run against the light-plane y axis (uv.y = 0.5 - ndc.y * 0.5), so a
+            // positive window move along y moves page content to *higher* rows: the table
+            // shift (which moves content by -d) takes the negated step. x runs with the axis.
             let dx = ((sx - prev.x) / page_world).round() as i32;
-            let dy = ((sy - prev.y) / page_world).round() as i32;
+            let dy = -(((sy - prev.y) / page_world).round() as i32);
             if dx != 0 || dy != 0 {
                 for phys in shift_entries(&mut self.tables[i], dx, dy) {
                     self.phys_pool.free(phys);
@@ -878,22 +881,42 @@ mod tests {
         assert_eq!(cm.phys_pool_mut().free_count(), cm.phys_pool_mut().capacity());
     }
 
+    /// Page `(px, py)` of `level` that covers `world`, using the same mapping as the shaders.
+    fn page_covering(cm: &VsmClipmap, level: usize, world: Vec3) -> Option<(u32, u32)> {
+        let clip = cm.levels()[level].view_proj * Vec4::new(world.x, world.y, world.z, 1.0);
+        let ndc = Vec3::new(clip.x, clip.y, clip.z) / clip.w;
+        let uv = Vec2::new(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+        if !(0.0..1.0).contains(&uv.x) || !(0.0..1.0).contains(&uv.y) {
+            return None;
+        }
+        let pps = VSM_PAGES_PER_SIDE as f32;
+        Some(((uv.x * pps) as u32, (uv.y * pps) as u32))
+    }
+
+    /// A cached page must keep covering the same world point when the window scrolls, along
+    /// either axis and in either direction (the y axis is flipped in page space).
     #[test]
-    fn window_follows_the_camera_in_page_steps() {
-        let mut cm = single_level(4);
-        let phys = cm.phys_pool_mut().alloc().unwrap();
-        cm.tables_mut()[0].set(8, 8, phys as u32 | PAGE_VALID_BIT | PAGE_CACHED_BIT);
-        let level = &cm.levels()[0];
-        let page_world = cm.config().page_px as f32 * level.texel_world;
-        // Move one page along the light-plane x axis: the cached page keeps its content but
-        // its virtual index moves by one cell.
-        cm.update(Vec3::new(page_world, 0.0, 0.0), Vec3::Y);
-        let moved = (0..16)
-            .flat_map(|y| (0..16).map(move |x| (x, y)))
-            .filter(|&(x, y)| cm.tables()[0].get(x, y) & PAGE_VALID_BIT != 0)
-            .collect::<Vec<_>>();
-        assert_eq!(moved.len(), 1, "exactly one page survives the shift");
-        assert_ne!(moved[0], (8, 8), "its virtual cell moved with the window");
+    fn cached_pages_follow_their_world_region_when_the_window_scrolls() {
+        let point = Vec3::new(1.3, 0.0, -0.9);
+        let step = |cm: &VsmClipmap| cm.config().page_px as f32 * cm.levels()[0].texel_world;
+        for (move_x, move_z) in [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0), (2.0, -3.0)] {
+            let mut cm = single_level(4);
+            let (px, py) = page_covering(&cm, 0, point).expect("point inside the window");
+            let phys = cm.phys_pool_mut().alloc().unwrap();
+            cm.tables_mut()[0].set(px, py, phys as u32 | PAGE_VALID_BIT | PAGE_CACHED_BIT);
+
+            let page = step(&cm);
+            cm.update(Vec3::new(move_x * page, 0.0, move_z * page), Vec3::Y);
+
+            let (nx, ny) = page_covering(&cm, 0, point).expect("point still inside the window");
+            assert_ne!(
+                cm.tables()[0].get(nx, ny) & PAGE_VALID_BIT,
+                0,
+                "move ({move_x}, {move_z}): page for the point was {:?}, now {:?} but holds no data",
+                (px, py),
+                (nx, ny)
+            );
+        }
     }
 
     #[test]

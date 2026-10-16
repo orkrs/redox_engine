@@ -358,6 +358,8 @@ pub struct Renderer {
     pub vsm_enabled: bool,
     /// Per-pass GPU timings (needs timestamp-query features on the device).
     pub gpu_profiler: crate::profiler::GpuProfiler,
+    /// Multiplier for image-based (environment) lighting; 1.0 = as authored.
+    pub ibl_intensity: f32,
     /// GPU feedback: which VSM pages the visible pixels need.
     vsm_page_request: crate::shadow::page_request::PageRequestPass,
     /// Frames rendered with VSM on (the first few block on the feedback readback).

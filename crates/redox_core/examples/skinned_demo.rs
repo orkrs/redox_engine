@@ -163,7 +163,25 @@ fn object(r: &Renderer, model: Mat4, mesh: usize, material: usize) -> RenderObje
 fn configure_renderer(r: &mut Renderer) {
     r.set_ssao_enabled(true);
     r.bloom_enabled = true;
-    r.set_exposure(1.0);
+    r.set_exposure(0.9);
+    r.set_ibl_intensity(0.55);
+    load_environment(r);
+}
+
+/// HDR sky + image-based lighting from `assets/skybox.hdr` (skipped when the file is missing).
+fn load_environment(r: &mut Renderer) {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/skybox.hdr");
+    let Ok(bytes) = std::fs::read(&path) else {
+        log::warn!("no environment at {}; using the flat clear colour", path.display());
+        return;
+    };
+    match redox_render::resource::texture::Texture::from_hdr_bytes(&r.device, &r.queue, &bytes, "skybox") {
+        Ok(texture) => {
+            r.set_environment(&texture);
+            r.set_skybox(true);
+        }
+        Err(e) => log::warn!("failed to decode {}: {e}", path.display()),
+    }
 }
 
 fn camera_pose(t: f32) -> (Vec3, Quat) {
@@ -205,7 +223,7 @@ impl SunShadow {
 }
 
 fn light_scene(sun_shadow: SunShadow, point_shadows: bool) -> LightScene {
-    let mut sun = DirectionalLight::new(Vec3::new(-0.45, 1.0, 0.55), Vec3::new(1.0, 0.94, 0.84), 2.0);
+    let mut sun = DirectionalLight::new(Vec3::new(-0.45, 1.0, 0.55), Vec3::new(1.0, 0.94, 0.84), 2.2);
     // `vsm` routes the sun through the VSM clipmap; without it the sun casts no shadow.
     sun.soft_shadows = false;
     sun.vsm = sun_shadow == SunShadow::Vsm;
