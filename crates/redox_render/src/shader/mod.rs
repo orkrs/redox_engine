@@ -9,11 +9,14 @@
 //! file from disk at runtime instead, falling back to the embedded copy when
 //! the file is missing or unreadable.
 //!
-//! Note: this module currently only provides the load indirection. A watcher
-//! that detects file changes and recreates `wgpu::ShaderModule`s (and the
-//! pipelines depending on them) at runtime is planned as follow-up work.
+//! With the feature on, [`create_shader_module`] also resolves the embedded `*_WGSL`
+//! constants to their on-disk files, so restarting the app picks up WGSL edits without
+//! `cargo build`. [`ShaderWatcher`] detects saves while the app runs and reports WGSL
+//! errors immediately. Pipelines are not rebuilt live: restart to see the change.
 
 pub mod slang;
+pub mod watch;
+pub use watch::{ShaderReloadReport, ShaderWatcher};
 pub use slang::{SlangCompiler, SlangCompileOptions, SlangTarget, SlangOutput};
 
 pub const FORWARD_WGSL: &str = include_str!("../../shaders/forward.wgsl");
@@ -57,75 +60,117 @@ pub const SMAA_EDGE_WGSL: &str = include_str!("../../shaders/smaa/edge.wgsl");
 pub const SMAA_BLEND_WGSL: &str = include_str!("../../shaders/smaa/blend_weights.wgsl");
 pub const SMAA_NEIGHBORHOOD_WGSL: &str = include_str!("../../shaders/smaa/neighborhood.wgsl");
 
-/// Compile-time fallback for [`load`], keyed by shader file stem
-/// (e.g. `"pbr"` → [`PBR_WGSL`]). Unknown names yield an empty source; wgpu
-/// will reject it with a clear label at module creation.
+/// Every embedded shader: (file stem, path relative to `shaders/`, embedded source).
+///
+/// Single source of truth for [`fallback`], [`load`], [`embedded_stem`] and [`ShaderWatcher`].
+const EMBEDDED: &[(&str, &str, &str)] = &[
+    ("forward", "forward.wgsl", FORWARD_WGSL),
+    ("pbr", "pbr.wgsl", PBR_WGSL),
+    ("shadow", "shadow.wgsl", SHADOW_WGSL),
+    ("normal", "normal.wgsl", NORMAL_WGSL),
+    ("gtao", "gtao.wgsl", GTAO_WGSL),
+    ("gtao_blur", "gtao_blur.wgsl", GTAO_BLUR_WGSL),
+    ("gtao_upsample", "gtao_upsample.wgsl", GTAO_UPSAMPLE_WGSL),
+    ("vsm_shadow_trace", "vsm_shadow_trace.wgsl", VSM_SHADOW_TRACE_WGSL),
+    ("vsm_shadow_temporal", "vsm_shadow_temporal.wgsl", VSM_SHADOW_TEMPORAL_WGSL),
+    ("velocity", "velocity.wgsl", VELOCITY_WGSL),
+    ("taa", "taa.wgsl", TAA_WGSL),
+    ("msaa_resolve", "msaa_resolve.wgsl", MSAA_RESOLVE_WGSL),
+    ("tone_mapping", "tone_mapping.wgsl", TONE_MAPPING_WGSL),
+    ("equirect_to_cube", "equirect_to_cube.wgsl", EQUIRECT_TO_CUBE_WGSL),
+    ("irradiance_convolution", "irradiance_convolution.wgsl", IRRADIANCE_CONVOLUTION_WGSL),
+    ("prefilter_convolution", "prefilter_convolution.wgsl", PREFILTER_CONVOLUTION_WGSL),
+    ("brdf_lut", "brdf_lut.wgsl", BRDF_LUT_WGSL),
+    ("debug_lines", "debug_lines.wgsl", DEBUG_LINES_WGSL),
+    ("vg", "vg.wgsl", VG_WGSL),
+    ("vg_vis", "vg_vis.wgsl", VG_VIS_WGSL),
+    ("vg_resolve", "vg_resolve.wgsl", VG_RESOLVE_WGSL),
+    ("vg_shadow", "vg_shadow.wgsl", VG_SHADOW_WGSL),
+    ("vg_cull", "vg_cull.wgsl", VG_CULL_WGSL),
+    ("hiz_copy", "hiz_copy.wgsl", HIZ_COPY_WGSL),
+    ("hiz_downsample", "hiz_downsample.wgsl", HIZ_DOWNSAMPLE_WGSL),
+    ("vertex_compressed", "vertex_compressed.wgsl", VERTEX_COMPRESSED_WGSL),
+    ("skybox", "skybox.wgsl", SKYBOX_WGSL),
+    ("vsm_depth", "vsm_depth.wgsl", VSM_DEPTH_WGSL),
+    ("vsm_visibility", "vsm_visibility.wgsl", VSM_VISIBILITY_WGSL),
+    ("scatter_light", "scatter_light.wgsl", SCATTER_LIGHT_WGSL),
+    ("bloom", "bloom.wgsl", BLOOM_WGSL),
+    ("cluster_cull_lights", "cluster_cull_lights.wgsl", CLUSTER_CULL_LIGHTS_WGSL),
+    ("particle_sim", "particle_sim.wgsl", PARTICLE_SIM_WGSL),
+    ("particle_billboard", "particle_billboard.wgsl", PARTICLE_BILLBOARD_WGSL),
+    ("ddgi_trace", "ddgi_trace.wgsl", DDGI_TRACE_WGSL),
+    ("smaa_edge", "smaa/edge.wgsl", SMAA_EDGE_WGSL),
+    ("smaa_blend", "smaa/blend_weights.wgsl", SMAA_BLEND_WGSL),
+    ("smaa_neighborhood", "smaa/neighborhood.wgsl", SMAA_NEIGHBORHOOD_WGSL),
+];
+
+/// Shaders that are compiled with the shared compressed-vertex decode prelude.
+const WITH_VERTEX_DECODE: &[&str] = &["pbr", "shadow", "normal", "vg", "vg_vis", "vg_shadow", "vsm_depth"];
+
+/// Compile-time copy of a shader, keyed by file stem (e.g. `"pbr"` -> [`PBR_WGSL`]).
+/// Unknown names yield an empty source; wgpu rejects it with a clear label at module creation.
 #[cfg_attr(not(feature = "shader-hot-reload"), allow(unused))]
 pub fn fallback(name: &str) -> &'static str {
-    match name {
-        "forward" => FORWARD_WGSL,
-        "pbr" => PBR_WGSL,
-        "shadow" => SHADOW_WGSL,
-        "normal" => NORMAL_WGSL,
-        "gtao" => GTAO_WGSL,
-        "gtao_blur" => GTAO_BLUR_WGSL,
-        "gtao_upsample" => GTAO_UPSAMPLE_WGSL,
-        "velocity" => VELOCITY_WGSL,
-        "taa" => TAA_WGSL,
-        "msaa_resolve" => MSAA_RESOLVE_WGSL,
-        "tone_mapping" => TONE_MAPPING_WGSL,
-        "equirect_to_cube" => EQUIRECT_TO_CUBE_WGSL,
-        "irradiance_convolution" => IRRADIANCE_CONVOLUTION_WGSL,
-        "prefilter_convolution" => PREFILTER_CONVOLUTION_WGSL,
-        "brdf_lut" => BRDF_LUT_WGSL,
-        "debug_lines" => DEBUG_LINES_WGSL,
-        "vg" => VG_WGSL,
-        "vg_vis" => VG_VIS_WGSL,
-        "vg_resolve" => VG_RESOLVE_WGSL,
-        "vg_shadow" => VG_SHADOW_WGSL,
-        "vg_cull" => VG_CULL_WGSL,
-        "hiz_copy" => HIZ_COPY_WGSL,
-        "hiz_downsample" => HIZ_DOWNSAMPLE_WGSL,
-        "vertex_compressed" => VERTEX_COMPRESSED_WGSL,
-        "skybox" => SKYBOX_WGSL,
-        "vsm_depth" => VSM_DEPTH_WGSL,
-        "vsm_visibility" => VSM_VISIBILITY_WGSL,
-        "scatter_light" => SCATTER_LIGHT_WGSL,
-        "bloom" => BLOOM_WGSL,
-        "cluster_cull_lights" => CLUSTER_CULL_LIGHTS_WGSL,
-        "particle_sim" => PARTICLE_SIM_WGSL,
-        "particle_billboard" => PARTICLE_BILLBOARD_WGSL,
-        "ddgi_trace" => DDGI_TRACE_WGSL,
-        "smaa_edge" => SMAA_EDGE_WGSL,
-        "smaa_blend" => SMAA_BLEND_WGSL,
-        "smaa_neighborhood" => SMAA_NEIGHBORHOOD_WGSL,
-        _ => "",
-    }
+    EMBEDDED
+        .iter()
+        .find(|(stem, _, _)| *stem == name)
+        .map_or("", |(_, _, src)| *src)
+}
+
+/// File stem of the embedded shader whose source is exactly `src`, so callers that only
+/// hold the `*_WGSL` constant can find the file behind it. Compared by content: `const`
+/// strings are not guaranteed to share one address across use sites.
+pub fn embedded_stem(src: &str) -> Option<&'static str> {
+    EMBEDDED
+        .iter()
+        .find(|(_, _, embedded)| embedded.len() == src.len() && *embedded == src)
+        .map(|(stem, _, _)| *stem)
+}
+
+/// Whether `stem` is built together with the compressed-vertex decode prelude.
+pub fn needs_vertex_decode(stem: &str) -> bool {
+    WITH_VERTEX_DECODE.contains(&stem)
 }
 
 /// Directory holding the `.wgsl` sources, relative to the crate manifest.
-#[cfg(feature = "shader-hot-reload")]
-fn shaders_dir() -> std::path::PathBuf {
+pub(crate) fn shaders_dir() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("shaders")
 }
 
 /// Load a shader by file stem (e.g. `"pbr"`).
 ///
-/// With `shader-hot-reload`: read from `shaders/<name>.wgsl` on disk so an
-/// edited shader can be picked up without recompiling; fall back to the
-/// embedded copy if the file cannot be read.
+/// With `shader-hot-reload`: read `shaders/<path>.wgsl` from disk so an edited shader is
+/// picked up without recompiling; fall back to the embedded copy if the file is unreadable.
 ///
 /// Without the feature: return the embedded copy (zero I/O).
 #[cfg(feature = "shader-hot-reload")]
 pub fn load(name: &str) -> String {
-    let path = shaders_dir().join(format!("{name}.wgsl"));
-    std::fs::read_to_string(&path).unwrap_or_else(|_| fallback(name).to_string())
+    EMBEDDED
+        .iter()
+        .find(|(stem, _, _)| *stem == name)
+        .and_then(|(_, rel, _)| std::fs::read_to_string(shaders_dir().join(rel)).ok())
+        .unwrap_or_else(|| fallback(name).to_string())
 }
 
 /// Load a shader by file stem (see hot-reload variant).
 #[cfg(not(feature = "shader-hot-reload"))]
 pub fn load(name: &str) -> &'static str {
     fallback(name)
+}
+
+/// Source to compile for `src`: with `shader-hot-reload`, the on-disk version of an embedded
+/// shader (so restarting the app picks up WGSL edits without `cargo build`); otherwise `src`.
+#[cfg(feature = "shader-hot-reload")]
+fn resolve_source(src: &str) -> std::borrow::Cow<'_, str> {
+    match embedded_stem(src) {
+        Some(stem) => std::borrow::Cow::Owned(load(stem)),
+        None => std::borrow::Cow::Borrowed(src),
+    }
+}
+
+#[cfg(not(feature = "shader-hot-reload"))]
+fn resolve_source(src: &str) -> std::borrow::Cow<'_, str> {
+    std::borrow::Cow::Borrowed(src)
 }
 
 /// Creates a `wgpu::ShaderModule` from WGSL source code.
@@ -136,13 +181,13 @@ pub fn create_shader_module(
 ) -> wgpu::ShaderModule {
     device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(label),
-        source: wgpu::ShaderSource::Wgsl(source.into()),
+        source: wgpu::ShaderSource::Wgsl(resolve_source(source)),
     })
 }
 
 /// Prepends shared compressed-vertex decode helpers to a pass shader.
 pub fn shader_with_vertex_decode(source: &str) -> String {
-    format!("{VERTEX_COMPRESSED_WGSL}\n{source}")
+    format!("{}\n{source}", resolve_source(VERTEX_COMPRESSED_WGSL))
 }
 
 /// Creates a shader module with compressed-vertex decode helpers included.
@@ -151,7 +196,7 @@ pub fn create_shader_with_vertex_decode(
     label: &str,
     source: &str,
 ) -> wgpu::ShaderModule {
-    create_shader_module(device, label, &shader_with_vertex_decode(source))
+    create_shader_module(device, label, &shader_with_vertex_decode(&resolve_source(source)))
 }
 
 #[cfg(test)]
@@ -167,6 +212,28 @@ mod tests {
         validator.validate(&module).unwrap_or_else(|e| {
             panic!("{label}: validation failed: {e:?}")
         });
+    }
+
+    #[test]
+    fn embedded_table_matches_files_and_constants() {
+        for (stem, rel, src) in super::EMBEDDED {
+            assert!(!src.is_empty(), "{stem}: embedded source is empty");
+            assert!(super::shaders_dir().join(rel).is_file(), "{stem}: {rel} missing on disk");
+            assert_eq!(super::embedded_stem(src), Some(*stem), "{stem}: content lookup");
+        }
+    }
+
+    #[test]
+    fn embedded_stem_ignores_foreign_sources() {
+        assert_eq!(super::embedded_stem("fn main() {}"), None);
+        assert_eq!(super::embedded_stem(super::PBR_WGSL), Some("pbr"));
+    }
+
+    #[test]
+    fn vertex_decode_list_names_real_shaders() {
+        for stem in super::WITH_VERTEX_DECODE {
+            assert!(!super::fallback(stem).is_empty(), "{stem} is not an embedded shader");
+        }
     }
 
     #[test]

@@ -766,7 +766,7 @@ fn main() {
                             render_host = Some(host);
                             shared_gpu = Some(boot.shared);
                             ui_ctx.log(
-                                "[INFO] SharedGpu + RenderHost 1280x720 (full Renderer PBR+CSM+bloom+Sharp AA; VG/DDGI stub)",
+                                "[INFO] SharedGpu + RenderHost 1280x720 (full Renderer PBR+CSM+bloom+Sharp AA; VG idle until VirtualMesh entities exist)",
                             );
                         }
 

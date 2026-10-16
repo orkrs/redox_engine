@@ -307,11 +307,13 @@ Generate a procedural world with the PCG CLI:
 cargo run -p redox_scene --bin pcg -- --out worlds/arena --kind arena --width 6 --height 6 --cell-size 16 --seed 42
 ```
 
-The `redox_render/shader-hot-reload` feature makes `shader::load` read WGSL from disk,
-but pipelines are not rebuilt automatically yet.
+With the `shader-hot-reload` feature (`redox_render`, or `redox_editor` which forwards it) WGSL is
+read from disk at startup, so editing a shader needs only an app restart, not `cargo build`. The editor
+also polls `shaders/` and logs compile errors when a file is saved; pipelines are not swapped live.
 
 ## 18) Status and known limitations
 
 See `ARCHITECTURE_REALITY.md` and `PROGRESS.md` for the current state of each system.
-Known gaps: DDGI probes are filled on the CPU (no ray tracing), the editor `--bake`
-command is a stub, and shader hot-reload has no pipeline-rebuild watcher.
+Known gaps: DDGI is a GPU probe fill against scene AABBs with an analytic sky/sun model (no
+light bounce from surfaces), shader hot-reload does not swap pipelines live, and the editor
+AnimGraph canvas is a UI demo. `redox_editor --bake` runs the meshlet/SDF bakes headlessly.

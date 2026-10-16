@@ -1,0 +1,39 @@
+[package]
+name = "redox_editor"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "redox_editor"
+path = "src/main.rs"
+
+[features]
+# Read WGSL from disk at startup and report shader compile errors on save.
+shader-hot-reload = ["redox_render/shader-hot-reload"]
+
+[dependencies]
+redox_editor_core = { path = "../redox_editor_core" }
+redox_editor_ui = { path = "../redox_editor_ui" }
+redox_core = { path = "../redox_core" }
+redox_ecs = { path = "../redox_ecs" }
+redox_reflect = { path = "../redox_reflect" }
+redox_math = { path = "../redox_math" }
+redox_scene = { path = "../redox_scene" }
+redox_render = { path = "../redox_render" }
+redox_physics = { path = "../redox_physics" }
+redox_gameplay = { path = "../redox_gameplay" }
+rapier3d = { workspace = true }
+pollster = "0.3"
+winit = { workspace = true }
+wgpu = { workspace = true }
+egui = { workspace = true }
+egui-wgpu = { workspace = true }
+egui-winit = { workspace = true }
+egui_dock = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+ron = { workspace = true }
+parking_lot = "0.12"
+bytemuck = { workspace = true }
