@@ -1,0 +1,32 @@
+error[E0499]: cannot borrow `world` as mutable more than once at a time
+  --> tests/compile_fail/aliasing_iter_mut.rs:15:26
+   |
+14 |     let it1 = q.iter_mut(&mut world);
+   |                          ---------- first mutable borrow occurs here
+15 |     let it2 = q.iter_mut(&mut world); //~ ERROR E0499: cannot borrow `world` as mutable more than once at a time
+   |                          ^^^^^^^^^^ second mutable borrow occurs here
+16 |
+17 |     let a = it1.next().unwrap();
+   |             --- first borrow later used here
+
+error[E0596]: cannot borrow `it1` as mutable, as it is not declared as mutable
+  --> tests/compile_fail/aliasing_iter_mut.rs:17:13
+   |
+17 |     let a = it1.next().unwrap();
+   |             ^^^ cannot borrow as mutable
+   |
+help: consider changing this to be mutable
+   |
+14 |     let mut it1 = q.iter_mut(&mut world);
+   |         +++
+
+error[E0596]: cannot borrow `it2` as mutable, as it is not declared as mutable
+  --> tests/compile_fail/aliasing_iter_mut.rs:18:13
+   |
+18 |     let b = it2.next().unwrap();
+   |             ^^^ cannot borrow as mutable
+   |
+help: consider changing this to be mutable
+   |
+15 |     let mut it2 = q.iter_mut(&mut world); //~ ERROR E0499: cannot borrow `world` as mutable more than once at a time
+   |         +++

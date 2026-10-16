@@ -35,6 +35,7 @@ pub struct PhysicsContext {
 
     // Queues for systems
     pub raycast_requests: SegQueue<RaycastRequest>,
+    collision_events: std::sync::Mutex<Vec<CollisionEvent>>,
 }
 
 impl PhysicsContext {
@@ -56,6 +57,7 @@ impl PhysicsContext {
             entity_to_body: HashMap::new(),
             collider_to_entity: HashMap::new(),
             raycast_requests: SegQueue::new(),
+            collision_events: std::sync::Mutex::new(Vec::new()),
         }
     }
 
@@ -63,6 +65,33 @@ impl PhysicsContext {
     pub fn step(&mut self, dt: f32) {
         self.integration_parameters.dt = dt;
 
+        struct CollisionSink<'a> {
+            buf: &'a std::sync::Mutex<Vec<CollisionEvent>>,
+        }
+        impl EventHandler for CollisionSink<'_> {
+            fn handle_collision_event(
+                &self,
+                _bodies: &RigidBodySet,
+                _colliders: &ColliderSet,
+                event: CollisionEvent,
+                _pair: Option<&ContactPair>,
+            ) {
+                self.buf.lock().unwrap().push(event);
+            }
+            fn handle_contact_force_event(
+                &self,
+                _dt: Real,
+                _bodies: &RigidBodySet,
+                _colliders: &ColliderSet,
+                _pair: &ContactPair,
+                _magnitude: Real,
+            ) {
+            }
+        }
+
+        let sink = CollisionSink {
+            buf: &self.collision_events,
+        };
         self.physics_pipeline.step(
             &self.gravity,
             &self.integration_parameters,
@@ -76,8 +105,60 @@ impl PhysicsContext {
             &mut self.ccd_solver,
             Some(&mut self.query_pipeline),
             &(),
-            &(),
+            &sink,
         );
+    }
+
+    /// Drains and maps Rapier collision events without requiring a World borrow.
+    pub fn drain_trigger_events(&mut self) -> Vec<(bool, crate::trigger::TriggerEnter)> {
+        let raw: Vec<CollisionEvent> = self.collision_events.lock().unwrap().drain(..).collect();
+        raw.into_iter()
+            .filter_map(|event| {
+                crate::trigger::map_collision_event(
+                    event,
+                    |h| self.collider_to_entity.get(&h).copied(),
+                    |h| self.colliders.get(h).is_some_and(|c| c.is_sensor()),
+                )
+            })
+            .collect()
+    }
+
+    /// Drains Rapier collision events into ECS trigger enter/exit queues.
+    pub fn emit_trigger_events(&mut self, world: &mut World) {
+        let events = self.drain_trigger_events();
+        for (started, enter) in events {
+            if started {
+                if let Some(queue) =
+                    world.get_resource_mut::<redox_ecs::Events<crate::trigger::TriggerEnter>>()
+                {
+                    queue.send(enter);
+                }
+            } else if let Some(queue) =
+                world.get_resource_mut::<redox_ecs::Events<crate::trigger::TriggerExit>>()
+            {
+                queue.send(crate::trigger::TriggerExit {
+                    sensor: enter.sensor,
+                    other: enter.other,
+                });
+            }
+        }
+    }
+
+    /// Adds a sensor (trigger) collider on a kinematic body.
+    pub fn add_trigger(
+        &mut self,
+        entity: Entity,
+        translation: Vec3,
+        builder: ColliderBuilder,
+    ) -> Result<(RigidBodyHandle, ColliderHandle), PhysicsError> {
+        let body =
+            RigidBodyBuilder::kinematic_position_based().translation(vec3_to_rapier(translation));
+        let col = builder
+            .sensor(true)
+            .active_events(ActiveEvents::COLLISION_EVENTS)
+            .active_collision_types(ActiveCollisionTypes::all());
+        let (bh, cols) = self.add_rigid_body(entity, body, vec![col])?;
+        Ok((bh, cols[0]))
     }
 
     /// Adds a rigid body and its colliders to the world, establishing the ECS mapping.
@@ -168,17 +249,16 @@ impl PhysicsContext {
         self.raycast_requests.push(request);
     }
 
-    /// Processes all queued raycast requests.
-    pub fn process_raycast_requests(&mut self, _world: &mut World) {
-        // Here we'd typically use something like world.get_resource_mut::<Events<RaycastResult>>()
-        // For now, we process and log them or push to an internal processed queue.
+    /// Processes and drains all queued raycast requests without requiring a World borrow.
+    pub fn drain_raycast_results(&mut self) -> Vec<RaycastResult> {
+        let mut results = Vec::new();
         while let Some(req) = self.raycast_requests.pop() {
             let ray = Ray::new(
                 Point::from(vec3_to_rapier(req.origin)),
                 vec3_to_rapier(req.direction),
             );
 
-            if let Some((handle, toi)) = self.query_pipeline.cast_ray(
+            let result = if let Some((handle, intersection)) = self.query_pipeline.cast_ray_and_get_normal(
                 &self.rigid_bodies,
                 &self.colliders,
                 &ray,
@@ -186,19 +266,45 @@ impl PhysicsContext {
                 true,
                 QueryFilter::default(),
             ) {
-                let hit_point = req.origin + req.direction * toi;
+                let hit_point = req.origin + req.direction * intersection.toi;
+                let mut normal = Vec3::new(
+                    intersection.normal.x,
+                    intersection.normal.y,
+                    intersection.normal.z,
+                );
+                if normal.dot(req.direction) > 0.0 {
+                    normal = -normal;
+                }
                 let entity = self.collider_to_entity.get(&handle).copied();
-
-                let _result = RaycastResult {
+                RaycastResult {
                     request_id: req.request_id,
                     hit: true,
                     entity,
                     point: hit_point,
-                    normal: Vec3::new(0.0, 1.0, 0.0), // Need cast_ray_and_get_normal for actual normal
-                    distance: toi,
-                };
+                    normal,
+                    distance: intersection.toi,
+                }
+            } else {
+                RaycastResult {
+                    request_id: req.request_id,
+                    hit: false,
+                    entity: None,
+                    point: req.origin,
+                    normal: Vec3::ZERO,
+                    distance: req.max_distance,
+                }
+            };
+            results.push(result);
+        }
+        results
+    }
 
-                // world.send_event(result); // Requires ECS event sending implementation
+    /// Processes all queued raycast requests and sends them to the World's event queue.
+    pub fn process_raycast_requests(&mut self, world: &mut World) {
+        let results = self.drain_raycast_results();
+        if let Some(events) = world.get_resource_mut::<redox_ecs::Events<RaycastResult>>() {
+            for res in results {
+                events.send(res);
             }
         }
     }
@@ -206,6 +312,54 @@ impl PhysicsContext {
     /// Returns iterator over all registered entities and their bodies.
     pub fn active_bodies(&self) -> impl Iterator<Item = (&Entity, &RigidBodyHandle)> {
         self.entity_to_body.iter().map(|(e, (h, _))| (e, h))
+    }
+
+    /// Sync raycast with hit point + world normal. Updates the query pipeline first.
+    /// Returns `(point, normal, entity)`.
+    pub fn cast_ray_with_normal(
+        &mut self,
+        origin: Vec3,
+        direction: Vec3,
+        max_distance: f32,
+        exclude_entities: &[Entity],
+    ) -> Option<(Vec3, Vec3, Option<Entity>)> {
+        let dir_len = direction.length();
+        if dir_len < 1e-6 {
+            return None;
+        }
+        let direction = direction / dir_len;
+        self.query_pipeline
+            .update(&self.rigid_bodies, &self.colliders);
+        let ray = Ray::new(
+            Point::from(vec3_to_rapier(origin)),
+            vec3_to_rapier(direction),
+        );
+        let excluded: HashSet<ColliderHandle> = exclude_entities
+            .iter()
+            .filter_map(|e| self.entity_to_body.get(e))
+            .flat_map(|(_, colliders)| colliders.iter().copied())
+            .collect();
+        let predicate = |handle: ColliderHandle, _: &Collider| !excluded.contains(&handle);
+        let filter = QueryFilter::default().predicate(&predicate);
+        let (handle, intersection) = self.query_pipeline.cast_ray_and_get_normal(
+            &self.rigid_bodies,
+            &self.colliders,
+            &ray,
+            max_distance,
+            true,
+            filter,
+        )?;
+        let point = origin + direction * intersection.toi;
+        let mut normal = Vec3::new(
+            intersection.normal.x,
+            intersection.normal.y,
+            intersection.normal.z,
+        );
+        if normal.dot(direction) > 0.0 {
+            normal = -normal;
+        }
+        let entity = self.collider_to_entity.get(&handle).copied();
+        Some((point, normal, entity))
     }
 
     /// Performs a raycast from `origin` toward `target` (direction = (target - origin).normalized()),

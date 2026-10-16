@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/redox_math",
     "crates/redox_ecs",
+    "crates/redox_reflect",
     "crates/redox_render",
     "crates/redox_physics",
     "crates/redox_core",
@@ -10,6 +11,13 @@ members = [
     "crates/redox_asset",
     "crates/redox_audio",
     "crates/redox_ui",
+    "crates/redox_scene",
+    "crates/redox_gameplay",
+    "crates/redox_vfx",
+    "crates/redox_anim",
+    "crates/redox_editor_core",
+    "crates/redox_editor_ui",
+    "crates/redox_editor",
 ]
 
 [profile.release]
@@ -26,7 +34,7 @@ opt-level = 3
 
 
 [workspace.dependencies]
-glam = "0.27"
+glam = { version = "0.27", features = ["mint"] }
 winit = "0.29"
 wgpu = "0.20"
 rapier3d = "0.18"
@@ -44,6 +52,11 @@ egui = "0.28"
 egui-wgpu = "0.28"
 egui-winit = "0.28"
 egui_plot = "0.28"
+egui_dock = "0.13"
 thiserror = "1.0"
+serde = { version = "1", features = ["derive"] }
+ron = "0.8"
 notify = "6.1"
+meshopt = "0.6"
 flume = "0.11"
+git2 = "0.18"

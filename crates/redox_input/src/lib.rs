@@ -8,8 +8,11 @@ pub mod keyboard;
 pub mod mouse;
 pub mod action;
 pub mod state;
+pub mod buffer;
 
 pub use keyboard::KeyboardState;
 pub use mouse::MouseState;
-pub use action::{ActionMap, ActionKind, ActionBinding};
+pub use action::{ActionMap, ActionKind, ActionBinding, apply_deadzone_1d, apply_deadzone_2d};
 pub use state::InputState;
+pub use buffer::{CoyoteTimer, InputBuffer};
+

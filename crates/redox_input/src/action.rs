@@ -118,6 +118,29 @@ impl Default for ActionMap {
     }
 }
 
+/// Applies a 1D analog deadzone with rescale to prevent sudden jumps at threshold.
+pub fn apply_deadzone_1d(value: f32, deadzone: f32) -> f32 {
+    let deadzone = deadzone.clamp(0.0, 0.999);
+    let mag = value.abs();
+    if mag <= deadzone {
+        0.0
+    } else {
+        value.signum() * (mag - deadzone) / (1.0 - deadzone)
+    }
+}
+
+/// Applies a 2D radial deadzone with rescaled magnitude to prevent cross-snapping.
+pub fn apply_deadzone_2d(x: f32, y: f32, deadzone: f32) -> (f32, f32) {
+    let deadzone = deadzone.clamp(0.0, 0.999);
+    let mag = (x * x + y * y).sqrt();
+    if mag <= deadzone || mag < 1e-6 {
+        (0.0, 0.0)
+    } else {
+        let factor = (mag - deadzone) / ((1.0 - deadzone) * mag);
+        (x * factor, y * factor)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,4 +196,20 @@ mod tests {
             _ => panic!("expected analog"),
         }
     }
+
+    #[test]
+    fn test_radial_deadzone() {
+        assert_eq!(apply_deadzone_1d(0.1, 0.2), 0.0);
+        assert!((apply_deadzone_1d(1.0, 0.2) - 1.0).abs() < 1e-5);
+        assert!((apply_deadzone_1d(0.6, 0.2) - 0.5).abs() < 1e-5);
+
+        let (x, y) = apply_deadzone_2d(0.1, 0.1, 0.2);
+        assert_eq!(x, 0.0);
+        assert_eq!(y, 0.0);
+
+        let (x, y) = apply_deadzone_2d(1.0, 0.0, 0.2);
+        assert!((x - 1.0).abs() < 1e-5);
+        assert_eq!(y, 0.0);
+    }
 }
+

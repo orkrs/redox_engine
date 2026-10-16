@@ -7,6 +7,9 @@ use crate::quat::Quat;
 /// projections, and view matrices.
 pub type Mat4 = glam::Mat4;
 
+/// A 3×3 column‑major matrix (normals, rotations without translation).
+pub type Mat3 = glam::Mat3;
+
 /// Creates a transformation matrix from translation, rotation, and scale.
 ///
 /// The transformation order is: scale first, then rotation, then translation.
@@ -54,10 +57,27 @@ pub fn look_at(eye: Vec3, target: Vec3, up: Vec3) -> Mat4 {
 /// * `far`           - Distance to the far clipping plane.
 ///
 /// # Returns
-/// A perspective projection matrix (right‑handed, depth range [0,1]).
+/// Creates a right‑handed perspective projection matrix (standard near->0, far->1).
 #[inline]
 pub fn perspective(fov_radians: f32, aspect_ratio: f32, near: f32, far: f32) -> Mat4 {
+    // glam's `perspective_rh` already uses the WebGPU/wgpu [0, 1] depth range;
+    // the GL-style [-1, 1] variant is `perspective_rh_gl`.
     Mat4::perspective_rh(fov_radians, aspect_ratio, near, far)
+}
+
+/// Creates a right‑handed Reverse-Z perspective projection matrix (near -> 1.0, far -> 0.0).
+///
+/// Reverse-Z vastly improves depth precision and eliminates Z-fighting at large distances
+/// when paired with `wgpu::CompareFunction::GreaterEqual` and clearing depth to 0.0.
+#[inline]
+pub fn perspective_reverse_z(fov_radians: f32, aspect_ratio: f32, near: f32, far: f32) -> Mat4 {
+    Mat4::perspective_rh(fov_radians, aspect_ratio, far, near)
+}
+
+/// Creates a right‑handed Reverse-Z perspective projection matrix with infinite far plane.
+#[inline]
+pub fn perspective_infinite_reverse_z(fov_radians: f32, aspect_ratio: f32, near: f32) -> Mat4 {
+    Mat4::perspective_infinite_reverse_rh(fov_radians, aspect_ratio, near)
 }
 
 /// Creates a right‑handed orthographic projection matrix.

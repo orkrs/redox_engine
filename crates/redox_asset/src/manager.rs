@@ -1,8 +1,10 @@
 //! Central asset manager — ECS resource for loading and accessing assets.
 //!
-//! Register loaders with [`register_loader`](AssetManager::register_loader), then use
-//! [`load_async`](AssetManager::load_async) to load by path. Call [`update`](AssetManager::update)
-//! each frame to process completed loads and emit ECS events.
+//! Built-in loaders (`ImageLoader`, `GltfLoader`) are registered by default;
+//! use [`register_loader`](AssetManager::register_loader) to add or override
+//! loaders, then use [`load_async`](AssetManager::load_async) to load by path.
+//! Call [`update`](AssetManager::update) each frame to process completed loads
+//! and emit ECS events.
 
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
@@ -17,7 +19,7 @@ use crate::error::AssetError;
 use crate::event::{AssetLoadedEvent, AssetLoadFailedEvent, AssetReloadedEvent};
 use crate::handle::{AssetId, AssetStatus, Handle};
 use crate::hot_reload::HotReloadWatcher;
-use crate::loader::AssetLoader;
+use crate::loader::{AssetLoader, GltfLoader, GltfSceneData, ImageLoader};
 use crate::storage::AssetStorage;
 
 /// Task sent to the loader thread.
@@ -39,7 +41,11 @@ struct LoadComplete {
 
 /// Type-erased loader for the registry.
 trait LoaderErased: Send + Sync + 'static {
-    fn load(&self, bytes: &[u8]) -> Result<Box<dyn Any + Send + Sync>, crate::error::AssetError>;
+    fn load_from_path(
+        &self,
+        path: &Path,
+        bytes: &[u8],
+    ) -> Result<Box<dyn Any + Send + Sync>, crate::error::AssetError>;
     #[allow(dead_code)]
     fn extensions(&self) -> Vec<&'static str>;
 }
@@ -49,8 +55,14 @@ struct LoaderWrapper<L: AssetLoader> {
 }
 
 impl<L: AssetLoader> LoaderErased for LoaderWrapper<L> {
-    fn load(&self, bytes: &[u8]) -> Result<Box<dyn Any + Send + Sync>, crate::error::AssetError> {
-        self.inner.load(bytes).map(|a| Box::new(a) as Box<dyn Any + Send + Sync>)
+    fn load_from_path(
+        &self,
+        path: &Path,
+        bytes: &[u8],
+    ) -> Result<Box<dyn Any + Send + Sync>, crate::error::AssetError> {
+        self.inner
+            .load_from_path(path, bytes)
+            .map(|a| Box::new(a) as Box<dyn Any + Send + Sync>)
     }
     fn extensions(&self) -> Vec<&'static str> {
         self.inner.extensions()
@@ -93,7 +105,9 @@ fn worker_loop(registry: LoaderRegistry, rx: Receiver<LoadTask>, tx: Sender<Load
                 }
             };
             match guard.get(&task.type_id) {
-                Some(loader) => loader.load(&bytes).map_err(|e| e.to_string()),
+                Some(loader) => loader
+                    .load_from_path(&task.path, &bytes)
+                    .map_err(|e| e.to_string()),
                 None => {
                     drop(guard);
                     let _ = tx.send(LoadComplete {
@@ -147,7 +161,19 @@ impl AssetManager {
     pub fn new(base_path: impl Into<PathBuf>) -> Self {
         let (task_tx, task_rx) = flume::unbounded();
         let (complete_tx, complete_rx) = flume::unbounded();
-        let loaders: LoaderRegistry = Arc::new(RwLock::new(HashMap::new()));
+        // Pre-register the built-in loaders so common formats load out of
+        // the box; callers may replace any slot via `register_loader`.
+        let builtin: [(TypeId, Box<dyn LoaderErased>); 2] = [
+            (
+                TypeId::of::<image::DynamicImage>(),
+                Box::new(LoaderWrapper { inner: ImageLoader }) as Box<dyn LoaderErased>,
+            ),
+            (
+                TypeId::of::<GltfSceneData>(),
+                Box::new(LoaderWrapper { inner: GltfLoader }) as Box<dyn LoaderErased>,
+            ),
+        ];
+        let loaders: LoaderRegistry = Arc::new(RwLock::new(builtin.into_iter().collect()));
         let registry_clone = Arc::clone(&loaders);
         let complete_tx_worker = complete_tx.clone();
         std::thread::spawn(move || worker_loop(registry_clone, task_rx, complete_tx_worker));

@@ -33,10 +33,12 @@
 pub mod app;
 pub mod config;
 pub mod dispatcher;
+pub mod plugin;
 pub mod time;
 pub mod window;
 
 pub use app::AppBuilder;
-pub use config::EngineConfig;
-pub use dispatcher::{Dispatcher, Stage};
+pub use config::{EngineConfig, LightingMode};
+pub use dispatcher::{access_compatible, parallel_layers, Dispatcher, Stage, SystemMeta};
+pub use plugin::{App, AudioPlugin, CorePlugin, PhysicsPlugin, Plugin, RenderPlugin};
 pub use time::Time;

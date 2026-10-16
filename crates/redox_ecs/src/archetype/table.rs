@@ -29,16 +29,21 @@ impl Table {
     }
 
     /// Removes the element at `row` by swapping with the last row.
+    ///
+    /// When `drop` is set the removed components are dropped by their columns
+    /// (despawn path). When clear, ownership of the component bytes has moved
+    /// elsewhere (archetype migration) and no destructors run.
+    ///
     /// Returns the entity that was moved into the vacated slot, if any.
     ///
     /// # Safety
     /// `row` must be within bounds.
-    pub unsafe fn swap_remove(&mut self, row: usize) -> Option<Entity> {
+    pub unsafe fn swap_remove(&mut self, row: usize, drop: bool) -> Option<Entity> {
         let last_index = self.entities.len() - 1;
         self.entities.swap_remove(row);
 
         for col in self.columns.values_mut() {
-            unsafe { col.swap_remove(row, false); }
+            unsafe { col.swap_remove(row, drop); }
         }
 
         if row != last_index {
@@ -61,9 +66,9 @@ impl Table {
     /// # Safety
     /// `type_id` must correspond to a column in this table,
     /// and `ptr` must point to a valid instance of that component.
-    pub unsafe fn push_component_raw(&mut self, type_id: TypeId, ptr: *const u8) {
+    pub unsafe fn push_component_raw(&mut self, type_id: TypeId, ptr: *const u8, tick: u32) {
         if let Some(col) = self.columns.get_mut(&type_id) {
-            unsafe { col.push(ptr); }
+            unsafe { col.push(ptr, tick); }
         }
     }
 
@@ -73,6 +78,21 @@ impl Table {
     /// `row` must be within bounds and the component must exist.
     pub unsafe fn get_component_ptr(&self, type_id: TypeId, row: usize) -> Option<*const u8> {
         self.columns.get(&type_id).map(|col| unsafe { col.get(row) as *const u8 })
+    }
+
+    /// Returns the column for `type_id`, if present.
+    pub fn column(&self, type_id: TypeId) -> Option<&Column> {
+        self.columns.get(&type_id)
+    }
+
+    /// Returns the column for `type_id` mutably, if present.
+    pub fn column_mut(&mut self, type_id: TypeId) -> Option<&mut Column> {
+        self.columns.get_mut(&type_id)
+    }
+
+    /// Returns an iterator over all columns in this table.
+    pub fn columns_mut(&mut self) -> impl Iterator<Item = &mut Column> {
+        self.columns.values_mut()
     }
 
     /// Returns the slice of entities in this table.

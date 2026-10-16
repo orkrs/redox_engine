@@ -19,9 +19,10 @@ pub mod debug;
 pub mod loader;
 pub mod spatial;
 pub mod systems;
+pub mod mixer;
 
 pub use asset_types::AudioData;
-pub use context::{sync_assets_to_audio, AudioContext};
+pub use context::{sync_assets_to_audio, with_audio, AudioContext};
 pub use components::{
     AudioEmitter, AudioListener, SpatialAudioEmitter, ReverbZone, ReverbPreset, AcousticMaterial,
 };
@@ -31,3 +32,8 @@ pub use systems::{
     check_occlusion, reverb_listener_system, occlusion_raycast_system, compute_active_reverb,
     OcclusionResult,
 };
+pub use mixer::{
+    MixerBus, MixerBusId, MixerGraph, PlayMode, PlayRequest,
+    linear_to_db, db_to_linear, DuckingController,
+};
+

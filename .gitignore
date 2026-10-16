@@ -37,3 +37,10 @@ tarpaulin-report.html
 # Temporary files
 tmp/
 temp/
+.cache/
+
+# Local junk
+tmp_bits.pdb
+local_full_render.md
+editor_layout.ron
+report.json]

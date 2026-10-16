@@ -1,30 +1,25 @@
 pub mod column;
-pub mod edges;
 pub mod table;
 
 use crate::component::ComponentInfo;
-pub use edges::Edges;
 use std::any::TypeId;
 pub use table::Table;
 
 /// A group of entities that share the exact same set of component types.
 ///
-/// Each archetype has a `Table` for storing component data and `Edges` for
-/// transitions to other archetypes.
+/// Each archetype has a `Table` for storing component data. `types` doubles as
+/// the cached sorted archetype key used by `World::type_to_archetype` lookups.
 pub struct Archetype {
     #[allow(dead_code)]
     pub(crate) id: usize,
-    #[allow(dead_code)]
     pub(crate) types: Vec<TypeId>,
     pub(crate) table: Table,
-    #[allow(dead_code)]
-    pub(crate) edges: Edges,
     pub(crate) component_infos: Vec<ComponentInfo>,
 }
 
 // SAFETY: Archetype contains only data that can be safely shared across threads.
-// All fields are either primitives, Vec, or Table/Edges which we also mark as Send/Sync.
-// After creation, Archetype is never mutated, so it can be read from multiple threads.
+// All fields are either primitives or Vec/Table which we also mark as Send/Sync.
+// All mutation funnels through `&mut World`, so shared reads are race-free.
 unsafe impl Send for Archetype {}
 unsafe impl Sync for Archetype {}
 
@@ -38,7 +33,6 @@ impl Archetype {
             id,
             types,
             table: Table::new(&component_infos),
-            edges: Edges::new(),
             component_infos,
         }
     }

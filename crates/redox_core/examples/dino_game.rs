@@ -1,3 +1,6 @@
+//! Legacy raw winit loop. Prefer `dino_runner` for the full engine stack
+//! (plugins, KCC, hierarchy, PBR, triggers, audio).
+//!
 //! Dino Game 3D — Side-scroller Ultra Edition
 //! Fixes: Input cycle, Vulkan Sync, Side-view camera, High Jump.
 
@@ -41,6 +44,7 @@ const GRAVITY: f32 = 32.0;
 const CAMERA_POS: Vec3 = Vec3::new(16.0, 5.0, 0.0);
 const CAMERA_TARGET: Vec3 = Vec3::new(0.0, 2.0, 0.0);
 
+#[allow(dead_code)]
 const SCORE_INTERVAL: f32 = 0.15;
 
 // -----------------------------------------------------------------------------
@@ -90,7 +94,7 @@ async fn run() {
         .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
         .build(&event_loop).unwrap());
 
-    let mut render_ctx = RenderContext::new(window.clone()).await;
+    let mut render_ctx = RenderContext::new(window.clone(), wgpu::PresentMode::Fifo).await;
     let mut ui_ctx = UiContext::new(&window, render_ctx.device(), render_ctx.surface_format());
     let mut asset_manager = AssetManager::default();
     let mut world = World::new();
@@ -126,8 +130,9 @@ async fn run() {
         direction: Vec3::new(-1.0, -2.0, -0.5).normalize(),
         color: Vec3::new(1.0, 0.9, 0.8),
         intensity: 2.5,
-        cast_vsm_shadows: false,
-        source_angle: 0.1
+        source_angle: 0.1,
+        soft_shadows: false,
+        vsm: false,
     });
 
     let camera_entity = world.spawn();
@@ -138,7 +143,7 @@ async fn run() {
     let mut last_time = Instant::now();
 
     #[allow(deprecated)]
-    event_loop.run(move |event, control_flow| {
+    let _ = event_loop.run(move |event, control_flow| {
         if let Event::WindowEvent { event: ref we, .. } = event {
             if ui_ctx.handle_window_event(&window, we) { return; }
             input_state.process_window_event(we);
@@ -273,7 +278,7 @@ async fn run() {
                     s_pass.set_bind_group(0, &shadow_bg, &[]);
                     s_pass.set_bind_group(1, &render_ctx.shadow_model_bind_group, &[]);
                     for (i, obj) in render_objects.iter().enumerate() {
-                        if let Some(m) = render_ctx.meshes.get(obj.mesh_index) {
+                        if let Some(m) = render_ctx.registry.mesh_by_slot(obj.mesh_index) {
                             s_pass.set_vertex_buffer(0, m.vertex_buffer.slice(..));
                             s_pass.set_index_buffer(m.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                             s_pass.draw_indexed(0..m.index_count, 0, (i as u32)..(i as u32 + 1));
@@ -294,7 +299,7 @@ async fn run() {
                             stencil_ops: None,
                         }), ..Default::default()
                     });
-                    render_ctx.record_draw(&mut rpass, &render_objects);
+                    render_ctx.record_draw(&mut rpass, &render_objects, &[]);
                 }
 
                 // 3. Tone Mapping

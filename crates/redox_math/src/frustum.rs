@@ -82,10 +82,11 @@ impl Frustum {
     /// Extracts frustum planes from a view‑projection matrix using the
     /// Gribb‑Hartmann method.
     ///
-    /// This method works for both OpenGL‑style (‑1 to 1 depth) and DirectX‑style
-    /// (0 to 1 depth) clip spaces. For a right‑handed projection with depth range
-    /// [0,1] (as created by [`perspective`](crate::matrix::perspective)), the near
-    /// and far planes are correctly extracted.
+    /// Assumes **wgpu / DirectX-style clip space** with depth range `[0, 1]`
+    /// (projections created by [`perspective`](crate::matrix::perspective)).
+    /// The near plane is taken directly from row 3 (`m.row(2)`); an
+    /// OpenGL-style `[-1, 1]` projection would require `row3 + row2` instead
+    /// and is NOT supported by this constructor.
     ///
     /// # Arguments
     /// * `m` – The combined view‑projection matrix (projection * view).
@@ -157,6 +158,20 @@ impl Frustum {
 
             // If the p-vertex is on the negative side of the plane, the AABB is outside
             if plane.dot_point(p) < 0.0 {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Tests whether a sphere intersects the frustum.
+    ///
+    /// Conservative p-vertex-style test: for each plane, the signed distance of
+    /// the sphere center is compared against the radius. Returns `false` only
+    /// when the sphere is definitely outside at least one plane.
+    pub fn intersects_sphere(&self, sphere: &crate::bounds::Sphere) -> bool {
+        for plane in &self.planes {
+            if plane.dot_point(sphere.center) < -sphere.radius {
                 return false;
             }
         }

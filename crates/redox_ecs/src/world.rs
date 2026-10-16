@@ -13,6 +13,14 @@ pub struct World {
 
     // Хранилище глобальных ресурсов
     resources: HashMap<TypeId, Box<dyn Any + Send + Sync>>,
+
+    /// Monotonic counter bumped on every component mutation.
+    pub(crate) change_tick: u32,
+    /// Snapshot of `change_tick` at the start of the current frame.
+    ///
+    /// Set by [`World::begin_frame`]; `Changed<T>` / `Added<T>` filters compare
+    /// row stamps against this value ("changed this frame").
+    pub(crate) frame_tick: u32,
 }
 
 impl World {
@@ -23,7 +31,28 @@ impl World {
             archetypes: Vec::new(),
             type_to_archetype: HashMap::new(),
             resources: HashMap::new(),
+            change_tick: 1,
+            frame_tick: 0,
         }
+    }
+
+    /// Marks the start of a new frame for change detection.
+    ///
+    /// Call once per frame before systems run; afterwards every mutation bumps
+    /// `change_tick`, so `Changed<T>` matches exactly what was written this frame.
+    pub fn begin_frame(&mut self) {
+        self.frame_tick = self.change_tick;
+    }
+
+    /// Current global change tick.
+    pub fn change_tick(&self) -> u32 {
+        self.change_tick
+    }
+
+    #[inline]
+    pub(crate) fn next_tick(&mut self) -> u32 {
+        self.change_tick = self.change_tick.wrapping_add(1).max(1);
+        self.change_tick
     }
 
     pub fn spawn(&mut self) -> Entity {
@@ -47,12 +76,14 @@ impl World {
     pub fn get_component_mut<T: Component>(&mut self, entity: Entity) -> Option<&mut T> {
         let (arch_idx, row) = *self.entity_locations.get(&entity)?;
         let type_id = TypeId::of::<T>();
+        let tick = self.next_tick();
         let arch = &mut self.archetypes[arch_idx];
         if !arch.table.has_component(type_id) {
             return None;
         }
         unsafe {
             let col = arch.table.columns.get_mut(&type_id).unwrap();
+            col.set_tick(row, tick);
             Some(&mut *(col.get(row) as *mut T))
         }
     }
@@ -83,6 +114,28 @@ impl World {
     }
 
     // --- ДОБАВЛЕНИЕ/УДАЛЕНИЕ ---
+
+    /// Spawns an entity with all components of `bundle` in one archetype step.
+    ///
+    /// Avoids the per-`add_component` archetype migration chain.
+    pub fn spawn_bundle<B: Bundle>(&mut self, bundle: B) -> Entity {
+        let entity = self.entities.allocate();
+        let tick = self.next_tick();
+
+        let infos = B::component_infos();
+        let target = self.find_or_create_archetype(infos);
+
+        unsafe {
+            let arch = &mut self.archetypes[target];
+            arch.table.push_entity(entity);
+            bundle.push_into(arch, tick);
+        }
+
+        let row = self.archetypes[target].table.row_count() - 1;
+        self.entity_locations.insert(entity, (target, row));
+        entity
+    }
+
     pub fn add_component<T: Component>(&mut self, entity: Entity, component: T) {
         let component_info = ComponentInfo::of::<T>();
         let location = self.entity_locations.get(&entity).copied();
@@ -97,18 +150,26 @@ impl World {
             .iter()
             .any(|i| i.type_id == component_info.type_id)
         {
+            // Overwrite in place; drop the previous value first. The new
+            // value's bytes are copied into the column, so the caller-side
+            // value must be forgotten to avoid dropping shared heap pointers.
             if let Some((arch_idx, row)) = location {
-                let table = &mut self.archetypes[arch_idx].table;
+                let tick = self.next_tick();
                 unsafe {
-                    let col = table.columns.get_mut(&component_info.type_id).unwrap();
-                    *(col.get(row) as *mut T) = component;
+                    let table = &mut self.archetypes[arch_idx].table;
+                    if let Some(col) = table.column_mut(component_info.type_id) {
+                        let ptr = &component as *const T as *const u8;
+                        col.replace(row, ptr, tick);
+                    }
                 }
+                std::mem::forget(component);
             }
             return;
         }
 
         new_infos.push(component_info.clone());
         let target_arch_idx = self.find_or_create_archetype(new_infos);
+        let tick = self.next_tick();
 
         unsafe {
             if let Some((old_arch_idx, old_row)) = location {
@@ -123,10 +184,10 @@ impl World {
                         .table
                         .get_component_ptr(info.type_id, old_row)
                         .unwrap();
-                    new_arch.table.push_component_raw(info.type_id, src_ptr);
+                    new_arch.table.push_component_raw(info.type_id, src_ptr, tick);
                 }
 
-                if let Some(moved_entity) = old_arch.table.swap_remove(old_row) {
+                if let Some(moved_entity) = old_arch.table.swap_remove(old_row, false) {
                     self.entity_locations
                         .insert(moved_entity, (old_arch_idx, old_row));
                 }
@@ -138,7 +199,7 @@ impl World {
             let ptr = &component as *const T as *const u8;
             new_arch
                 .table
-                .push_component_raw(component_info.type_id, ptr);
+                .push_component_raw(component_info.type_id, ptr, tick);
             std::mem::forget(component);
         }
 
@@ -148,7 +209,7 @@ impl World {
     }
 
     pub fn remove_component<T: Component>(&mut self, entity: Entity) -> bool {
-        // Логика удаления (остается твоей)
+        // Логика удаления
         let component_info = ComponentInfo::of::<T>();
         let location = match self.entity_locations.get(&entity).copied() {
             Some(loc) => loc,
@@ -176,6 +237,7 @@ impl World {
         }
 
         let target_arch_idx = self.find_or_create_archetype(new_infos);
+        let tick = self.next_tick();
 
         unsafe {
             let archetypes_ptr = self.archetypes.as_mut_ptr();
@@ -186,11 +248,11 @@ impl World {
 
             for info in &new_arch.component_infos {
                 if let Some(src_ptr) = old_arch.table.get_component_ptr(info.type_id, row) {
-                    new_arch.table.push_component_raw(info.type_id, src_ptr);
+                    new_arch.table.push_component_raw(info.type_id, src_ptr, tick);
                 }
             }
 
-            if let Some(moved_entity) = old_arch.table.swap_remove(row) {
+            if let Some(moved_entity) = old_arch.table.swap_remove(row, false) {
                 self.entity_locations.insert(moved_entity, (arch_idx, row));
             }
         }
@@ -205,7 +267,7 @@ impl World {
         if let Some((arch_idx, row)) = self.entity_locations.remove(&entity) {
             unsafe {
                 let arch = &mut self.archetypes[arch_idx];
-                if let Some(moved_entity) = arch.table.swap_remove(row) {
+                if let Some(moved_entity) = arch.table.swap_remove(row, true) {
                     self.entity_locations.insert(moved_entity, (arch_idx, row));
                 }
             }
@@ -254,11 +316,11 @@ impl World {
     ///
     /// # Example
     /// ```rust,ignore
-    /// // Single component
+    /// // Read-only fetches iterate with a shared world borrow
     /// for pos in world.query::<&Position>().iter(&world) { ... }
     ///
-    /// // Tuple of components
-    /// for (pos, vel) in world.query::<(&Position, &Velocity)>().iter(&world) { ... }
+    /// // Mutable fetches require exclusive access
+    /// for (pos, vel) in world.query::<(&Position, &mut Velocity)>().iter_mut(&mut world) { ... }
     /// ```
     #[inline]
     pub fn query<Q: QueryData>(&self) -> Query<Q, NullFilter> {
@@ -282,6 +344,66 @@ impl Default for World {
         Self::new()
     }
 }
+
+// ---------------------------------------------------------------------------
+// Bundles – spawn an entity with many components in one archetype transition
+// ---------------------------------------------------------------------------
+
+/// A fixed-size collection of components that can be spawned together.
+///
+/// Implemented via macro for tuples up to 8 elements.
+pub trait Bundle {
+    /// Metadata for every component in the bundle (order-stable).
+    fn component_infos() -> Vec<ComponentInfo>;
+
+    /// Pushes every component into the archetype's current last row.
+    ///
+    /// # Safety
+    /// The archetype's table must have had an entity pushed and must contain a
+    /// column for every component of this bundle.
+    unsafe fn push_into(self, archetype: &mut Archetype, tick: u32);
+}
+
+impl Bundle for () {
+    fn component_infos() -> Vec<ComponentInfo> {
+        Vec::new()
+    }
+
+    unsafe fn push_into(self, _archetype: &mut Archetype, _tick: u32) {}
+}
+
+macro_rules! impl_bundle {
+    ($( $name:ident : $idx:tt ),+) => {
+        #[allow(non_snake_case)]
+        impl<$($name: Component),+> Bundle for ($($name,)+) {
+            fn component_infos() -> Vec<ComponentInfo> {
+                vec![ $( ComponentInfo::of::<$name>(), )+ ]
+            }
+
+            unsafe fn push_into(self, archetype: &mut Archetype, tick: u32) {
+                $(
+                    let value = self.$idx;
+                    let ptr = &value as *const $name as *const u8;
+                    // SAFETY: archetype's table has a column for every bundle
+                    // component (guaranteed by `component_infos`) and a freshly
+                    // pushed entity row.
+                    unsafe {
+                        archetype.table.push_component_raw(TypeId::of::<$name>(), ptr, tick);
+                    }
+                    std::mem::forget(value);
+                )+
+            }
+        }
+    };
+}
+
+impl_bundle!(A:0, B:1);
+impl_bundle!(A:0, B:1, C:2);
+impl_bundle!(A:0, B:1, C:2, D:3);
+impl_bundle!(A:0, B:1, C:2, D:3, E:4);
+impl_bundle!(A:0, B:1, C:2, D:3, E:4, F:5);
+impl_bundle!(A:0, B:1, C:2, D:3, E:4, F:5, G:6);
+impl_bundle!(A:0, B:1, C:2, D:3, E:4, F:5, G:6, H:7);
 
 #[cfg(test)]
 mod tests {

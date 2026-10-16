@@ -1,0 +1,12 @@
+[package]
+name = "redox_gameplay"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+redox_ecs = { path = "../redox_ecs" }
+redox_math = { path = "../redox_math" }
+log = { workspace = true }

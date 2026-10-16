@@ -12,9 +12,9 @@
 //! let q = Query::<(&Position, &Velocity)>::new();
 //! for (pos, vel) in q.iter(&world) { ... }
 //!
-//! // Filtered: only entities that also have the Player component
+//! // Mutable fetches require exclusive world access
 //! let q = Query::<(&Position, &mut Velocity), With<Player>>::new();
-//! for (pos, vel) in q.iter(&world) { ... }
+//! for (pos, vel) in q.iter_mut(&mut world) { ... }
 //! ```
 
 pub mod entity;
@@ -23,18 +23,16 @@ pub mod archetype;
 pub mod world;
 pub mod query;
 pub mod event;
-pub mod system;
 pub mod hierarchy;
 
 pub use entity::{Entity, EntityAllocator};
 pub use component::Component;
-pub use world::World;
-pub use query::{Query, ParallelQuery, QueryData, QueryFilter};
+pub use world::{World, Bundle};
+pub use query::{Query, ParallelQuery, QueryData, ReadOnlyQueryData, QueryFilter};
 pub use query::{With, Without, NullFilter};
 pub use query::filter::{Changed, Added};
 pub use event::{Events, EventReader};
-pub use system::{System, SystemStage};
-pub use hierarchy::{Parent, Children};
+pub use hierarchy::{set_parent, transform_hierarchy_system, Children, Parent};
 
 /// The current version of the `redox_ecs` crate.
 pub const REDOX_ECS_VERSION: &str = env!("CARGO_PKG_VERSION");

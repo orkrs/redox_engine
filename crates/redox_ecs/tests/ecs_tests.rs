@@ -232,7 +232,7 @@ mod ecs_core_tests {
         // Mutably iterate and modify
         {
             let q = Query::<&mut Health>::new();
-            for hp in q.iter(&world) {
+            for hp in q.iter_mut(&mut world) {
                 hp.0 -= 10.0;
             }
         }
@@ -250,7 +250,7 @@ mod ecs_core_tests {
         // Apply velocity to position
         {
             let q = Query::<(&mut Position, &Velocity)>::new();
-            for (pos, vel) in q.iter(&world) {
+            for (pos, vel) in q.iter_mut(&mut world) {
                 pos.0 += vel.0;
                 pos.1 += vel.1;
                 pos.2 += vel.2;
@@ -346,12 +346,16 @@ mod ecs_core_tests {
     fn test_events() {
         struct TestEvent(i32);
         let mut events = Events::<TestEvent>::new();
+        let mut reader = EventReader::new();
+
         events.send(TestEvent(42));
         events.update();
 
-        let mut reader = EventReader::new(&events);
-        let collected: Vec<i32> = reader.iter().map(|e| e.0).collect();
+        let collected: Vec<i32> = reader.iter(&events).map(|e| e.0).collect();
         assert_eq!(collected, vec![42]);
+
+        // Reader consumed the event; a second pass sees nothing.
+        assert!(reader.iter(&events).next().is_none());
     }
 }
 
@@ -398,5 +402,185 @@ mod parallel_query_tests {
         let sum: f32 = q.par_iter(&world).map(|(m, f)| m.0 * f.0).sum();
         // (0*2 + 1*2 + 2*2 + 3*2) = 12
         assert_eq!(sum, 12.0);
+    }
+}
+// ---------------------------------------------------------------------------
+// Soundness: drop glue, change detection, bundles, Entity fetch
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod soundness_tests {
+    use redox_ecs::*;
+    use std::alloc::{GlobalAlloc, Layout, System};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
+    static DEALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    struct CountingAllocator;
+
+    unsafe impl GlobalAlloc for CountingAllocator {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            if layout.size() > 0 {
+                ALLOC_COUNT.fetch_add(1, Ordering::SeqCst);
+            }
+            unsafe { System.alloc(layout) }
+        }
+
+        unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+            if layout.size() > 0 {
+                DEALLOC_COUNT.fetch_add(1, Ordering::SeqCst);
+            }
+            unsafe { System.dealloc(ptr, layout) }
+        }
+    }
+
+    #[global_allocator]
+    static GLOBAL: CountingAllocator = CountingAllocator;
+
+    #[derive(Debug, Clone)]
+    struct Name(String);
+
+    #[derive(Debug, Clone, PartialEq)]
+    struct Pos(f32);
+
+    #[test]
+    fn despawn_drops_heap_components() {
+        let mut world = World::new();
+        let e = world.spawn();
+        world.add_component(e, Name("leak-me".to_string()));
+
+        let before = DEALLOC_COUNT.load(Ordering::SeqCst);
+        world.despawn(e);
+        let after = DEALLOC_COUNT.load(Ordering::SeqCst);
+
+        assert!(after > before, "despawn must run drop glue for String");
+    }
+
+    #[test]
+    fn component_removal_and_migration_drop_old_values() {
+        let mut world = World::new();
+        let e = world.spawn();
+        world.add_component(e, Name("a".to_string()));
+        // Overwrite path drops the previous String.
+        world.add_component(e, Name("b".to_string()));
+        let before = DEALLOC_COUNT.load(Ordering::SeqCst);
+        // Migration path (remove) drops the removed value.
+        world.remove_component::<Name>(e);
+        let after = DEALLOC_COUNT.load(Ordering::SeqCst);
+        assert!(after > before, "remove_component must run drop glue");
+
+        let e2 = world.spawn();
+        world.add_component(e2, Pos(1.0));
+        world.add_component(e2, Name("c".to_string()));
+        let before = DEALLOC_COUNT.load(Ordering::SeqCst);
+        drop(world);
+        let after = DEALLOC_COUNT.load(Ordering::SeqCst);
+        assert!(after > before, "World teardown must run drop glue");
+    }
+
+    #[test]
+    fn changed_added_semantics() {
+        let mut world = World::new();
+        let a = world.spawn();
+        let b = world.spawn();
+        // Components inserted BEFORE begin_frame belong to the previous frame.
+        world.add_component(a, Pos(0.0));
+        world.add_component(b, Pos(0.0));
+        world.begin_frame();
+        // Components inserted AFTER begin_frame are "added this frame".
+        let c = world.spawn();
+        world.add_component(c, Pos(9.0));
+        // Entity c was inserted this frame → visible to BOTH Added and Changed
+        // (adding a component counts as a change, mirroring Bevy semantics).
+        let mut changed: Vec<f32> = world
+            .query_filtered::<&Pos, Changed<Pos>>()
+            .iter(&world)
+            .map(|p| p.0)
+            .collect();
+        changed.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert_eq!(changed, vec![9.0]);
+
+        // Write via get_component_mut → visible to Changed.
+        *world.get_component_mut::<Pos>(a).unwrap() = Pos(1.0);
+        let mut changed: Vec<f32> = world
+            .query_filtered::<&Pos, Changed<Pos>>()
+            .iter(&world)
+            .map(|p| p.0)
+            .collect();
+        changed.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert_eq!(changed, vec![1.0, 9.0]);
+
+        // Added matches only rows inserted this frame (entity c).
+        let mut added: Vec<f32> = world
+            .query_filtered::<&Pos, Added<Pos>>()
+            .iter(&world)
+            .map(|p| p.0)
+            .collect();
+        added.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert_eq!(added, vec![9.0]);
+    }
+
+    #[test]
+    fn mutable_iteration_stamps_changed() {
+        let mut world = World::new();
+        let a = world.spawn();
+        world.add_component(a, Pos(5.0));
+        world.begin_frame();
+
+        {
+            for p in world.query::<&mut Pos>().iter_mut(&mut world) {
+                p.0 += 1.0;
+            }
+        }
+
+        let changed: Vec<f32> = world
+            .query_filtered::<&Pos, Changed<Pos>>()
+            .iter(&world)
+            .map(|p| p.0)
+            .collect();
+        assert_eq!(changed, vec![6.0]);
+    }
+
+    #[test]
+    fn bundle_spawn_single_archetype_step() {
+        let mut world = World::new();
+
+        #[derive(Debug, Clone, PartialEq)]
+        struct Vel(f32);
+
+        let e = world.spawn_bundle((Pos(7.0), Name("bundled".to_string()), Vel(1.0)));
+        assert_eq!(world.get_component::<Pos>(e).unwrap().0, 7.0);
+        assert_eq!(
+            world.get_component::<Name>(e).unwrap().0,
+            "bundled".to_string()
+        );
+        assert_eq!(world.archetype_count(), 1);
+    }
+
+    #[test]
+    fn entity_fetch_in_query() {
+        let mut world = World::new();
+        let a = world.spawn();
+        world.add_component(a, Pos(3.0));
+
+        let results: Vec<(Entity, &Pos)> =
+            world.query::<(Entity, &Pos)>().iter(&world).collect();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, a);
+        assert_eq!(results[0].1 .0, 3.0);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Compile-fail: two live mutable iterators over the same world are rejected
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod compile_fail_tests {
+    #[test]
+    fn aliasing_iter_mut_is_rejected() {
+        let t = trybuild::TestCases::new();
+        t.compile_fail("tests/compile_fail/*.rs");
     }
 }

@@ -12,6 +12,7 @@ image = { workspace = true }
 gltf = { workspace = true }
 log = { workspace = true }
 thiserror = { workspace = true }
+serde = { workspace = true }
 notify = { workspace = true }
 flume = { workspace = true }
 

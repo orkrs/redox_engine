@@ -1,0 +1,10 @@
+(
+    id: "prop_5_0_0",
+    kind: "prop",
+    position: (88.65828, 0.5, 3.2229228),
+    yaw: 5.696068,
+    tags: [
+        "pcg",
+        "scatter",
+    ],
+)

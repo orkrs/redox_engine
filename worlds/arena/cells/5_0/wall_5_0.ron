@@ -1,0 +1,9 @@
+(
+    id: "wall_5_0",
+    kind: "wall",
+    position: (88.0, 1.0, 8.0),
+    yaw: 0.0,
+    tags: [
+        "pcg",
+    ],
+)

@@ -1,0 +1,31 @@
+[package]
+name = "redox_editor_ui"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+redox_editor_core = { path = "../redox_editor_core" }
+redox_ecs = { path = "../redox_ecs" }
+redox_reflect = { path = "../redox_reflect" }
+redox_math = { path = "../redox_math" }
+redox_scene = { path = "../redox_scene" }
+redox_render = { path = "../redox_render" }
+redox_gameplay = { path = "../redox_gameplay" }
+redox_anim = { path = "../redox_anim" }
+redox_asset = { path = "../redox_asset" }
+redox_ui = { path = "../redox_ui" }
+anyhow = { workspace = true }
+egui = { workspace = true }
+egui-wgpu = { workspace = true }
+egui-winit = { workspace = true }
+egui_dock = { workspace = true, features = ["serde"] }
+wgpu = { workspace = true }
+winit = { workspace = true }
+serde = { workspace = true }
+ron = { workspace = true }
+log = { workspace = true }
+
+parking_lot = "0.12"

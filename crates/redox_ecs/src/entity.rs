@@ -19,6 +19,10 @@ impl Entity {
     /// Returns the generation of the entity.
     #[inline]
     pub fn generation(&self) -> u32 { self.generation }
+
+    /// Create entity from raw parts (for editor picking).
+    #[inline]
+    pub fn from_raw(id: u32, generation: u32) -> Self { Self { id, generation } }
 }
 
 /// Allocator for entity IDs with generation counters.

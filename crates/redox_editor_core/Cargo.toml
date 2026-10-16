@@ -1,0 +1,31 @@
+[package]
+name = "redox_editor_core"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+editor-git = ["dep:git2"]
+
+[dependencies]
+redox_ecs = { path = "../redox_ecs" }
+redox_math = { path = "../redox_math" }
+redox_reflect = { path = "../redox_reflect" }
+redox_scene = { path = "../redox_scene" }
+redox_render = { path = "../redox_render" }
+redox_physics = { path = "../redox_physics" }
+redox_asset = { path = "../redox_asset" }
+redox_anim = { path = "../redox_anim" }
+wgpu = { workspace = true }
+winit = { workspace = true }
+serde = { workspace = true }
+ron = { workspace = true }
+flume = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+smallvec = { workspace = true }
+egui = { workspace = true }
+bytemuck = { workspace = true }
+git2 = { workspace = true, optional = true }

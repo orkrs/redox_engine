@@ -34,22 +34,14 @@ pub struct RaycastResult {
 
 /// System that consumes `RaycastRequest` events, performs the checks,
 /// and emits `RaycastResult` events.
-pub fn raycast_system(context: &mut PhysicsContext, world: &mut World) {
+pub fn raycast_system(reader: &mut EventReader<RaycastRequest>, context: &mut PhysicsContext, world: &mut World) {
     // 1. Читаем все входящие запросы из ресурса событий
     if let Some(events) = world.get_resource::<Events<RaycastRequest>>() {
-        // Мы используем EventReader (согласно твоему коду из redox_ecs)
-        let mut reader = EventReader::new(events);
-        for req in reader.iter() {
+        for req in reader.iter(events) {
             context.push_raycast_request(req.clone());
         }
     }
 
     // 2. Обрабатываем рейкасты через QueryPipeline физического движка
     context.process_raycast_requests(world);
-
-    // Заметка: В `context.rs -> process_raycast_requests` тебе нужно будет
-    // отправлять результаты обратно в ECS:
-    // if let Some(results) = world.get_resource_mut::<Events<RaycastResult>>() {
-    //     results.send(result);
-    // }
 }

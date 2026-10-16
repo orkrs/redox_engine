@@ -1,0 +1,7 @@
+(
+    id: "floor_3_5",
+    kind: "floor",
+    position: (56.0, 0.0, 88.0),
+    yaw: 0.0,
+    tags: [],
+)

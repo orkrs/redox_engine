@@ -26,7 +26,7 @@ mod tests {
 
     #[test]
     fn attenuation_at_zero_distance() {
-        let e = AudioEmitter::new("a.wav", Vec3::ZERO);
+        let e = AudioEmitter::new(Vec3::ZERO);
         let l = AudioListener::new(Vec3::ZERO, Vec3::NEG_Z, Vec3::Y);
         let atten = distance_attenuation(&e, &l);
         assert!(
@@ -38,7 +38,7 @@ mod tests {
 
     #[test]
     fn attenuation_at_max_distance() {
-        let mut e = AudioEmitter::new("a.wav", Vec3::new(50.0, 0.0, 0.0));
+        let mut e = AudioEmitter::new(Vec3::new(50.0, 0.0, 0.0));
         e.max_distance = 50.0;
         let l = AudioListener::new(Vec3::ZERO, Vec3::NEG_Z, Vec3::Y);
         let atten = distance_attenuation(&e, &l);
@@ -50,7 +50,7 @@ mod tests {
 
     #[test]
     fn pan_right() {
-        let e = AudioEmitter::new("a.wav", Vec3::new(10.0, 0.0, 0.0));
+        let e = AudioEmitter::new(Vec3::new(10.0, 0.0, 0.0));
         let l = AudioListener::new(Vec3::ZERO, Vec3::NEG_Z, Vec3::Y);
         let pan = stereo_pan(&e, &l);
         // Listener facing -Z, right is +X → emitter on +X → pan ≈ +1.0
@@ -63,7 +63,7 @@ mod tests {
 
     #[test]
     fn pan_left() {
-        let e = AudioEmitter::new("a.wav", Vec3::new(-10.0, 0.0, 0.0));
+        let e = AudioEmitter::new(Vec3::new(-10.0, 0.0, 0.0));
         let l = AudioListener::new(Vec3::ZERO, Vec3::NEG_Z, Vec3::Y);
         let pan = stereo_pan(&e, &l);
         assert!(

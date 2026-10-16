@@ -1,0 +1,7 @@
+(
+    id: "wall_5_3",
+    kind: "wall",
+    position: (88.0, 1.0, 56.0),
+    yaw: 0.0,
+    tags: [],
+)

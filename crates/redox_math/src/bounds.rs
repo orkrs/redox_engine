@@ -70,31 +70,27 @@ impl Aabb {
     }
 
     /// Transforms this AABB by a 4×4 matrix and returns a new axis‑aligned
-    /// bounding box that encloses the transformed corners.
+    /// bounding box that tightly encloses the transformed box.
     ///
-    /// The result is always axis‑aligned in the target space (i.e., the box
-    /// is recomputed from the transformed corners).
+    /// Uses Arvo's method (center transformed + per-axis abs-dot extents):
+    /// 3 matrix-vector products instead of the 8 corner transforms.
+    ///
+    /// The result is always axis‑aligned in the target space.
     pub fn transform(&self, matrix: Mat4) -> Self {
         let center = self.center();
-        let half_extents = self.half_extents();
+        let he = self.half_extents();
 
-        let corners = [
-            center + Vec3::new(-half_extents.x, -half_extents.y, -half_extents.z),
-            center + Vec3::new(-half_extents.x, -half_extents.y, half_extents.z),
-            center + Vec3::new(-half_extents.x, half_extents.y, -half_extents.z),
-            center + Vec3::new(-half_extents.x, half_extents.y, half_extents.z),
-            center + Vec3::new(half_extents.x, -half_extents.y, -half_extents.z),
-            center + Vec3::new(half_extents.x, -half_extents.y, half_extents.z),
-            center + Vec3::new(half_extents.x, half_extents.y, -half_extents.z),
-            center + Vec3::new(half_extents.x, half_extents.y, half_extents.z),
-        ];
+        let new_center = matrix.transform_point3(center);
 
-        let mut result = Self::empty();
-        for corner in corners {
-            let transformed = matrix.transform_point3(corner);
-            result = result.expand(transformed);
-        }
-        result
+        // |M_ij| * extent_j summed over j, ignoring translation column.
+        let m = matrix.to_cols_array_2d();
+        let new_he = Vec3::new(
+            m[0][0].abs() * he.x + m[1][0].abs() * he.y + m[2][0].abs() * he.z,
+            m[0][1].abs() * he.x + m[1][1].abs() * he.y + m[2][1].abs() * he.z,
+            m[0][2].abs() * he.x + m[1][2].abs() * he.y + m[2][2].abs() * he.z,
+        );
+
+        Self::from_center_size(new_center, new_he)
     }
 
     /// Expands the AABB to include the given point.
