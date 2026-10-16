@@ -15,7 +15,7 @@ redox_ecs = { path = "../redox_ecs" }
 rapier3d = { workspace = true }
 log = "0.4"
 crossbeam-queue = "0.3"
-thiserror = "1.0"
+thiserror = "2"
 
 
 [dev-dependencies]
