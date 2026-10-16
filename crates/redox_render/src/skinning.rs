@@ -21,6 +21,8 @@ pub struct SkinnedMeshBinding {
     vertices: Vec<Vertex>,
     positions: Vec<[f32; 3]>,
     normals: Vec<[f32; 3]>,
+    /// Bounds of the vertices before the most recent [`Self::update`].
+    previous_bounds: Option<Aabb>,
 }
 
 impl SkinnedMeshBinding {
@@ -42,12 +44,14 @@ impl SkinnedMeshBinding {
             vertices,
             positions: Vec::new(),
             normals: Vec::new(),
+            previous_bounds: None,
         }
     }
 
     /// Deforms the mesh with `skin_matrices` (`Pose::skin_matrices`) and uploads the result.
     /// Returns `false` if the renderer rejected the update.
     pub fn update(&mut self, renderer: &Renderer, skin_matrices: &[Mat4]) -> bool {
+        self.previous_bounds = (!self.positions.is_empty()).then(|| self.deformed_bounds());
         self.geometry.deform_into(skin_matrices, &mut self.positions, &mut self.normals);
         for ((vertex, position), normal) in self.vertices.iter_mut().zip(&self.positions).zip(&self.normals) {
             vertex.position = *position;
@@ -61,6 +65,21 @@ impl SkinnedMeshBinding {
     pub fn deformed_bounds(&self) -> Aabb {
         let points: &[[f32; 3]] = if self.positions.is_empty() { &self.geometry.positions } else { &self.positions };
         points.iter().fold(Aabb::empty(), |b, p| b.expand(Vec3::from(*p)))
+    }
+
+    /// Bounds covering where the mesh was before the last update and where it is now.
+    ///
+    /// Shadow pages must be invalidated over this region: pages at the *old* position still
+    /// hold the old shadow, and clearing only the new footprint leaves it behind.
+    pub fn swept_bounds(&self) -> Aabb {
+        let now = self.deformed_bounds();
+        match self.previous_bounds {
+            Some(prev) => Aabb {
+                min: now.min.min(prev.min),
+                max: now.max.max(prev.max),
+            },
+            None => now,
+        }
     }
 
     /// Whether `point` lies inside the quantisation bounds (deformed vertices outside would clip).

@@ -121,7 +121,7 @@ impl DemoScene {
     fn deformed_world_bounds(&self) -> Vec<Aabb> {
         self.rigs
             .iter()
-            .map(|rig| rig.binding.deformed_bounds().transform(Mat4::from_translation(rig.base)))
+            .map(|rig| rig.binding.swept_bounds().transform(Mat4::from_translation(rig.base)))
             .collect()
     }
 

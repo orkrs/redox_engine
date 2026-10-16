@@ -109,6 +109,9 @@ pub struct VsmClipmap {
     frame: u64,
     /// Per level and page: the last frame the page was requested (LRU eviction).
     last_used: Vec<Vec<u64>>,
+    /// Pages invalidated by moving casters; merged into the next request so they re-render
+    /// immediately.
+    forced: Vec<u32>,
 }
 
 impl VsmClipmap {
@@ -141,6 +144,7 @@ impl VsmClipmap {
             last_used: (0..level_count)
                 .map(|_| vec![0; (VSM_PAGES_PER_SIDE * VSM_PAGES_PER_SIDE) as usize])
                 .collect(),
+            forced: vec![0; (level_count * (VSM_PAGES_PER_SIDE * VSM_PAGES_PER_SIDE) as usize).div_ceil(32)],
         }
     }
 
@@ -304,48 +308,52 @@ impl VsmClipmap {
     /// Cost is O(levels * aabbs * pages), but aabbs are few (crystals/sentinels)
     /// and dirty re-render is limited to overlapping pages.
     pub fn invalidate_aabbs(&mut self, aabbs: &[redox_math::Aabb]) {
-        if aabbs.is_empty() { return; }
+        if aabbs.is_empty() {
+            return;
+        }
+        let pps = VSM_PAGES_PER_SIDE;
+        let pages_per_level = (pps * pps) as usize;
         for (lvl_idx, level) in self.levels.iter().enumerate() {
             let pt = &mut self.tables[lvl_idx];
-            let pps = pt.pages_x as f32;
-            // For each AABB, find page range in this level's light UV.
             for aabb in aabbs {
-                // Project AABB corners to light clip space to get UV bounds.
-                let mut uv_min = Vec2::new(f32::MAX, f32::MAX);
-                let mut uv_max = Vec2::new(f32::MIN, f32::MIN);
-                let mut any_inside = false;
-                for corner in [
-                    Vec3::new(aabb.min.x, aabb.min.y, aabb.min.z),
-                    Vec3::new(aabb.max.x, aabb.min.y, aabb.min.z),
-                    Vec3::new(aabb.min.x, aabb.max.y, aabb.min.z),
-                    Vec3::new(aabb.max.x, aabb.max.y, aabb.min.z),
-                    Vec3::new(aabb.min.x, aabb.min.y, aabb.max.z),
-                    Vec3::new(aabb.max.x, aabb.min.y, aabb.max.z),
-                    Vec3::new(aabb.min.x, aabb.max.y, aabb.max.z),
-                    Vec3::new(aabb.max.x, aabb.max.y, aabb.max.z),
-                ] {
+                // Light-plane footprint of the box from ALL corners: corners beyond the window
+                // or the depth range still shadow pages inside it, so they must widen the rect
+                // instead of being dropped.
+                let mut uv_min = Vec2::splat(f32::MAX);
+                let mut uv_max = Vec2::splat(f32::MIN);
+                let mut projected = false;
+                for corner in aabb_corners(aabb) {
                     let clip = level.view_proj * corner.extend(1.0);
-                    if clip.w <= 1e-4 { continue; }
-                    let ndc = Vec3::new(clip.x / clip.w, clip.y / clip.w, clip.z / clip.w);
-                    let uv = Vec2::new(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
-                    if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || ndc.z < 0.0 || ndc.z > 1.0 {
+                    if clip.w <= 1e-4 {
                         continue;
                     }
-                    any_inside = true;
-                    uv_min = Vec2::new(uv_min.x.min(uv.x), uv_min.y.min(uv.y));
-                    uv_max = Vec2::new(uv_max.x.max(uv.x), uv_max.y.max(uv.y));
+                    let uv = Vec2::new(
+                        clip.x / clip.w * 0.5 + 0.5,
+                        0.5 - clip.y / clip.w * 0.5,
+                    );
+                    uv_min = uv_min.min(uv);
+                    uv_max = uv_max.max(uv);
+                    projected = true;
                 }
-                if !any_inside { continue; }
-                let x0 = (uv_min.x * pps).floor().max(0.0) as u32;
-                let y0 = (uv_min.y * pps).floor().max(0.0) as u32;
-                let x1 = (uv_max.x * pps).ceil().min(pps) as u32;
-                let y1 = (uv_max.y * pps).ceil().min(pps) as u32;
+                if !projected || uv_max.x < 0.0 || uv_max.y < 0.0 || uv_min.x > 1.0 || uv_min.y > 1.0 {
+                    continue;
+                }
+                let pps_f = pps as f32;
+                let x0 = (uv_min.x * pps_f).floor().clamp(0.0, pps_f) as u32;
+                let y0 = (uv_min.y * pps_f).floor().clamp(0.0, pps_f) as u32;
+                let x1 = (uv_max.x * pps_f).ceil().clamp(0.0, pps_f) as u32;
+                let y1 = (uv_max.y * pps_f).ceil().clamp(0.0, pps_f) as u32;
                 for y in y0..y1 {
                     for x in x0..x1 {
-                        let e = pt.get(x, y);
-                        if e & PAGE_VALID_BIT != 0 && e & PAGE_CACHED_BIT != 0 {
-                            pt.set(x, y, e & !PAGE_CACHED_BIT);
+                        let entry = pt.get(x, y);
+                        if entry & PAGE_VALID_BIT == 0 {
+                            continue;
                         }
+                        pt.set(x, y, entry & !PAGE_CACHED_BIT);
+                        // Re-render now, not whenever the (delayed) screen feedback asks again:
+                        // otherwise the stale shadow of a moving caster lingers for a few frames.
+                        let flat = lvl_idx * pages_per_level + (y * pps + x) as usize;
+                        self.forced[flat / 32] |= 1 << (flat % 32);
                     }
                 }
             }
@@ -364,6 +372,17 @@ impl VsmClipmap {
     pub fn requested_dirty_pages(&mut self, requested_bits: &[u32]) -> Vec<DirtyPage> {
         self.frame += 1;
         let frame = self.frame;
+
+        // Pages invalidated by moving casters count as requested this frame.
+        let mut merged = requested_bits.to_vec();
+        if merged.len() < self.forced.len() {
+            merged.resize(self.forced.len(), 0);
+        }
+        for (word, forced) in merged.iter_mut().zip(&self.forced) {
+            *word |= *forced;
+        }
+        self.forced.fill(0);
+        let requested_bits = merged.as_slice();
 
         // Pass 1: stamp every requested page, so the eviction below can never take a page that
         // is needed this frame.
@@ -671,6 +690,21 @@ fn shift_entries(pt: &mut VirtualPageTable, dx: i32, dy: i32) -> Vec<u16> {
     dropped
 }
 
+/// The eight corners of `aabb`.
+fn aabb_corners(aabb: &Aabb) -> [Vec3; 8] {
+    let (a, b) = (aabb.min, aabb.max);
+    [
+        Vec3::new(a.x, a.y, a.z),
+        Vec3::new(b.x, a.y, a.z),
+        Vec3::new(a.x, b.y, a.z),
+        Vec3::new(b.x, b.y, a.z),
+        Vec3::new(a.x, a.y, b.z),
+        Vec3::new(b.x, a.y, b.z),
+        Vec3::new(a.x, b.y, b.z),
+        Vec3::new(b.x, b.y, b.z),
+    ]
+}
+
 /// Shifts a square `n x n` grid by `(dx, dy)` cells with the same mapping as [`shift_entries`]
 /// (new `(tx, ty)` takes old `(tx + dx, ty + dy)`, cells shifted in from outside become 0).
 fn shift_grid(grid: &mut [u64], n: i32, dx: i32, dy: i32) {
@@ -917,6 +951,44 @@ mod tests {
                 (nx, ny)
             );
         }
+    }
+
+    fn cached_page_covering(cm: &mut VsmClipmap, world: Vec3) -> (u32, u32) {
+        let (px, py) = page_covering(cm, 0, world).expect("point inside the window");
+        let phys = cm.phys_pool_mut().alloc().unwrap();
+        cm.tables_mut()[0].set(px, py, phys as u32 | PAGE_VALID_BIT | PAGE_CACHED_BIT);
+        (px, py)
+    }
+
+    #[test]
+    fn invalidated_pages_are_rendered_in_the_same_frame_without_feedback() {
+        let mut cm = single_level(8);
+        let point = Vec3::new(0.5, 0.0, 0.5);
+        let (px, py) = cached_page_covering(&mut cm, point);
+        let aabb = redox_math::Aabb { min: point - Vec3::splat(0.05), max: point + Vec3::splat(0.05) };
+
+        cm.invalidate_aabbs(&[aabb]);
+        // No screen feedback at all: the forced request alone must re-render the page.
+        let dirty = cm.requested_dirty_pages(&[]);
+        assert!(dirty.iter().any(|&(_, x, y, _)| (x, y) == (px, py)), "dirty: {dirty:?}");
+        // And it is consumed: the next frame does not re-render it again.
+        cm.mark_pages_cached(&dirty);
+        assert!(cm.requested_dirty_pages(&[]).is_empty());
+    }
+
+    #[test]
+    fn invalidation_uses_all_box_corners_even_beyond_the_window() {
+        let mut cm = single_level(8);
+        let point = Vec3::new(0.5, 0.0, 0.5);
+        let (px, py) = cached_page_covering(&mut cm, point);
+        // A huge box that covers the window and extends far past its edge in every direction.
+        let aabb = redox_math::Aabb { min: Vec3::splat(-500.0), max: Vec3::splat(500.0) };
+        cm.invalidate_aabbs(&[aabb]);
+        assert_eq!(
+            cm.tables()[0].get(px, py) & PAGE_CACHED_BIT,
+            0,
+            "a box larger than the window must still invalidate the pages inside it"
+        );
     }
 
     #[test]
