@@ -173,6 +173,20 @@ fn vsm_pcf_bilinear(lk: VsmLookup, bias_ndc: f32, min_diff: f32) -> f32 {
     return mix(mix(s00, s10, a.x), mix(s01, s11, a.x), a.y);
 }
 
+/// Four bilinear taps on the corners of a `spread`-texel square (about a 3x3 tent kernel for
+/// `spread` = 2): hides the texel stair-steps of a single bilinear lookup without a visible blur.
+fn vsm_pcf_smooth(lk: VsmLookup, bias_ndc: f32, min_diff: f32, spread: f32) -> f32 {
+    var acc = 0.0;
+    for (var iy = 0; iy < 2; iy++) {
+        for (var ix = 0; ix < 2; ix++) {
+            var tap = lk;
+            tap.pixel_f = lk.pixel_f + (vec2<f32>(f32(ix), f32(iy)) - vec2<f32>(0.5)) * spread;
+            acc += vsm_pcf_bilinear(tap, bias_ndc, min_diff);
+        }
+    }
+    return acc * 0.25;
+}
+
 fn vsm_trace_1ray(world_pos: vec3<f32>, normal: vec3<f32>, light_dir: vec3<f32>, phi: f32) -> f32 {
     // Returns 1.0 (lit) when clipmap has no resident page — VSM-only policy:
     // outer regions are lit; SDF contact provides near shadowing.
@@ -188,7 +202,9 @@ fn vsm_trace_1ray(world_pos: vec3<f32>, normal: vec3<f32>, light_dir: vec3<f32>,
     let dir = normalize(f + tangent * vog.x * radius + bitangent * vog.y * radius);
 
     let n_dot_l = max(dot(normalize(normal), f), 0.0);
-    let origin = world_pos + normalize(normal) * (lk0.texel_world * mix(0.25, 0.85, n_dot_l));
+    // Normal-offset the receiver by about a texel and a half: curved surfaces otherwise
+    // shadow themselves along the terminator in blocky patches.
+    let origin = world_pos + normalize(normal) * (lk0.texel_world * mix(0.6, 1.8, n_dot_l));
     let samples = clamp(vsm_info.samples_per_ray, 1u, 8u);
     var transmittance = 1.0;
 
@@ -204,9 +220,9 @@ fn vsm_trace_1ray(world_pos: vec3<f32>, normal: vec3<f32>, light_dir: vec3<f32>,
         let face_on = max(dot(normalize(normal), f), 0.0);
         let bias_ndc = lk.texel_world * (0.35 + 0.55 * slope + 0.9 * face_on)
             * mix(1.0, 0.45, contact) / lk.z_world_per_ndc;
-        // Minimum radius of 2 texels so texel stair-steps blend.
-            let spread = clamp(dist * tan_source / max(lk.texel_world, 1e-4), 2.0, 4.0);
-        let lit = vsm_pcf_bilinear(lk, bias_ndc, (1.25 * lk.texel_world) / lk.z_world_per_ndc);
+        // Kernel size in texels: grows with the penumbra, never below 2 so stair-steps blend.
+        let spread = clamp(dist * tan_source / max(lk.texel_world, 1e-4), 2.0, 4.0);
+        let lit = vsm_pcf_smooth(lk, bias_ndc, (1.25 * lk.texel_world) / lk.z_world_per_ndc, spread);
         let occ = 1.0 - lit;
         if (occ > 0.01) {
             let stored = textureLoad(t_vsm_pages, lk.pixel, lk.layer, 0).r;
