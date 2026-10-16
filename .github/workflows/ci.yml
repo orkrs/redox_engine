@@ -40,7 +40,7 @@ jobs:
           components: miri
       - uses: Swatinem/rust-cache@v2
       - name: Miri (ECS storage; rayon and trybuild tests are skipped)
-        run: cargo miri test -p redox_ecs --lib --test ownership --test property --test ecs_tests -- --skip compile_fail --skip par_iter
+        run: cargo miri test -p redox_ecs --lib --test ownership --test commands --test property --test ecs_tests -- --skip compile_fail --skip par_iter
         env:
           MIRIFLAGS: -Zmiri-disable-isolation
           PROPTEST_CASES: "4"

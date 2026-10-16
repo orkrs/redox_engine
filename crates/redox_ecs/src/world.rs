@@ -127,6 +127,17 @@ impl World {
     /// Avoids the per-`add_component` archetype migration chain.
     pub fn spawn_bundle<B: Bundle>(&mut self, bundle: B) -> Entity {
         let entity = self.entities.allocate();
+        self.spawn_bundle_at(entity, bundle);
+        entity
+    }
+
+    /// The world's entity-id allocator (lock-free; ids can be reserved through `&World`).
+    pub fn entity_allocator(&self) -> &EntityAllocator {
+        &self.entities
+    }
+
+    /// Spawns `bundle` onto an id previously reserved from [`Self::entity_allocator`].
+    pub(crate) fn spawn_bundle_at<B: Bundle>(&mut self, entity: Entity, bundle: B) {
         let tick = self.next_tick();
 
         let infos = B::component_infos();
@@ -153,7 +164,6 @@ impl World {
 
         let row = self.archetypes[target].table.row_count() - 1;
         self.entity_locations.insert(entity, (target, row));
-        entity
     }
 
     pub fn add_component<T: Component>(&mut self, entity: Entity, component: T) {
@@ -469,6 +479,7 @@ macro_rules! impl_bundle {
     };
 }
 
+impl_bundle!(A:0);
 impl_bundle!(A:0, B:1);
 impl_bundle!(A:0, B:1, C:2);
 impl_bundle!(A:0, B:1, C:2, D:3);

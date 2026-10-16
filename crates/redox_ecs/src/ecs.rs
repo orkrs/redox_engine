@@ -20,6 +20,7 @@
 #![warn(clippy::undocumented_unsafe_blocks)]
 
 pub mod archetype;
+pub mod commands;
 pub mod component;
 pub mod entity;
 pub mod event;
@@ -27,6 +28,7 @@ pub mod hierarchy;
 pub mod query;
 pub mod world;
 
+pub use commands::{CommandQueue, Commands};
 pub use component::Component;
 pub use entity::{Entity, EntityAllocator};
 pub use event::{EventReader, Events};

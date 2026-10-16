@@ -20,6 +20,15 @@
 Честные оговорки: CI на GitHub ещё ни разу не запускался; `rust-version = "1.85"` выбрана на глаз;
 список лицензий в `deny.toml` составлен по памяти; `cargo deny` и `cargo audit` не запускались.
 
+## Статус выполнения (обновлено 2026-10-16)
+
+Сделано: A3 (кроме `init.rs`, исключение в `scripts/check_file_sizes.py`), A4, A5, A9, часть A1
+(MSRV 1.88 проверена, CI-задачи msrv/miri/docs, dependabot, `cargo deny` зелёный), часть A6
+(CONTRIBUTING, CHANGELOG, SECURITY, ADR 0001–0003, предупреждения об устаревании в PROJECT_MAP и
+ARCHITECTURE_REALITY), A7 (кроме loom, не нужен), `cargo doc -D warnings`, из 1.1a: thiserror, image, ron,
+notify, git2, rand, pollster, flume, hashbrown; из 1.3: `Commands`. Не сделано: первый прогон CI на GitHub,
+A2, A8, A10–A12, `glam`, 1.1b–d, 1.2, остальное 1.3, 1.4, 1.5.
+
 ---
 
 # ЧАСТЬ A. Остаток этапа 0
