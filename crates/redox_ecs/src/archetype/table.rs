@@ -10,9 +10,11 @@ pub struct Table {
     entities: Vec<Entity>,
 }
 
-// SAFETY: Table contains HashMap and Vec which are safe for immutable reads from multiple threads.
-// All modifications happen under exclusive control of World (single thread).
+// SAFETY: `Table` consists of a `HashMap<TypeId, Column>` and a `Vec<Entity>`; `Column`
+// is `Send`/`Sync` (see its impls) and `Entity` is plain data. Mutation requires
+// `&mut Table`, so shared references only permit reads.
 unsafe impl Send for Table {}
+// SAFETY: see the `Send` impl above.
 unsafe impl Sync for Table {}
 
 impl Table {
@@ -37,12 +39,17 @@ impl Table {
     /// Returns the entity that was moved into the vacated slot, if any.
     ///
     /// # Safety
-    /// `row` must be within bounds.
+    /// - `row` must be `< row_count()`.
+    /// - Every column must have length `>= row_count()` (table invariant).
+    /// - If `drop` is clear, the caller must have moved every component at `row`
+    ///   out beforehand so nothing is double-dropped.
     pub unsafe fn swap_remove(&mut self, row: usize, drop: bool) -> Option<Entity> {
         let last_index = self.entities.len() - 1;
         self.entities.swap_remove(row);
 
         for col in self.columns.values_mut() {
+            // SAFETY: `row < row_count()` (caller contract) and each column holds at
+            // least one value per entity (table invariant), so `row` is in bounds.
             unsafe {
                 col.swap_remove(row, drop);
             }
@@ -58,7 +65,9 @@ impl Table {
     /// Adds an entity to the table (creates a new row).
     ///
     /// # Safety
-    /// Components for the new row must be added separately via `push_component_raw`.
+    /// Components for the new row must be added separately via `push_component_raw`
+    /// (exactly one per column) before the table is read, so that every column keeps
+    /// the same length as the entity list.
     pub unsafe fn push_entity(&mut self, entity: Entity) {
         self.entities.push(entity);
     }
@@ -66,10 +75,13 @@ impl Table {
     /// Adds a raw component value to the current last row.
     ///
     /// # Safety
-    /// `type_id` must correspond to a column in this table,
-    /// and `ptr` must point to a valid instance of that component.
+    /// - `type_id` must correspond to a column in this table.
+    /// - `ptr` must point to a valid instance of that component, be readable for its
+    ///   size, and not overlap the column's storage.
+    /// - Ownership moves into the table; the caller must not drop the source value.
     pub unsafe fn push_component_raw(&mut self, type_id: TypeId, ptr: *const u8, tick: u32) {
         if let Some(col) = self.columns.get_mut(&type_id) {
+            // SAFETY: forwarded caller contract (`ptr` valid, type matches the column).
             unsafe {
                 col.push(ptr, tick);
             }
@@ -79,10 +91,13 @@ impl Table {
     /// Returns a raw pointer to the component of type `type_id` at `row`.
     ///
     /// # Safety
-    /// `row` must be within bounds and the component must exist.
+    /// `row` must be `<= row_count()` (pointer arithmetic stays in the allocation);
+    /// dereferencing the returned pointer additionally requires `row < row_count()`
+    /// and that no conflicting reference to that element is live.
     pub unsafe fn get_component_ptr(&self, type_id: TypeId, row: usize) -> Option<*const u8> {
         self.columns
             .get(&type_id)
+            // SAFETY: caller guarantees `row` is in bounds for this table's columns.
             .map(|col| unsafe { col.get(row) as *const u8 })
     }
 

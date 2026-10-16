@@ -91,6 +91,7 @@ where
         // Bump the global tick so rows yielded by this iterator register as
         // changed relative to the frame-start snapshot.
         let stamp_tick = world.next_tick();
+        Self::assert_no_aliasing();
         QueryIterMut {
             archetypes: &mut world.archetypes[..],
             ctx,
@@ -98,6 +99,28 @@ where
             arch_index: 0,
             row: 0,
             _marker: PhantomData,
+        }
+    }
+}
+
+impl<Q, F> Query<Q, F>
+where
+    Q: QueryData,
+    F: QueryFilter,
+{
+    /// Panics if `Q` accesses a component type twice with at least one mutable
+    /// access (e.g. `(&mut T, &T)`, `(&mut T, &mut T)`), which would hand out
+    /// aliasing references from safe code.
+    fn assert_no_aliasing() {
+        let mut seen: Vec<(std::any::TypeId, bool)> = Vec::new();
+        Q::for_each_access(&mut |tid, mutable| seen.push((tid, mutable)));
+        for (i, &(tid, mutable)) in seen.iter().enumerate() {
+            assert!(
+                !seen[..i]
+                    .iter()
+                    .any(|&(other, other_mut)| other == tid && (mutable || other_mut)),
+                "query accesses the same component mutably more than once (aliasing)"
+            );
         }
     }
 }
@@ -191,10 +214,11 @@ impl<'w, Q: QueryData, F: QueryFilter> Iterator for QueryIterMut<'w, Q, F> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            // SAFETY: see the struct-level safety invariant; the pointee is
-            // exclusively owned by this iterator for `'w` and `&mut self`
-            // aliases nothing (the raw pointer field is never read as a
-            // reference outside this deref).
+            // SAFETY: see the struct-level safety invariant; `archetypes` was derived
+            // from the `&'w mut` slice consumed by `Query::iter_mut`, so it is valid and
+            // exclusively owned by this iterator for `'w`. The reborrow only covers the
+            // `Archetype` structs; previously yielded items point into the separately
+            // heap-allocated column storage, which this reborrow does not retag.
             let archetypes: &'w mut [Archetype] = unsafe { &mut *self.archetypes };
             let arch = archetypes.get_mut(self.arch_index)?;
 
@@ -224,8 +248,10 @@ impl<'w, Q: QueryData, F: QueryFilter> Iterator for QueryIterMut<'w, Q, F> {
 
                 let arch_ptr: *mut Archetype = arch;
                 // SAFETY: `arch_ptr` points to an archetype that satisfies
-                // `Q::matches` with a valid in-bounds `row`; the exclusive
-                // borrow of the world guarantees aliasing rules hold.
+                // `Q::matches` with a valid in-bounds `row` (`row < row_count`); the
+                // exclusive world borrow plus the aliasing check in `iter_mut`
+                // (`assert_no_aliasing`) guarantee that the yielded `&mut` references
+                // are unique, and each (archetype, row) is yielded at most once.
                 let item = unsafe { Q::fetch_mut(&mut *arch_ptr, row) };
                 return Some(item);
             }

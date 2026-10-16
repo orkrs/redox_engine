@@ -17,6 +17,8 @@
 //! for (pos, vel) in q.iter_mut(&mut world) { ... }
 //! ```
 
+#![warn(clippy::undocumented_unsafe_blocks)]
+
 pub mod archetype;
 pub mod component;
 pub mod entity;

@@ -67,6 +67,10 @@ impl World {
         if !arch.table.has_component(type_id) {
             return None;
         }
+        // SAFETY: `has_component` confirmed a column keyed by `TypeId::of::<T>()`, which
+        // stores exactly `T` values with `T`'s alignment. `row` comes from
+        // `entity_locations`, which is kept in sync with the table, so it is `< len`.
+        // The `&self` borrow prevents any `&mut` access for the returned lifetime.
         unsafe {
             let col = arch.table.columns.get(&type_id).unwrap();
             Some(&*(col.get(row) as *const T))
@@ -81,6 +85,9 @@ impl World {
         if !arch.table.has_component(type_id) {
             return None;
         }
+        // SAFETY: as in `get_component` (column type is `T`, `row` in bounds); the
+        // `&mut self` borrow guarantees the returned `&mut T` is the only live
+        // reference to that element.
         unsafe {
             let col = arch.table.columns.get_mut(&type_id).unwrap();
             col.set_tick(row, tick);
@@ -123,8 +130,21 @@ impl World {
         let tick = self.next_tick();
 
         let infos = B::component_infos();
+        // `push_into` pushes one value per bundle element; a duplicate component type
+        // would push two values into one column and desynchronise it from the entity
+        // list (breaking the table invariant that the unsafe code relies on).
+        assert!(
+            infos
+                .iter()
+                .enumerate()
+                .all(|(i, a)| infos[..i].iter().all(|b| b.type_id != a.type_id)),
+            "bundle contains duplicate component types"
+        );
         let target = self.find_or_create_archetype(infos);
 
+        // SAFETY: `target` was created from `B::component_infos()`, so its table has a
+        // column for every bundle component; `push_entity` is immediately followed by
+        // `push_into`, which pushes exactly one value per bundle column.
         unsafe {
             let arch = &mut self.archetypes[target];
             arch.table.push_entity(entity);
@@ -155,6 +175,10 @@ impl World {
             // value must be forgotten to avoid dropping shared heap pointers.
             if let Some((arch_idx, row)) = location {
                 let tick = self.next_tick();
+                // SAFETY: the column for `T` exists (type is in the archetype) and
+                // `row` is the entity's live row. `ptr` points to the local
+                // `component`, a valid `T` that cannot overlap column storage; its
+                // ownership moves into the column and it is forgotten right after.
                 unsafe {
                     let table = &mut self.archetypes[arch_idx].table;
                     if let Some(col) = table.column_mut(component_info.type_id) {
@@ -171,6 +195,17 @@ impl World {
         let target_arch_idx = self.find_or_create_archetype(new_infos);
         let tick = self.next_tick();
 
+        // SAFETY:
+        // - `old_arch_idx != target_arch_idx` (the target has one more component type),
+        //   and no archetype is pushed after `find_or_create_archetype`, so the two
+        //   `&mut` derived from `archetypes_ptr` are to distinct, valid elements.
+        // - `old_row` is the entity's live row; every old column exists in the new
+        //   archetype (superset), so each `get_component_ptr(..).unwrap()` succeeds
+        //   and each copied value's ownership moves to the new table. The old row is
+        //   then removed with `drop = false`, so nothing is dropped twice.
+        // - `component` is a valid `T` pushed into the freshly created `T` column and
+        //   then forgotten, transferring ownership. Source and destination are
+        //   separate allocations, so copies never overlap.
         unsafe {
             if let Some((old_arch_idx, old_row)) = location {
                 let archetypes_ptr = self.archetypes.as_mut_ptr();
@@ -241,6 +276,14 @@ impl World {
         let target_arch_idx = self.find_or_create_archetype(new_infos);
         let tick = self.next_tick();
 
+        // SAFETY: `arch_idx != target_arch_idx` (target lacks `T`) and both are valid
+        // indices with no reallocation of `archetypes` in between, so the two `&mut`
+        // are to distinct elements. `row` is the entity's live row; the new
+        // archetype's columns are a subset of the old one's, so every moved component
+        // exists at `row`. Moved values transfer ownership to the new table and the old
+        // row is removed with `drop = false` (no double drop).
+        // NOTE: the removed `T` itself is not dropped here (it leaks); this is a
+        // pre-existing behavior and is memory-safe.
         unsafe {
             let archetypes_ptr = self.archetypes.as_mut_ptr();
             let old_arch = &mut *archetypes_ptr.add(arch_idx);
@@ -269,6 +312,9 @@ impl World {
 
     pub fn despawn(&mut self, entity: Entity) {
         if let Some((arch_idx, row)) = self.entity_locations.remove(&entity) {
+            // SAFETY: `(arch_idx, row)` was just removed from `entity_locations`, which
+            // always names a live row of that archetype, so `row < row_count()`.
+            // `drop = true` drops each component once; the row is then gone.
             unsafe {
                 let arch = &mut self.archetypes[arch_idx];
                 if let Some(moved_entity) = arch.table.swap_remove(row, true) {
@@ -366,8 +412,10 @@ pub trait Bundle {
     /// Pushes every component into the archetype's current last row.
     ///
     /// # Safety
-    /// The archetype's table must have had an entity pushed and must contain a
-    /// column for every component of this bundle.
+    /// The archetype's table must have had an entity pushed (with no components yet
+    /// for that row) and must contain a column for every component of this bundle,
+    /// with each bundle component type appearing at most once. Ownership of all
+    /// components moves into the archetype.
     unsafe fn push_into(self, archetype: &mut Archetype, tick: u32);
 }
 
@@ -376,6 +424,8 @@ impl Bundle for () {
         Vec::new()
     }
 
+    /// # Safety
+    /// No requirements: an empty bundle touches nothing.
     unsafe fn push_into(self, _archetype: &mut Archetype, _tick: u32) {}
 }
 
@@ -387,13 +437,17 @@ macro_rules! impl_bundle {
                 vec![ $( ComponentInfo::of::<$name>(), )+ ]
             }
 
+            /// # Safety
+            /// See [`Bundle::push_into`].
             unsafe fn push_into(self, archetype: &mut Archetype, tick: u32) {
                 $(
                     let value = self.$idx;
                     let ptr = &value as *const $name as *const u8;
                     // SAFETY: archetype's table has a column for every bundle
                     // component (guaranteed by `component_infos`) and a freshly
-                    // pushed entity row.
+                    // pushed entity row; `ptr` points to the local `value`, a valid
+                    // component whose ownership moves into the column and which is
+                    // forgotten immediately below.
                     unsafe {
                         archetype.table.push_component_raw(TypeId::of::<$name>(), ptr, tick);
                     }

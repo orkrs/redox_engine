@@ -17,10 +17,11 @@ pub struct Archetype {
     pub(crate) component_infos: Vec<ComponentInfo>,
 }
 
-// SAFETY: Archetype contains only data that can be safely shared across threads.
-// All fields are either primitives or Vec/Table which we also mark as Send/Sync.
-// All mutation funnels through `&mut World`, so shared reads are race-free.
+// SAFETY: Archetype contains `usize`, `Vec<TypeId>`, `Vec<ComponentInfo>` (plain data
+// and fn pointers) and a `Table`, which is itself `Send`/`Sync`. Mutation requires
+// `&mut Archetype`, so shared references only permit reads.
 unsafe impl Send for Archetype {}
+// SAFETY: see the `Send` impl above.
 unsafe impl Sync for Archetype {}
 
 impl Archetype {

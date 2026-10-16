@@ -11,6 +11,10 @@ impl<T: 'static + Send + Sync> Component for T {}
 /// Drops a single value of type `T` stored at the given byte pointer.
 ///
 /// Used as type-erased drop glue by [`ComponentInfo`].
+///
+/// # Safety
+/// `ptr` must be non-null, aligned for `T`, and point to a live `T` that is not
+/// used or dropped again afterwards (the value is dropped in place exactly once).
 unsafe fn drop_one<T>(ptr: *mut u8) {
     // SAFETY: caller guarantees `ptr` points to a live, properly aligned `T`.
     unsafe {
@@ -31,6 +35,11 @@ pub struct ComponentInfo {
     ///
     /// Columns invoke this when overwriting or removing an element so that
     /// heap-owning components (`String`, `Vec`, …) are not leaked.
+    ///
+    /// # Safety
+    /// When calling the stored function, the pointer must address a live, aligned
+    /// value of the exact type this info was created for, and the value must not be
+    /// used or dropped again afterwards.
     pub drop_fn: Option<unsafe fn(*mut u8)>,
 }
 

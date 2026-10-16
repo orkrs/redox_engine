@@ -60,10 +60,10 @@ pub struct QueryParIter<'w, Q: ReadOnlyQueryData, F: QueryFilter> {
     _marker: PhantomData<(Q, F)>,
 }
 
-// SAFETY: `QueryParIter` holds only a shared slice reference and PhantomData.
-// The query types `Q` and `F` are zero-sized marker types; we only ever
-// access the data through shared references to `Archetype`, and `Q` is
-// statically guaranteed read-only.
+// SAFETY: `QueryParIter` holds only a shared slice reference (`&[Archetype]`, and
+// `Archetype: Sync`), a plain-data `TickCtx` and PhantomData. The query types `Q` and
+// `F` are never instantiated (and are bounded by `Send`); data is only reached
+// through shared references to `Archetype`, and `Q` is statically read-only.
 unsafe impl<'w, Q: ReadOnlyQueryData + Send, F: QueryFilter + Send> Send
     for QueryParIter<'w, Q, F>
 {
@@ -120,6 +120,8 @@ struct ArchChunk<'w, Q: ReadOnlyQueryData, F: QueryFilter> {
     _marker: PhantomData<(Q, F)>,
 }
 
+// SAFETY: same reasoning as for `QueryParIter`: a shared `&Archetype` (which is `Sync`),
+// plain-data `TickCtx` and PhantomData over `Send` marker types.
 unsafe impl<'w, Q: ReadOnlyQueryData + Send, F: QueryFilter + Send> Send for ArchChunk<'w, Q, F> {}
 
 /// A sequential iterator over a single archetype's rows (used inside Rayon workers).
@@ -148,7 +150,10 @@ where
             if !F::row_matches(self.arch, row, self.ctx) {
                 continue;
             }
-            // SAFETY: arch matches Q (checked before constructing ArchChunk), row in bounds.
+            // SAFETY: `arch` satisfies `Q::matches` (filtered before constructing the
+            // `ArchChunk`), and `row < row_count()` (checked above). `Q` is read-only
+            // and the world is borrowed shared for `'w`, so concurrent workers only
+            // create shared references and nothing can mutate the data meanwhile.
             return Some(unsafe { Q::fetch(self.arch, row) });
         }
     }
