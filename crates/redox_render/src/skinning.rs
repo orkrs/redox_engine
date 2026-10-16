@@ -56,6 +56,13 @@ impl SkinnedMeshBinding {
         renderer.update_mesh_vertices(self.mesh_slot, &self.vertices)
     }
 
+    /// Tight local-space bounds of the vertices from the last [`Self::update`] (the bind-pose
+    /// bounds before the first update).
+    pub fn deformed_bounds(&self) -> Aabb {
+        let points: &[[f32; 3]] = if self.positions.is_empty() { &self.geometry.positions } else { &self.positions };
+        points.iter().fold(Aabb::empty(), |b, p| b.expand(Vec3::from(*p)))
+    }
+
     /// Whether `point` lies inside the quantisation bounds (deformed vertices outside would clip).
     pub fn bounds_contain(&self, point: Vec3) -> bool {
         self.bounds.contains_point(point)

@@ -35,6 +35,16 @@ impl Renderer {
         }
         self.vsm_enabled = enabled;
     }
+    /// Marks directional (VSM) shadow pages under `bounds` stale so they re-render next frame.
+    ///
+    /// The VSM caches pages until an object moves more than 0.5 m; call this every frame for
+    /// geometry that deforms in place (skinning) so its sun shadow follows the animation.
+    pub fn invalidate_shadow_region(&mut self, bounds: &[Aabb]) {
+        if self.vsm_enabled {
+            self.vsm_clipmap.invalidate_aabbs(bounds);
+        }
+    }
+
     /// Clears VSM screen-space shadow temporal history (first frame = no blend).
     pub(super) fn reset_vsm_shadow_temporal(&mut self) {
         self.vsm_shadow_frame_count = 0;

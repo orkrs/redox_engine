@@ -2,6 +2,10 @@
 //! target. Pose sampling, blending and skinning run on the CPU (`redox_anim`); the deformed
 //! vertices are streamed into ordinary mesh slots so shadows, GTAO and TAA all see them.
 //!
+//! Keys (window title shows the state): V = sun shadows (VSM), P = point-light shadows (off by
+//!       default: they duplicate the sun shadows),
+//!       D = re-render sun shadows under deforming meshes every frame, Esc = quit.
+//!
 //! Run:         cargo run --example skinned_demo -p redox_core --release
 //! Screenshots: cargo run --example skinned_demo -p redox_core --release -- --screenshot <dir>
 //!              (renders offscreen, no window, writes PNG files; add `--size 1920x1080`)
@@ -26,9 +30,7 @@ use winit::keyboard::KeyCode;
 
 const SHOT_SIZE: (u32, u32) = (1280, 720);
 /// Animation times captured in `--screenshot` mode.
-const SHOT_TIMES: [f32; 6] = [0.0, 1.2, 4.0, 8.0, 12.0, 17.0];
-/// Frames replayed per screenshot (also lets TAA history converge).
-const SHOT_WARMUP_FRAMES: usize = 90;
+const SHOT_TIMES: [f32; 5] = [1.0, 5.0, 10.0, 15.0, 20.0];
 const CAMERA_TARGET: Vec3 = Vec3::new(0.0, 1.1, 0.0);
 
 struct Rig {
@@ -103,6 +105,14 @@ impl DemoScene {
         }
     }
 
+    /// World-space bounds of every deformed rig (for shadow invalidation).
+    fn deformed_world_bounds(&self) -> Vec<Aabb> {
+        self.rigs
+            .iter()
+            .map(|rig| rig.binding.deformed_bounds().transform(Mat4::from_translation(rig.base)))
+            .collect()
+    }
+
     fn objects(&self, r: &Renderer) -> Vec<RenderObject> {
         let mut out = Vec::new();
         let ground = Mat4::from_scale_rotation_translation(Vec3::new(24.0, 0.25, 24.0), Quat::IDENTITY, Vec3::new(0.0, -0.125, 0.0));
@@ -157,27 +167,28 @@ fn camera_pose(t: f32) -> (Vec3, Quat) {
 }
 
 /// Point-light shadows are re-rendered every frame, so they follow deforming meshes exactly.
-fn shadowed(mut light: PointLight) -> PointLight {
-    light.cast_shadows = true;
+fn shadowed(mut light: PointLight, enabled: bool) -> PointLight {
+    light.cast_shadows = enabled;
     light
 }
 
-fn light_scene() -> LightScene {
+fn light_scene(point_shadows: bool) -> LightScene {
     let mut sun = DirectionalLight::new(Vec3::new(-0.45, 1.0, 0.55), Vec3::new(1.0, 0.96, 0.90), 1.5);
-    // The directional VSM caches shadow pages until an object moves more than 0.5 m, so it
-    // would show stale shadows for in-place deformation. The sun therefore casts no shadow
-    // here; the point lights below re-render their shadows every frame.
     sun.soft_shadows = false;
-    sun.vsm = false;
+    sun.vsm = true;
     LightScene {
         directional: sun,
         ambient: Vec3::splat(0.08),
         points: vec![
-            shadowed(PointLight::new(Vec3::new(-4.0, 2.6, 3.0), Vec3::new(0.35, 0.55, 1.0), 40.0, 12.0)),
-            shadowed(PointLight::new(Vec3::new(4.0, 2.6, 3.0), Vec3::new(1.0, 0.55, 0.30), 40.0, 12.0)),
+            shadowed(PointLight::new(Vec3::new(-4.0, 2.6, 3.0), Vec3::new(0.35, 0.55, 1.0), 40.0, 12.0), point_shadows),
+            shadowed(PointLight::new(Vec3::new(4.0, 2.6, 3.0), Vec3::new(1.0, 0.55, 0.30), 40.0, 12.0), point_shadows),
         ],
         spots: vec![],
     }
+}
+
+fn on_off(flag: bool) -> &'static str {
+    if flag { "on" } else { "off" }
 }
 
 fn main() {
@@ -205,8 +216,12 @@ fn windowed() {
     let mut ctx = pollster::block_on(RenderContext::new(window.clone(), config.wgpu_present_mode()));
     ctx.set_render_scale(config.render_scale);
     let mut scene = DemoScene::new(&mut ctx);
-    let lights = light_scene();
     let mut input = InputState::new();
+    let (mut sun_shadows, mut point_shadows, mut follow_deformation) = (true, false, true);
+    let title = |sun: bool, point: bool, follow: bool| {
+        format!("RedOx skinned demo | V sun shadows: {} | P point shadows: {} | D follow deformation: {}", on_off(sun), on_off(point), on_off(follow))
+    };
+    window.set_title(&title(sun_shadows, point_shadows, follow_deformation));
     let (start, mut last) = (Instant::now(), Instant::now());
 
     event_loop
@@ -221,11 +236,30 @@ fn windowed() {
                         if input.keyboard.is_pressed(KeyCode::Escape) {
                             elwt.exit();
                         }
+                        let mut toggled = false;
+                        for (key, flag) in [
+                            (KeyCode::KeyV, &mut sun_shadows),
+                            (KeyCode::KeyP, &mut point_shadows),
+                            (KeyCode::KeyD, &mut follow_deformation),
+                        ] {
+                            if input.keyboard.just_pressed(key) {
+                                *flag = !*flag;
+                                toggled = true;
+                            }
+                        }
+                        if toggled {
+                            ctx.set_vsm_enabled(sun_shadows);
+                            window.set_title(&title(sun_shadows, point_shadows, follow_deformation));
+                        }
                         let _dt = last.elapsed().as_secs_f32().min(0.05);
                         last = Instant::now();
                         let t = start.elapsed().as_secs_f32();
 
                         scene.update(&ctx, t);
+                        if follow_deformation {
+                            ctx.invalidate_shadow_region(&scene.deformed_world_bounds());
+                        }
+                        let lights = light_scene(point_shadows);
                         let (pos, rot) = camera_pose(t);
                         let camera = Camera::new(0.9, ctx.config.width as f32 / ctx.config.height as f32, 0.1, 100.0);
                         ctx.camera_uniform.update(&camera, pos, rot);
@@ -269,7 +303,8 @@ fn screenshots(dir: &std::path::Path, size: (u32, u32)) {
     .expect("device");
 
     let (w, h) = size;
-    let format = wgpu::TextureFormat::Rgba8Unorm;
+    // Same sRGB swapchain-style format as the window, so tone mapping and output encoding match.
+    let format = wgpu::TextureFormat::Rgba8UnormSrgb;
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         format,
@@ -294,25 +329,28 @@ fn screenshots(dir: &std::path::Path, size: (u32, u32)) {
     let view = target.create_view(&Default::default());
 
     let mut scene = DemoScene::new(&mut renderer);
-    let lights = light_scene();
+    let lights = light_scene(false);
     let camera = Camera::new(0.9, w as f32 / h as f32, 0.1, 100.0);
-    for t in SHOT_TIMES {
-        // Replay the last second of animation and camera motion at 60 fps, like the windowed
-        // loop, so frame-to-frame effects (shadow page streaming, TAA) show up in the shot.
-        for frame in 0..SHOT_WARMUP_FRAMES {
-            let frame_t = t - (SHOT_WARMUP_FRAMES - 1 - frame) as f32 / 60.0;
-            let (pos, rot) = camera_pose(frame_t);
-            scene.update(&renderer, frame_t.max(0.0));
-            renderer.camera_uniform.update(&camera, pos, rot);
-            renderer.update_camera_buffer();
-            let objects = scene.objects(&renderer);
-            let fv = FrameView::new(&camera, &objects, &lights);
-            renderer.render_frame_view(&fv, &view).expect("render");
+    // One continuous 60 fps timeline from t = 0, exactly like the windowed loop, so shadow
+    // page streaming, TAA history and camera motion behave the same as on screen.
+    let last_frame = (SHOT_TIMES.iter().copied().fold(0.0, f32::max) * 60.0) as usize;
+    for frame in 0..=last_frame {
+        let t = frame as f32 / 60.0;
+        let (pos, rot) = camera_pose(t);
+        scene.update(&renderer, t);
+        renderer.invalidate_shadow_region(&scene.deformed_world_bounds());
+        renderer.camera_uniform.update(&camera, pos, rot);
+        renderer.update_camera_buffer();
+        let objects = scene.objects(&renderer);
+        let fv = FrameView::new(&camera, &objects, &lights);
+        renderer.render_frame_view(&fv, &view).expect("render");
+
+        if SHOT_TIMES.iter().any(|shot| (shot * 60.0) as usize == frame) {
+            let pixels = read_texture(&renderer.device, &renderer.queue, &target, w, h);
+            let path = dir.join(format!("skinned_demo_t{:03}.png", (t * 100.0) as u32));
+            image::save_buffer(&path, &pixels, w, h, image::ColorType::Rgba8).expect("write png");
+            println!("wrote {}", path.display());
         }
-        let pixels = read_texture(&renderer.device, &renderer.queue, &target, w, h);
-        let path = dir.join(format!("skinned_demo_t{:03}.png", (t * 100.0) as u32));
-        image::save_buffer(&path, &pixels, w, h, image::ColorType::Rgba8).expect("write png");
-        println!("wrote {}", path.display());
     }
 }
 
