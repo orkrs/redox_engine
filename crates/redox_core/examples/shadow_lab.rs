@@ -169,7 +169,7 @@ fn main() {
                             },
                         );
                         ctx.queue.submit(Some(enc.finish()));
-                        output.present();
+                        ctx.queue().present(output);
                     }
                     _ => {}
                 }

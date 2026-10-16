@@ -187,7 +187,10 @@ impl GpuProfiler {
         };
         let bytes = (self.in_flight.len() as u64 + 1) * TICK_BYTES;
         let ticks: Vec<u64> = {
-            let view = readback.slice(0..bytes).get_mapped_range();
+            let view = readback
+                .slice(0..bytes)
+                .get_mapped_range()
+                .expect("buffer was mapped before reading");
             view.chunks_exact(TICK_BYTES as usize)
                 .map(|c| u64::from_le_bytes(c.try_into().expect("8-byte chunk")))
                 .collect()

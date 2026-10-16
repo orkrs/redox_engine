@@ -500,8 +500,10 @@ impl EditorApp {
             size_in_pixels: [cfg.width, cfg.height],
             pixels_per_point: self.window.scale_factor() as f32,
         };
-        for (id, image_delta) in &full_output.textures_delta.set {
-            renderer.update_texture(dev, que, *id, image_delta);
+        for (id, image_deltas) in &full_output.textures_delta.set {
+            for image_delta in image_deltas {
+                renderer.update_texture(dev, que, *id, image_delta);
+            }
         }
 
         let tris = self
@@ -552,7 +554,7 @@ impl EditorApp {
             renderer.free_texture(id);
         }
         que.submit(Some(encoder.finish()));
-        frame.present();
+        que.present(frame);
         self.window.request_redraw();
     }
 }

@@ -527,7 +527,7 @@ async fn run() {
 
                 // ONE submit, ONE present
                 render_ctx.queue().submit(std::iter::once(encoder.finish()));
-                output.present();
+                render_ctx.queue().present(output);
 
                 // ОЧИСТКА ВВОДА В КОНЦЕ КАДРА
                 input_state.begin_frame();

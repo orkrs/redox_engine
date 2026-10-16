@@ -139,7 +139,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[wgpu::VertexBufferLayout {
+                buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: 24,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &[
@@ -154,7 +154,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
                             shader_location: 1,
                         },
                     ],
-                }],
+                })],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -217,7 +217,7 @@ struct Uniforms { mvp: mat4x4<f32>, id: u32, _pad0: u32, _pad1: u32, _pad2: u32 
             vertex: wgpu::VertexState {
                 module: &pick_shader,
                 entry_point: Some("vs_pick"),
-                buffers: &[wgpu::VertexBufferLayout {
+                buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: 24,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &[
@@ -232,7 +232,7 @@ struct Uniforms { mvp: mat4x4<f32>, id: u32, _pad0: u32, _pad1: u32, _pad2: u32 
                             shader_location: 1,
                         },
                     ],
-                }],
+                })],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -327,7 +327,7 @@ struct Uniforms { mvp: mat4x4<f32>, color: vec4<f32> }
             vertex: wgpu::VertexState {
                 module: &wire_shader,
                 entry_point: Some("vs_main"),
-                buffers: &[wgpu::VertexBufferLayout {
+                buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: 12,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &[wgpu::VertexAttribute {
@@ -335,7 +335,7 @@ struct Uniforms { mvp: mat4x4<f32>, color: vec4<f32> }
                         offset: 0,
                         shader_location: 0,
                     }],
-                }],
+                })],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {

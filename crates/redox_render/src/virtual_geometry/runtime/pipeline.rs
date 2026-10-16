@@ -30,7 +30,7 @@ pub(super) fn build_pipeline(
         vertex: wgpu::VertexState {
             module: &shader,
             entry_point: Some("vs_main"),
-            buffers: &[CompressedVertex::buffer_layout()],
+            buffers: &[Some(CompressedVertex::buffer_layout())],
             compilation_options: Default::default(),
         },
         fragment: Some(wgpu::FragmentState {

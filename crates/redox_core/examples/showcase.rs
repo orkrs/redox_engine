@@ -276,7 +276,7 @@ fn main() {
                             },
                         );
                         ctx.queue.submit(Some(encoder.finish()));
-                        output.present();
+                        ctx.queue().present(output);
                     }
                     _ => {}
                 }

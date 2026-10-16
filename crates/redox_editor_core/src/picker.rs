@@ -152,7 +152,9 @@ impl EntityPicker {
             return None;
         }
 
-        let data = slice.get_mapped_range();
+        let data = slice
+            .get_mapped_range()
+            .expect("buffer was mapped before reading");
         let id = match data.get(0..4).and_then(|b| b.try_into().ok()) {
             Some(bytes) => u32::from_ne_bytes(bytes),
             None => {
@@ -220,7 +222,9 @@ impl EntityPicker {
 
         match receiver.try_recv() {
             Ok(Ok(())) => {
-                let data = slice.get_mapped_range();
+                let data = slice
+                    .get_mapped_range()
+                    .expect("buffer was mapped before reading");
                 let id = match data.get(0..4).and_then(|b| b.try_into().ok()) {
                     Some(bytes) => u32::from_ne_bytes(bytes),
                     None => {

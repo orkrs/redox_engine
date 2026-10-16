@@ -195,6 +195,10 @@ impl TabViewer for TabViewerImpl<'_> {
         format!("{tab}").into()
     }
 
+    fn id(&mut self, tab: &mut Self::Tab) -> egui::Id {
+        egui::Id::new(("editor_dock_tab", tab.to_string()))
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
         match tab {
             Tab::Viewport => {

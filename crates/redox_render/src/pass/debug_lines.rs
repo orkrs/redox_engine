@@ -64,7 +64,7 @@ impl DebugLinesPass {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[wgpu::VertexBufferLayout {
+                buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: Self::VERTEX_SIZE,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &[
@@ -79,7 +79,7 @@ impl DebugLinesPass {
                             format: wgpu::VertexFormat::Float32x4,
                         },
                     ],
-                }],
+                })],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {

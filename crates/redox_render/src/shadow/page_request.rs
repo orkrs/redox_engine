@@ -244,7 +244,11 @@ impl PageRequestPass {
 
     fn harvest(&mut self) {
         {
-            let view = self.readback.slice(..).get_mapped_range();
+            let view = self
+                .readback
+                .slice(..)
+                .get_mapped_range()
+                .expect("buffer was mapped before reading");
             self.latest = view
                 .chunks_exact(4)
                 .map(|c| u32::from_le_bytes(c.try_into().expect("4-byte chunk")))

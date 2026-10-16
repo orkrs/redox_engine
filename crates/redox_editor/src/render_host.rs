@@ -71,6 +71,7 @@ impl SharedGpu {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
+                apply_limit_buckets: false,
             })
             .await
             .expect("editor adapter");
@@ -101,6 +102,7 @@ impl SharedGpu {
             alpha_mode: caps.alpha_modes[0],
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
+            color_space: Default::default(),
         };
         surface.configure(&device, &config);
         SharedGpuBoot {
@@ -172,6 +174,7 @@ impl RenderHost {
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
+            color_space: Default::default(),
         };
 
         let mut renderer = Renderer::from_shared_device(device, queue, adapter, None, config);

@@ -484,15 +484,13 @@ impl EditorApp {
                     ));
                 }
             }
-            winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::F7) => {
-                if pressed {
-                    let mut d = self.ui_ctx.debug_flags.lock();
-                    d.apply_f_key(7);
-                    self.ui_ctx.log(format!(
-                        "[INFO] AABBs {}",
-                        if d.show_aabbs { "ON" } else { "OFF" }
-                    ));
-                }
+            winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::F7) if pressed => {
+                let mut d = self.ui_ctx.debug_flags.lock();
+                d.apply_f_key(7);
+                self.ui_ctx.log(format!(
+                    "[INFO] AABBs {}",
+                    if d.show_aabbs { "ON" } else { "OFF" }
+                ));
             }
             _ => {}
         }

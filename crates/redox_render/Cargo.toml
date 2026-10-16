@@ -57,4 +57,4 @@ meshopt = { workspace = true }
 notify = { workspace = true, optional = true }
 
 [dev-dependencies]
-naga = "29"
+naga = "30"

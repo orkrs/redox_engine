@@ -246,7 +246,7 @@ fn main() {
                             },
                         );
                         ctx.queue.submit(Some(enc.finish()));
-                        output.present();
+                        ctx.queue().present(output);
 
                         // After gameplay reads `just_pressed`. Doing this in
                         // `NewEvents` dropped R: the next cycle's begin_frame

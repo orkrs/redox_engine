@@ -683,7 +683,7 @@ impl Renderer {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
         self.render_frame_into(objects, &surface_view)?;
-        output.present();
+        self.queue.present(output);
         Ok(())
     }
 }

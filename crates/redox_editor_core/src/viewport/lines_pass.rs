@@ -79,7 +79,7 @@ struct VsOut { @builtin(position) clip: vec4<f32>, @location(0) color: vec4<f32>
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[wgpu::VertexBufferLayout {
+                buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: 28,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &[
@@ -94,7 +94,7 @@ struct VsOut { @builtin(position) clip: vec4<f32>, @location(0) color: vec4<f32>
                             shader_location: 1,
                         },
                     ],
-                }],
+                })],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {

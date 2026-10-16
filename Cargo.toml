@@ -22,7 +22,7 @@ members = [
 
 [workspace.package]
 license = "MIT OR Apache-2.0"
-rust-version = "1.88"
+rust-version = "1.95"
 
 [workspace.lints.clippy]
 # Renderer entry points and shared dispatcher types are intentionally wide.
@@ -47,7 +47,7 @@ opt-level = 3
 [workspace.dependencies]
 glam = "0.33"
 winit = "0.30"
-wgpu = "29"
+wgpu = "30"
 rapier3d = "0.36"
 kira = "0.12"
 rayon = "1.10"
@@ -59,11 +59,11 @@ image = "0.25"
 gltf = "1.4"
 bytemuck = { version = "1.14", features = ["derive"] }
 anyhow = "1.0"
-egui = "0.35"
-egui-wgpu = "0.35"
-egui-winit = "0.35"
-egui_plot = "0.36"
-egui_dock = "0.20"
+egui = "0.36"
+egui-wgpu = "0.36"
+egui-winit = "0.36"
+egui_plot = "0.37"
+egui_dock = "0.21"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 ron = "0.12"

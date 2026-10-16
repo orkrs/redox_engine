@@ -703,7 +703,7 @@ fn main() {
                     if let Err(err) = ctx.render_frame_view(&fv, &view) {
                         handle_surface_err(ctx, err);
                     }
-                    output.present();
+                    ctx.queue().present(output);
                 }
                 Err(err) => handle_surface_err(ctx, err),
             }

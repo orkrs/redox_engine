@@ -79,7 +79,7 @@ impl VsmDepthPass {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[crate::mesh::compress::compressed_position_layout()],
+                buffers: &[Some(crate::mesh::compress::compressed_position_layout())],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {

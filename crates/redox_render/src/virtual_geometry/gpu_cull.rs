@@ -259,7 +259,9 @@ impl VgGpuCull {
             return;
         }
         let slice = self.count_staging.slice(..);
-        let mapped = slice.get_mapped_range();
+        let mapped = slice
+            .get_mapped_range()
+            .expect("buffer was mapped before reading");
         let count = u32::from_le_bytes(mapped[0..4].try_into().unwrap());
         drop(mapped);
         self.count_staging.unmap();
@@ -305,7 +307,9 @@ impl VgGpuCull {
             let slice = staging.slice(..);
             slice.map_async(wgpu::MapMode::Read, |_| {});
             let _ = device.poll(wgpu::PollType::wait_indefinitely());
-            let mapped = slice.get_mapped_range();
+            let mapped = slice
+                .get_mapped_range()
+                .expect("buffer was mapped before reading");
             u32::from_le_bytes(mapped[0..4].try_into().unwrap())
         });
 

@@ -496,7 +496,7 @@ fn windowed() {
                         };
                         let view = output.texture.create_view(&Default::default());
                         ctx.render_frame_view(&fv, &view).unwrap();
-                        output.present();
+                        ctx.queue().present(output);
                     }
                     _ => {}
                 }
@@ -518,6 +518,7 @@ fn screenshots(dir: &std::path::Path, size: (u32, u32), args: &[String]) -> Vec<
         power_preference: wgpu::PowerPreference::HighPerformance,
         compatible_surface: None,
         force_fallback_adapter: false,
+        apply_limit_buckets: false,
     }))
     .expect("no GPU adapter");
     let wanted = wgpu::Features::PRIMITIVE_INDEX
@@ -543,6 +544,7 @@ fn screenshots(dir: &std::path::Path, size: (u32, u32), args: &[String]) -> Vec<
         alpha_mode: wgpu::CompositeAlphaMode::Auto,
         view_formats: vec![],
         desired_maximum_frame_latency: 2,
+        color_space: Default::default(),
     };
     let mut renderer = Renderer::from_shared_device(device, queue, &adapter, None, config);
     let target = renderer.device.create_texture(&wgpu::TextureDescriptor {
@@ -774,7 +776,10 @@ fn read_texture(
         result.expect("map screenshot buffer")
     });
     let _ = device.poll(wgpu::PollType::wait_indefinitely());
-    let data = slice.get_mapped_range().to_vec();
+    let data = slice
+        .get_mapped_range()
+        .expect("buffer was mapped before reading")
+        .to_vec();
     buffer.unmap();
     data
 }
