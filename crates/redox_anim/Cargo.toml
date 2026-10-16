@@ -12,3 +12,4 @@ redox_ecs = { path = "../redox_ecs" }
 glam = { workspace = true }
 serde = { workspace = true }
 bytemuck = { workspace = true }
+gltf = { workspace = true }

@@ -1,6 +1,8 @@
 //! Analytic two-bone IK (leg / arm chains).
 
-use redox_math::{Quat, Vec3};
+use redox_math::{Mat4, Quat, Vec3};
+
+use crate::{LocalPose, Skeleton};
 
 /// Smallest distance (relative to chain length) kept between root and target so the
 /// law-of-cosines solution stays well-defined.
@@ -59,6 +61,34 @@ pub fn solve_two_bone_ik(
         (new_effector - new_mid) / lower_len,
     );
     (root_delta, mid_delta)
+}
+
+/// Bends `chain = [root, mid, tip]` (bone indices, `mid` a child of `root`) so the tip bone
+/// reaches `target`. `target` and `pole` are model-space; only the rotations of `root` and
+/// `mid` change in `local`.
+pub fn apply_two_bone_ik(
+    skeleton: &Skeleton,
+    local: &mut LocalPose,
+    chain: [usize; 3],
+    target: Vec3,
+    pole: Vec3,
+) {
+    let [root, mid, tip] = chain;
+    let globals = skeleton.global_matrices(local);
+    let position = |i: usize| globals[i].w_axis.truncate();
+    let rotation = |m: Mat4| m.to_scale_rotation_translation().1;
+
+    let (root_delta, mid_delta) =
+        solve_two_bone_ik(position(root), position(mid), position(tip), target, pole);
+
+    let parent_rotation = skeleton.bones[root]
+        .parent
+        .and_then(|p| globals.get(p))
+        .map_or(Quat::IDENTITY, |m| rotation(*m));
+    let new_root = root_delta * rotation(globals[root]);
+    let new_mid = mid_delta * root_delta * rotation(globals[mid]);
+    local.bones[root].rotation = (parent_rotation.inverse() * new_root).normalize();
+    local.bones[mid].rotation = (new_root.inverse() * new_mid).normalize();
 }
 
 /// Unit vector perpendicular to `axis`, pointing toward the pole (or the current bend
@@ -133,5 +163,18 @@ mod tests {
     fn degenerate_input_is_identity() {
         let rot = solve_two_bone_ik(ROOT, ROOT, FOOT, FOOT, POLE_FRONT);
         assert_eq!(rot, (Quat::IDENTITY, Quat::IDENTITY));
+    }
+
+    #[test]
+    fn apply_moves_tip_bone_onto_target() {
+        use crate::procedural::chain_model;
+        use crate::Pose;
+
+        let model = chain_model(2, 1.0, 0.1, 8);
+        let mut local = model.skeleton.bind_local_pose();
+        let target = Vec3::new(0.6, 1.1, 0.5);
+        apply_two_bone_ik(&model.skeleton, &mut local, [0, 1, 2], target, Vec3::new(0.0, 1.0, 3.0));
+        let tip = Pose::from_local(&model.skeleton, &local).bone_transforms[2].w_axis.truncate();
+        assert!(tip.distance(target) < 1.0e-3, "tip at {tip:?}, wanted {target:?}");
     }
 }
