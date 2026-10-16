@@ -117,11 +117,10 @@ impl Renderer {
             let light_pos = light.position;
             let near = 0.05_f32;
             let far = light.radius.max(0.5);
-            let proj =
-                redox_math::Mat4::perspective_rh(std::f32::consts::FRAC_PI_2, 1.0, near, far);
+            let proj = redox_math::perspective(std::f32::consts::FRAC_PI_2, 1.0, near, far);
             for (fi, (fwd, up)) in face_forward_up.iter().enumerate() {
                 let target = light_pos + *fwd;
-                let view = redox_math::Mat4::look_at_rh(light_pos, target, *up);
+                let view = redox_math::look_at(light_pos, target, *up);
                 local_shadow_matrices[fi] = proj * view;
             }
 
@@ -164,11 +163,9 @@ impl Renderer {
                 let light = &self.current_point_lights[light_idx];
                 let near = 0.05_f32;
                 let far = light.radius.max(0.5);
-                let proj =
-                    redox_math::Mat4::perspective_rh(std::f32::consts::FRAC_PI_2, 1.0, near, far);
+                let proj = redox_math::perspective(std::f32::consts::FRAC_PI_2, 1.0, near, far);
                 for (fi, (fwd, up)) in face_forward_up.iter().enumerate() {
-                    let view =
-                        redox_math::Mat4::look_at_rh(light.position, light.position + *fwd, *up);
+                    let view = redox_math::look_at(light.position, light.position + *fwd, *up);
                     gpu_lights[light_idx].shadow_matrices[fi] = (proj * view).to_cols_array_2d();
                 }
                 gpu_lights[light_idx].shadow_tile_base = tile_base;

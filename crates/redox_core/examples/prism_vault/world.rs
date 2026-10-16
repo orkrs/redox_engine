@@ -73,6 +73,7 @@ pub(crate) fn tone_beep(freq_hz: f32, duration_secs: f32, volume: f32) -> Static
         sample_rate,
         frames: Arc::from(frames),
         settings: StaticSoundSettings::default(),
+        slice: None,
     }
 }
 

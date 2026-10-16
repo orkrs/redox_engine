@@ -14,17 +14,12 @@
 use std::collections::HashMap;
 use std::io::Cursor;
 
-use kira::manager::backend::DefaultBackend;
-use kira::manager::{AudioManager, AudioManagerSettings};
+use kira::effect::filter::{FilterBuilder, FilterHandle, FilterMode};
+use kira::effect::reverb::{ReverbBuilder, ReverbHandle};
+use kira::listener::ListenerHandle;
 use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle, StaticSoundSettings};
-use kira::spatial::emitter::EmitterSettings;
-use kira::spatial::listener::ListenerHandle;
-use kira::spatial::listener::ListenerSettings;
-use kira::spatial::scene::{SpatialSceneHandle, SpatialSceneSettings};
-use kira::track::effect::filter::{FilterBuilder, FilterHandle, FilterMode};
-use kira::track::effect::reverb::{ReverbBuilder, ReverbHandle};
-use kira::track::{TrackBuilder, TrackHandle};
-use kira::tween::Tween;
+use kira::track::{MainTrackBuilder, SpatialTrackBuilder, TrackBuilder, TrackHandle};
+use kira::{AudioManager, AudioManagerSettings, Decibels, DefaultBackend, Mix, Tween};
 use redox_asset::{AssetId, Handle};
 use redox_ecs::{Entity, World};
 
@@ -39,7 +34,6 @@ pub struct AudioContext {
     pub mixer: MixerGraph,
     /// Kira sub-tracks keyed by bus (Master uses the main track).
     bus_tracks: HashMap<MixerBusId, TrackHandle>,
-    spatial_scene: Option<SpatialSceneHandle>,
     listener: Option<ListenerHandle>,
     lowpass: Option<FilterHandle>,
     reverb: Option<ReverbHandle>,
@@ -59,14 +53,14 @@ impl AudioContext {
     /// If the audio backend fails (e.g., no audio device), the context is
     /// created in a degraded mode where all play operations are no-ops.
     pub fn new() -> Self {
-        let mut main_track = TrackBuilder::new();
+        let mut main_track = MainTrackBuilder::new();
         let lowpass = main_track.add_effect(
             FilterBuilder::new()
                 .mode(FilterMode::LowPass)
                 .cutoff(20_000.0),
         );
         // Reverb stays fully dry until a reverb zone becomes active.
-        let reverb = main_track.add_effect(ReverbBuilder::new().mix(0.0));
+        let reverb = main_track.add_effect(ReverbBuilder::new().mix(Mix::DRY));
         let mut settings = AudioManagerSettings::default();
         settings.main_track_builder = main_track;
 
@@ -79,12 +73,11 @@ impl AudioContext {
 
         let mixer = MixerGraph::new();
         let mut bus_tracks = HashMap::new();
-        let mut spatial_scene = None;
         let mut listener = None;
         if let Some(m) = manager.as_mut() {
             for id in MixerBusId::all_sub_buses() {
-                let vol = mixer.bus(id).effective_gain() as f64;
-                match m.add_sub_track(TrackBuilder::new().volume(vol)) {
+                let vol = mixer.bus(id).effective_gain();
+                match m.add_sub_track(TrackBuilder::new().volume(gain_to_db(vol))) {
                     Ok(track) => {
                         bus_tracks.insert(id, track);
                     }
@@ -93,22 +86,11 @@ impl AudioContext {
                     }
                 }
             }
-            let _ = m
-                .main_track()
-                .set_volume(mixer.master.effective_gain() as f64, Tween::default());
-            match m.add_spatial_scene(SpatialSceneSettings::default()) {
-                Ok(mut scene) => {
-                    match scene.add_listener(
-                        redox_math::Vec3::ZERO,
-                        redox_math::Quat::IDENTITY,
-                        ListenerSettings::default(),
-                    ) {
-                        Ok(l) => listener = Some(l),
-                        Err(e) => log::warn!("Failed to create spatial listener: {e}"),
-                    }
-                    spatial_scene = Some(scene);
-                }
-                Err(e) => log::warn!("Failed to create spatial scene: {e}"),
+            m.main_track()
+                .set_volume(gain_to_db(mixer.master.effective_gain()), Tween::default());
+            match m.add_listener(redox_math::Vec3::ZERO, redox_math::Quat::IDENTITY) {
+                Ok(l) => listener = Some(l),
+                Err(e) => log::warn!("Failed to create spatial listener: {e}"),
             }
         }
 
@@ -116,7 +98,6 @@ impl AudioContext {
             manager,
             mixer,
             bus_tracks,
-            spatial_scene,
             listener,
             lowpass: Some(lowpass),
             reverb: Some(reverb),
@@ -139,14 +120,15 @@ impl AudioContext {
 
     /// Pushes current [`MixerGraph`] volumes onto kira tracks / main track.
     pub fn sync_mixer(&mut self) {
-        let master_gain = self.mixer.master.effective_gain() as f64 * self.master_volume;
+        let master_gain = self.mixer.master.effective_gain() * self.master_volume as f32;
         if let Some(m) = self.manager.as_mut() {
-            let _ = m.main_track().set_volume(master_gain, Tween::default());
+            m.main_track()
+                .set_volume(gain_to_db(master_gain), Tween::default());
         }
         for id in MixerBusId::all_sub_buses() {
-            let gain = self.mixer.bus(id).effective_gain() as f64;
-            if let Some(track) = self.bus_tracks.get(&id) {
-                let _ = track.set_volume(gain, Tween::default());
+            let gain = self.mixer.bus(id).effective_gain();
+            if let Some(track) = self.bus_tracks.get_mut(&id) {
+                track.set_volume(gain_to_db(gain), Tween::default());
             }
         }
     }
@@ -215,16 +197,16 @@ impl AudioContext {
             return None;
         }
         let mut data = self.sound_cache.get(&id)?.clone();
-        let mut settings = StaticSoundSettings::new().volume(voice_gain as f64);
+        let mut settings = StaticSoundSettings::new().volume(gain_to_db(voice_gain));
         if request.mode == PlayMode::Loop {
             settings = settings.loop_region(0.0..);
         }
-        if request.bus != MixerBusId::Master
-            && let Some(track) = self.bus_tracks.get(&request.bus)
-        {
-            settings = settings.output_destination(track);
-        }
         data.settings = settings;
+        if request.bus != MixerBusId::Master
+            && let Some(track) = self.bus_tracks.get_mut(&request.bus)
+        {
+            return track.play(data).ok();
+        }
         self.play_sound(data)
     }
 
@@ -240,34 +222,34 @@ impl AudioContext {
         position: redox_math::Vec3,
         max_distance: f32,
     ) -> Option<StaticSoundHandle> {
-        let Some(scene) = self.spatial_scene.as_mut() else {
+        let (Some(manager), Some(listener)) = (self.manager.as_mut(), self.listener.as_ref())
+        else {
             return self.play_sound(data);
         };
-        let emitter = scene
-            .add_emitter(
+        let mut track = manager
+            .add_spatial_sub_track(
+                listener,
                 position,
-                EmitterSettings::new()
+                SpatialTrackBuilder::new()
                     .distances((0.1, max_distance.max(0.11)))
                     .persist_until_sounds_finish(true),
             )
             .ok()?;
-        let mut data = data;
-        data.settings = StaticSoundSettings::new().output_destination(&emitter);
-        self.play_sound(data)
+        track.play(data).ok()
     }
 
     /// Moves the Kira listener (ears) to match the game camera / player.
     pub fn set_listener_pose(&mut self, position: redox_math::Vec3, orientation: redox_math::Quat) {
         if let Some(listener) = self.listener.as_mut() {
-            let _ = listener.set_position(position, Tween::default());
-            let _ = listener.set_orientation(orientation, Tween::default());
+            listener.set_position(position, Tween::default());
+            listener.set_orientation(orientation, Tween::default());
         }
     }
 
     /// Applies a low-pass filter to the main track (for occlusion/obstruction effect).
     pub fn set_lowpass_filter(&mut self, cutoff_hz: f32) {
         if let Some(filter) = self.lowpass.as_mut() {
-            let _ = filter.set_cutoff(cutoff_hz.max(20.0) as f64, Tween::default());
+            filter.set_cutoff(f64::from(cutoff_hz.max(20.0)), Tween::default());
         }
     }
 
@@ -284,8 +266,8 @@ impl AudioContext {
             return;
         };
         let tween = reverb_tween();
-        let _ = reverb.set_feedback(feedback_from_decay(decay), tween);
-        let _ = reverb.set_damping(damping.clamp(0.0, 1.0) as f64, tween);
+        reverb.set_feedback(feedback_from_decay(decay), tween);
+        reverb.set_damping(f64::from(damping.clamp(0.0, 1.0)), tween);
     }
 
     /// Drives the main-track reverb from the blended zone preset.
@@ -297,10 +279,10 @@ impl AudioContext {
         };
         let params = preset.map(ReverbParams::from_preset).unwrap_or_default();
         let tween = reverb_tween();
-        let _ = reverb.set_feedback(params.feedback, tween);
-        let _ = reverb.set_damping(params.damping, tween);
-        let _ = reverb.set_stereo_width(params.stereo_width, tween);
-        let _ = reverb.set_mix(params.mix, tween);
+        reverb.set_feedback(params.feedback, tween);
+        reverb.set_damping(params.damping, tween);
+        reverb.set_stereo_width(params.stereo_width, tween);
+        reverb.set_mix(Mix(params.mix as f32), tween);
     }
 
     /// Sets the occlusion coefficient for an emitter entity.
@@ -367,8 +349,7 @@ impl AudioContext {
             return false;
         }
         let cursor = Cursor::new(data.to_vec());
-        let settings = StaticSoundSettings::new();
-        match StaticSoundData::from_cursor(cursor, settings) {
+        match StaticSoundData::from_cursor(cursor) {
             Ok(sound) => {
                 self.sound_cache.insert(handle.id(), sound);
                 true
@@ -439,6 +420,15 @@ pub fn sync_assets_to_audio(
 impl Default for AudioContext {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Linear gain (0..=1+) -> kira decibels; silence maps to [`Decibels::SILENCE`].
+fn gain_to_db(gain: f32) -> Decibels {
+    if gain <= 0.001 {
+        Decibels::SILENCE
+    } else {
+        Decibels(20.0 * gain.log10())
     }
 }
 

@@ -45,7 +45,7 @@ pub fn transform_matrix(translation: Vec3, rotation: Quat, scale: Vec3) -> Mat4 
 /// A matrix that transforms world space to view space (right‑handed).
 #[inline]
 pub fn look_at(eye: Vec3, target: Vec3, up: Vec3) -> Mat4 {
-    Mat4::look_at_rh(eye, target, up)
+    glam::camera::rh::view::look_at_mat4(eye, target, up)
 }
 
 /// Creates a right‑handed perspective projection matrix.
@@ -62,7 +62,7 @@ pub fn look_at(eye: Vec3, target: Vec3, up: Vec3) -> Mat4 {
 pub fn perspective(fov_radians: f32, aspect_ratio: f32, near: f32, far: f32) -> Mat4 {
     // glam's `perspective_rh` already uses the WebGPU/wgpu [0, 1] depth range;
     // the GL-style [-1, 1] variant is `perspective_rh_gl`.
-    Mat4::perspective_rh(fov_radians, aspect_ratio, near, far)
+    glam::camera::rh::proj::directx::perspective(fov_radians, aspect_ratio, near, far)
 }
 
 /// Creates a right‑handed Reverse-Z perspective projection matrix (near -> 1.0, far -> 0.0).
@@ -71,13 +71,13 @@ pub fn perspective(fov_radians: f32, aspect_ratio: f32, near: f32, far: f32) -> 
 /// when paired with `wgpu::CompareFunction::GreaterEqual` and clearing depth to 0.0.
 #[inline]
 pub fn perspective_reverse_z(fov_radians: f32, aspect_ratio: f32, near: f32, far: f32) -> Mat4 {
-    Mat4::perspective_rh(fov_radians, aspect_ratio, far, near)
+    glam::camera::rh::proj::directx::perspective(fov_radians, aspect_ratio, far, near)
 }
 
 /// Creates a right‑handed Reverse-Z perspective projection matrix with infinite far plane.
 #[inline]
 pub fn perspective_infinite_reverse_z(fov_radians: f32, aspect_ratio: f32, near: f32) -> Mat4 {
-    Mat4::perspective_infinite_reverse_rh(fov_radians, aspect_ratio, near)
+    glam::camera::rh::proj::directx::perspective_infinite_reverse(fov_radians, aspect_ratio, near)
 }
 
 /// Creates a right‑handed orthographic projection matrix.
@@ -94,5 +94,5 @@ pub fn perspective_infinite_reverse_z(fov_radians: f32, aspect_ratio: f32, near:
 /// An orthographic projection matrix (right‑handed, depth range \[0,1\]).
 #[inline]
 pub fn orthographic(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32) -> Mat4 {
-    Mat4::orthographic_rh(left, right, bottom, top, near, far)
+    glam::camera::rh::proj::directx::orthographic(left, right, bottom, top, near, far)
 }

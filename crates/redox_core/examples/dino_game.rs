@@ -16,7 +16,7 @@ use winit::{
 use redox_asset::{AssetManager, Handle};
 use redox_ecs::world::World;
 use redox_input::state::InputState;
-use redox_math::{Mat4, Quat, Transform, Vec3};
+use redox_math::{Quat, Transform, Vec3};
 use redox_render::{
     RenderContext,
     asset_types::{MaterialData, MeshData},
@@ -177,7 +177,7 @@ async fn run() {
     );
 
     let camera_entity = world.spawn();
-    let view_mat = Mat4::look_at_rh(CAMERA_POS, CAMERA_TARGET, Vec3::Y);
+    let view_mat = redox_math::look_at(CAMERA_POS, CAMERA_TARGET, Vec3::Y);
     world.add_component(
         camera_entity,
         Camera::new(45.0_f32.to_radians(), 1280.0 / 720.0, 0.1, 200.0),

@@ -484,7 +484,7 @@ mod tests {
 
     #[test]
     fn proj_jitter_is_constant_ndc_shift() {
-        let view = Mat4::look_at_rh(Vec3::new(4.0, 3.0, 12.0), Vec3::ZERO, Vec3::Y);
+        let view = redox_math::look_at(Vec3::new(4.0, 3.0, 12.0), Vec3::ZERO, Vec3::Y);
         let proj = perspective(0.9, 16.0 / 9.0, 0.1, 200.0);
         let jitter = [0.004, -0.003];
         let vp0 = proj * view;
@@ -504,7 +504,7 @@ mod tests {
 
     #[test]
     fn combined_vp_column_jitter_depends_on_world_z() {
-        let view = Mat4::look_at_rh(Vec3::new(4.0, 3.0, 12.0), Vec3::ZERO, Vec3::Y);
+        let view = redox_math::look_at(Vec3::new(4.0, 3.0, 12.0), Vec3::ZERO, Vec3::Y);
         let proj = perspective(0.9, 16.0 / 9.0, 0.1, 200.0);
         let jitter = [0.004, 0.0];
         let vp0 = proj * view;

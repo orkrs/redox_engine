@@ -45,11 +45,11 @@ opt-level = 3
 
 
 [workspace.dependencies]
-glam = { version = "0.27", features = ["mint"] }
+glam = "0.33"
 winit = "0.29"
 wgpu = "0.20"
 rapier3d = "0.18"
-kira = "0.8"
+kira = "0.12"
 rayon = "1.10"
 log = "0.4"
 env_logger = "0.11"

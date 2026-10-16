@@ -8,7 +8,7 @@
 use std::f32::consts::TAU;
 use std::sync::Arc;
 
-use kira::dsp::Frame;
+use kira::Frame;
 use kira::sound::static_sound::{StaticSoundData, StaticSoundSettings};
 use rapier3d::prelude::*;
 use redox_audio::AudioContext;
@@ -163,6 +163,7 @@ fn tone_beep(freq_hz: f32, duration_secs: f32, volume: f32) -> StaticSoundData {
         sample_rate,
         frames: Arc::from(frames),
         settings: StaticSoundSettings::default(),
+        slice: None,
     }
 }
 

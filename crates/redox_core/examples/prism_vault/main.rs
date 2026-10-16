@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-use kira::dsp::Frame;
+use kira::Frame;
 use kira::sound::static_sound::{StaticSoundData, StaticSoundSettings};
 use redox_audio::{AudioContext, MixerBusId, with_audio};
 use redox_core::config::EngineConfig;

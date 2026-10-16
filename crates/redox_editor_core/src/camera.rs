@@ -102,7 +102,7 @@ impl EditorCamera {
     pub fn view_matrix(&self) -> Mat4 {
         let forward = self.forward();
         let up = self.up();
-        Mat4::look_at_rh(self.eye, self.eye + forward, up)
+        redox_math::look_at(self.eye, self.eye + forward, up)
     }
 
     pub fn proj_matrix(&self) -> Mat4 {
@@ -114,9 +114,9 @@ impl EditorCamera {
         if let Some(half) = self.ortho_half {
             let h = half.max(0.5);
             let w = h * aspect;
-            Mat4::orthographic_rh(-w, w, -h, h, self.near, self.far)
+            redox_math::orthographic(-w, w, -h, h, self.near, self.far)
         } else {
-            Mat4::perspective_rh(self.fov_y, aspect, self.near, self.far)
+            redox_math::perspective(self.fov_y, aspect, self.near, self.far)
         }
     }
 
