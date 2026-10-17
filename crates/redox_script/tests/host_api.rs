@@ -216,10 +216,10 @@ fn the_new_imports_need_their_permissions() {
         no_state.instantiate(&wasm(DOUBLER)),
         Err(ScriptError::Link(_))
     ));
+    // COIN reads inputs too.
     assert!(matches!(
         no_state.instantiate(&wasm(COIN)),
-        Err(ScriptError::Link(_)),
-        "COIN reads inputs too"
+        Err(ScriptError::Link(_))
     ));
 
     let mut none = ScriptRuntime::new(ScriptConfig {
