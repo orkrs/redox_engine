@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 pub mod ofpa;
 pub mod partition;
 pub mod pcg;
+pub mod save;
 
 pub use ofpa::{
     ActorRecord, CELLS_DIR, WORLD_FILE, WorldManifest, actor_path, cell_dir, cell_mtime,
@@ -27,6 +28,7 @@ pub use partition::{
 };
 pub use pcg::{GeneratedWorld, PcgKind, PcgParams, generate, generate_to};
 pub use redox_reflect::{EntitySnapshot, ReflectValue, TypeRegistry, WorldSnapshot};
+pub use save::{LoadedSave, SaveManager, SlotInfo};
 
 /// Result type of the scene crate.
 pub type SceneResult<T> = Result<T, SceneError>;

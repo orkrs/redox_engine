@@ -95,7 +95,6 @@ pub fn write_atomic(path: impl AsRef<Path>, content: &[u8]) -> std::io::Result<(
     if path.exists() {
         let bak_path = path.with_extension("bak");
         let _ = fs::copy(path, &bak_path);
-        let _ = fs::remove_file(path);
     }
 
     fs::rename(&tmp_path, path)?;
