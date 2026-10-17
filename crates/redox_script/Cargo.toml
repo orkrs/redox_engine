@@ -11,10 +11,21 @@ workspace = true
 [lib]
 path = "src/lib.rs"
 
+[features]
+# `wasmi` dispatches instructions with LLVM tail calls by default. That is fast (about 3.7x on
+# the compute benchmark) but without guaranteed tail-call optimisation (for example dev builds)
+# a long running guest loop overflows the HOST stack. The portable dispatch is always safe and
+# therefore on by default; see docs/adr/0006-wasm-runtime.md.
+default = ["portable-dispatch"]
+portable-dispatch = ["wasmi/portable-dispatch"]
+# Second backend (Cranelift JIT) used to compare numbers; select with `BackendKind::Wasmtime`.
+wasmtime = ["dep:wasmtime"]
+
 [dependencies]
 thiserror = { workspace = true }
 log = { workspace = true }
 wasmi = "2.0.0"
+wasmtime = { version = "49", optional = true, default-features = false, features = ["runtime", "cranelift", "std"] }
 
 [dev-dependencies]
 wat = "1.262.0"

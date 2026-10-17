@@ -1,0 +1,27 @@
+//! The private engine abstraction: a backend compiles modules into instances.
+
+use crate::{ScriptError, config::ScriptConfig};
+
+/// A WebAssembly engine able to turn module bytes into runnable instances.
+pub(crate) trait ScriptBackend {
+    /// Compiles, links (honouring the permissions) and instantiates `wasm`.
+    ///
+    /// The module must export `on_update(f32)`.
+    fn instantiate(
+        &mut self,
+        wasm: &[u8],
+        config: &ScriptConfig,
+    ) -> Result<Box<dyn BackendInstance>, ScriptError>;
+}
+
+/// One instantiated script, owned by the runtime.
+pub(crate) trait BackendInstance {
+    /// Adds `dt` to the clock and calls `on_update(dt)` with a fresh fuel budget.
+    fn update(&mut self, dt: f32) -> Result<(), ScriptError>;
+    /// Calls the exported `() -> i32` function `name` with a fresh fuel budget.
+    fn call_i32(&mut self, name: &str) -> Result<i32, ScriptError>;
+    /// Removes and returns the buffered log messages.
+    fn take_logs(&mut self) -> Vec<String>;
+    /// Reads an exported `f32` global.
+    fn read_global_f32(&self, name: &str) -> Option<f32>;
+}

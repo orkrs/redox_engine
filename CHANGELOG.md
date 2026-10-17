@@ -4,6 +4,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 
 ## [Unreleased]
 
+### Added
+- Render (A1): per-object motion vectors for TAA (`ObjectVelocityPass`, `FrameView::with_object_ids`); moving objects no longer smear.
+- Physics (B3): contact events (`ContactEvent`, enter/exit with point, normal, impulse; opt-in per entity) and `PhysicsMaterial` (friction, restitution). Known deviation: sensors keep `COLLISION_EVENTS` even with contact events off.
+- Audio (B8, first part): data-driven `SoundCue` (variants without repeats, volume/pitch ranges, cooldown), `CueLibrary` from RON, `AudioContext::play_cue`. Music streaming is not done; `priority` is stored but unused.
+- Scripting (B6): `redox_script` crate, WASM runtime on `wasmi` with fuel, memory cap, import permissions and per-instance disable; optional `wasmtime` backend. Measurements in ADR 0006.
+- Docs: ADR 0006 (WASM runtime), ADR 0007 (navigation).
+
 ### Removed
 - Old examples `showcase`, `prism_vault`, `ball_score`, `shadow_lab` (kept: `skinned_demo`, `dino_runner`, `dino_game`).
 - Cascaded shadow maps (CSM): `shadow/csm.rs`, cascade buffers/bindings and shader branches.
