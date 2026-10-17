@@ -31,25 +31,28 @@ use crate::handle::{AssetId, AssetStatus, Handle};
 use crate::hot_reload::HotReloadWatcher;
 use crate::loader::{AssetLoader, GltfLoader, GltfSceneData, ImageLoader};
 use crate::pak::AssetSource;
+use crate::queue::{Priority, TaskQueue};
 use crate::storage::AssetStorage;
 
 /// Task sent to the loader thread.
-struct LoadTask {
+pub(crate) struct LoadTask {
     type_id: TypeId,
     id: AssetId,
     path: PathBuf,
     is_reload: bool,
     /// Alternative byte source and the path inside it (`None`: read the file system).
-    source: Option<(Arc<dyn AssetSource>, String)>,
+    pub(crate) source: Option<(Arc<dyn AssetSource>, String)>,
+    /// A closure to run instead of reading a file (streaming reads); the other fields are unused.
+    job: Option<Box<dyn FnOnce() + Send>>,
 }
 
 /// Result sent back from the loader thread.
-struct LoadComplete {
-    type_id: TypeId,
-    id: AssetId,
-    path: PathBuf,
-    is_reload: bool,
-    result: Result<Box<dyn Any + Send + Sync>, String>,
+pub(crate) struct LoadComplete {
+    pub(crate) type_id: TypeId,
+    pub(crate) id: AssetId,
+    pub(crate) path: PathBuf,
+    pub(crate) is_reload: bool,
+    pub(crate) result: Result<Box<dyn Any + Send + Sync>, String>,
 }
 
 /// Type-erased loader for the registry.
@@ -92,8 +95,17 @@ impl<L: AssetLoader> LoaderErased for LoaderWrapper<L> {
 
 type LoaderRegistry = Arc<RwLock<HashMap<TypeId, Box<dyn LoaderErased>>>>;
 
-fn worker_loop(registry: LoaderRegistry, rx: Receiver<LoadTask>, tx: Sender<LoadComplete>) {
-    while let Ok(task) = rx.recv() {
+fn worker_loop(
+    registry: LoaderRegistry,
+    queue: Arc<TaskQueue<LoadTask>>,
+    tx: Sender<LoadComplete>,
+) {
+    while let Some(task) = queue.pop() {
+        if let Some(job) = task.job {
+            // A panicking job must not take the worker down with it.
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
+            continue;
+        }
         let read = match &task.source {
             Some((source, rel)) => source.read(rel),
             None => std::fs::File::open(&task.path).and_then(|mut f| {
@@ -164,25 +176,26 @@ pub struct AssetManager {
     /// Base path for asset resolution.
     pub base_path: PathBuf,
     /// Per-type storages.
-    storages: HashMap<TypeId, Box<dyn Any + Send + Sync>>,
+    pub(crate) storages: HashMap<TypeId, Box<dyn Any + Send + Sync>>,
     /// Insert loaded asset into storage (type_id -> inserter).
-    inserters: HashMap<TypeId, fn(&mut dyn Any, AssetId, Box<dyn Any + Send + Sync>)>,
+    pub(crate) inserters: HashMap<TypeId, fn(&mut dyn Any, AssetId, Box<dyn Any + Send + Sync>)>,
     /// Mark asset as failed (type_id -> marker).
-    failed_markers: HashMap<TypeId, fn(&mut dyn Any, AssetId)>,
+    pub(crate) failed_markers: HashMap<TypeId, fn(&mut dyn Any, AssetId)>,
     /// Path -> (type_id, asset_id) for cache and hot-reload.
-    path_to_handle: HashMap<PathBuf, (TypeId, AssetId)>,
+    pub(crate) path_to_handle: HashMap<PathBuf, (TypeId, AssetId)>,
     /// Loader registry (shared with worker thread).
     loaders: LoaderRegistry,
-    task_tx: Sender<LoadTask>,
-    complete_tx: Sender<LoadComplete>,
+    /// Pending loads, most urgent first; shared with the worker threads.
+    pub(crate) queue: Arc<TaskQueue<LoadTask>>,
+    pub(crate) complete_tx: Sender<LoadComplete>,
     complete_rx: Receiver<LoadComplete>,
     /// Optional file watcher for hot-reload. When set, [`update`](Self::update) drains
     /// change events and re-queues loads for affected paths.
     pub watcher: Option<HotReloadWatcher>,
     /// Owners per live asset id.
-    refs: HashMap<AssetId, u32>,
+    pub(crate) refs: HashMap<AssetId, u32>,
     /// Asset type per live id (needed to unload by id).
-    kinds: HashMap<AssetId, TypeId>,
+    pub(crate) kinds: HashMap<AssetId, TypeId>,
     /// parent -> assets it keeps alive.
     deps: HashMap<AssetId, Vec<AssetId>>,
     /// Type-erased storage removal.
@@ -190,22 +203,47 @@ pub struct AssetManager {
     /// Type-erased status lookup.
     statusers: HashMap<TypeId, fn(&dyn Any, AssetId) -> AssetStatus>,
     /// Where load bytes come from; `None` reads `base_path` on disk.
-    source: Option<Arc<dyn AssetSource>>,
+    pub(crate) source: Option<Arc<dyn AssetSource>>,
     /// Max finished loads applied per [`update`](Self::update).
     completion_budget: usize,
+    /// Requested priority per asset that was queued.
+    pub(crate) priorities: HashMap<AssetId, Priority>,
+    /// Options for streamed files that must be decoded whole.
+    pub(crate) stream_options: crate::loader::LoadOptions,
+    /// Mip reads requested through the streaming API.
+    pub(crate) mips: crate::stream::MipState,
+    pub(crate) mip_channel: Option<(
+        flume::Sender<crate::stream::MipReady>,
+        flume::Receiver<crate::stream::MipReady>,
+    )>,
 }
 
 impl AssetManager {
-    /// Creates a new asset manager with the given base path.
+    /// Creates a new asset manager with the given base path and a default number of loading
+    /// threads (up to 4, leaving a core for the main thread).
     pub fn new(base_path: impl Into<PathBuf>) -> Self {
-        let (task_tx, task_rx) = flume::unbounded();
+        let workers = std::thread::available_parallelism()
+            .map_or(2, |n| n.get().saturating_sub(1))
+            .clamp(1, 4);
+        Self::with_workers(base_path, workers)
+    }
+
+    /// Creates a manager with `workers` loading threads (at least one). Several threads let a
+    /// slow decode (a big Basis texture) run beside small loads; completion order is then not
+    /// the request order, but results are always applied on the thread that calls
+    /// [`update`](Self::update).
+    pub fn with_workers(base_path: impl Into<PathBuf>, workers: usize) -> Self {
+        let queue = Arc::new(TaskQueue::new());
         let (complete_tx, complete_rx) = flume::unbounded();
         // Pre-register the built-in loaders so common formats load out of
         // the box; callers may replace any slot via `register_loader`.
         let loaders: LoaderRegistry = Arc::new(RwLock::new(HashMap::new()));
-        let registry_clone = Arc::clone(&loaders);
-        let complete_tx_worker = complete_tx.clone();
-        std::thread::spawn(move || worker_loop(registry_clone, task_rx, complete_tx_worker));
+        for _ in 0..workers.max(1) {
+            let registry_clone = Arc::clone(&loaders);
+            let complete_tx_worker = complete_tx.clone();
+            let queue = Arc::clone(&queue);
+            std::thread::spawn(move || worker_loop(registry_clone, queue, complete_tx_worker));
+        }
 
         let mut manager = Self {
             base_path: base_path.into(),
@@ -214,7 +252,7 @@ impl AssetManager {
             failed_markers: HashMap::new(),
             path_to_handle: HashMap::new(),
             loaders,
-            task_tx,
+            queue,
             complete_tx,
             complete_rx,
             watcher: None,
@@ -225,6 +263,10 @@ impl AssetManager {
             statusers: HashMap::new(),
             source: None,
             completion_budget: usize::MAX,
+            priorities: HashMap::new(),
+            stream_options: crate::loader::LoadOptions::default(),
+            mips: crate::stream::MipState::default(),
+            mip_channel: None,
         };
         // Built-in formats; callers may replace any of them with `register_loader`.
         manager.register_loader::<image::DynamicImage, _>(ImageLoader);
@@ -272,7 +314,7 @@ impl AssetManager {
         self.register_type_ops::<T>();
     }
 
-    fn register_type_ops<T: 'static + Send + Sync>(&mut self) {
+    pub(crate) fn register_type_ops<T: 'static + Send + Sync>(&mut self) {
         let type_id = TypeId::of::<T>();
         self.removers.entry(type_id).or_insert(|any, id| {
             if let Some(s) = any.downcast_mut::<AssetStorage<T>>() {
@@ -304,7 +346,7 @@ impl AssetManager {
             .and_then(|s| s.downcast_ref::<AssetStorage<T>>())
     }
 
-    fn storage_mut<T: 'static + Send + Sync>(&mut self) -> &mut AssetStorage<T> {
+    pub(crate) fn storage_mut<T: 'static + Send + Sync>(&mut self) -> &mut AssetStorage<T> {
         let type_id = TypeId::of::<T>();
         self.storages
             .entry(type_id)
@@ -354,6 +396,16 @@ impl AssetManager {
         &mut self,
         path: impl AsRef<Path>,
     ) -> Result<Handle<T>, AssetError> {
+        self.load_async_with_priority(path, Priority::NORMAL)
+    }
+
+    /// Like [`load_async`](Self::load_async) with an explicit priority. Asking again for a path
+    /// that is still waiting raises its priority to the higher of the two.
+    pub fn load_async_with_priority<T: 'static + Send + Sync>(
+        &mut self,
+        path: impl AsRef<Path>,
+        priority: Priority,
+    ) -> Result<Handle<T>, AssetError> {
         let relative = path.as_ref().to_path_buf();
         let path = self.base_path.join(&relative);
 
@@ -363,6 +415,10 @@ impl AssetManager {
         {
             let id = *id;
             *self.refs.entry(id).or_insert(0) += 1;
+            let known = self.priorities.get(&id).copied().unwrap_or(Priority::LOW);
+            if priority > known {
+                self.set_priority_id(id, priority);
+            }
             return Ok(Handle::new(id));
         }
 
@@ -387,26 +443,37 @@ impl AssetManager {
             let rel = relative.to_string_lossy().replace('\\', "/");
             (s, rel)
         });
-        let _ = self.task_tx.send(LoadTask {
-            type_id,
+        self.priorities.insert(id, priority);
+        self.queue.push(
+            priority,
             id,
-            path,
-            is_reload: false,
-            source,
-        });
+            LoadTask {
+                type_id,
+                id,
+                path,
+                is_reload: false,
+                source,
+                job: None,
+            },
+        );
 
         Ok(Handle::new(id))
     }
 
     /// Queues a reload for an already-known path (e.g. from hot-reload). Reuses the same handle.
     pub fn reload_async(&mut self, path: PathBuf, type_id: TypeId, id: AssetId) {
-        let _ = self.task_tx.send(LoadTask {
-            type_id,
+        self.queue.push(
+            Priority::NORMAL,
             id,
-            path,
-            is_reload: true,
-            source: None,
-        });
+            LoadTask {
+                type_id,
+                id,
+                path,
+                is_reload: true,
+                source: None,
+                job: None,
+            },
+        );
     }
 
     /// Processes completed loads and emits ECS events. Call once per frame.
@@ -519,7 +586,7 @@ impl AssetManager {
 // --- lifetime management ---
 
 impl AssetManager {
-    fn track(&mut self, id: AssetId, type_id: TypeId) {
+    pub(crate) fn track(&mut self, id: AssetId, type_id: TypeId) {
         self.kinds.insert(id, type_id);
         self.refs.insert(id, 1);
     }
@@ -610,6 +677,10 @@ impl AssetManager {
 
     fn unload_id(&mut self, id: AssetId) {
         self.refs.remove(&id);
+        self.priorities.remove(&id);
+        // A load nobody wants any more must not occupy a worker.
+        self.queue.cancel(id);
+        self.drop_mips_of(id);
         if let Some(type_id) = self.kinds.remove(&id)
             && let (Some(storage), Some(remove)) =
                 (self.storages.get_mut(&type_id), self.removers.get(&type_id))
@@ -622,9 +693,58 @@ impl AssetManager {
         }
     }
 
+    fn set_priority_id(&mut self, id: AssetId, priority: Priority) -> bool {
+        self.priorities.insert(id, priority);
+        self.queue.set_priority(id, priority)
+    }
+
+    /// Changes the priority of a load that has not started yet. Returns `false` when the asset
+    /// is unknown or its load already began (the new priority then has no effect).
+    pub fn set_priority<T: 'static + Send + Sync>(
+        &mut self,
+        handle: Handle<T>,
+        priority: Priority,
+    ) -> bool {
+        self.refs.contains_key(&handle.id) && self.set_priority_id(handle.id, priority)
+    }
+
+    /// Runs `job` on a loading thread at `priority`. `key` identifies it for
+    /// [`TaskQueue::cancel`] and [`TaskQueue::set_priority`].
+    pub(crate) fn push_job(
+        &mut self,
+        priority: Priority,
+        key: AssetId,
+        job: impl FnOnce() + Send + 'static,
+    ) {
+        self.queue.push(
+            priority,
+            key,
+            LoadTask {
+                type_id: TypeId::of::<()>(),
+                id: key,
+                path: PathBuf::new(),
+                is_reload: false,
+                source: None,
+                job: Some(Box::new(job)),
+            },
+        );
+    }
+
+    /// Loads waiting for a worker thread.
+    pub fn pending_loads(&self) -> usize {
+        self.queue.len()
+    }
+
     /// Number of live (tracked) assets.
     pub fn live_assets(&self) -> usize {
         self.kinds.len()
+    }
+}
+
+impl Drop for AssetManager {
+    fn drop(&mut self) {
+        // Lets the worker threads finish and exit.
+        self.queue.close();
     }
 }
 

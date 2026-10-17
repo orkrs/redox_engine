@@ -21,6 +21,7 @@ pub use gltf_loader::{
 pub use image_loader::ImageLoader;
 #[cfg(any(test, feature = "testing"))]
 pub use ktx2_loader::ktx2_container;
+pub(crate) use ktx2_loader::zstd_decode as zstd_decode_level;
 pub use ktx2_loader::{Ktx2Loader, Ktx2Texture, LoadOptions, TextureFormat};
 
 use crate::error::AssetError;

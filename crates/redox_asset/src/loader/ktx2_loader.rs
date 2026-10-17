@@ -55,7 +55,7 @@ impl TextureFormat {
         }
     }
 
-    fn from_vk(format: ktx2::Format) -> Option<Self> {
+    pub(crate) fn from_vk(format: ktx2::Format) -> Option<Self> {
         use ktx2::Format as F;
         Some(match format {
             F::R8G8B8A8_UNORM => Self::Rgba8Unorm,
@@ -321,7 +321,11 @@ fn bad(msg: impl Into<String>) -> AssetError {
 }
 
 /// Inflates a Zstandard level into exactly `expected` bytes.
-fn zstd_decode(compressed: &[u8], expected: usize, index: usize) -> Result<Vec<u8>, AssetError> {
+pub(crate) fn zstd_decode(
+    compressed: &[u8],
+    expected: usize,
+    index: usize,
+) -> Result<Vec<u8>, AssetError> {
     use std::io::Read;
 
     let mut source = compressed;

@@ -331,3 +331,96 @@ fn entries_added_uncompressed_stay_raw_even_in_a_compressed_archive() {
     assert_eq!(reader.read("packed.txt").unwrap(), text.as_bytes());
     assert_eq!(reader.read("raw.txt").unwrap(), text.as_bytes());
 }
+
+/// A loader that records the order files are decoded in, and holds back the file named `gate`
+/// until the test opens it.
+struct OrderedLoader {
+    order: Arc<std::sync::Mutex<Vec<String>>>,
+    gate: Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>,
+}
+
+impl AssetLoader for OrderedLoader {
+    type Asset = String;
+
+    fn load(&self, bytes: &[u8]) -> Result<String, AssetError> {
+        let name = String::from_utf8_lossy(bytes).into_owned();
+        if name == "gate" {
+            let (open, cv) = &*self.gate;
+            let mut open = open.lock().unwrap();
+            while !*open {
+                open = cv.wait(open).unwrap();
+            }
+        }
+        self.order.lock().unwrap().push(name.clone());
+        Ok(name)
+    }
+
+    fn extensions(&self) -> Vec<&'static str> {
+        vec!["txt"]
+    }
+}
+
+#[test]
+fn loads_run_by_priority_can_be_reprioritised_and_cancelled() {
+    use redox_asset::Priority;
+
+    let dir = TempDir::new("prio");
+    let names = ["gate", "a", "b", "c", "d"];
+    for n in names {
+        std::fs::write(dir.0.join(format!("{n}.txt")), n).unwrap();
+    }
+    let order = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let gate = Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
+    let mut mgr = AssetManager::with_workers(&dir.0, 1);
+    mgr.register_loader::<String, _>(OrderedLoader {
+        order: order.clone(),
+        gate: gate.clone(),
+    });
+    let mut world = World::new();
+
+    let gate_handle = mgr.load_async::<String>("gate.txt").unwrap();
+    // Wait until the single worker is inside the gate, so the rest queue up behind it.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while mgr.pending_loads() > 0 {
+        assert!(Instant::now() < deadline, "worker never took the gate file");
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    let a = mgr
+        .load_async_with_priority::<String>("a.txt", Priority::LOW)
+        .unwrap();
+    let b = mgr
+        .load_async_with_priority::<String>("b.txt", Priority::NORMAL)
+        .unwrap();
+    let c = mgr
+        .load_async_with_priority::<String>("c.txt", Priority::HIGH)
+        .unwrap();
+    let d = mgr
+        .load_async_with_priority::<String>("d.txt", Priority::NORMAL)
+        .unwrap();
+    assert_eq!(mgr.pending_loads(), 4);
+
+    assert!(mgr.set_priority(a, Priority::URGENT), "a was still waiting");
+    // Asking again with a higher priority raises the pending one.
+    let again = mgr
+        .load_async_with_priority::<String>("d.txt", Priority::HIGH)
+        .unwrap();
+    assert_eq!(again, d);
+    assert_eq!(mgr.ref_count(d.id()), 2);
+    // Releasing the last owner of b cancels its load before a worker starts it.
+    assert!(mgr.release(b));
+    assert_eq!(mgr.pending_loads(), 3);
+
+    {
+        let (open, cv) = &*gate;
+        *open.lock().unwrap() = true;
+        cv.notify_all();
+    }
+    pump_until(&mut mgr, &mut world, |m| {
+        [gate_handle, a, c, d]
+            .iter()
+            .all(|h| m.status(*h) == AssetStatus::Ready)
+    });
+    // a (raised to urgent) first, then c and d (both high, c was requested first).
+    assert_eq!(*order.lock().unwrap(), ["gate", "a", "c", "d"]);
+    assert!(!mgr.set_priority(a, Priority::LOW), "a already finished");
+}

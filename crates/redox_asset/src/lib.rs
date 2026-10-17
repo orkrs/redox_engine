@@ -17,7 +17,9 @@ pub mod hot_reload;
 pub mod loader;
 pub mod manager;
 pub mod pak;
+pub mod queue;
 pub mod storage;
+pub mod stream;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 
@@ -37,4 +39,6 @@ pub use loader::{BasisTarget, basis_file_format, basis_file_to_ktx2, uastc_dfd};
 pub use loader::{EncodeMode, EncodeOptions, EncodeShape, encode_basis, encode_ktx2};
 pub use manager::AssetManager;
 pub use pak::{AssetSource, DirSource, PakError, PakReader, PakSource, PakWriter};
+pub use queue::{Priority, TaskQueue};
 pub use storage::AssetStorage;
+pub use stream::{MipReady, StreamInfo, StreamedTexture};

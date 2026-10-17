@@ -317,6 +317,39 @@ impl PakReader {
         }
         Ok(buf)
     }
+
+    /// Size of an entry's content in bytes.
+    pub fn content_size(&self, name: &str) -> Option<u64> {
+        self.entries.get(name).map(|e| e.raw_size)
+    }
+
+    /// Reads `len` bytes starting at `offset` of an entry's content.
+    ///
+    /// Entries stored without compression are read directly from the file; the content hash
+    /// covers the whole entry, so it is **not** checked for such partial reads. Compressed
+    /// entries are read and verified as a whole, then sliced.
+    pub fn read_range(&self, name: &str, offset: u64, len: usize) -> Result<Vec<u8>, PakError> {
+        let entry = self
+            .entries
+            .get(name)
+            .ok_or_else(|| PakError::NotFound(name.to_owned()))?;
+        let end = offset
+            .checked_add(len as u64)
+            .filter(|&end| end <= entry.raw_size)
+            .ok_or_else(|| PakError::Corrupt("range outside the entry".into()))?;
+        if entry.codec != CODEC_STORED {
+            let all = self.read(name)?;
+            return Ok(all[offset as usize..end as usize].to_vec());
+        }
+        let mut buf = vec![0u8; len];
+        let mut file = self
+            .file
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        file.seek(SeekFrom::Start(entry.offset + offset))?;
+        file.read_exact(&mut buf)?;
+        Ok(buf)
+    }
 }
 
 /// Where asset bytes come from: a folder during development, an archive in a shipped game.
@@ -325,6 +358,23 @@ pub trait AssetSource: Send + Sync {
     fn read(&self, path: &str) -> io::Result<Vec<u8>>;
     /// Whether the file exists.
     fn exists(&self, path: &str) -> bool;
+
+    /// Size of the file in bytes.
+    fn size(&self, path: &str) -> io::Result<u64> {
+        self.read(path).map(|bytes| bytes.len() as u64)
+    }
+
+    /// Reads `len` bytes starting at `offset`. Sources override this to avoid reading the whole
+    /// file; the default reads everything and slices.
+    fn read_range(&self, path: &str, offset: u64, len: usize) -> io::Result<Vec<u8>> {
+        let all = self.read(path)?;
+        let start = usize::try_from(offset).unwrap_or(usize::MAX);
+        start
+            .checked_add(len)
+            .and_then(|end| all.get(start..end))
+            .map(<[u8]>::to_vec)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "range outside the file"))
+    }
 }
 
 /// Reads assets from a directory. Paths that would leave the directory are rejected.
@@ -358,6 +408,18 @@ impl AssetSource for DirSource {
     fn exists(&self, path: &str) -> bool {
         self.resolve(path).is_ok_and(|p| p.is_file())
     }
+
+    fn size(&self, path: &str) -> io::Result<u64> {
+        fs::metadata(self.resolve(path)?).map(|m| m.len())
+    }
+
+    fn read_range(&self, path: &str, offset: u64, len: usize) -> io::Result<Vec<u8>> {
+        let mut file = fs::File::open(self.resolve(path)?)?;
+        file.seek(SeekFrom::Start(offset))?;
+        let mut buf = vec![0u8; len];
+        file.read_exact(&mut buf)?;
+        Ok(buf)
+    }
 }
 
 /// Reads assets from a `.pak` archive.
@@ -386,5 +448,21 @@ impl AssetSource for PakSource {
 
     fn exists(&self, path: &str) -> bool {
         self.reader.contains(path)
+    }
+
+    fn size(&self, path: &str) -> io::Result<u64> {
+        self.reader
+            .content_size(path)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, PakError::NotFound(path.into())))
+    }
+
+    fn read_range(&self, path: &str, offset: u64, len: usize) -> io::Result<Vec<u8>> {
+        self.reader
+            .read_range(path, offset, len)
+            .map_err(|e| match e {
+                PakError::Io(e) => e,
+                PakError::NotFound(_) => io::Error::new(io::ErrorKind::NotFound, e),
+                other => io::Error::new(io::ErrorKind::InvalidData, other),
+            })
     }
 }
