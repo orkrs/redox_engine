@@ -97,21 +97,38 @@ pub fn step_physics(world: &mut World, dt: f32) {
     }
 }
 
+/// Sends contact enter/exit events into the ECS when an `Events<ContactEvent>` resource exists.
+fn send_contact_events(world: &mut World, contacts: Vec<crate::contacts::ContactEvent>) {
+    if contacts.is_empty() {
+        return;
+    }
+    if let Some(events) =
+        world.get_resource_mut::<redox_ecs::Events<crate::contacts::ContactEvent>>()
+    {
+        for contact in contacts {
+            events.send(contact);
+        }
+    }
+}
+
 /// One physics frame: KCC, Rapier step, trigger + raycast ECS events (no resource removal).
 pub fn tick_physics(world: &mut World, dt: f32) {
     crate::character::move_character_controllers(world, dt);
     step_physics(world, dt);
 
-    let (triggers, raycasts) = {
+    let (triggers, raycasts, contacts) = {
         if let Some(context) = world.get_resource_mut::<PhysicsContext>() {
             (
                 context.drain_trigger_events(),
                 context.drain_raycast_results(),
+                context.drain_contact_events(),
             )
         } else {
-            (Vec::new(), Vec::new())
+            (Vec::new(), Vec::new(), Vec::new())
         }
     };
+
+    send_contact_events(world, contacts);
 
     if !triggers.is_empty() {
         if let Some(events) =

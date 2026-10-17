@@ -162,7 +162,7 @@ impl AudioContext {
     /// ```
     pub fn play_sfx(&mut self, name: &str, gain: f32) -> Option<StaticSoundHandle> {
         let id = *self.named_sounds.get(name)?;
-        self.play_asset_id(id, PlayRequest::sfx(gain))
+        self.play_asset_id(id, PlayRequest::sfx(gain), 1.0)
     }
 
     /// Plays a cached asset as a one-shot on `bus` with `gain`.
@@ -172,7 +172,7 @@ impl AudioContext {
         bus: MixerBusId,
         gain: f32,
     ) -> Option<StaticSoundHandle> {
-        self.play_asset_id(handle.id(), PlayRequest::one_shot(bus, gain))
+        self.play_asset_id(handle.id(), PlayRequest::one_shot(bus, gain), 1.0)
     }
 
     /// Plays a cached asset looping on `bus` with `gain`.
@@ -182,22 +182,42 @@ impl AudioContext {
         bus: MixerBusId,
         gain: f32,
     ) -> Option<StaticSoundHandle> {
-        self.play_asset_id(handle.id(), PlayRequest::looping(bus, gain))
+        self.play_asset_id(handle.id(), PlayRequest::looping(bus, gain), 1.0)
     }
 
     /// Plays by name with an explicit [`PlayRequest`] (bus + mode + gain).
     pub fn play_named(&mut self, name: &str, request: PlayRequest) -> Option<StaticSoundHandle> {
-        let id = *self.named_sounds.get(name)?;
-        self.play_asset_id(id, request)
+        self.play_named_pitched(name, request, 1.0)
     }
 
-    fn play_asset_id(&mut self, id: AssetId, request: PlayRequest) -> Option<StaticSoundHandle> {
+    /// Plays by name with an explicit [`PlayRequest`] and a playback rate.
+    ///
+    /// `playback_rate` is a speed factor where `1.0` is the original pitch. Changing it
+    /// changes speed and pitch together, as kira does.
+    pub fn play_named_pitched(
+        &mut self,
+        name: &str,
+        request: PlayRequest,
+        playback_rate: f64,
+    ) -> Option<StaticSoundHandle> {
+        let id = *self.named_sounds.get(name)?;
+        self.play_asset_id(id, request, playback_rate)
+    }
+
+    fn play_asset_id(
+        &mut self,
+        id: AssetId,
+        request: PlayRequest,
+        playback_rate: f64,
+    ) -> Option<StaticSoundHandle> {
         let voice_gain = self.mixer.voice_gain(&request);
         if voice_gain <= 0.0001 {
             return None;
         }
         let mut data = self.sound_cache.get(&id)?.clone();
-        let mut settings = StaticSoundSettings::new().volume(gain_to_db(voice_gain));
+        let mut settings = StaticSoundSettings::new()
+            .volume(gain_to_db(voice_gain))
+            .playback_rate(playback_rate);
         if request.mode == PlayMode::Loop {
             settings = settings.loop_region(0.0..);
         }

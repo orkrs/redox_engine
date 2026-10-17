@@ -5,6 +5,8 @@
 pub mod character;
 /// ECS components of the physics integration.
 pub mod components;
+/// Contact enter/exit events between solid colliders and physics materials.
+pub mod contacts;
 /// The `PhysicsContext` resource owning the rapier world.
 pub mod context;
 /// Convenience re-exports of the physics modules.
@@ -19,6 +21,7 @@ pub mod trigger;
 
 pub use character::move_character_controllers;
 pub use components::{CharacterController, Collider, Kinematic, RigidBody, Trigger, Velocity};
+pub use contacts::{ContactEnter, ContactEvent, ContactExit, PhysicsMaterial};
 pub use context::{PhysicsContext, PhysicsError};
 pub use raycast::{RaycastRequest, RaycastResult};
 pub use shapes::{CollisionLayers, QueryShape, ShapeHit};

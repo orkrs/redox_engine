@@ -17,6 +17,7 @@
 pub mod asset_types;
 pub mod components;
 pub mod context;
+pub mod cues;
 pub mod debug;
 pub mod loader;
 pub mod mixer;
@@ -28,6 +29,7 @@ pub use components::{
     AcousticMaterial, AudioEmitter, AudioListener, ReverbPreset, ReverbZone, SpatialAudioEmitter,
 };
 pub use context::{AudioContext, sync_assets_to_audio, with_audio};
+pub use cues::{CueError, CueLibrary, CuePlay, CueRng, CueSelector, SoundCue, SplitMix64};
 pub use debug::AudioDebugDraw;
 pub use loader::AudioLoader;
 pub use mixer::{

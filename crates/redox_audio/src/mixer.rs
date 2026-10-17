@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 
 /// Identifies a mixer bus in the MetaSounds-lite hierarchy.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum MixerBusId {
     /// Final output bus; every other bus feeds it.
     Master,

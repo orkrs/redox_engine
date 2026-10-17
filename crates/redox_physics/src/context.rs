@@ -5,6 +5,7 @@ use redox_ecs::world::World;
 use redox_math::{Quat, Vec3};
 use std::collections::{HashMap, HashSet};
 
+use crate::contacts::ContactEvent;
 use crate::raycast::{RaycastRequest, RaycastResult};
 
 /// Errors of the physics layer.
@@ -49,7 +50,12 @@ pub struct PhysicsContext {
     // Queues for systems
     /// Raycasts queued by gameplay code, answered by the next physics tick.
     pub raycast_requests: SegQueue<RaycastRequest>,
+    /// Sensor (trigger) collision events of the last step, consumed by `drain_trigger_events`.
     collision_events: std::sync::Mutex<Vec<CollisionEvent>>,
+    /// Solid-collider collision events of the last step, converted after the step.
+    pub(crate) contact_raw: std::sync::Mutex<Vec<CollisionEvent>>,
+    /// Converted contact events waiting for `drain_contact_events`.
+    pub(crate) contact_events: Vec<ContactEvent>,
 }
 
 impl PhysicsContext {
@@ -72,6 +78,8 @@ impl PhysicsContext {
             collider_to_entity: HashMap::new(),
             raycast_requests: SegQueue::new(),
             collision_events: std::sync::Mutex::new(Vec::new()),
+            contact_raw: std::sync::Mutex::new(Vec::new()),
+            contact_events: Vec::new(),
         }
     }
 
@@ -79,8 +87,10 @@ impl PhysicsContext {
     pub fn step(&mut self, dt: f32) {
         self.integration_parameters.dt = dt;
 
+        /// Routes sensor events to the trigger buffer and solid events to the contact buffer.
         struct CollisionSink<'a> {
-            buf: &'a std::sync::Mutex<Vec<CollisionEvent>>,
+            triggers: &'a std::sync::Mutex<Vec<CollisionEvent>>,
+            contacts: &'a std::sync::Mutex<Vec<CollisionEvent>>,
         }
         impl EventHandler for CollisionSink<'_> {
             fn handle_collision_event(
@@ -90,8 +100,12 @@ impl PhysicsContext {
                 event: CollisionEvent,
                 _pair: Option<&ContactPair>,
             ) {
-                self.buf
-                    .lock()
+                let buf = if event.sensor() {
+                    self.triggers
+                } else {
+                    self.contacts
+                };
+                buf.lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .push(event);
             }
@@ -108,7 +122,8 @@ impl PhysicsContext {
         }
 
         let sink = CollisionSink {
-            buf: &self.collision_events,
+            triggers: &self.collision_events,
+            contacts: &self.contact_raw,
         };
         self.physics_pipeline.step(
             self.gravity,
@@ -125,6 +140,7 @@ impl PhysicsContext {
             &(),
             &sink,
         );
+        self.collect_contact_events();
     }
 
     /// Drains and maps Rapier collision events without requiring a World borrow.
