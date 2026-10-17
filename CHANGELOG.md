@@ -13,7 +13,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - Physics (B4, B2): joints (fixed, hinge, slider, ball, spring, rope, break force) and `cast_shape_all`, `overlap_point`, `closest_point`.
 - Render (A3): GPU skinning compute pass (`SkinnedMeshBinding::update_gpu`, `Renderer::read_mesh_vertex_bytes`); `skinned_demo` uses it.
 - Scripting (B7a): host API `get_f32`/`set_f32`/`emit_event` with `ApiPermissions`, module loading from a folder or `.pak`.
-- Audio (B8): `MusicDirector` (equal-power crossfade) and `VoiceBudget` (priority voice limit), not yet wired to `AudioContext`.
+- Audio (B8): `MusicDirector` (equal-power crossfade, not yet wired to kira) and `VoiceBudget`; `AudioContext::play_cue` now honours cue priorities through the voice budget (`set_cue_voice_limit`, `set_cue_voice_seconds`).
+- Render (A2): CPU instancing - frame objects are grouped by (mesh, material) and neighbours merged into instanced draws (`Renderer::forward_draw_calls`).
+- Render (A4): `MemoryBudget` accounting by category (pure structure, not yet wired).
+- Physics (B1): `LayerConfig` (RON layer names and collision matrix) and `CollisionLayers` as an ECS component synced by `sync_to_physics`.
+- Physics (B3): opt-in `stay` contact reports (`ContactStay`, `set_contact_stay`, `drain_contact_stays`).
+- Physics (B4): joints break by torque too (`JointDesc::break_torque`).
+- Courier (B9): best time and language saved, gamepad control, synthesised sound cues.
+- Tests: host API v1a runs on the `wasmtime` backend as well.
 
 ### Removed
 - Old examples `showcase`, `prism_vault`, `ball_score`, `shadow_lab` (kept: `skinned_demo`, `dino_runner`, `dino_game`).
@@ -21,6 +28,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
   Directional shadows are VSM-only. The `shadow_probe` example (a CSM probe) was deleted.
 
 ### Fixed
+- Input: mouse Back and Forward buttons are separate `MouseButton` variants (they both collapsed into `Other(0)`).
+- Physics: joint `break_force` was understated by the number of solver substeps (4x); it is now a real force in newtons.
 - Render: after a window resize the tone-mapping bind groups (plain and TAA paths) kept sampling the bloom texture of the old size, so the last bloom stayed on screen forever; they are rebuilt against the new bloom chain (`resize_bloom` test).
 - Render: meshes added through the asset flow used the raw vertex layout while the pipelines read the compressed one (invisible meshes); asset-flow materials sampled the legacy texture list instead of the handle pool.
 - UI: every egui-based app (all examples except `skinned_demo`, and the editor) panicked at start since the egui 0.36 upgrade
