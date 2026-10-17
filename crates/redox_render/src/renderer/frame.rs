@@ -41,6 +41,22 @@ impl Renderer {
         objects: &[RenderObject],
         surface_view: &wgpu::TextureView,
     ) -> Result<(), crate::surface::SurfaceError> {
+        // Group objects with the same mesh and material so the draw loops can instance them.
+        let mut visible = Vec::new();
+        compute_main_visibility(&self.camera_uniform.view_proj, objects, &mut visible);
+        let grouped: Vec<RenderObject>;
+        let objects = match batching::draw_order(objects, &visible) {
+            Some(order) => {
+                grouped = batching::permute(objects, &order);
+                if let Some(ids) = self.frame_object_ids.as_mut()
+                    && ids.len() == order.len()
+                {
+                    *ids = batching::permute(ids, &order);
+                }
+                &grouped[..]
+            }
+            None => objects,
+        };
         let mut frame = self.begin_frame_state(objects, surface_view);
         for &name in crate::frame_graph::frame_pass_order() {
             self.run_frame_pass(name, &mut frame);

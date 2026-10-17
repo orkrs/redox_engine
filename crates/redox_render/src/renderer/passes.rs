@@ -40,21 +40,21 @@ impl Renderer {
             });
             normal_render_pass.set_pipeline(&self.normal_pass.pipeline);
             normal_render_pass.set_bind_group(0, &self.normal_bind_group, &[]);
-            for (i, obj) in objects.iter().enumerate() {
-                if !self.main_vis_scratch[i] {
-                    continue;
-                }
-                if let Some(gpu_mesh) = self.registry.mesh_by_slot(obj.mesh_index) {
+            for run in batching::runs(
+                objects.len(),
+                |i| self.main_vis_scratch[i],
+                |a, b| objects[a].mesh_index == objects[b].mesh_index,
+            ) {
+                if let Some(gpu_mesh) = self
+                    .registry
+                    .mesh_by_slot(objects[run.start as usize].mesh_index)
+                {
                     normal_render_pass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));
                     normal_render_pass.set_index_buffer(
                         gpu_mesh.index_buffer.slice(..),
                         wgpu::IndexFormat::Uint32,
                     );
-                    normal_render_pass.draw_indexed(
-                        0..gpu_mesh.index_count,
-                        0,
-                        (i as u32)..(i as u32 + 1),
-                    );
+                    normal_render_pass.draw_indexed(0..gpu_mesh.index_count, 0, run);
                 }
             }
         }

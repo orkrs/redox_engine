@@ -942,6 +942,7 @@ impl Renderer {
             object_velocity_bg,
             object_motion: Default::default(),
             frame_object_ids: None,
+            forward_draw_calls: std::sync::atomic::AtomicU32::new(0),
             taa_history_tex: [taa_history_tex0, taa_history_tex1],
             taa_history_view: [taa_history_view0, taa_history_view1],
             taa_blend_alpha,

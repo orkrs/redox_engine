@@ -3,6 +3,13 @@
 use super::*;
 
 impl Renderer {
+    /// Number of draw calls the opaque forward pass recorded in the last frame (objects with the
+    /// same mesh and material share one instanced call).
+    pub fn forward_draw_calls(&self) -> u32 {
+        self.forward_draw_calls
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     /// Enable or disable multi-threaded command recording (prepass).
     pub fn set_mt_command_recording(&mut self, enabled: bool) {
         self.mt_command_recording = enabled;

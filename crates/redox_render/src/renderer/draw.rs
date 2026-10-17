@@ -48,10 +48,17 @@ impl Renderer {
         render_pass.set_bind_group(1, &self.scene_bind_group, &[]);
         render_pass.set_bind_group(3, &self.model_bind_group, &[]);
 
-        for (i, obj) in objects.iter().enumerate() {
-            if !visibility.is_empty() && !visibility[i] {
-                continue;
-            }
+        let mut calls = 0u32;
+        let same = |a: usize, b: usize| {
+            objects[a].mesh_index == objects[b].mesh_index
+                && objects[a].material_index == objects[b].material_index
+        };
+        for run in batching::runs(
+            objects.len(),
+            |i| visibility.is_empty() || visibility[i],
+            same,
+        ) {
+            let obj = &objects[run.start as usize];
             // Material bind group (Group 2)
             let material_bg = self
                 .registry
@@ -67,9 +74,12 @@ impl Renderer {
                 render_pass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));
                 render_pass
                     .set_index_buffer(gpu_mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                render_pass.draw_indexed(0..gpu_mesh.index_count, 0, (i as u32)..(i as u32 + 1));
+                render_pass.draw_indexed(0..gpu_mesh.index_count, 0, run);
+                calls += 1;
             }
         }
+        self.forward_draw_calls
+            .store(calls, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Returns true when any visible object uses an alpha-blended material.

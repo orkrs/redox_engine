@@ -4,6 +4,7 @@ mod aa;
 mod accessors;
 mod assets;
 mod attachments;
+mod batching;
 mod contexts;
 mod debug_draw;
 mod draw;
@@ -378,6 +379,8 @@ pub struct Renderer {
     object_motion: motion::ObjectMotion,
     /// Object ids supplied for the frame being rendered (see `FrameView::with_object_ids`).
     frame_object_ids: Option<Vec<u64>>,
+    /// Draw calls recorded by the opaque forward pass in the last frame.
+    forward_draw_calls: std::sync::atomic::AtomicU32,
     /// Ping-pong history texture 0.
     pub taa_history_tex: [wgpu::Texture; 2],
     /// Views into the ping-pong history textures.

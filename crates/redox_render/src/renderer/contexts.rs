@@ -2,6 +2,7 @@
 
 use redox_math::Mat4;
 
+use super::batching;
 use crate::pass::normal::NormalPass;
 use crate::pass::shadow::ShadowPass;
 use crate::pass::vg_resolve::VgShadowPass;
@@ -62,15 +63,19 @@ pub fn record_normal_prepass(
 
     normal_render_pass.set_pipeline(&ctx.normal_pass.pipeline);
     normal_render_pass.set_bind_group(0, ctx.normal_bind_group, &[]);
-    for (i, obj) in objects.iter().enumerate() {
-        if i >= vis.len() || !vis[i] {
-            continue;
-        }
-        if let Some(gpu_mesh) = ctx.registry.mesh_by_slot(obj.mesh_index) {
+    for run in batching::runs(
+        objects.len(),
+        |i| i < vis.len() && vis[i],
+        |a, b| objects[a].mesh_index == objects[b].mesh_index,
+    ) {
+        if let Some(gpu_mesh) = ctx
+            .registry
+            .mesh_by_slot(objects[run.start as usize].mesh_index)
+        {
             normal_render_pass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));
             normal_render_pass
                 .set_index_buffer(gpu_mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-            normal_render_pass.draw_indexed(0..gpu_mesh.index_count, 0, (i as u32)..(i as u32 + 1));
+            normal_render_pass.draw_indexed(0..gpu_mesh.index_count, 0, run);
         }
     }
     drop(normal_render_pass);
@@ -161,21 +166,21 @@ pub fn record_point_atlas_shadows(
             shadow_pass.set_bind_group(0, &ctx.face_matrix_bgs[job.face_base + face_i], &[]);
             shadow_pass.set_viewport(x as f32, y as f32, TILE_PX as f32, TILE_PX as f32, 0.0, 1.0);
             shadow_pass.set_scissor_rect(x, y, TILE_PX, TILE_PX);
-            for (i, obj) in objects.iter().enumerate() {
-                if !job.face_vis[face_i][i] {
-                    continue;
-                }
-                if let Some(gpu_mesh) = ctx.registry.mesh_by_slot(obj.mesh_index) {
+            for run in batching::runs(
+                objects.len(),
+                |i| job.face_vis[face_i][i],
+                |a, b| objects[a].mesh_index == objects[b].mesh_index,
+            ) {
+                if let Some(gpu_mesh) = ctx
+                    .registry
+                    .mesh_by_slot(objects[run.start as usize].mesh_index)
+                {
                     shadow_pass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));
                     shadow_pass.set_index_buffer(
                         gpu_mesh.index_buffer.slice(..),
                         wgpu::IndexFormat::Uint32,
                     );
-                    shadow_pass.draw_indexed(
-                        0..gpu_mesh.index_count,
-                        0,
-                        (i as u32)..(i as u32 + 1),
-                    );
+                    shadow_pass.draw_indexed(0..gpu_mesh.index_count, 0, run);
                 }
             }
             if let Some(vg) = vg_system
@@ -235,15 +240,19 @@ pub fn record_vsm_pages(
         page_pass.set_pipeline(&ctx.vsm_depth_pass.pipeline);
         page_pass.set_bind_group(0, ctx.vsm_pageinfo_bg, &[(page_ord as u32) * 256]);
         let page_vp = page_vps.get(page_ord).copied();
-        for (i, obj) in objects.iter().enumerate() {
-            if page_vp.is_some_and(|vp| !aabb_overlaps_clip_xy(obj.bounds, vp)) {
-                continue;
-            }
-            if let Some(gpu_mesh) = ctx.registry.mesh_by_slot(obj.mesh_index) {
+        for run in batching::runs(
+            objects.len(),
+            |i| page_vp.is_none_or(|vp| aabb_overlaps_clip_xy(objects[i].bounds, vp)),
+            |a, b| objects[a].mesh_index == objects[b].mesh_index,
+        ) {
+            if let Some(gpu_mesh) = ctx
+                .registry
+                .mesh_by_slot(objects[run.start as usize].mesh_index)
+            {
                 page_pass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));
                 page_pass
                     .set_index_buffer(gpu_mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                page_pass.draw_indexed(0..gpu_mesh.index_count, 0, (i as u32)..(i as u32 + 1));
+                page_pass.draw_indexed(0..gpu_mesh.index_count, 0, run);
             }
         }
     }
