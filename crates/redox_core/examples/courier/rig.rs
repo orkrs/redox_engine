@@ -95,7 +95,8 @@ fn add_part(g: &mut SkinnedGeometry, bone: usize, from: Vec3, to: Vec3, r0: f32,
             base + SIDES as u32 + s,
             base + SIDES as u32 + n,
         );
-        g.indices.extend_from_slice(&[a, c, b, b, c, d]);
+        // u x v = axis, so the ring runs counter-clockwise seen from the tip: (a, b, c) faces out.
+        g.indices.extend_from_slice(&[a, b, c, b, d, c]);
     }
     for (center, radius, normal, flip) in [(from, r0, -axis, true), (to, r1, axis, false)] {
         let hub = g.positions.len() as u32;
