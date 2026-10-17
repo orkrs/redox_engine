@@ -12,6 +12,7 @@ mod helpers;
 mod init;
 mod passes;
 mod post;
+pub mod reload;
 mod resize;
 mod scene_sync;
 mod settings;

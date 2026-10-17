@@ -28,6 +28,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - Large files split: editor `main.rs`, `viewport.rs`, `frame.rs`, VG `runtime.rs`, `vsm_clipmap.rs`, `prism_vault`.
 
 ### Added
+- Render: `Renderer::reload_shaders` rebuilds the passes behind edited shaders without a restart (11 passes; tone mapping and VG passes excluded); `Texture::from_ktx2` uploads KTX2/BCn textures with their stored mips.
 - Core: application states (`State`, `NextState`, `AppBuilder::add_state/on_enter/on_exit`, `in_state`); `SharedCommands` flushed by the dispatcher between stages.
 - ECS: component hooks `World::on_add` / `World::on_remove` (spawn, add, remove, despawn).
 - Asset: `retain`/`release` ownership with unloading, `add_dependency` and `status_with_dependencies`, loading through a `.pak`/folder source, per-frame completion budget, KTX2/BCn loader, LZ4 compression in `.pak`; `redox_cook pack --compress --incremental`.

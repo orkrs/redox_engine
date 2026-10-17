@@ -26,6 +26,114 @@ pub struct Texture {
 }
 
 impl Texture {
+    /// wgpu format for a KTX2 texture format.
+    pub fn wgpu_format(format: redox_asset::TextureFormat) -> wgpu::TextureFormat {
+        use redox_asset::TextureFormat as F;
+        use wgpu::TextureFormat as W;
+        match format {
+            F::Rgba8Unorm => W::Rgba8Unorm,
+            F::Rgba8Srgb => W::Rgba8UnormSrgb,
+            F::Bc1Unorm => W::Bc1RgbaUnorm,
+            F::Bc1Srgb => W::Bc1RgbaUnormSrgb,
+            F::Bc3Unorm => W::Bc3RgbaUnorm,
+            F::Bc3Srgb => W::Bc3RgbaUnormSrgb,
+            F::Bc5Unorm => W::Bc5RgUnorm,
+            F::Bc7Unorm => W::Bc7RgbaUnorm,
+            F::Bc7Srgb => W::Bc7RgbaUnormSrgb,
+        }
+    }
+
+    /// Uploads a loaded KTX2 texture with its stored mip chain (no CPU decoding or mip generation).
+    ///
+    /// Block-compressed formats need [`wgpu::Features::TEXTURE_COMPRESSION_BC`] and a size that
+    /// is a multiple of 4; otherwise this returns `None` so the caller can fall back to a decoded image.
+    pub fn from_ktx2(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        ktx: &redox_asset::Ktx2Texture,
+        label: &str,
+    ) -> Option<Self> {
+        if ktx.format.is_block_compressed()
+            && (!device
+                .features()
+                .contains(wgpu::Features::TEXTURE_COMPRESSION_BC)
+                // wgpu requires the base level to be a whole number of 4x4 blocks.
+                || !ktx.width.is_multiple_of(4)
+                || !ktx.height.is_multiple_of(4))
+        {
+            return None;
+        }
+        let format = Self::wgpu_format(ktx.format);
+        let mip_levels = ktx.levels.len() as u32;
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width: ktx.width,
+                height: ktx.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: mip_levels,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        for (mip, data) in ktx.levels.iter().enumerate() {
+            let (w, h) = ((ktx.width >> mip).max(1), (ktx.height >> mip).max(1));
+            let block_rows = if ktx.format.is_block_compressed() {
+                h.div_ceil(4)
+            } else {
+                h
+            };
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &texture,
+                    mip_level: mip as u32,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                data,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(data.len() as u32 / block_rows),
+                    rows_per_image: Some(block_rows),
+                },
+                wgpu::Extent3d {
+                    width: w.next_multiple_of(if ktx.format.is_block_compressed() {
+                        4
+                    } else {
+                        1
+                    }),
+                    height: h.next_multiple_of(if ktx.format.is_block_compressed() {
+                        4
+                    } else {
+                        1
+                    }),
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some(label),
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            ..Default::default()
+        });
+        Some(Self {
+            texture,
+            view,
+            sampler,
+            width: ktx.width,
+            height: ktx.height,
+            mip_levels,
+        })
+    }
+
     /// Decodes image bytes (PNG, JPEG, etc.) and uploads the result to the GPU.
     ///
     /// * `format` — can be `Rgba8UnormSrgb` (default for albedo) or `Rgba8Unorm` (for normals/MR).
