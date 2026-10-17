@@ -8,9 +8,15 @@ use std::collections::HashMap;
 use redox_ecs::{Entity, World};
 use serde::{Deserialize, Serialize};
 
+// Lets `#[derive(Reflect)]` refer to `::redox_reflect` inside this crate too.
+extern crate self as redox_reflect;
+
+mod field;
 mod impls;
 
+pub use field::FieldValue;
 pub use impls::register_engine_defaults;
+pub use redox_reflect_derive::Reflect;
 
 /// Serializable, type-erased value used by the inspector and scene save.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

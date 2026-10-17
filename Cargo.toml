@@ -4,6 +4,7 @@ members = [
     "crates/redox_math",
     "crates/redox_ecs",
     "crates/redox_reflect",
+    "crates/redox_reflect_derive",
     "crates/redox_render",
     "crates/redox_physics",
     "crates/redox_core",
