@@ -309,6 +309,30 @@ impl Renderer {
         self.bloom_scratch_texture = bst;
         self.bloom_scratch_view = bsv;
         self.rebuild_bloom_bind_groups();
+        // The tone-mapping bind groups above were built against the old bloom texture, which would
+        // keep showing the last pre-resize bloom forever; bind the new one.
+        self.tone_mapping_bind_group = create_tonemap_bind_group(
+            &self.device,
+            &self.tone_mapping_pipeline,
+            &self.hdr_view,
+            &self.bloom_mip_views[0],
+            &self.hdr_sampler,
+            &self.tonemap_uniform_buffer,
+        );
+        let make_tone = |view: &wgpu::TextureView| {
+            create_tonemap_bind_group(
+                &self.device,
+                &self.tone_mapping_pipeline,
+                view,
+                &self.bloom_mip_views[0],
+                &self.hdr_sampler,
+                &self.tonemap_uniform_buffer,
+            )
+        };
+        self.taa_tone_bgs = [
+            make_tone(&self.taa_history_view[0]),
+            make_tone(&self.taa_history_view[1]),
+        ];
         self.rebuild_sharp_bind_groups();
 
         log::info!("Resized to {}×{}", new_width, new_height);

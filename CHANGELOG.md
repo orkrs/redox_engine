@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
   Directional shadows are VSM-only. The `shadow_probe` example (a CSM probe) was deleted.
 
 ### Fixed
+- Render: after a window resize the tone-mapping bind groups (plain and TAA paths) kept sampling the bloom texture of the old size, so the last bloom stayed on screen forever; they are rebuilt against the new bloom chain (`resize_bloom` test).
 - Render: meshes added through the asset flow used the raw vertex layout while the pipelines read the compressed one (invisible meshes); asset-flow materials sampled the legacy texture list instead of the handle pool.
 - UI: every egui-based app (all examples except `skinned_demo`, and the editor) panicked at start since the egui 0.36 upgrade
   (`TexturesDelta` dropped unhandled); the deltas are now cleared after they are applied (`redox_ui`, editor).

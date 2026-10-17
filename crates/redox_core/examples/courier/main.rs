@@ -370,6 +370,29 @@ fn main() {
                                 KeyCode::ArrowDown | KeyCode::KeyS => nav = Some(Direction::Down),
                                 KeyCode::ArrowUp | KeyCode::KeyW => nav = Some(Direction::Up),
                                 KeyCode::Tab => nav = Some(Direction::Next),
+                                KeyCode::F1 | KeyCode::F2 | KeyCode::F3 | KeyCode::F4 => {
+                                    // Debug switches for hunting rendering artefacts.
+                                    match code {
+                                        KeyCode::F1 => ctx.bloom_enabled = !ctx.bloom_enabled,
+                                        KeyCode::F2 => ctx.taa_enabled = !ctx.taa_enabled,
+                                        KeyCode::F3 => {
+                                            let on = !ctx.ssao_enabled;
+                                            ctx.set_ssao_enabled(on);
+                                        }
+                                        _ => {
+                                            let on = !ctx.vsm_enabled;
+                                            ctx.set_vsm_enabled(on);
+                                        }
+                                    }
+                                    let flag = |on: bool| if on { "on" } else { "off" };
+                                    window.set_title(&format!(
+                                        "RedOx - Courier | F1 bloom {} | F2 TAA {} | F3 SSAO {} | F4 shadows {}",
+                                        flag(ctx.bloom_enabled),
+                                        flag(ctx.taa_enabled),
+                                        flag(ctx.ssao_enabled),
+                                        flag(ctx.vsm_enabled)
+                                    ));
+                                }
                                 _ => {}
                             }
                         }
