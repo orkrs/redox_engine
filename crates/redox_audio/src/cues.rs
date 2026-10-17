@@ -12,6 +12,7 @@ use thiserror::Error;
 
 use crate::context::AudioContext;
 use crate::mixer::{MixerBusId, PlayRequest};
+use crate::voices::VoiceDecision;
 
 /// Seed used when the system clock is unavailable or before the Unix epoch.
 const FALLBACK_SEED: u64 = 0x5EED_C0DE;
@@ -31,7 +32,7 @@ pub struct SoundCue {
     pub cooldown: f32,
     /// Mixer bus the cue is routed to.
     pub bus: MixerBusId,
-    /// Relative importance of the cue. Stored for future voice management; not used yet.
+    /// Relative importance of the cue. Higher wins when the cue voice budget is full.
     pub priority: u8,
 }
 
@@ -293,12 +294,14 @@ fn check_range(cue_name: &str, field: &str, (min, max): (f32, f32)) -> Result<()
 }
 
 impl AudioContext {
-    /// Plays the next variant of cue `name` on its bus, if the selector allows it.
+    /// Plays the next variant of cue `name` on its bus, if the selector and the voice budget
+    /// allow it.
     ///
-    /// Returns `None` for an unknown name or when the cue is rejected by the selector
-    /// (no variants or cooling down). Otherwise returns the chosen [`CuePlay`]. The sound is
-    /// played through the mixer when a device and the sound asset are available; without
-    /// them the call still returns the choice and does nothing else.
+    /// Returns `None` for an unknown name, when the selector rejects the cue (no variants or
+    /// cooling down), or when the voice budget rejects it (full of equal or higher priority
+    /// voices). Otherwise returns the chosen [`CuePlay`]. The sound is played through the mixer
+    /// when a device and the sound asset are available; without them the call still returns
+    /// the choice and does nothing else.
     pub fn play_cue(
         &mut self,
         library: &CueLibrary,
@@ -308,6 +311,10 @@ impl AudioContext {
     ) -> Option<CuePlay> {
         let cue = library.get(name)?;
         let play = selector.select_own_rng(cue, now)?;
+        // A stolen voice's audio is not stopped: the context keeps no handle for cue voices.
+        if self.request_cue_voice(cue.priority, now) == VoiceDecision::Reject {
+            return None;
+        }
         if let Some(sound) = cue.variants.get(play.variant) {
             let request = PlayRequest::one_shot(cue.bus, play.volume);
             self.play_named_pitched(sound, request, f64::from(play.pitch));

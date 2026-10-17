@@ -26,6 +26,12 @@ use redox_ecs::{Entity, World};
 use crate::asset_types::AudioData;
 use crate::components::ReverbPreset;
 use crate::mixer::{MixerBusId, MixerGraph, PlayMode, PlayRequest};
+use crate::voices::{VoiceBudget, VoiceDecision};
+
+/// Default number of cue voices that may sound at once.
+const DEFAULT_CUE_VOICES: usize = 16;
+/// Default assumed length in seconds of a started cue voice.
+const DEFAULT_CUE_VOICE_SECONDS: f32 = 1.0;
 
 /// ECS resource that manages the audio engine and MetaSounds-lite buses.
 pub struct AudioContext {
@@ -45,6 +51,12 @@ pub struct AudioContext {
     sound_cache: HashMap<AssetId, StaticSoundData>,
     /// Occlusion coefficient per emitter entity (0.0 = clear, 1.0 = fully occluded).
     occlusion_by_emitter: HashMap<Entity, f32>,
+    /// Priority-based limit on simultaneous cue voices (see `set_cue_voice_limit`).
+    cue_voices: VoiceBudget,
+    /// Assumed length in seconds of a started cue voice (see `set_cue_voice_seconds`).
+    cue_voice_seconds: f32,
+    /// Id given to the next cue voice request; increases monotonically.
+    next_voice_id: u64,
 }
 
 impl AudioContext {
@@ -105,7 +117,34 @@ impl AudioContext {
             master_volume: 1.0,
             sound_cache: HashMap::new(),
             occlusion_by_emitter: HashMap::new(),
+            cue_voices: VoiceBudget::new(DEFAULT_CUE_VOICES),
+            cue_voice_seconds: DEFAULT_CUE_VOICE_SECONDS,
+            next_voice_id: 0,
         }
+    }
+
+    /// Sets how many cue voices may sound at once. Default 16. Starts a fresh budget, so
+    /// voices already counted are forgotten.
+    pub fn set_cue_voice_limit(&mut self, max_voices: usize) {
+        self.cue_voices = VoiceBudget::new(max_voices);
+    }
+
+    /// Sets how long, in seconds, a started cue occupies its voice. Default 1.0. Non-finite
+    /// or non-positive values are ignored.
+    pub fn set_cue_voice_seconds(&mut self, seconds: f32) {
+        if seconds.is_finite() && seconds > 0.0 {
+            self.cue_voice_seconds = seconds;
+        }
+    }
+
+    /// Asks the cue voice budget for a slot for a cue of `priority` starting at `now`.
+    ///
+    /// Assigns the next voice id from the context's counter, so every request gets a fresh id.
+    pub(crate) fn request_cue_voice(&mut self, priority: u8, now: f32) -> VoiceDecision {
+        let voice_id = self.next_voice_id;
+        self.next_voice_id = self.next_voice_id.wrapping_add(1);
+        self.cue_voices
+            .request(voice_id, priority, now, self.cue_voice_seconds)
     }
 
     /// Returns `true` if the audio backend is available.
