@@ -9,6 +9,33 @@ This README documents the **current state** of the engine and serves as a starti
 
 ---
 
+## Status at a glance (2026-10-17)
+
+RedOx is a **work in progress**: a solid, tested core with a modern renderer, and an editor that is
+still a viewer rather than a production tool. Everything below is what the code does today, no more.
+
+| Area | State |
+|---|---|
+| ECS, scheduler, app states, hooks | **Working**, tested, Miri-audited `unsafe` |
+| Renderer (wgpu 30) | **Working**: clustered forward, virtual shadow maps, GTAO, TAA, bloom, SMAA, virtual geometry, DDGI-lite, IBL |
+| Textures | **Working**: KTX2 with Zstd and Basis Universal (UASTC, ETC1S), BC7/RGBA8 targets, cube maps, arrays, baked IBL, priority streaming with a memory budget |
+| Assets | **Working**: GUIDs, `.pak` v2 (LZ4, range reads), ref counting, dependencies, priority queue with workers, `redox_cook` tool |
+| Physics, audio, input | **Working**: rapier 0.36, kira 0.12, gamepads, key rebinding, text/IME input (gamepad and IME not checked on live hardware) |
+| World and saves | **Working**: partitioned world, binary `world.bin`, save manager |
+| Animation | **Working**: clips, skinning (on the CPU), two-bone IK |
+| Editor | **Early**: docking UI, outliner, inspector, asset browser, viewport; not a full authoring tool yet |
+| Platforms | Verified on Windows + Vulkan only. DX12 and Metal paths exist but were not exercised |
+
+Quality gates that pass on `main`: `cargo fmt`, `cargo clippy --workspace --all-targets -- -D warnings`,
+`cargo test --workspace`, `cargo doc` with warnings denied, `cargo deny`, golden-frame regression for
+`skinned_demo`. There is no CI yet (the files in `.github/` are a draft); run the checks locally.
+
+**Not done, honestly:** no networking, no scripting layer, GPU skinning (CPU today), ray-traced DDGI,
+a full Substrate material graph, hot reload of the VG compute passes and IBL, and nobody has judged the
+rendered look on more than one machine. See the [roadmap](#roadmap) and [`PROGRESS.md`](PROGRESS.md).
+
+---
+
 ## Table of Contents
 
 1. [What this engine is](#1-what-this-engine-is)
@@ -19,7 +46,7 @@ This README documents the **current state** of the engine and serves as a starti
 6. [Temporal AA and supersampling defaults](#6-temporal-aa-and-supersampling-defaults)
 7. [Shadows overview](#7-shadows-overview)
 8. [Clustered forward lighting](#8-clustered-forward-lighting)
-9. [Virtual Geometry (Nanite‑like)](#9-virtual-geometry-nanite-like)
+9. [Virtual Geometry (Nanite-like)](#9-virtual-geometry-nanite-like)
 10. [Materials and PBR](#10-materials-and-pbr)
 11. [Post processing](#11-post-processing)
 12. [Physics integration](#12-physics-integration)
@@ -27,14 +54,12 @@ This README documents the **current state** of the engine and serves as a starti
 14. [UI and debugging](#14-ui-and-debugging)
 15. [Assets and resource flow](#15-assets-and-resource-flow)
 16. [Examples](#16-examples)
-17. [How to build](#17-how-to-build)
-18. [How to run](#18-how-to-run)
-19. [Performance goals](#19-performance-goals)
-20. [Conventions](#20-conventions)
-21. [Troubleshooting](#21-troubleshooting)
-22. [Roadmap](#22-roadmap)
-23. [Tech stack](#23-tech-stack)
-24. [License](#24-license)
+17. [Build and run](#17-build-and-run)
+18. [Status and known limitations](#18-status-and-known-limitations)
+19. [Rendering diagnostics and quality tools](#19-rendering-diagnostics-and-quality-tools)
+20. [Roadmap](#20-roadmap)
+21. [Tech stack](#21-tech-stack)
+22. [License](#22-license)
 
 ---
 
@@ -48,7 +73,7 @@ It follows a “measure first, then optimize” workflow.
 - **GPU backend**: [`wgpu`](https://wgpu.rs/) (Vulkan, DX12, Metal)  
 - **CPU side**: lightweight, built on a custom ECS  
 - **Physics**: [`rapier3d`](https://rapier.rs/) integration  
-- **Examples** act as living integration tests and are meant to be **readable and hackable**  
+- **Examples** are small, readable and hackable; `skinned_demo` doubles as the visual regression test  
 
 The engine aims to keep frame times stable and code approachable.
 
@@ -57,13 +82,13 @@ The engine aims to keep frame times stable and code approachable.
 ## 2) What this engine is not
 
 RedOx is **not** a full editor‑first production engine (yet).  
-It does **not** ship a complete asset pipeline with hot‑reload for every asset type.  
+It does **not** ship a complete asset pipeline with hot‑reload for every asset type (shaders reload; textures and meshes do not).  
 It does **not** try to be a Unity or Unreal replacement.  
 It does **not** hide GPU concepts behind heavy abstraction.  
 It does **not** currently include:  
 
 - Networking gameplay systems  
-- A full animation system for skinned characters  
+- An animation graph / state machine for characters (clips, skinning and IK exist)  
 - A scripting language layer  
 - An audio authoring toolchain  
 
@@ -257,38 +282,34 @@ The renderer includes an experimental **Virtual Geometry** pipeline:
 
 ## 15) Assets and resource flow
 
-- Simple MVP asset system: `AssetManager` and `Handle<T>`.  
-- Meshes can be procedural or loaded (e.g., OBJ via `tobj`).  
-- Textures are loaded via the `image` crate.  
-- Materials can reference texture handles.  
-- GPU resources are stored in vectors; handle IDs are mapped to indices.
+- `AssetManager` with `Handle<T>`, reference counting and unloading, dependencies, and a priority task queue served by a worker pool.
+- Sources: a folder or a `.pak` v2 archive (LZ4 or raw entries, range reads). Pack with `redox_cook pack`.
+- Textures: PNG/JPEG/HDR through `image`, and **KTX2** (stored, Zstd, Basis UASTC/ETC1S) with cube maps and arrays.
+  Basis becomes BC7 on devices with BC support and RGBA8 elsewhere. See [`docs/ASSETS.md`](docs/ASSETS.md) and
+  [ADR 0004](docs/adr/0004-ktx2-basis-streaming.md).
+- Streaming: `TextureStreamer` keeps a small mip chain resident, picks the mip from on-screen size, promotes and
+  demotes with GPU copies, and stays under a memory budget.
+- Meshes: procedural, glTF/GLB, OBJ; materials reference texture handles. GPU resources live in handle-keyed pools.
 
 ---
 
 ## 16) Examples
 
-The engine provides several runnable examples that demonstrate its features and act as regression tests.  
-All examples are located in `crates/redox_core/examples` and `crates/redox_render/examples`.  
-You can run any example with:
+Three examples are kept; older demos were removed (they remain in git history).
+
+| Example | What it is |
+|---|---|
+| `skinned_demo` | Skinned rigs, IK, TAA/GTAO/VSM. Also the visual regression test (`--golden`, `--screenshot`) |
+| `dino_runner` | 3D endless runner on the full plugin stack (jump `Space`/`Up`/`W`, restart `R`) |
+| `dino_game` | Legacy raw-winit loop kept for comparison |
 
 ```bash
-cargo run --example <example_name> -p redox_core
+cargo run --release --example skinned_demo -p redox_core
+cargo run --release --example dino_runner -p redox_core
+cargo run --release -p redox_editor
 ```
 
-### Featured example: `dino_runner`
-
-Voxel endless-runner scene in a sunset canyon style:
-
-- Manual jump controls: `Space` / `Up` / `W`
-- Endless score with speed ramp
-- Collision -> `Game Over`
-- Restart run: `R`
-
-Run it with:
-
-```bash
-cargo run --example dino_runner -p redox_core
-```
+---
 
 ## 17) Build and run
 
@@ -338,3 +359,30 @@ bakes headlessly.
   pool evicts the least recently used page, and windows follow the camera in page steps.
 - **Look.** Tone mapping writes linear values to sRGB targets (it used to be encoded twice);
   `Renderer::set_ibl_intensity` scales environment lighting.
+
+---
+
+## 20) Roadmap
+
+**Next (days):** import PNG→KTX2 from the editor; show streaming state in the asset panel; a golden frame for
+IBL from KTX2; test BasisLZ against third-party files; hook `TextureStreamer` into `dino_runner` and measure
+memory; coverage for render and editor code.
+
+**Soon (weeks):** hot reload of VG compute and IBL; frame-graph dependency inference and transient memory
+aliasing; live checks of gamepad, IME and DX12/Metal; GPU skinning; SDF pages from streaming; an editor that
+can save scenes, undo and import assets.
+
+**Later (months):** ray-traced DDGI, a full Substrate material graph, and one complete game prototype built
+on the engine to expose the real API gaps; release hygiene (versions, publishing, CI).
+
+Details and history: [`PROGRESS.md`](PROGRESS.md), [`CHANGELOG.md`](CHANGELOG.md),
+[`docs/PLAN_TEXTURES.md`](docs/PLAN_TEXTURES.md), [`ARCHITECTURE_REALITY.md`](ARCHITECTURE_REALITY.md).
+
+## 21) Tech stack
+
+Rust 1.96 (MSRV 1.95, edition 2024) · wgpu 30 · winit 0.30 · egui 0.36 · rapier3d 0.36 · kira 0.12 · glam 0.33 ·
+ktx2, ruzstd, basis-universal · lz4_flex · gilrs · postcard.
+
+## 22) License
+
+Dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.

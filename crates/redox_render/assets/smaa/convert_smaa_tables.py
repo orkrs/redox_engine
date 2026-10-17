@@ -3,9 +3,9 @@ import os
 import sys
 from pathlib import Path
 
-ROOT = Path(r"c:\Users\yann1n\RustroverProjects\redox_engine")
+ROOT = Path(__file__).resolve().parents[4]
 OUT = ROOT / "crates" / "redox_render" / "assets" / "smaa"
-TEMP = Path(os.environ.get("TEMP", r"C:\Users\yann1n\AppData\Local\Temp"))
+TEMP = Path(os.environ.get("TEMP", os.environ.get("TMPDIR", "/tmp")))
 
 def parse_c_byte_array(header_path: Path, array_name: str) -> bytes:
     text = header_path.read_text(encoding="utf-8", errors="replace")
