@@ -7,6 +7,7 @@ use rapier3d::prelude::{
 };
 use redox_ecs::Entity;
 use redox_math::{Quat, Vec3};
+use std::collections::HashSet;
 
 use crate::context::{PhysicsContext, PhysicsError};
 
@@ -62,6 +63,17 @@ pub struct ShapeHit {
     pub point: Vec3,
     /// Surface normal of the hit, facing the caster.
     pub normal: Vec3,
+}
+
+/// The nearest point on a collider surface, as returned by [`PhysicsContext::closest_point`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ClosestPoint {
+    /// Entity owning the collider, if it is mapped to one.
+    pub entity: Option<Entity>,
+    /// World-space point on the collider (the query point itself when inside).
+    pub point: Vec3,
+    /// Distance from the query point; 0 when inside.
+    pub distance: f32,
 }
 
 /// Collision group membership and filter, as bit masks.
@@ -142,19 +154,115 @@ impl PhysicsContext {
     ) -> Option<ShapeHit> {
         let direction = unit_direction(direction)?;
         let excluded = self.excluded_colliders(exclude);
+        let pose = Pose::from_parts(position, rotation);
+        self.cast_skipping(shape, &pose, direction, max_distance, &excluded, layers)
+    }
+
+    /// Sweeps `shape` and returns the first hit on every entity along the way, nearest first.
+    ///
+    /// Filtering works as in [`PhysicsContext::cast_shape`]; a (near) zero direction returns an
+    /// empty list. Each entity yields at most one hit.
+    pub fn cast_shape_all(
+        &self,
+        shape: QueryShape,
+        position: Vec3,
+        rotation: Quat,
+        direction: Vec3,
+        max_distance: f32,
+        exclude: &[Entity],
+        layers: u32,
+    ) -> Vec<ShapeHit> {
+        let Some(direction) = unit_direction(direction) else {
+            return Vec::new();
+        };
+        let mut skipped = self.excluded_colliders(exclude);
+        let pose = Pose::from_parts(position, rotation);
+        let mut hits = Vec::new();
+        while let Some(hit) =
+            self.cast_skipping(shape, &pose, direction, max_distance, &skipped, layers)
+        {
+            match hit.entity.and_then(|e| self.collider_handles(e)) {
+                Some(handles) => skipped.extend(handles.iter().copied()),
+                // An unmapped collider cannot be skipped by entity; stop to avoid looping.
+                None => {
+                    hits.push(hit);
+                    break;
+                }
+            }
+            hits.push(hit);
+        }
+        hits
+    }
+
+    /// Entities with a collider that contains `point` (each entity once).
+    ///
+    /// Filtering works as in [`PhysicsContext::cast_shape`].
+    pub fn overlap_point(&self, point: Vec3, exclude: &[Entity], layers: u32) -> Vec<Entity> {
+        let excluded = self.excluded_colliders(exclude);
         let predicate = |handle: ColliderHandle, collider: &Collider| {
             !excluded.contains(&handle) && layer_matches(collider, layers)
+        };
+        let pipeline = self.query_pipeline(QueryFilter::default().predicate(&predicate));
+        let mut entities: Vec<Entity> = Vec::new();
+        for (handle, _) in pipeline.intersect_point(point) {
+            if let Some(entity) = self.entity_of_collider(handle)
+                && !entities.contains(&entity)
+            {
+                entities.push(entity);
+            }
+        }
+        entities
+    }
+
+    /// The nearest point on any collider surface within `max_distance` of `point`.
+    ///
+    /// A point inside a collider returns that point itself with distance 0. Filtering works as
+    /// in [`PhysicsContext::cast_shape`].
+    pub fn closest_point(
+        &self,
+        point: Vec3,
+        max_distance: f32,
+        exclude: &[Entity],
+        layers: u32,
+    ) -> Option<ClosestPoint> {
+        let excluded = self.excluded_colliders(exclude);
+        let predicate = |handle: ColliderHandle, collider: &Collider| {
+            !excluded.contains(&handle) && layer_matches(collider, layers)
+        };
+        let pipeline = self.query_pipeline(QueryFilter::default().predicate(&predicate));
+        let (handle, projection) = pipeline.project_point(point, max_distance, true)?;
+        let inside = projection.is_inside;
+        let found = if inside { point } else { projection.point };
+        Some(ClosestPoint {
+            entity: self.entity_of_collider(handle),
+            point: found,
+            distance: if inside {
+                0.0
+            } else {
+                (found - point).length()
+            },
+        })
+    }
+
+    /// Casts a shape, ignoring the `skipped` colliders and those outside `layers`.
+    fn cast_skipping(
+        &self,
+        shape: QueryShape,
+        pose: &Pose,
+        direction: Vec3,
+        max_distance: f32,
+        skipped: &HashSet<ColliderHandle>,
+        layers: u32,
+    ) -> Option<ShapeHit> {
+        let predicate = |handle: ColliderHandle, collider: &Collider| {
+            !skipped.contains(&handle) && layer_matches(collider, layers)
         };
         let filter = QueryFilter::default().predicate(&predicate);
         let shared = shape.to_shared();
         let options = ShapeCastOptions::with_max_time_of_impact(max_distance);
-
-        let (handle, hit) = self.query_pipeline(filter).cast_shape(
-            &Pose::from_parts(position, rotation),
-            direction,
-            &*shared,
-            options,
-        )?;
+        let (handle, hit) = self
+            .query_pipeline(filter)
+            .cast_shape(pose, direction, &*shared, options)?;
 
         // The hit collider is the composite side of the cast: its witness and normal (1) are
         // in world space, while (2) belongs to the caster's local frame.

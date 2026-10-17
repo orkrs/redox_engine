@@ -56,6 +56,8 @@ pub struct PhysicsContext {
     pub(crate) contact_raw: std::sync::Mutex<Vec<CollisionEvent>>,
     /// Converted contact events waiting for `drain_contact_events`.
     pub(crate) contact_events: Vec<ContactEvent>,
+    /// Joint id bookkeeping and broken-joint events.
+    pub(crate) joints: crate::joints::JointBook,
 }
 
 impl PhysicsContext {
@@ -80,6 +82,7 @@ impl PhysicsContext {
             collision_events: std::sync::Mutex::new(Vec::new()),
             contact_raw: std::sync::Mutex::new(Vec::new()),
             contact_events: Vec::new(),
+            joints: Default::default(),
         }
     }
 
@@ -141,6 +144,7 @@ impl PhysicsContext {
             &sink,
         );
         self.collect_contact_events();
+        self.break_overloaded_joints(dt);
     }
 
     /// Drains and maps Rapier collision events without requiring a World borrow.
@@ -226,6 +230,7 @@ impl PhysicsContext {
     /// Removes a rigid body and its colliders from the world.
     pub fn remove_rigid_body(&mut self, entity: Entity) -> Result<(), PhysicsError> {
         if let Some((body_handle, col_handles)) = self.entity_to_body.remove(&entity) {
+            self.forget_joints_of(entity);
             for col in col_handles {
                 self.collider_to_entity.remove(&col);
             }
