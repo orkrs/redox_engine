@@ -21,8 +21,10 @@ pub mod cues;
 pub mod debug;
 pub mod loader;
 pub mod mixer;
+pub mod music;
 pub mod spatial;
 pub mod systems;
+pub mod voices;
 
 pub use asset_types::AudioData;
 pub use components::{
@@ -36,7 +38,9 @@ pub use mixer::{
     DuckingController, MixerBus, MixerBusId, MixerGraph, PlayMode, PlayRequest, db_to_linear,
     linear_to_db,
 };
+pub use music::{MusicDirector, MusicFrame};
 pub use systems::{
     OcclusionResult, check_occlusion, compute_active_reverb, occlusion_raycast_system,
     reverb_listener_system,
 };
+pub use voices::{VoiceBudget, VoiceDecision};
