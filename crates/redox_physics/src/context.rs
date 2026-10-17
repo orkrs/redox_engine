@@ -46,6 +46,8 @@ pub struct PhysicsContext {
     // Mappings between ECS Entities and Rapier Handles
     entity_to_body: HashMap<Entity, (RigidBodyHandle, Vec<ColliderHandle>)>,
     collider_to_entity: HashMap<ColliderHandle, Entity>,
+    /// Last `CollisionLayers` value applied per entity by `sync_to_physics`.
+    pub(crate) applied_layers: HashMap<Entity, crate::shapes::CollisionLayers>,
 
     // Queues for systems
     /// Raycasts queued by gameplay code, answered by the next physics tick.
@@ -78,6 +80,7 @@ impl PhysicsContext {
             soft_bodies: SoftBodySet::new(),
             entity_to_body: HashMap::new(),
             collider_to_entity: HashMap::new(),
+            applied_layers: HashMap::new(),
             raycast_requests: SegQueue::new(),
             collision_events: std::sync::Mutex::new(Vec::new()),
             contact_raw: std::sync::Mutex::new(Vec::new()),
@@ -231,6 +234,7 @@ impl PhysicsContext {
     pub fn remove_rigid_body(&mut self, entity: Entity) -> Result<(), PhysicsError> {
         if let Some((body_handle, col_handles)) = self.entity_to_body.remove(&entity) {
             self.forget_joints_of(entity);
+            self.applied_layers.remove(&entity);
             for col in col_handles {
                 self.collider_to_entity.remove(&col);
             }

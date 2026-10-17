@@ -1,5 +1,6 @@
 use crate::components::{Kinematic, Velocity};
 use crate::context::PhysicsContext;
+use crate::shapes::CollisionLayers;
 use rapier3d::prelude::RigidBodyHandle;
 use redox_ecs::Entity;
 use redox_ecs::world::World;
@@ -11,10 +12,14 @@ thread_local! {
         RefCell::new(Vec::with_capacity(256));
     static FROM_PHYSICS_SCRATCH: RefCell<Vec<(Entity, Vec3, Quat)>> =
         RefCell::new(Vec::with_capacity(256));
+    static LAYERS_SCRATCH: RefCell<Vec<(Entity, CollisionLayers)>> =
+        RefCell::new(Vec::with_capacity(64));
 }
 
 /// Применяет изменения из ECS в физический движок без удаления ресурса и без аллокаций в куче.
 pub fn sync_to_physics(world: &mut World) {
+    apply_collision_layers(world);
+
     TO_PHYSICS_SCRATCH.with(|scratch| {
         let mut updates = scratch.borrow_mut();
         updates.clear();
@@ -39,6 +44,40 @@ pub fn sync_to_physics(world: &mut World) {
                     context.set_rigid_body_transform(body_handle, t.translation, t.rotation);
                 } else if let Some(v) = velocity {
                     context.set_rigid_body_velocity(body_handle, v.linvel, v.angvel);
+                }
+            }
+        }
+    });
+}
+
+/// Applies each simulated entity's `CollisionLayers` component to its colliders, but only when the
+/// component differs from the value last applied (the value is remembered in `PhysicsContext`).
+fn apply_collision_layers(world: &mut World) {
+    LAYERS_SCRATCH.with(|scratch| {
+        let mut changed = scratch.borrow_mut();
+        changed.clear();
+
+        // 1. Read-only pass: entities whose component differs from the applied value
+        if let Some(context) = world.get_resource::<PhysicsContext>() {
+            for (&entity, _) in context.active_bodies() {
+                if let Some(&layers) = world.get_component::<CollisionLayers>(entity)
+                    && context.applied_layers.get(&entity) != Some(&layers)
+                {
+                    changed.push((entity, layers));
+                }
+            }
+        }
+
+        // 2. Mutable pass: apply to the colliders and remember the applied value
+        if let Some(context) = world.get_resource_mut::<PhysicsContext>() {
+            for (entity, layers) in changed.drain(..) {
+                match context.set_collider_layers(entity, layers) {
+                    Ok(()) => {
+                        context.applied_layers.insert(entity, layers);
+                    }
+                    Err(err) => {
+                        log::warn!("Failed to apply collision layers to {entity:?}: {err:?}");
+                    }
                 }
             }
         }

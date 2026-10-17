@@ -80,6 +80,9 @@ pub struct ClosestPoint {
 ///
 /// Two colliders interact only when each one's `member_of` shares a bit with the other's
 /// `collides_with`.
+///
+/// Also usable as an ECS component: `sync_to_physics` applies it to the entity's colliders
+/// whenever it changes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CollisionLayers {
     /// Layers this collider belongs to.
