@@ -9,6 +9,8 @@
 //!   (with plural forms), keyboard and mouse navigation.
 //!
 //! Keys: WASD / arrows move, Q/E turn the camera, Space waves, Esc pauses, Enter selects.
+//! Gamepad: left stick moves, right stick turns the camera, A waves and confirms, D-pad moves the
+//! menu focus, B / Start pauses. The best time and the language are saved between runs.
 //!
 //! Run: `cargo run --example courier -p redox_core --release`
 //! Tests (game rules, rig, screens): `cargo test --example courier -p redox_core`
@@ -17,7 +19,10 @@
 #![allow(clippy::unwrap_used)]
 
 mod game;
+mod pad;
+mod progress;
 mod rig;
+mod sounds;
 mod ui;
 mod world_assets;
 
@@ -28,10 +33,11 @@ use redox_anim::Pose;
 use redox_asset::{
     AssetManager, AssetSource, Handle, Ktx2Texture, PakSource, Priority, StreamedTexture,
 };
+use redox_audio::{AudioContext, CueLibrary, CueSelector};
 use redox_core::config::EngineConfig;
 use redox_core::window::{RunClosure, create_window};
 use redox_ecs::World as EcsWorld;
-use redox_input::InputState;
+use redox_input::{GamepadsState, GilrsBackend, InputState};
 use redox_math::{Aabb, Mat4, Quat, Vec3};
 use redox_render::asset_types::MaterialData;
 use redox_render::camera::Camera;
@@ -344,6 +350,19 @@ fn main() {
     let mut ui_ctx = UiContext::new(&window, ctx.device(), ctx.surface_format());
     ui_ctx.show_debug = false;
     let mut loc = ui::localization();
+    let saves = progress::save_manager();
+    let mut progress = progress::Progress::load(&saves);
+    if let Some(language) = &progress.language {
+        loc.set_language(language);
+    }
+    let mut audio = AudioContext::new();
+    sounds::register_all(&mut audio);
+    let cues = CueLibrary::parse(sounds::CUES).expect("valid cue table");
+    let mut selector = CueSelector::new();
+    let mut pads = GamepadsState::new();
+    let mut pad_backend = GilrsBackend::new();
+    let mut pad_move = (0.0f32, 0.0f32, 0.0f32);
+    let mut new_record = false;
     let mut screens = ScreenStack::default();
     screens.reset("menu", true);
     let mut focus = Focus::default();
@@ -358,7 +377,19 @@ fn main() {
 
     event_loop
         .run_closure(move |event, elwt| match event {
-            winit::event::Event::NewEvents(_) => input.begin_frame(),
+            winit::event::Event::NewEvents(_) => {
+                input.begin_frame();
+                pads.begin_frame();
+                if let Some(backend) = pad_backend.as_mut() {
+                    backend.poll(&mut pads);
+                }
+                let pad = pad::read(&pads);
+                escape |= pad.back;
+                activate |= pad.confirm;
+                wave_pressed |= pad.wave;
+                nav = nav.or(pad.nav);
+                pad_move = (pad.move_x, pad.move_z, pad.camera_turn);
+            }
             winit::event::Event::WindowEvent { event, .. } => {
                 let consumed = ui_ctx.handle_window_event(&window, &event);
                 input.process_window_event(&event);
@@ -436,15 +467,23 @@ fn main() {
                         // Simulation: only while playing; the menu shows the idle hero and a slow orbit.
                         let playing = top == "hud";
                         let want = if playing {
-                            controls(&input, std::mem::take(&mut wave_pressed))
+                            let mut want = controls(&input, std::mem::take(&mut wave_pressed));
+                            want.move_x = (want.move_x + pad_move.0).clamp(-1.0, 1.0);
+                            want.move_z = (want.move_z + pad_move.1).clamp(-1.0, 1.0);
+                            want.camera_turn = (want.camera_turn + pad_move.2).clamp(-1.0, 1.0);
+                            want
                         } else {
                             wave_pressed = false;
                             Controls::default()
                         };
+                        if want.wave {
+                            audio.play_cue(&cues, &mut selector, "wave", time);
+                        }
                         if !matches!(top.as_str(), "pause" | "win") {
                             let step = world.step(dt, want, &model.skeleton, &model.clips);
                             if step.picked > 0 {
                                 log::info!("picked up {} coin(s)", step.picked);
+                                audio.play_cue(&cues, &mut selector, "coin", time);
                             }
                             let skin = Pose::from_local(&model.skeleton, &step.output.pose)
                                 .skin_matrices(&model.skeleton);
@@ -453,7 +492,12 @@ fn main() {
                             }
                         }
                         orbit = if playing { 0.0 } else { orbit + 0.25 * dt };
-                        if playing && world.finished.is_some() {
+                        if playing && let Some(seconds) = world.finished {
+                            new_record = progress.record_run(seconds);
+                            if new_record {
+                                progress.save(&saves);
+                            }
+                            audio.play_cue(&cues, &mut selector, "win", time);
                             screens.push("win", false);
                         }
 
@@ -537,9 +581,13 @@ fn main() {
                             screens.visible().iter().map(|s| s.name.clone()).collect();
                         for name in visible {
                             let tree = match name.as_str() {
-                                "menu" => ui::main_menu(),
+                                "menu" => ui::main_menu(progress.best_seconds),
                                 "pause" => ui::pause_menu(),
-                                "win" => ui::win_screen(&loc, world.finished.unwrap_or(0.0)),
+                                "win" => ui::win_screen(
+                                    world.finished.unwrap_or(0.0),
+                                    progress.best_seconds,
+                                    new_record,
+                                ),
                                 _ => ui::hud(&hud, &loc),
                             };
                             let laid = layout_localized(&tree, root, &measure, &loc);
@@ -549,6 +597,7 @@ fn main() {
                                 focus.ensure(&buttons);
                                 if let Some(direction) = nav.take() {
                                     focus.navigate(direction, &buttons);
+                                    audio.play_cue(&cues, &mut selector, "select", time);
                                 }
                                 let (vx, vy) = scale.to_virtual(
                                     cursor.0 / window.scale_factor() as f32,
@@ -569,8 +618,13 @@ fn main() {
                                         .flatten()
                                 });
                                 if let Some(button) = chosen {
+                                    audio.play_cue(&cues, &mut selector, "select", time);
                                     let mut restart = false;
                                     quit |= act(&button, &mut screens, &mut loc, &mut restart);
+                                    if button == "language" {
+                                        progress.language = Some(loc.language().to_string());
+                                        progress.save(&saves);
+                                    }
                                     if restart {
                                         world = World::new(level.clone(), &model.skeleton);
                                     }

@@ -20,6 +20,9 @@ hud.hint = WASD move · Q/E camera · Space wave · Esc pause
 win.title = All coins collected!
 win.time = Your time: {t} s
 win.again = Play again
+win.record = New record!
+win.best = Best time: {t} s
+menu.best = Best time: {t} s
 ";
 
 pub const RU: &str = "\
@@ -41,6 +44,9 @@ hud.hint = WASD — ходьба · Q/E — камера · Пробел — п�
 win.title = Все монеты собраны!
 win.time = Ваше время: {t} с
 win.again = Играть ещё раз
+win.record = Новый рекорд!
+win.best = Лучшее время: {t} с
+menu.best = Лучшее время: {t} с
 ";
 
 pub fn localization() -> Localization {
@@ -70,9 +76,13 @@ fn wide(button: Node) -> Node {
     button.width(Dim::Fixed(420.0)).font_size(34.0)
 }
 
-pub fn main_menu() -> Node {
+pub fn main_menu(best: Option<f32>) -> Node {
+    let mut column = menu_column("title");
+    if let Some(seconds) = best {
+        column = column.child(Node::label_key("menu.best").arg("t", &format!("{seconds:.1}")));
+    }
     centered(
-        menu_column("title")
+        column
             .child(wide(Node::button_key("play", "menu.play")))
             .child(wide(Node::button_key("language", "menu.language")))
             .child(wide(Node::button_key("quit", "menu.quit"))),
@@ -87,11 +97,16 @@ pub fn pause_menu() -> Node {
     )
 }
 
-pub fn win_screen(loc: &Localization, seconds: f32) -> Node {
-    let _ = loc;
+pub fn win_screen(seconds: f32, best: Option<f32>, new_record: bool) -> Node {
+    let mut column = menu_column("win.title")
+        .child(Node::label_key("win.time").arg("t", &format!("{seconds:.1}")));
+    if new_record {
+        column = column.child(Node::label_key("win.record").color(ACCENT));
+    } else if let Some(best) = best {
+        column = column.child(Node::label_key("win.best").arg("t", &format!("{best:.1}")));
+    }
     centered(
-        menu_column("win.title")
-            .child(Node::label_key("win.time").arg("t", &format!("{seconds:.1}")))
+        column
             .child(wide(Node::button_key("play", "win.again")))
             .child(wide(Node::button_key("menu", "pause.menu"))),
     )
@@ -187,11 +202,13 @@ mod tests {
         for language in ["en", "ru"] {
             loc.set_language(language);
             for (w, h) in SIZES {
-                let main = fits(&main_menu(), &loc, w, h);
+                let main = fits(&main_menu(Some(12.3)), &loc, w, h);
                 assert_eq!(main.buttons().len(), 3);
                 let pause = fits(&pause_menu(), &loc, w, h);
                 assert_eq!(pause.buttons().len(), 2);
-                let win = fits(&win_screen(&loc, 42.5), &loc, w, h);
+                let win = fits(&win_screen(42.5, Some(40.0), false), &loc, w, h);
+                let record = fits(&win_screen(42.5, Some(42.5), true), &loc, w, h);
+                assert!(record.rect_of("play").is_some());
                 assert!(win.rect_of("play").is_some());
             }
         }
@@ -200,7 +217,7 @@ mod tests {
     #[test]
     fn menu_buttons_do_not_overlap() {
         let loc = localization();
-        let ui = fits(&main_menu(), &loc, 1920.0, 1080.0);
+        let ui = fits(&main_menu(None), &loc, 1920.0, 1080.0);
         let buttons = ui.buttons();
         for (i, (_, a)) in buttons.iter().enumerate() {
             for (_, b) in &buttons[i + 1..] {
@@ -209,6 +226,37 @@ mod tests {
                 assert!(!overlap, "{a:?} overlaps {b:?}");
             }
         }
+    }
+
+    fn labels(ui: &redox_ui::game::LaidUi) -> Vec<String> {
+        ui.items
+            .iter()
+            .filter_map(|i| match &i.kind {
+                redox_ui::game::Laid::Label(t) => Some(t.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_best_time_and_the_record_are_shown() {
+        let mut loc = localization();
+        let menu = fits(&main_menu(Some(31.25)), &loc, 1920.0, 1080.0);
+        assert!(
+            labels(&menu)
+                .iter()
+                .any(|t| t == "Best time: 31.2 s" || t == "Best time: 31.3 s")
+        );
+        let none = fits(&main_menu(None), &loc, 1920.0, 1080.0);
+        assert!(!labels(&none).iter().any(|t| t.starts_with("Best time")));
+
+        let record = fits(&win_screen(20.0, Some(20.0), true), &loc, 1920.0, 1080.0);
+        assert!(labels(&record).iter().any(|t| t == "New record!"));
+        let slower = fits(&win_screen(25.0, Some(20.0), false), &loc, 1920.0, 1080.0);
+        assert!(labels(&slower).iter().any(|t| t == "Best time: 20.0 s"));
+        loc.set_language("ru");
+        let ru = fits(&win_screen(20.0, Some(20.0), true), &loc, 1920.0, 1080.0);
+        assert!(labels(&ru).iter().any(|t| t == "Новый рекорд!"));
     }
 
     #[test]
