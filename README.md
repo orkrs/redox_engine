@@ -369,7 +369,7 @@ IBL from KTX2; test BasisLZ against third-party files; hook `TextureStreamer` in
 memory; coverage for render and editor code.
 
 **Soon (weeks):** hot reload of VG compute and IBL; frame-graph dependency inference and transient memory
-aliasing; live checks of gamepad, IME and DX12/Metal; GPU skinning; SDF pages from streaming; an editor that
+aliasing; gamepad and IME checks on the prototype; GPU skinning; SDF pages from streaming; an editor that
 can save scenes, undo and import assets.
 
 **Later (months):** ray-traced DDGI, a full Substrate material graph, and one complete game prototype built
