@@ -7,6 +7,7 @@
 //! redox_cook list <file.pak>               print the entries of an archive
 //! redox_cook verify <file.pak>             read every entry and check its hash
 //! redox_cook texture-info <file.ktx2>      print format, size, mips, layers, faces, compression
+//! redox_cook bake-ibl <sky.hdr> <out-dir>  bake IBL maps to KTX2 (build with --features bake)
 //! ```
 //!
 //! `.meta` sidecars are not packed (they are editor data); everything else is.
@@ -14,12 +15,15 @@
 //! `<out.pak>.stamp` file (path, size and modification time of every input plus the options)
 //! and skips the work when nothing changed since the last run.
 
+#[cfg(feature = "bake")]
+mod bake;
+
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use redox_asset::{AssetRegistry, PakReader, PakWriter};
 
-const USAGE: &str = "usage:\n  redox_cook scan <assets-dir>\n  redox_cook pack <assets-dir> <out.pak> [--compress] [--incremental]\n  redox_cook list <file.pak>\n  redox_cook verify <file.pak>\n  redox_cook texture-info <file.ktx2>";
+const USAGE: &str = "usage:\n  redox_cook scan <assets-dir>\n  redox_cook pack <assets-dir> <out.pak> [--compress] [--incremental]\n  redox_cook list <file.pak>\n  redox_cook verify <file.pak>\n  redox_cook texture-info <file.ktx2>\n  redox_cook bake-ibl <sky.hdr> <out-dir>";
 
 /// A parsed command line.
 #[derive(Debug, PartialEq, Eq)]
@@ -34,6 +38,10 @@ enum Command {
     List(PathBuf),
     Verify(PathBuf),
     TextureInfo(PathBuf),
+    BakeIbl {
+        input: PathBuf,
+        out: PathBuf,
+    },
 }
 
 fn parse(args: &[String]) -> Result<Command, String> {
@@ -67,8 +75,14 @@ fn parse(args: &[String]) -> Result<Command, String> {
         ["list", pak] => Ok(Command::List(pak.into())),
         ["verify", pak] => Ok(Command::Verify(pak.into())),
         ["texture-info", file] => Ok(Command::TextureInfo(file.into())),
+        ["bake-ibl", input, out] => Ok(Command::BakeIbl {
+            input: input.into(),
+            out: out.into(),
+        }),
         [] => Err("missing command".into()),
-        [cmd, ..] if !["scan", "pack", "list", "verify", "texture-info"].contains(cmd) => {
+        [cmd, ..]
+            if !["scan", "pack", "list", "verify", "texture-info", "bake-ibl"].contains(cmd) =>
+        {
             Err(format!("unknown command: {cmd}"))
         }
         _ => Err("wrong number of arguments".into()),
@@ -136,6 +150,7 @@ fn run(command: Command) -> Result<(), String> {
             println!("{}", texture_info(&bytes)?);
             Ok(())
         }
+        Command::BakeIbl { input, out } => run_bake_ibl(&input, &out),
         Command::Verify(pak) => {
             let reader = PakReader::open(&pak).map_err(|e| e.to_string())?;
             let mut bad = 0usize;
@@ -155,6 +170,21 @@ fn run(command: Command) -> Result<(), String> {
             }
         }
     }
+}
+
+#[cfg(feature = "bake")]
+fn run_bake_ibl(input: &Path, out: &Path) -> Result<(), String> {
+    let written = bake::bake_ibl(input, out)?;
+    println!("wrote {} to {}", written.join(", "), out.display());
+    Ok(())
+}
+
+#[cfg(not(feature = "bake"))]
+fn run_bake_ibl(_input: &Path, _out: &Path) -> Result<(), String> {
+    Err(
+        "bake-ibl needs the GPU renderer: cargo run -p redox_cook --features bake -- bake-ibl ..."
+            .into(),
+    )
 }
 
 /// Human-readable summary of a KTX2 file (what `texture-info` prints).
@@ -334,6 +364,13 @@ mod tests {
             .build();
         assert!(texture_info(&odd).unwrap().contains("cannot be loaded"));
         assert!(texture_info(b"junk").is_err());
+        assert_eq!(
+            parse(&args(&["bake-ibl", "s.hdr", "out"])),
+            Ok(Command::BakeIbl {
+                input: "s.hdr".into(),
+                out: "out".into()
+            })
+        );
         assert_eq!(
             parse(&args(&["texture-info", "a.ktx2"])),
             Ok(Command::TextureInfo("a.ktx2".into()))

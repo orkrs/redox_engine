@@ -19,6 +19,112 @@ pub struct IBLResource {
     _owned: Vec<wgpu::Texture>,
 }
 
+/// The four maps of an IBL environment as KTX2 textures.
+pub struct IblKtx2 {
+    /// Environment cube map.
+    pub environment: redox_asset::Ktx2Texture,
+    /// Diffuse irradiance cube map.
+    pub irradiance: redox_asset::Ktx2Texture,
+    /// Prefiltered specular cube map (one roughness level per mip).
+    pub prefiltered: redox_asset::Ktx2Texture,
+    /// BRDF lookup table.
+    pub brdf_lut: redox_asset::Ktx2Texture,
+}
+
+/// Copies a GPU texture (all mips, layers and cube faces) into a [`redox_asset::Ktx2Texture`].
+///
+/// Needs `COPY_SRC` on the texture. Supports `Rgba16Float` and `Rgba8Unorm`.
+pub fn read_texture_ktx2(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+    cube: bool,
+) -> Option<redox_asset::Ktx2Texture> {
+    use redox_asset::TextureFormat as F;
+
+    let format = match texture.format() {
+        wgpu::TextureFormat::Rgba16Float => F::Rgba16Float,
+        wgpu::TextureFormat::Rgba8Unorm => F::Rgba8Unorm,
+        _ => return None,
+    };
+    let bytes_per_pixel = format.bytes_per_block() as u32;
+    let (width, height) = (texture.width(), texture.height());
+    let subs = texture.depth_or_array_layers();
+    let mips = texture.mip_level_count();
+    let faces = if cube { 6 } else { 1 };
+    if !subs.is_multiple_of(faces) {
+        return None;
+    }
+
+    // One buffer per (mip, sub-image), all copied by one submission.
+    let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("ibl_readback"),
+    });
+    let mut jobs = Vec::new();
+    for mip in 0..mips {
+        let (w, h) = ((width >> mip).max(1), (height >> mip).max(1));
+        let row = w * bytes_per_pixel;
+        let padded = row.div_ceil(align) * align;
+        for sub in 0..subs {
+            let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("ibl_readback_buffer"),
+                size: u64::from(padded) * u64::from(h),
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            });
+            encoder.copy_texture_to_buffer(
+                wgpu::TexelCopyTextureInfo {
+                    texture,
+                    mip_level: mip,
+                    origin: wgpu::Origin3d { x: 0, y: 0, z: sub },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::TexelCopyBufferInfo {
+                    buffer: &buffer,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(padded),
+                        rows_per_image: Some(h),
+                    },
+                },
+                wgpu::Extent3d {
+                    width: w,
+                    height: h,
+                    depth_or_array_layers: 1,
+                },
+            );
+            jobs.push((mip, buffer, row, padded, h));
+        }
+    }
+    queue.submit(Some(encoder.finish()));
+    for (_, buffer, ..) in &jobs {
+        buffer.slice(..).map_async(wgpu::MapMode::Read, |result| {
+            result.expect("map IBL readback buffer");
+        });
+    }
+    let _ = device.poll(wgpu::PollType::wait_indefinitely());
+
+    let mut levels = vec![Vec::new(); mips as usize];
+    for (mip, buffer, row, padded, h) in jobs {
+        let mapped = buffer.slice(..).get_mapped_range().ok()?;
+        for y in 0..h as usize {
+            let start = y * padded as usize;
+            levels[mip as usize].extend_from_slice(&mapped[start..start + row as usize]);
+        }
+        drop(mapped);
+        buffer.unmap();
+    }
+    Some(redox_asset::Ktx2Texture {
+        width,
+        height,
+        format,
+        layers: subs / faces,
+        faces,
+        levels,
+    })
+}
+
 /// Represents a Skybox (environment map).
 pub struct Skybox {
     /// Cubemap texture.
@@ -143,7 +249,9 @@ impl IBLProcessor {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba16Float,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::STORAGE_BINDING,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
 
@@ -213,7 +321,9 @@ impl IBLProcessor {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba16Float,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::STORAGE_BINDING,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
 
@@ -264,7 +374,9 @@ impl IBLProcessor {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba16Float,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::STORAGE_BINDING,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
 
@@ -340,7 +452,9 @@ impl IBLProcessor {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba16Float,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::STORAGE_BINDING,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
 
@@ -446,6 +560,64 @@ impl IBLResource {
             env_loaded: true,
             _owned: vec![skybox.cubemap, irradiance_tex, prefiltered_tex, brdf_tex],
         }
+    }
+
+    /// Builds an IBL resource from baked KTX2 textures (see [`Self::export_ktx2`]).
+    ///
+    /// `environment`, `irradiance` and `prefiltered` must be cube maps, `brdf_lut` a plain 2D
+    /// texture. Fails with a message otherwise.
+    pub fn from_ktx2(
+        environment: Texture,
+        irradiance: Texture,
+        prefiltered: Texture,
+        brdf_lut: Texture,
+    ) -> Result<Self, String> {
+        use wgpu::TextureViewDimension as D;
+        for (name, texture, expected) in [
+            ("environment", &environment, D::Cube),
+            ("irradiance", &irradiance, D::Cube),
+            ("prefiltered", &prefiltered, D::Cube),
+            ("brdf_lut", &brdf_lut, D::D2),
+        ] {
+            if texture.view_dimension != expected {
+                return Err(format!(
+                    "IBL {name} must be {expected:?}, got {:?}",
+                    texture.view_dimension
+                ));
+            }
+        }
+        Ok(Self {
+            irradiance_view: irradiance.view.clone(),
+            prefiltered_view: prefiltered.view.clone(),
+            brdf_lut_view: brdf_lut.view.clone(),
+            environment_view: environment.view.clone(),
+            env_loaded: true,
+            _owned: vec![
+                environment.texture,
+                irradiance.texture,
+                prefiltered.texture,
+                brdf_lut.texture,
+            ],
+        })
+    }
+
+    /// Reads the generated maps back from the GPU as KTX2 textures (RGBA16F or RGBA8, all mips),
+    /// so they can be saved once and loaded with [`Self::from_ktx2`] next time.
+    ///
+    /// `None` for the dummy placeholder or when a map has a format KTX2 export does not know.
+    pub fn export_ktx2(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Option<IblKtx2> {
+        if !self.env_loaded || self._owned.len() != 4 {
+            return None;
+        }
+        let [env, irradiance, prefiltered, brdf] = &self._owned[..] else {
+            return None;
+        };
+        Some(IblKtx2 {
+            environment: read_texture_ktx2(device, queue, env, true)?,
+            irradiance: read_texture_ktx2(device, queue, irradiance, true)?,
+            prefiltered: read_texture_ktx2(device, queue, prefiltered, true)?,
+            brdf_lut: read_texture_ktx2(device, queue, brdf, false)?,
+        })
     }
 
     /// Returns true while no real environment has been loaded

@@ -35,8 +35,42 @@ pub struct SharedLayouts {
     pub light_bgl: wgpu::BindGroupLayout,
     /// Per-object uniform layout.
     pub model_bgl: wgpu::BindGroupLayout,
-    /// Texture and sampler layout.
+    /// Texture and sampler layout (2D).
     pub texture_bgl: wgpu::BindGroupLayout,
+    /// Texture and sampler layout for 2D arrays.
+    pub texture_array_bgl: wgpu::BindGroupLayout,
+    /// Texture and sampler layout for cube maps.
+    pub texture_cube_bgl: wgpu::BindGroupLayout,
+    /// Texture and sampler layout for cube map arrays.
+    pub texture_cube_array_bgl: wgpu::BindGroupLayout,
+}
+
+fn texture_layout(
+    device: &wgpu::Device,
+    label: &str,
+    view_dimension: wgpu::TextureViewDimension,
+) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some(label),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    multisampled: false,
+                    view_dimension,
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
+    })
 }
 
 /// Per-instance model data in the storage buffer.
@@ -130,6 +164,21 @@ impl SharedLayouts {
             light_bgl,
             model_bgl,
             texture_bgl,
+            texture_array_bgl: texture_layout(
+                device,
+                "texture_array_bgl",
+                wgpu::TextureViewDimension::D2Array,
+            ),
+            texture_cube_bgl: texture_layout(
+                device,
+                "texture_cube_bgl",
+                wgpu::TextureViewDimension::Cube,
+            ),
+            texture_cube_array_bgl: texture_layout(
+                device,
+                "texture_cube_array_bgl",
+                wgpu::TextureViewDimension::CubeArray,
+            ),
         }
     }
 
@@ -181,6 +230,17 @@ impl SharedLayouts {
         })
     }
 
+    /// Layout that matches the shape of `texture` (2D, array, cube or cube array).
+    pub fn texture_layout_for(&self, texture: &Texture) -> &wgpu::BindGroupLayout {
+        use wgpu::TextureViewDimension as D;
+        match texture.view_dimension {
+            D::D2Array => &self.texture_array_bgl,
+            D::Cube => &self.texture_cube_bgl,
+            D::CubeArray => &self.texture_cube_array_bgl,
+            _ => &self.texture_bgl,
+        }
+    }
+
     /// Creates a texture bind group.
     pub fn create_texture_bind_group(
         &self,
@@ -189,7 +249,7 @@ impl SharedLayouts {
     ) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("texture_bg"),
-            layout: &self.texture_bgl,
+            layout: self.texture_layout_for(texture),
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,

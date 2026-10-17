@@ -5,12 +5,20 @@ use super::*;
 impl Renderer {
     /// Sets the environmental skybox and generates IBL maps.
     pub fn set_environment(&mut self, equirect: &Texture) {
-        self.ibl_resource =
+        let resource =
             IBLResource::from_equirect(&self.device, &self.queue, &self.ibl_processor, equirect);
+        self.set_ibl_resource(resource);
+    }
+
+    /// Uses a ready-made environment, for example one loaded from baked KTX2 files with
+    /// [`IBLResource::from_ktx2`]. Skips the GPU convolution that
+    /// [`Self::set_environment`] runs.
+    pub fn set_ibl_resource(&mut self, resource: IBLResource) {
+        self.ibl_resource = resource;
         self.update_shader_debug_buffer(ShaderDebugVizMode::None);
         self.update_global_bind_group();
         // The skybox samples the environment view directly: rebind it so a
-        // live skybox picks up the freshly generated cubemap.
+        // live skybox picks up the new cubemap.
         if let Some(sb) = &mut self.skybox_pass {
             sb.refresh_bind_group(
                 &self.device,

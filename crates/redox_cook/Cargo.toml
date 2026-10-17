@@ -8,9 +8,16 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+# `bake-ibl`: GPU convolution of an HDR sky into KTX2 maps.
+bake = ["dep:redox_render", "dep:wgpu", "dep:pollster"]
+
 [dependencies]
 redox_asset = { path = "../redox_asset" }
 ktx2 = "0.5"
+redox_render = { path = "../redox_render", optional = true }
+wgpu = { workspace = true, optional = true }
+pollster = { version = "1", optional = true }
 
 [dev-dependencies]
 redox_asset = { path = "../redox_asset", features = ["testing"] }
