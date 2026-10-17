@@ -37,7 +37,7 @@ fn hash(x: u32, y: u32) -> u32 {
 /// A mossy checkerboard: big tiles, grid lines and per-pixel speckle so that every mip differs.
 fn pixel(x: u32, y: u32, size: u32, base: [f32; 3]) -> [u8; 4] {
     let tile = (size / 16).max(1);
-    let checker = ((x / tile) + (y / tile)) % 2 == 0;
+    let checker = ((x / tile) + (y / tile)).is_multiple_of(2);
     let line = x % tile < 2.max(tile / 32) || y % tile < 2.max(tile / 32);
     let speckle = (hash(x, y) & 0xff) as f32 / 255.0;
     let shade =

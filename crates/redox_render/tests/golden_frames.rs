@@ -15,7 +15,9 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use redox_asset::testing::Ktx2Builder;
-use redox_asset::{AssetLoader, AssetManager, Handle, Ktx2Loader, Ktx2Texture, Priority, TextureFormat};
+use redox_asset::{
+    AssetLoader, AssetManager, Handle, Ktx2Loader, Ktx2Texture, Priority, TextureFormat,
+};
 use redox_ecs::World;
 use redox_math::{Aabb, Mat4, Quat, Vec3};
 use redox_render::Renderer;
@@ -39,7 +41,12 @@ struct Scene {
     object: RenderObject,
 }
 
-fn scene(renderer: &mut Renderer, mesh: Handle<MeshData>, material: usize, assets: &AssetManager) -> Scene {
+fn scene(
+    renderer: &mut Renderer,
+    mesh: Handle<MeshData>,
+    material: usize,
+    assets: &AssetManager,
+) -> Scene {
     let mesh_index = renderer
         .add_mesh_from_asset(mesh, assets.get(mesh).unwrap())
         .unwrap();
@@ -48,7 +55,11 @@ fn scene(renderer: &mut Renderer, mesh: Handle<MeshData>, material: usize, asset
         .camera_uniform
         .update(&camera, Vec3::new(0.0, 0.0, 2.2), Quat::IDENTITY);
     renderer.update_camera_buffer();
-    let mut lights = LightScene::new(DirectionalLight::new(Vec3::new(0.3, -0.5, -1.0), Vec3::ONE, 2.0));
+    let mut lights = LightScene::new(DirectionalLight::new(
+        Vec3::new(0.3, -0.5, -1.0),
+        Vec3::ONE,
+        2.0,
+    ));
     lights.ambient = Vec3::splat(0.4);
     Scene {
         camera,
@@ -121,7 +132,10 @@ fn check_against_file(name: &str, frame: &[u8]) {
     }
     let stored = image::open(&path).unwrap().to_rgba8();
     let error = mean_error(stored.as_raw(), frame);
-    assert!(error < TOLERANCE, "{name}: mean error {error:.3} against the stored frame");
+    assert!(
+        error < TOLERANCE,
+        "{name}: mean error {error:.3} against the stored frame"
+    );
 }
 
 fn shiny(assets: &mut AssetManager) -> Handle<MaterialData> {
@@ -150,7 +164,12 @@ fn ibl_baked_to_ktx2_lights_a_frame_like_the_generated_maps() {
 
     // A deterministic sky: bright warm horizon, cool zenith.
     let sky = image::RgbaImage::from_fn(64, 32, |x, y| {
-        image::Rgba([(220 - y * 4) as u8, (150 + y * 2) as u8, (90 + x * 2) as u8, 255])
+        image::Rgba([
+            (220 - y * 4) as u8,
+            (150 + y * 2) as u8,
+            (90 + x * 2) as u8,
+            255,
+        ])
     });
     let equirect = Texture::from_image(
         &renderer.device,
@@ -161,14 +180,19 @@ fn ibl_baked_to_ktx2_lights_a_frame_like_the_generated_maps() {
     )
     .unwrap();
     let processor = IBLProcessor::new(&renderer.device);
-    let generated = IBLResource::from_equirect(&renderer.device, &renderer.queue, &processor, &equirect);
-    let baked = generated.export_ktx2(&renderer.device, &renderer.queue).unwrap();
+    let generated =
+        IBLResource::from_equirect(&renderer.device, &renderer.queue, &processor, &equirect);
+    let baked = generated
+        .export_ktx2(&renderer.device, &renderer.queue)
+        .unwrap();
 
     renderer.set_ibl_resource(generated);
     let from_generated = draw(&mut renderer, &scene, material_index);
 
     let upload = |tex: &Ktx2Texture, label: &str| {
-        let loaded = Ktx2Loader::default().load(&tex.to_ktx2_bytes(true)).unwrap();
+        let loaded = Ktx2Loader::default()
+            .load(&tex.to_ktx2_bytes(true))
+            .unwrap();
         Texture::from_ktx2(&renderer.device, &renderer.queue, &loaded, label).unwrap()
     };
     let from_files = IBLResource::from_ktx2(
@@ -182,11 +206,19 @@ fn ibl_baked_to_ktx2_lights_a_frame_like_the_generated_maps() {
     let from_ktx2 = draw(&mut renderer, &scene, material_index);
 
     let error = mean_error(&from_generated, &from_ktx2);
-    assert!(error < TOLERANCE, "KTX2 IBL differs from the generated one: {error:.3}");
+    assert!(
+        error < TOLERANCE,
+        "KTX2 IBL differs from the generated one: {error:.3}"
+    );
     check_against_file("ibl_ktx2.png", &from_ktx2);
 }
 
-fn pump(renderer: &mut Renderer, assets: &mut AssetManager, world: &mut World, streamer: &mut TextureStreamer) {
+fn pump(
+    renderer: &mut Renderer,
+    assets: &mut AssetManager,
+    world: &mut World,
+    streamer: &mut TextureStreamer,
+) {
     assets.update(world);
     streamer.update(renderer, assets);
     let _ = renderer.device.poll(wgpu::PollType::wait_indefinitely());
@@ -250,6 +282,9 @@ fn a_streamed_texture_looks_like_the_whole_one_once_it_has_converged() {
     }
     let converged = draw(&mut renderer, &scene, streamed_index);
     let error = mean_error(&reference, &converged);
-    assert!(error < TOLERANCE, "converged streamed frame differs from the whole texture: {error:.3}");
+    assert!(
+        error < TOLERANCE,
+        "converged streamed frame differs from the whole texture: {error:.3}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }

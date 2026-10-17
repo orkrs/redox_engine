@@ -3,7 +3,7 @@
 //!
 //! The parts do not depend on a renderer, so they are tested without a window:
 //!
-//! * [`layout`]: [`Node`] trees (columns, rows, stacks, labels, buttons, bars) laid out in a
+//! * [`mod@layout`]: [`Node`] trees (columns, rows, stacks, labels, buttons, bars) laid out in a
 //!   virtual 1920x1080 space that scales to any window and respects a safe-area margin.
 //! * [`loc`]: [`Localization`] tables with a fallback language and `{name}` arguments.
 //! * [`focus`]: [`Focus`] moves a selection between buttons with the d-pad or arrow keys.

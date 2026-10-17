@@ -299,11 +299,10 @@ fn act(
 }
 
 fn main() {
-    let level_text;
     let pak_path = std::env::temp_dir().join("courier_assets.pak");
     world_assets::build_pak(&pak_path).expect("write the asset pack");
     let source: Arc<dyn AssetSource> = Arc::new(PakSource::open(&pak_path).expect("open the pack"));
-    level_text =
+    let level_text =
         String::from_utf8(source.read(world_assets::LEVEL).expect("level in the pack")).unwrap();
     let level = game::parse_level(&level_text).expect("valid level");
 

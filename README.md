@@ -22,7 +22,7 @@ still a viewer rather than a production tool. Everything below is what the code 
 | Assets | **Working**: GUIDs, `.pak` v2 (LZ4, range reads), ref counting, dependencies, priority queue with workers, `redox_cook` tool |
 | Physics, audio, input | **Working**: rapier 0.36, kira 0.12, gamepads, key rebinding, text/IME input (gamepad and IME not checked on live hardware) |
 | World and saves | **Working**: partitioned world, binary `world.bin`, save manager |
-| Animation | **Working**: clips, skinning (on the CPU), two-bone IK |
+| Animation | **Working**: clips, CPU skinning, two-bone IK, animation graph (state machines, blend trees, masked layers, root motion) |
 | Editor | **Early**: docking UI, outliner, inspector, asset browser, viewport; not a full authoring tool yet |
 | Platforms | Verified on Windows + Vulkan only. DX12 and Metal paths exist but were not exercised |
 
@@ -295,15 +295,17 @@ The renderer includes an experimental **Virtual Geometry** pipeline:
 
 ## 16) Examples
 
-Three examples are kept; older demos were removed (they remain in git history).
+Four examples are kept; older demos were removed (they remain in git history).
 
 | Example | What it is |
 |---|---|
+| `courier` | Third-person prototype: animation graph, game UI (EN/RU), pak-loaded level, streamed textures |
 | `skinned_demo` | Skinned rigs, IK, TAA/GTAO/VSM. Also the visual regression test (`--golden`, `--screenshot`) |
 | `dino_runner` | 3D endless runner on the full plugin stack (jump `Space`/`Up`/`W`, restart `R`) |
 | `dino_game` | Legacy raw-winit loop kept for comparison |
 
 ```bash
+cargo run --release --example courier -p redox_core
 cargo run --release --example skinned_demo -p redox_core
 cargo run --release --example dino_runner -p redox_core
 cargo run --release -p redox_editor

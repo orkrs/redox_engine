@@ -7,7 +7,7 @@ fn color32(c: Color) -> egui::Color32 {
     egui::Color32::from_rgba_unmultiplied(c.0, c.1, c.2, c.3)
 }
 
-/// A text measure that uses egui's real fonts, in virtual pixels (for [`super::layout`]).
+/// A text measure that uses egui's real fonts, in virtual pixels (for [`super::layout()`]).
 pub fn egui_measure<'a>(
     painter: &'a egui::Painter,
     scale: UiScale,

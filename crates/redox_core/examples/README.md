@@ -5,6 +5,7 @@ Run any example with `cargo run --release --example <name> -p redox_core`.
 ## For users (start here)
 | Example | What it shows | Notes |
 |---|---|---|
+| `courier` | third-person prototype: animation graph (blend tree, wave layer, root motion), game UI (menus, HUD, EN/RU), level and textures from a `.pak`, texture streaming | `cargo test --example courier -p redox_core` runs its game rules |
 | `skinned_demo` | clip-driven skinned rigs, two-bone IK, TAA/GTAO/VSM; `--golden` runs the regression frames, `--screenshot` renders headless | also the visual regression test |
 | `dino_runner` | 3D endless runner on the full plugin stack | KCC, triggers, spatial SFX |
 

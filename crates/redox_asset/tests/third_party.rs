@@ -20,11 +20,20 @@ fn third_party_ktx2_files_load() {
         let result = Ktx2Loader::default().load(&bytes);
         match &result {
             Ok(t) => {
-                let distinct = t.levels[0].iter().collect::<std::collections::HashSet<_>>().len();
+                let distinct = t.levels[0]
+                    .iter()
+                    .collect::<std::collections::HashSet<_>>()
+                    .len();
                 eprintln!(
                     "{}: {}x{} {:?} layers {} faces {} mips {} distinct bytes in mip0 {}",
                     path.file_name().unwrap().to_string_lossy(),
-                    t.width, t.height, t.format, t.layers, t.faces, t.levels.len(), distinct
+                    t.width,
+                    t.height,
+                    t.format,
+                    t.layers,
+                    t.faces,
+                    t.levels.len(),
+                    distinct
                 );
                 assert!(distinct > 1, "{path:?} decoded to a flat image");
             }

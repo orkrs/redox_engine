@@ -30,6 +30,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - Large files split: editor `main.rs`, `viewport.rs`, `frame.rs`, VG `runtime.rs`, `vsm_clipmap.rs`, `prism_vault`.
 
 ### Added
+- Animation graph (`redox_anim::graph`): parameters and triggers, state machines with timed cross-fades and exit times, 1D blend trees with phase sync, masked layers, root motion, state-enter events; serde-friendly data.
+- Game UI toolkit (`redox_ui::game`): widget tree with layout (column, row, stack, anchors, fill/fit), virtual 1920x1080 scale with safe area, localisation with fallback and plural forms (incl. Russian), focus navigation, screen stack, egui painter.
+- Example `courier`: third-person prototype using all of the above plus a pak-loaded level and streamed KTX2 textures.
+- Tests: golden frames for IBL from KTX2 and for a converged streamed texture; third-party KTX2/BasisLZ check (`REDOX_THIRD_PARTY_KTX2`).
 - Textures: Basis Universal (UASTC, ETC1S/BasisLZ) in `.basis` and KTX2 with BC7/RGBA8 target choice; `redox_cook texture`, `texture-info`, `bake-ibl`, `pack --textures`; IBL from baked KTX2 cubes (`IBLResource::from_ktx2/export_ktx2`); cube/array bind layouts.
 - Assets: priority task queue with cancel and a worker pool, range reads (`AssetSource::size/read_range`), `StreamedTexture`, uncompressed `.pak` entries.
 - Render: `TextureStreamer` (floor mips first, mip choice from on-screen size, promotion/demotion with GPU copy, memory budget, hysteresis); the editor asset panel shows KTX2/Basis headers.
