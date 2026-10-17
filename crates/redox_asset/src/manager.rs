@@ -5,6 +5,16 @@
 //! loaders, then use [`load_async`](AssetManager::load_async) to load by path.
 //! Call [`update`](AssetManager::update) each frame to process completed loads
 //! and emit ECS events.
+//!
+//! # Lifetime
+//!
+//! Handles stay `Copy`; ownership is explicit. Every `load_async`/`insert` call counts as one
+//! owner, [`retain`](AssetManager::retain) adds one and [`release`](AssetManager::release)
+//! drops one. At zero the asset is unloaded together with the dependencies registered with
+//! [`add_dependency`](AssetManager::add_dependency) (each of which loses one owner).
+//! With [`set_source`](AssetManager::set_source) bytes come from a folder or `.pak` instead of
+//! the file system, and [`set_completion_budget`](AssetManager::set_completion_budget) spreads
+//! finished loads over frames so streaming does not stall a frame.
 
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
@@ -20,6 +30,7 @@ use crate::event::{AssetLoadFailedEvent, AssetLoadedEvent, AssetReloadedEvent};
 use crate::handle::{AssetId, AssetStatus, Handle};
 use crate::hot_reload::HotReloadWatcher;
 use crate::loader::{AssetLoader, GltfLoader, GltfSceneData, ImageLoader};
+use crate::pak::AssetSource;
 use crate::storage::AssetStorage;
 
 /// Task sent to the loader thread.
@@ -28,6 +39,8 @@ struct LoadTask {
     id: AssetId,
     path: PathBuf,
     is_reload: bool,
+    /// Alternative byte source and the path inside it (`None`: read the file system).
+    source: Option<(Arc<dyn AssetSource>, String)>,
 }
 
 /// Result sent back from the loader thread.
@@ -73,10 +86,14 @@ type LoaderRegistry = Arc<RwLock<HashMap<TypeId, Box<dyn LoaderErased>>>>;
 
 fn worker_loop(registry: LoaderRegistry, rx: Receiver<LoadTask>, tx: Sender<LoadComplete>) {
     while let Ok(task) = rx.recv() {
-        let bytes = match std::fs::File::open(&task.path).and_then(|mut f| {
-            let mut v = Vec::new();
-            f.read_to_end(&mut v).map(|_| v)
-        }) {
+        let read = match &task.source {
+            Some((source, rel)) => source.read(rel),
+            None => std::fs::File::open(&task.path).and_then(|mut f| {
+                let mut v = Vec::new();
+                f.read_to_end(&mut v).map(|_| v)
+            }),
+        };
+        let bytes = match read {
             Ok(b) => b,
             Err(e) => {
                 let _ = tx.send(LoadComplete {
@@ -154,6 +171,20 @@ pub struct AssetManager {
     /// Optional file watcher for hot-reload. When set, [`update`](Self::update) drains
     /// change events and re-queues loads for affected paths.
     pub watcher: Option<HotReloadWatcher>,
+    /// Owners per live asset id.
+    refs: HashMap<AssetId, u32>,
+    /// Asset type per live id (needed to unload by id).
+    kinds: HashMap<AssetId, TypeId>,
+    /// parent -> assets it keeps alive.
+    deps: HashMap<AssetId, Vec<AssetId>>,
+    /// Type-erased storage removal.
+    removers: HashMap<TypeId, fn(&mut dyn Any, AssetId)>,
+    /// Type-erased status lookup.
+    statusers: HashMap<TypeId, fn(&dyn Any, AssetId) -> AssetStatus>,
+    /// Where load bytes come from; `None` reads `base_path` on disk.
+    source: Option<Arc<dyn AssetSource>>,
+    /// Max finished loads applied per [`update`](Self::update).
+    completion_budget: usize,
 }
 
 impl AssetManager {
@@ -189,6 +220,13 @@ impl AssetManager {
             complete_tx,
             complete_rx,
             watcher: None,
+            refs: HashMap::new(),
+            kinds: HashMap::new(),
+            deps: HashMap::new(),
+            removers: HashMap::new(),
+            statusers: HashMap::new(),
+            source: None,
+            completion_budget: usize::MAX,
         }
     }
 
@@ -227,6 +265,32 @@ impl AssetManager {
         self.storages
             .entry(type_id)
             .or_insert_with(|| Box::new(AssetStorage::<T>::new()));
+        self.register_type_ops::<T>();
+    }
+
+    fn register_type_ops<T: 'static + Send + Sync>(&mut self) {
+        let type_id = TypeId::of::<T>();
+        self.removers.entry(type_id).or_insert(|any, id| {
+            if let Some(s) = any.downcast_mut::<AssetStorage<T>>() {
+                s.remove(Handle::new(id));
+            }
+        });
+        self.statusers.entry(type_id).or_insert(|any, id| {
+            any.downcast_ref::<AssetStorage<T>>()
+                .map_or(AssetStatus::Failed, |s| s.status(Handle::new(id)))
+        });
+    }
+
+    /// Reads load bytes from `source` (a folder or `.pak`) instead of the file system.
+    /// Paths given to `load_async` are then relative to the source root.
+    pub fn set_source(&mut self, source: Arc<dyn AssetSource>) {
+        self.source = Some(source);
+    }
+
+    /// Caps how many finished loads one [`update`](Self::update) applies, so heavy assets
+    /// stream in over several frames. Default: unlimited.
+    pub fn set_completion_budget(&mut self, per_frame: usize) {
+        self.completion_budget = per_frame.max(1);
     }
 
     /// Returns the storage for type `T`, if it exists.
@@ -241,6 +305,7 @@ impl AssetManager {
         self.storages
             .entry(type_id)
             .or_insert_with(|| Box::new(AssetStorage::<T>::new()));
+        self.register_type_ops::<T>();
         self.storages
             .get_mut(&type_id)
             .and_then(|s| s.downcast_mut::<AssetStorage<T>>())
@@ -251,6 +316,7 @@ impl AssetManager {
     pub fn insert<T: 'static + Send + Sync>(&mut self, asset: T) -> Handle<T> {
         let handle = Handle::new(AssetId::next());
         self.storage_mut::<T>().insert(handle, asset);
+        self.track(handle.id, TypeId::of::<T>());
         handle
     }
 
@@ -284,13 +350,16 @@ impl AssetManager {
         &mut self,
         path: impl AsRef<Path>,
     ) -> Result<Handle<T>, AssetError> {
-        let path = self.base_path.join(path.as_ref());
+        let relative = path.as_ref().to_path_buf();
+        let path = self.base_path.join(&relative);
 
         let type_id = TypeId::of::<T>();
         if let Some((tid, id)) = self.path_to_handle.get(&path)
             && *tid == type_id
         {
-            return Ok(Handle::new(*id));
+            let id = *id;
+            *self.refs.entry(id).or_insert(0) += 1;
+            return Ok(Handle::new(id));
         }
 
         if !self
@@ -308,12 +377,18 @@ impl AssetManager {
         let id = AssetId::next();
         self.storage_mut::<T>().mark_loading(Handle::new(id));
         self.path_to_handle.insert(path.clone(), (type_id, id));
+        self.track(id, type_id);
 
+        let source = self.source.clone().map(|s| {
+            let rel = relative.to_string_lossy().replace('\\', "/");
+            (s, rel)
+        });
         let _ = self.task_tx.send(LoadTask {
             type_id,
             id,
             path,
             is_reload: false,
+            source,
         });
 
         Ok(Handle::new(id))
@@ -326,6 +401,7 @@ impl AssetManager {
             id,
             path,
             is_reload: true,
+            source: None,
         });
     }
 
@@ -340,7 +416,15 @@ impl AssetManager {
             }
         }
 
-        while let Ok(item) = self.complete_rx.try_recv() {
+        let mut applied = 0;
+        while applied < self.completion_budget
+            && let Ok(item) = self.complete_rx.try_recv()
+        {
+            applied += 1;
+            if !self.kinds.contains_key(&item.id) {
+                // Unloaded while the load was in flight: drop the result.
+                continue;
+            }
             match item.result {
                 Ok(boxed) => {
                     if let (Some(storage_box), Some(inserter)) = (
@@ -410,6 +494,7 @@ impl AssetManager {
     {
         let handle = Handle::<T>::new(AssetId::next());
         self.storage_mut::<T>().mark_loading(handle);
+        self.track(handle.id, TypeId::of::<T>());
         let complete_tx = self.complete_tx.clone();
         let id = handle.id;
         let type_id = TypeId::of::<T>();
@@ -424,6 +509,118 @@ impl AssetManager {
             });
         });
         handle
+    }
+}
+
+// --- lifetime management ---
+
+impl AssetManager {
+    fn track(&mut self, id: AssetId, type_id: TypeId) {
+        self.kinds.insert(id, type_id);
+        self.refs.insert(id, 1);
+    }
+
+    /// Number of owners of the asset (0 for unknown or unloaded ids).
+    pub fn ref_count(&self, id: AssetId) -> u32 {
+        self.refs.get(&id).copied().unwrap_or(0)
+    }
+
+    /// Adds an owner.
+    pub fn retain<T: 'static + Send + Sync>(&mut self, handle: Handle<T>) {
+        if let Some(count) = self.refs.get_mut(&handle.id) {
+            *count += 1;
+        }
+    }
+
+    /// Drops an owner. Returns `true` when that unloaded the asset.
+    pub fn release<T: 'static + Send + Sync>(&mut self, handle: Handle<T>) -> bool {
+        self.release_id(handle.id)
+    }
+
+    /// Declares that `parent` needs `child`: `child` gains an owner now and loses it when
+    /// `parent` is unloaded. Returns `false` (and does nothing) for unknown ids.
+    pub fn add_dependency(&mut self, parent: AssetId, child: AssetId) -> bool {
+        if parent == child || !self.refs.contains_key(&parent) || !self.refs.contains_key(&child) {
+            return false;
+        }
+        let list = self.deps.entry(parent).or_default();
+        if list.contains(&child) {
+            return true;
+        }
+        list.push(child);
+        *self.refs.entry(child).or_insert(0) += 1;
+        true
+    }
+
+    /// Direct dependencies of an asset.
+    pub fn dependencies(&self, id: AssetId) -> &[AssetId] {
+        self.deps.get(&id).map_or(&[], Vec::as_slice)
+    }
+
+    /// Status of an asset by id, whatever its type.
+    pub fn status_of(&self, id: AssetId) -> AssetStatus {
+        let Some(type_id) = self.kinds.get(&id) else {
+            return AssetStatus::Failed;
+        };
+        match (self.storages.get(type_id), self.statusers.get(type_id)) {
+            (Some(storage), Some(status)) => status(storage.as_ref(), id),
+            _ => AssetStatus::Failed,
+        }
+    }
+
+    /// `Ready` when the asset and everything it depends on (transitively) is ready, `Loading`
+    /// while any part still loads, `Failed` when any part failed or is unknown.
+    pub fn status_with_dependencies(&self, id: AssetId) -> AssetStatus {
+        let mut stack = vec![id];
+        let mut seen = std::collections::HashSet::new();
+        let mut loading = false;
+        while let Some(current) = stack.pop() {
+            if !seen.insert(current) {
+                continue;
+            }
+            match self.status_of(current) {
+                AssetStatus::Failed => return AssetStatus::Failed,
+                AssetStatus::Loading => loading = true,
+                AssetStatus::Ready => {}
+            }
+            stack.extend_from_slice(self.dependencies(current));
+        }
+        if loading {
+            AssetStatus::Loading
+        } else {
+            AssetStatus::Ready
+        }
+    }
+
+    fn release_id(&mut self, id: AssetId) -> bool {
+        let Some(count) = self.refs.get_mut(&id) else {
+            return false;
+        };
+        *count -= 1;
+        if *count > 0 {
+            return false;
+        }
+        self.unload_id(id);
+        true
+    }
+
+    fn unload_id(&mut self, id: AssetId) {
+        self.refs.remove(&id);
+        if let Some(type_id) = self.kinds.remove(&id)
+            && let (Some(storage), Some(remove)) =
+                (self.storages.get_mut(&type_id), self.removers.get(&type_id))
+        {
+            remove(storage.as_mut(), id);
+        }
+        self.path_to_handle.retain(|_, (_, asset)| *asset != id);
+        for child in self.deps.remove(&id).unwrap_or_default() {
+            self.release_id(child);
+        }
+    }
+
+    /// Number of live (tracked) assets.
+    pub fn live_assets(&self) -> usize {
+        self.kinds.len()
     }
 }
 

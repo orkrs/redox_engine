@@ -501,6 +501,7 @@ where
                             break;
                         }
                         Self::run_stage_parallel(systems, world, context);
+                        crate::commands::flush_commands(world);
                         world
                             .get_resource_mut::<Time>()
                             .expect("Time resource removed mid-frame")
@@ -518,6 +519,7 @@ where
                     }
                 } else {
                     Self::run_stage_parallel(systems, world, context);
+                    crate::commands::flush_commands(world);
                 }
             }
         }

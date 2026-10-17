@@ -2,25 +2,34 @@
 //!
 //! ```text
 //! redox_cook scan <assets-dir>             create/repair .meta sidecars (GUIDs)
-//! redox_cook pack <assets-dir> <out.pak>   pack a folder into a deterministic archive
+//! redox_cook pack <assets-dir> <out.pak> [--compress] [--incremental]
+//!                                          pack a folder into a deterministic archive
 //! redox_cook list <file.pak>               print the entries of an archive
 //! redox_cook verify <file.pak>             read every entry and check its hash
 //! ```
 //!
 //! `.meta` sidecars are not packed (they are editor data); everything else is.
+//! `--compress` stores entries LZ4-compressed where that helps. `--incremental` keeps a
+//! `<out.pak>.stamp` file (path, size and modification time of every input plus the options)
+//! and skips the work when nothing changed since the last run.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use redox_asset::{AssetRegistry, PakReader, PakWriter};
 
-const USAGE: &str = "usage:\n  redox_cook scan <assets-dir>\n  redox_cook pack <assets-dir> <out.pak>\n  redox_cook list <file.pak>\n  redox_cook verify <file.pak>";
+const USAGE: &str = "usage:\n  redox_cook scan <assets-dir>\n  redox_cook pack <assets-dir> <out.pak> [--compress] [--incremental]\n  redox_cook list <file.pak>\n  redox_cook verify <file.pak>";
 
 /// A parsed command line.
 #[derive(Debug, PartialEq, Eq)]
 enum Command {
     Scan(PathBuf),
-    Pack { dir: PathBuf, out: PathBuf },
+    Pack {
+        dir: PathBuf,
+        out: PathBuf,
+        compress: bool,
+        incremental: bool,
+    },
     List(PathBuf),
     Verify(PathBuf),
 }
@@ -29,10 +38,30 @@ fn parse(args: &[String]) -> Result<Command, String> {
     let rest: Vec<&str> = args.iter().skip(1).map(String::as_str).collect();
     match rest.as_slice() {
         ["scan", dir] => Ok(Command::Scan(dir.into())),
-        ["pack", dir, out] => Ok(Command::Pack {
-            dir: dir.into(),
-            out: out.into(),
-        }),
+        ["pack", dir, out, flags @ ..] => {
+            let mut command = Command::Pack {
+                dir: dir.into(),
+                out: out.into(),
+                compress: false,
+                incremental: false,
+            };
+            for flag in flags {
+                let Command::Pack {
+                    compress,
+                    incremental,
+                    ..
+                } = &mut command
+                else {
+                    unreachable!("constructed as Pack above");
+                };
+                match *flag {
+                    "--compress" => *compress = true,
+                    "--incremental" => *incremental = true,
+                    other => return Err(format!("unknown option: {other}")),
+                }
+            }
+            Ok(command)
+        }
         ["list", pak] => Ok(Command::List(pak.into())),
         ["verify", pak] => Ok(Command::Verify(pak.into())),
         [] => Err("missing command".into()),
@@ -63,10 +92,32 @@ fn run(command: Command) -> Result<(), String> {
                 Err("some sidecars are damaged".into())
             }
         }
-        Command::Pack { dir, out } => {
+        Command::Pack {
+            dir,
+            out,
+            compress,
+            incremental,
+        } => {
+            let stamp_path = PathBuf::from(format!("{}.stamp", out.display()));
+            let stamp = if incremental {
+                Some(input_stamp(&dir, compress)?)
+            } else {
+                None
+            };
+            if let Some(stamp) = &stamp
+                && out.exists()
+                && std::fs::read_to_string(&stamp_path).is_ok_and(|old| old == *stamp)
+            {
+                println!("{} is up to date", out.display());
+                return Ok(());
+            }
             let mut writer = PakWriter::new();
+            writer.set_compression(compress);
             add_cooked(&mut writer, &dir)?;
             writer.write_to(&out).map_err(|e| e.to_string())?;
+            if let Some(stamp) = stamp {
+                std::fs::write(&stamp_path, stamp).map_err(|e| e.to_string())?;
+            }
             println!("packed {} files into {}", writer.len(), out.display());
             Ok(())
         }
@@ -98,8 +149,8 @@ fn run(command: Command) -> Result<(), String> {
     }
 }
 
-/// Adds every file below `dir` except `.meta` sidecars.
-fn add_cooked(writer: &mut PakWriter, dir: &Path) -> Result<(), String> {
+/// Every packable file below `dir` (`.meta` sidecars excluded), sorted.
+fn cooked_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
     fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
         for entry in std::fs::read_dir(dir)? {
             let path = entry?.path();
@@ -113,7 +164,28 @@ fn add_cooked(writer: &mut PakWriter, dir: &Path) -> Result<(), String> {
     }
     let mut files = Vec::new();
     walk(dir, &mut files).map_err(|e| format!("{}: {e}", dir.display()))?;
-    for file in files {
+    files.sort();
+    Ok(files)
+}
+
+/// Fingerprint of the inputs: path, size and modification time of each file plus the options.
+fn input_stamp(dir: &Path, compress: bool) -> Result<String, String> {
+    let mut stamp = format!("compress={compress}\n");
+    for file in cooked_files(dir)? {
+        let meta = std::fs::metadata(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+        let modified = meta
+            .modified()
+            .ok()
+            .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
+            .map_or(0, |d| d.as_nanos());
+        stamp.push_str(&format!("{}\t{}\t{modified}\n", file.display(), meta.len()));
+    }
+    Ok(stamp)
+}
+
+/// Adds every file below `dir` except `.meta` sidecars.
+fn add_cooked(writer: &mut PakWriter, dir: &Path) -> Result<(), String> {
+    for file in cooked_files(dir)? {
         let rel = file
             .strip_prefix(dir)
             .unwrap_or(&file)
@@ -163,7 +235,24 @@ mod tests {
             parse(&args(&["pack", "a", "o.pak"])),
             Ok(Command::Pack {
                 dir: "a".into(),
-                out: "o.pak".into()
+                out: "o.pak".into(),
+                compress: false,
+                incremental: false,
+            })
+        );
+        assert_eq!(
+            parse(&args(&[
+                "pack",
+                "a",
+                "o.pak",
+                "--compress",
+                "--incremental"
+            ])),
+            Ok(Command::Pack {
+                dir: "a".into(),
+                out: "o.pak".into(),
+                compress: true,
+                incremental: true,
             })
         );
         assert_eq!(
@@ -181,6 +270,7 @@ mod tests {
         assert!(parse(&args(&[])).is_err());
         assert!(parse(&args(&["explode"])).unwrap_err().contains("unknown"));
         assert!(parse(&args(&["pack", "only-one"])).is_err());
+        assert!(parse(&args(&["pack", "a", "o", "--bogus"])).is_err());
         assert!(parse(&args(&["scan", "a", "b"])).is_err());
     }
 
@@ -197,11 +287,51 @@ mod tests {
         run(Command::Pack {
             dir: dir.join("assets"),
             out: pak.clone(),
+            compress: false,
+            incremental: false,
         })
         .unwrap();
         let reader = PakReader::open(&pak).unwrap();
         assert_eq!(reader.names().collect::<Vec<_>>(), ["a.txt", "sub/b.txt"]);
         run(Command::Verify(pak)).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn incremental_pack_skips_unchanged_inputs_and_repacks_on_change() {
+        let dir = std::env::temp_dir().join(format!("redox_cook_inc_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("assets")).unwrap();
+        std::fs::write(dir.join("assets/a.txt"), "a".repeat(1000)).unwrap();
+        let pak = dir.join("out.pak");
+        let pack = |compress| Command::Pack {
+            dir: dir.join("assets"),
+            out: pak.clone(),
+            compress,
+            incremental: true,
+        };
+
+        run(pack(true)).unwrap();
+        let first = std::fs::metadata(&pak).unwrap().modified().unwrap();
+        assert!(std::fs::metadata(&pak).unwrap().len() < 1000, "compressed");
+
+        run(pack(true)).unwrap();
+        assert_eq!(
+            std::fs::metadata(&pak).unwrap().modified().unwrap(),
+            first,
+            "unchanged inputs are not repacked"
+        );
+
+        std::fs::write(dir.join("assets/b.txt"), "b").unwrap();
+        run(pack(true)).unwrap();
+        let reader = PakReader::open(&pak).unwrap();
+        assert_eq!(reader.names().collect::<Vec<_>>(), ["a.txt", "b.txt"]);
+
+        run(pack(false)).unwrap();
+        assert!(
+            std::fs::metadata(&pak).unwrap().len() > 1000,
+            "option change repacks"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

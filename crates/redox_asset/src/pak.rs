@@ -3,14 +3,17 @@
 //! Layout (all integers little-endian):
 //!
 //! ```text
-//! magic "RDXPAK1\0" | version u32 | entry_count u32 | index_offset u64
-//! ... file data, back to back ...
+//! magic "RDXPAK1\0" | version u32 (2) | entry_count u32 | index_offset u64
+//! ... file data (possibly compressed), back to back ...
 //! index at index_offset, per entry:
-//!     name_len u16 | name (UTF-8) | offset u64 | size u64 | hash u64
+//!     name_len u16 | name (UTF-8) | offset u64 | stored_size u64 | hash u64
+//!     | raw_size u64 | codec u8 (0 = stored, 1 = LZ4 block)
 //! ```
 //!
 //! Entries are written sorted by name, so packing the same input twice produces
-//! byte-identical archives. Each entry carries a content hash that is verified on read.
+//! byte-identical archives. Each entry carries a hash of its *uncompressed* content that is verified on read.
+//! [`PakWriter::set_compression`] enables LZ4; an entry is stored compressed only when that
+//! makes it smaller.
 //! Names are relative, `/`-separated and must not contain `..`, empty parts, `\` or a
 //! drive prefix, which makes path traversal through an archive impossible.
 
@@ -23,7 +26,12 @@ use std::sync::Mutex;
 use crate::guid::content_hash;
 
 const MAGIC: &[u8; 8] = b"RDXPAK1\0";
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
+const CODEC_STORED: u8 = 0;
+const CODEC_LZ4: u8 = 1;
+/// LZ4 cannot expand more than about 255x; larger claimed sizes are corrupt (and would
+/// otherwise allow huge allocations from a tiny file).
+const MAX_LZ4_RATIO: u64 = 256;
 const HEADER_LEN: u64 = 8 + 4 + 4 + 8;
 
 /// Errors from reading or writing archives.
@@ -59,12 +67,18 @@ pub fn is_valid_entry_name(name: &str) -> bool {
 #[derive(Debug, Default)]
 pub struct PakWriter {
     entries: BTreeMap<String, Vec<u8>>,
+    compress: bool,
 }
 
 impl PakWriter {
     /// Creates an empty writer.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Enables or disables LZ4 compression of entries (off by default).
+    pub fn set_compression(&mut self, enabled: bool) {
+        self.compress = enabled;
     }
 
     /// Adds (or replaces) an entry.
@@ -120,12 +134,22 @@ impl PakWriter {
         let mut index = Vec::new();
         for (name, bytes) in &self.entries {
             let offset = HEADER_LEN + data.len() as u64;
-            data.extend_from_slice(bytes);
+            let packed = self
+                .compress
+                .then(|| lz4_flex::block::compress(bytes))
+                .filter(|c| c.len() < bytes.len());
+            let (stored, codec) = match &packed {
+                Some(c) => (c.as_slice(), CODEC_LZ4),
+                None => (bytes.as_slice(), CODEC_STORED),
+            };
+            data.extend_from_slice(stored);
             index.extend_from_slice(&(name.len() as u16).to_le_bytes());
             index.extend_from_slice(name.as_bytes());
             index.extend_from_slice(&offset.to_le_bytes());
-            index.extend_from_slice(&(bytes.len() as u64).to_le_bytes());
+            index.extend_from_slice(&(stored.len() as u64).to_le_bytes());
             index.extend_from_slice(&content_hash(bytes).to_le_bytes());
+            index.extend_from_slice(&(bytes.len() as u64).to_le_bytes());
+            index.push(codec);
         }
         let index_offset = HEADER_LEN + data.len() as u64;
         let mut out = Vec::with_capacity(HEADER_LEN as usize + data.len() + index.len());
@@ -149,8 +173,12 @@ impl PakWriter {
 #[derive(Clone, Copy, Debug)]
 struct Entry {
     offset: u64,
+    /// Bytes on disk.
     size: u64,
+    /// Hash of the uncompressed content.
     hash: u64,
+    raw_size: u64,
+    codec: u8,
 }
 
 /// Random-access reader over an archive file.
@@ -211,6 +239,17 @@ impl PakReader {
             let offset = u64::from_le_bytes(take(&mut pos, 8)?.try_into().expect("8 bytes"));
             let size = u64::from_le_bytes(take(&mut pos, 8)?.try_into().expect("8 bytes"));
             let hash = u64::from_le_bytes(take(&mut pos, 8)?.try_into().expect("8 bytes"));
+            let raw_size = u64::from_le_bytes(take(&mut pos, 8)?.try_into().expect("8 bytes"));
+            let codec = take(&mut pos, 1)?[0];
+            match codec {
+                CODEC_STORED if raw_size != size => return corrupt("stored entry size mismatch"),
+                CODEC_STORED => {}
+                CODEC_LZ4 if raw_size > size.saturating_mul(MAX_LZ4_RATIO) => {
+                    return corrupt("implausible uncompressed size");
+                }
+                CODEC_LZ4 => {}
+                _ => return corrupt("unknown codec"),
+            }
             if !is_valid_entry_name(&name) {
                 return Err(PakError::InvalidName(name));
             }
@@ -218,7 +257,16 @@ impl PakReader {
             if offset < HEADER_LEN || end.is_none_or(|e| e > index_offset) {
                 return corrupt("entry data out of range");
             }
-            entries.insert(name, Entry { offset, size, hash });
+            entries.insert(
+                name,
+                Entry {
+                    offset,
+                    size,
+                    hash,
+                    raw_size,
+                    codec,
+                },
+            );
         }
         Ok(Self {
             file: Mutex::new(file),
@@ -251,7 +299,11 @@ impl PakReader {
             file.seek(SeekFrom::Start(entry.offset))?;
             file.read_exact(&mut buf)?;
         }
-        if content_hash(&buf) != entry.hash {
+        if entry.codec == CODEC_LZ4 {
+            buf = lz4_flex::block::decompress(&buf, entry.raw_size as usize)
+                .map_err(|e| PakError::Corrupt(format!("lz4: {e}")))?;
+        }
+        if buf.len() as u64 != entry.raw_size || content_hash(&buf) != entry.hash {
             return corrupt("entry content does not match its hash");
         }
         Ok(buf)

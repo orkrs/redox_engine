@@ -4,6 +4,10 @@ use crate::entity::{Entity, EntityAllocator};
 use crate::query::{NullFilter, Query, QueryData, QueryFilter};
 use hashbrown::HashMap;
 use std::any::{Any, TypeId};
+use std::sync::Arc;
+
+/// Callback run when a component is added to or removed from an entity.
+pub type ComponentHook = Arc<dyn Fn(&mut World, Entity) + Send + Sync>;
 
 /// Container of all entities, their components (grouped into archetypes) and singleton resources.
 pub struct World {
@@ -14,6 +18,12 @@ pub struct World {
 
     // Хранилище глобальных ресурсов
     resources: HashMap<TypeId, Box<dyn Any + Send + Sync>>,
+
+    /// Hooks run after a component of the given type was added (including via spawn).
+    on_add_hooks: HashMap<TypeId, Vec<ComponentHook>>,
+    /// Hooks run just before a component of the given type is removed (the value is
+    /// still readable), including when the entity is despawned.
+    on_remove_hooks: HashMap<TypeId, Vec<ComponentHook>>,
 
     /// Monotonic counter bumped on every component mutation.
     pub(crate) change_tick: u32,
@@ -33,6 +43,8 @@ impl World {
             archetypes: Vec::new(),
             type_to_archetype: HashMap::new(),
             resources: HashMap::new(),
+            on_add_hooks: HashMap::new(),
+            on_remove_hooks: HashMap::new(),
             change_tick: 1,
             frame_tick: 0,
         }
@@ -172,6 +184,15 @@ impl World {
 
     /// Spawns `bundle` onto an id previously reserved from [`Self::entity_allocator`].
     pub(crate) fn spawn_bundle_at<B: Bundle>(&mut self, entity: Entity, bundle: B) {
+        self.spawn_bundle_at_inner(entity, bundle);
+        if !self.on_add_hooks.is_empty() {
+            for info in B::component_infos() {
+                self.run_hooks(true, info.type_id, entity);
+            }
+        }
+    }
+
+    fn spawn_bundle_at_inner<B: Bundle>(&mut self, entity: Entity, bundle: B) {
         let tick = self.next_tick();
 
         let infos = B::component_infos();
@@ -201,7 +222,21 @@ impl World {
     }
 
     /// Adds a component to the entity, or overwrites the existing one (dropping the old value).
+    ///
+    /// Runs the [`Self::on_add`] hooks for `T` when the entity did not have one before.
     pub fn add_component<T: Component>(&mut self, entity: Entity, component: T) {
+        if self.on_add_hooks.is_empty() {
+            self.add_component_inner(entity, component);
+            return;
+        }
+        let is_new = !self.has_component_type(entity, TypeId::of::<T>());
+        self.add_component_inner(entity, component);
+        if is_new {
+            self.run_hooks(true, TypeId::of::<T>(), entity);
+        }
+    }
+
+    fn add_component_inner<T: Component>(&mut self, entity: Entity, component: T) {
         let component_info = ComponentInfo::of::<T>();
         let location = self.entity_locations.get(&entity).copied();
 
@@ -296,7 +331,16 @@ impl World {
     }
 
     /// Removes (and drops) the entity's component of type `T`. Returns `false` when it had none.
+    ///
+    /// Runs the [`Self::on_remove`] hooks for `T` first, while the value is still readable.
     pub fn remove_component<T: Component>(&mut self, entity: Entity) -> bool {
+        if !self.on_remove_hooks.is_empty() && self.has_component_type(entity, TypeId::of::<T>()) {
+            self.run_hooks(false, TypeId::of::<T>(), entity);
+        }
+        self.remove_component_inner::<T>(entity)
+    }
+
+    fn remove_component_inner<T: Component>(&mut self, entity: Entity) -> bool {
         // Логика удаления
         let component_info = ComponentInfo::of::<T>();
         let location = match self.entity_locations.get(&entity).copied() {
@@ -320,7 +364,7 @@ impl World {
             .collect();
 
         if new_infos.is_empty() {
-            self.despawn(entity);
+            self.despawn_inner(entity);
             return true;
         }
 
@@ -368,7 +412,21 @@ impl World {
     }
 
     /// Despawns the entity, dropping all its components. Stale handles are ignored.
+    ///
+    /// Runs the [`Self::on_remove`] hooks for every hooked component the entity has.
     pub fn despawn(&mut self, entity: Entity) {
+        if !self.on_remove_hooks.is_empty() {
+            let types: Vec<TypeId> = self.on_remove_hooks.keys().copied().collect();
+            for type_id in types {
+                if self.has_component_type(entity, type_id) {
+                    self.run_hooks(false, type_id, entity);
+                }
+            }
+        }
+        self.despawn_inner(entity);
+    }
+
+    fn despawn_inner(&mut self, entity: Entity) {
         if let Some((arch_idx, row)) = self.entity_locations.remove(&entity) {
             // SAFETY: `(arch_idx, row)` was just removed from `entity_locations`, which
             // always names a live row of that archetype, so `row < row_count()`.
@@ -380,6 +438,52 @@ impl World {
                 }
             }
             self.entities.deallocate(entity);
+        }
+    }
+
+    /// Registers `hook` to run after a `T` is added to an entity (spawn included).
+    ///
+    /// Overwriting an existing `T` does not count as an addition.
+    pub fn on_add<T: Component>(
+        &mut self,
+        hook: impl Fn(&mut World, Entity) + Send + Sync + 'static,
+    ) {
+        self.on_add_hooks
+            .entry(TypeId::of::<T>())
+            .or_default()
+            .push(Arc::new(hook));
+    }
+
+    /// Registers `hook` to run just before a `T` is removed from an entity, either by
+    /// [`Self::remove_component`] or because the entity is despawned. The component can
+    /// still be read inside the hook.
+    pub fn on_remove<T: Component>(
+        &mut self,
+        hook: impl Fn(&mut World, Entity) + Send + Sync + 'static,
+    ) {
+        self.on_remove_hooks
+            .entry(TypeId::of::<T>())
+            .or_default()
+            .push(Arc::new(hook));
+    }
+
+    fn has_component_type(&self, entity: Entity, type_id: TypeId) -> bool {
+        self.entity_locations
+            .get(&entity)
+            .is_some_and(|&(arch, _)| self.archetypes[arch].table.has_component(type_id))
+    }
+
+    fn run_hooks(&mut self, added: bool, type_id: TypeId, entity: Entity) {
+        let map = if added {
+            &self.on_add_hooks
+        } else {
+            &self.on_remove_hooks
+        };
+        let Some(hooks) = map.get(&type_id).cloned() else {
+            return;
+        };
+        for hook in hooks {
+            hook(self, entity);
         }
     }
 

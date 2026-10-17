@@ -26,7 +26,7 @@ pub use handle::{AssetId, AssetStatus, Handle, WeakHandle};
 pub use hot_reload::{HotReloadWatcher, ReloadRequest};
 pub use loader::{
     AssetLoader, GltfLoader, GltfMaterialData, GltfMeshData, GltfNodeData, GltfSceneData,
-    GltfTextureData, ImageLoader, load_scene_from_path,
+    GltfTextureData, ImageLoader, Ktx2Loader, Ktx2Texture, TextureFormat, load_scene_from_path,
 };
 pub use manager::AssetManager;
 pub use pak::{AssetSource, DirSource, PakError, PakReader, PakSource, PakWriter};

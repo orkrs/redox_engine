@@ -76,6 +76,45 @@ impl AppBuilder {
         self.setup_hooks.push(Box::new(hook));
     }
 
+    /// Adds an application state machine starting in `initial`.
+    ///
+    /// Transitions requested through [`crate::NextState`] are applied at the start of every
+    /// frame (before [`Stage::Input`] systems registered later). Call before
+    /// [`Self::on_enter`] / [`Self::on_exit`] for the same state type.
+    pub fn add_state<S: crate::state::AppState>(mut self, initial: S) -> Self {
+        self.setup_hooks.push(Box::new(move |world| {
+            crate::state::init_state(world, initial)
+        }));
+        self.dispatcher.add_system(Stage::Input, |world, _| {
+            crate::state::apply_state_transition::<S>(world);
+        });
+        self
+    }
+
+    /// Runs `hook` each time `state` is entered (the initial state on the first frame).
+    pub fn on_enter<S: crate::state::AppState>(
+        mut self,
+        state: S,
+        hook: impl FnMut(&mut World) + Send + Sync + 'static,
+    ) -> Self {
+        self.setup_hooks.push(Box::new(move |world| {
+            crate::state::on_enter(world, state, hook)
+        }));
+        self
+    }
+
+    /// Runs `hook` each time `state` is left.
+    pub fn on_exit<S: crate::state::AppState>(
+        mut self,
+        state: S,
+        hook: impl FnMut(&mut World) + Send + Sync + 'static,
+    ) -> Self {
+        self.setup_hooks.push(Box::new(move |world| {
+            crate::state::on_exit(world, state, hook)
+        }));
+        self
+    }
+
     /// Registers an event queue for per-frame aging.
     ///
     /// Call once per event type; [`redox_ecs::Events::update`] is then invoked
@@ -157,6 +196,7 @@ impl AppBuilder {
         let mut world = World::new();
         world.insert_resource(InputState::new());
         world.insert_resource(Time::new(self.config.fixed_timestep));
+        world.insert_resource(crate::commands::SharedCommands::new());
 
         for hook in self.setup_hooks.drain(..) {
             hook(&mut world);

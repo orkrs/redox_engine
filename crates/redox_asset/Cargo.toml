@@ -22,5 +22,7 @@ notify = { workspace = true }
 flume = { workspace = true }
 ron = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
+lz4_flex = "0.14"
+ktx2 = "0.5"
 
 [dev-dependencies]

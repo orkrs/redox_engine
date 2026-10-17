@@ -6,12 +6,14 @@
 
 mod gltf_loader;
 mod image_loader;
+mod ktx2_loader;
 
 pub use gltf_loader::{
     GltfLoader, GltfMaterialData, GltfMeshData, GltfNodeData, GltfSceneData, GltfTextureData,
     load_scene_from_path,
 };
 pub use image_loader::ImageLoader;
+pub use ktx2_loader::{Ktx2Loader, Ktx2Texture, TextureFormat};
 
 use crate::error::AssetError;
 
