@@ -5,9 +5,9 @@ use redox_ecs::{ParallelQuery, Query, World};
 use std::hint::black_box;
 
 #[derive(Clone, Copy)]
-struct Position(f32, f32, f32);
+struct Position(f32, #[allow(dead_code)] f32, #[allow(dead_code)] f32);
 #[derive(Clone, Copy)]
-struct Velocity(f32, f32, f32);
+struct Velocity(f32, #[allow(dead_code)] f32, #[allow(dead_code)] f32);
 
 const N: usize = 100_000;
 
