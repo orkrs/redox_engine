@@ -63,10 +63,10 @@ impl FieldValue for u64 {
         ReflectValue::I64(i64::try_from(*self).unwrap_or(i64::MAX))
     }
     fn apply_field_value(&mut self, value: &ReflectValue) {
-        if let ReflectValue::I64(v) = value {
-            if let Ok(v) = u64::try_from(*v) {
-                *self = v;
-            }
+        if let ReflectValue::I64(v) = value
+            && let Ok(v) = u64::try_from(*v)
+        {
+            *self = v;
         }
     }
 }
@@ -113,12 +113,11 @@ impl FieldValue for Vec2 {
         ReflectValue::List(vec![ReflectValue::f32(self.x), ReflectValue::f32(self.y)])
     }
     fn apply_field_value(&mut self, value: &ReflectValue) {
-        if let ReflectValue::List(items) = value {
-            if let [x, y] = items.as_slice() {
-                if let (Some(x), Some(y)) = (x.as_f32(), y.as_f32()) {
-                    *self = Vec2::new(x, y);
-                }
-            }
+        if let ReflectValue::List(items) = value
+            && let [x, y] = items.as_slice()
+            && let (Some(x), Some(y)) = (x.as_f32(), y.as_f32())
+        {
+            *self = Vec2::new(x, y);
         }
     }
 }
