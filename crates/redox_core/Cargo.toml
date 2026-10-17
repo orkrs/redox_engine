@@ -38,6 +38,7 @@ redox_anim = { path = "../redox_anim" }
 # Gamepad polling for the Courier example.
 redox_input = { path = "../redox_input", features = ["gamepad"] }
 image = { workspace = true }
+gltf = { workspace = true }
 # Для примеров: физика, UI, рандом, gameplay/VFX/scene
 redox_physics = { path = "../redox_physics" }
 redox_gameplay = { path = "../redox_gameplay" }
