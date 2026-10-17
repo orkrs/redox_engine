@@ -366,16 +366,21 @@ bakes headlessly.
 
 ## 20) Roadmap
 
-**Next (days):** import PNG→KTX2 from the editor; show streaming state in the asset panel; a golden frame for
-IBL from KTX2; hook `TextureStreamer` into `dino_runner` and measure
-memory; coverage for render and editor code.
+**Done recently:** KTX2 with Zstd and Basis, cube maps, IBL from KTX2, texture streaming with a memory budget;
+animation graph; game UI toolkit with localisation; the `courier` prototype that uses them together.
 
-**Soon (weeks):** hot reload of VG compute and IBL; frame-graph dependency inference and transient memory
-aliasing; gamepad and IME checks on the prototype; GPU skinning; SDF pages from streaming; an editor that
-can save scenes, undo and import assets.
+**Next (days):** turn `courier` into a full loop (save the best time, sound, settings, gamepad navigation);
+glTF skeletons and clips into the animation graph; import PNG→KTX2 and streaming state in the editor;
+coverage for render and editor code.
 
-**Later (months):** ray-traced DDGI, a full Substrate material graph, and one complete game prototype built
-on the engine to expose the real API gaps; release hygiene (versions, publishing, CI).
+**Soon (weeks):** WebAssembly scripting prototype ([ADR 0005](docs/adr/0005-scripting-wasm.md)); 2D blend spaces,
+additive layers and clip events; GPU skinning; an editor that can save scenes, undo and import assets; hot reload
+of VG compute and IBL; frame-graph dependency inference and transient memory aliasing.
+
+**Later (months):** ray-traced DDGI, a full Substrate material graph, text input and IME in the game UI,
+navigation, joints and ragdolls, networking; release hygiene (versions, publishing, CI).
+
+Cross-platform work (Linux, macOS, other GPUs, DX12/Metal) is out of the plan for now (owner decision).
 
 Details and history: [`PROGRESS.md`](PROGRESS.md), [`CHANGELOG.md`](CHANGELOG.md),
 [`docs/PLAN_TEXTURES.md`](docs/PLAN_TEXTURES.md), [`ARCHITECTURE_REALITY.md`](ARCHITECTURE_REALITY.md).
