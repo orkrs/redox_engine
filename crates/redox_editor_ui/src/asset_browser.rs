@@ -25,7 +25,7 @@ impl AssetKind {
         {
             Some("glb") | Some("gltf") => Self::Mesh,
             Some("png") | Some("jpg") | Some("jpeg") | Some("webp") | Some("hdr")
-            | Some("ktx2") => Self::Texture,
+            | Some("ktx2") | Some("basis") => Self::Texture,
             Some("ron") => Self::Scene,
             _ => Self::Other,
         }
@@ -48,6 +48,16 @@ impl AssetKind {
             Self::Other => "file",
         }
     }
+}
+
+fn is_gpu_texture(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|e| e.to_str())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("ktx2") | Some("basis")
+    )
 }
 
 /// Request for the integrator / dock to spawn an asset proxy in the world.
@@ -89,6 +99,42 @@ struct GltfMeta {
     meshes: usize,
 }
 
+/// What the header of a `.ktx2` / `.basis` file says (read without decoding the pixels).
+#[derive(Clone, Debug)]
+struct TextureMeta {
+    summary: String,
+}
+
+fn probe_texture(path: &Path) -> Result<TextureMeta, String> {
+    use redox_asset::{AssetSource, DirSource, LoadOptions, StreamedTexture};
+    let dir = path.parent().ok_or("no parent folder")?;
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or("bad file name")?;
+    let source: std::sync::Arc<dyn AssetSource> = std::sync::Arc::new(DirSource::new(dir));
+    let texture =
+        StreamedTexture::open(source, name, LoadOptions::default()).map_err(|e| e.to_string())?;
+    let info = texture.info();
+    let shape = match (info.is_cube(), info.layers > 1) {
+        (true, true) => format!("cube array x{}", info.layers),
+        (true, false) => "cube".to_string(),
+        (false, true) => format!("array x{}", info.layers),
+        (false, false) => "2D".to_string(),
+    };
+    Ok(TextureMeta {
+        summary: format!(
+            "{}x{} {:?} · {} · {} mips · {:.1} KiB decoded",
+            info.width,
+            info.height,
+            info.format,
+            shape,
+            info.mips,
+            info.bytes_from(0) as f64 / 1024.0
+        ),
+    })
+}
+
 /// Panel that lists the files of the assets directory.
 pub struct AssetBrowserPanel {
     /// Directory being shown.
@@ -99,6 +145,8 @@ pub struct AssetBrowserPanel {
     pub selected: Option<PathBuf>,
     /// Cached glTF probe results keyed by absolute-ish path string.
     meta_cache: HashMap<PathBuf, Result<GltfMeta, String>>,
+    /// Cached texture header probes.
+    texture_cache: HashMap<PathBuf, Result<TextureMeta, String>>,
 }
 
 impl Default for AssetBrowserPanel {
@@ -108,6 +156,7 @@ impl Default for AssetBrowserPanel {
             filter: String::new(),
             selected: None,
             meta_cache: HashMap::new(),
+            texture_cache: HashMap::new(),
         }
     }
 }
@@ -207,6 +256,23 @@ impl AssetBrowserPanel {
                 sel.display(),
                 kind.short_label()
             ));
+            if kind == AssetKind::Texture && is_gpu_texture(&sel) {
+                let probe = self
+                    .texture_cache
+                    .entry(sel.clone())
+                    .or_insert_with(|| probe_texture(&sel));
+                match probe {
+                    Ok(meta) => {
+                        ui.label(&meta.summary);
+                    }
+                    Err(err) => {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(220, 120, 100),
+                            format!("texture header unreadable: {err}"),
+                        );
+                    }
+                }
+            }
             if kind == AssetKind::Mesh {
                 self.ensure_gltf_meta(&sel);
                 match self.meta_cache.get(&sel) {

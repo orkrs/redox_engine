@@ -24,3 +24,12 @@ Virtual geometry: `cargo bench -p redox_render --bench meshlets` (`build_vg_asse
 |---|---|
 | 8k triangles | ~8.8 ms |
 | 32k triangles | ~37 ms |
+
+Textures: `cargo bench -p redox_asset --bench ktx2` (RGBA8 KTX2 file, whole file decoded):
+
+| Benchmark | Time |
+|---|---|
+| 1024 px, stored | ~272 us |
+| 1024 px, Zstd | ~2.9 ms |
+| 4096 px, stored | ~4.1 ms |
+| 4096 px, Zstd | ~42.9 ms |

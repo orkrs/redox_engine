@@ -9,6 +9,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
   Directional shadows are VSM-only. The `shadow_probe` example (a CSM probe) was deleted.
 
 ### Fixed
+- Render: meshes added through the asset flow used the raw vertex layout while the pipelines read the compressed one (invisible meshes); asset-flow materials sampled the legacy texture list instead of the handle pool.
 - UI: every egui-based app (all examples except `skinned_demo`, and the editor) panicked at start since the egui 0.36 upgrade
   (`TexturesDelta` dropped unhandled); the deltas are now cleared after they are applied (`redox_ui`, editor).
 - `dino_game` drew with a non-multisampled pass against MSAA pipelines (wgpu validation error); it now renders through `FrameView`.
@@ -28,6 +29,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - Large files split: editor `main.rs`, `viewport.rs`, `frame.rs`, VG `runtime.rs`, `vsm_clipmap.rs`, `prism_vault`.
 
 ### Added
+- Textures: Basis Universal (UASTC, ETC1S/BasisLZ) in `.basis` and KTX2 with BC7/RGBA8 target choice; `redox_cook texture`, `texture-info`, `bake-ibl`, `pack --textures`; IBL from baked KTX2 cubes (`IBLResource::from_ktx2/export_ktx2`); cube/array bind layouts.
+- Assets: priority task queue with cancel and a worker pool, range reads (`AssetSource::size/read_range`), `StreamedTexture`, uncompressed `.pak` entries.
+- Render: `TextureStreamer` (floor mips first, mip choice from on-screen size, promotion/demotion with GPU copy, memory budget, hysteresis); the editor asset panel shows KTX2/Basis headers.
 - KTX2: Zstandard supercompression, cube maps, 2D arrays and cube arrays, RGBA16F; `Ktx2Texture` now has `layers`/`faces` (`new_2d` for plain images), `to_ktx2_bytes`; `redox_asset::testing::Ktx2Builder`; `redox_cook texture-info`; `Texture::from_ktx2` keeps the texture shape (`Texture::view_dimension`).
 - Render: the frame now runs from the compiled frame graph (`frame_pass_order`): `render_frame_into` is split into one method per pass and executed in graph order (golden frames unchanged).
 - Render: `ShaderHotReload` (editor and `AppBuilder` with the `shader-hot-reload` feature) validates edited shaders and rebuilds 13 pass groups, now including tone mapping and the VG raster passes; verified by editing a real shader file under a running renderer.

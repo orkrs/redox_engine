@@ -69,7 +69,7 @@ redox_ecs       archetype ECS     redox_reflect(+_derive)   redox_math   redox_v
 | Кэш пайплайнов | Vulkan: файл ~1 МБ пишется и читается заново | два запуска демо, лог «pipeline cache installed … bytes loaded» |
 | DX12/Metal | кэш недоступен (`None`), остальное как раньше | не проверялось на этих бэкендах |
 | ECS | тесты, property-тесты, Miri | Miri не покрывает тесты с rayon, trybuild и счётчик аллокаций |
-| Ассеты | GUID, pak v2 (LZ4), счётчики ссылок, зависимости, KTX2 | `crates/redox_asset/tests/` |
+| Ассеты | GUID, pak v2 (LZ4, чтение диапазонов), счётчики ссылок, зависимости, приоритетная очередь, KTX2 (Zstd, Basis, кубы, массивы), стриминг mip | `crates/redox_asset/tests/` |
 | Ввод | контексты, геймпады (gilrs), текст/IME | юнит-тесты; живой геймпад и IME не пробовались |
 
 ## Известные ограничения
