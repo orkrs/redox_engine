@@ -80,7 +80,7 @@ impl<T> Pool<T> {
         taken
     }
 
-    fn get(&self, idx: usize) -> Option<&T> {
+    pub(crate) fn get(&self, idx: usize) -> Option<&T> {
         self.slots.get(idx).and_then(|s| s.as_ref())
     }
 
@@ -122,6 +122,9 @@ pub struct GpuRegistry {
     handle_to_texture: HashMap<AssetId, usize>,
     /// Textures created through the legacy index-based API.
     pub legacy_textures: Vec<Texture>,
+    /// For each legacy material: whether its texture indices refer to the handle-based pool
+    /// (asset flow) instead of the legacy texture list.
+    pub legacy_material_from_pool: Vec<bool>,
     /// Bind groups of the legacy textures.
     pub legacy_texture_bind_groups: Vec<wgpu::BindGroup>,
 
@@ -282,6 +285,11 @@ impl GpuRegistry {
     }
 
     // ── Textures ────────────────────────────────────────────────────────────
+
+    /// Texture slot by index (the index handed out by [`Self::insert_texture`]).
+    pub fn texture_at(&self, idx: usize) -> Option<&TextureSlot> {
+        self.textures.get(idx)
+    }
 
     /// Registers a texture for a handle and returns its slot index.
     pub fn insert_texture(&mut self, handle: AssetId, slot: TextureSlot) -> usize {

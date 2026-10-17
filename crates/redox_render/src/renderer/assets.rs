@@ -49,51 +49,99 @@ impl Renderer {
 
     /// Stores a material, creates its GPU resources, and returns its index.
     pub fn add_material(&mut self, material: Material) -> usize {
-        let uniform = material.to_uniform(&self.device);
-        let buffer = buffer::create_uniform_buffer(
-            &self.device,
-            "material_uniform",
-            bytemuck::bytes_of(&uniform),
-        );
+        self.add_material_impl(material, false)
+    }
 
-        let albedo_view = material
-            .texture_index
-            .and_then(|idx| self.registry.legacy_texture(idx))
-            .map(|t| &t.view)
+    /// Texture view for a material slot: from the handle-based pool when the material came
+    /// from the asset flow, otherwise from the legacy list.
+    fn material_texture_view(
+        &self,
+        index: Option<usize>,
+        from_pool: bool,
+    ) -> Option<&wgpu::TextureView> {
+        let idx = index?;
+        if from_pool {
+            self.registry.texture_at(idx).map(|slot| &slot.texture.view)
+        } else {
+            self.registry.legacy_texture(idx).map(|t| &t.view)
+        }
+    }
+
+    fn build_material_bind_group(
+        &self,
+        material: &Material,
+        buffer: &wgpu::Buffer,
+        from_pool: bool,
+    ) -> wgpu::BindGroup {
+        let albedo_view = self
+            .material_texture_view(material.texture_index, from_pool)
             .unwrap_or_else(|| {
                 self.registry
                     .legacy_texture(0)
                     .map(|t| &t.view)
                     .expect("fallback texture")
             });
-
-        let normal_view = material
-            .normal_texture_index
-            .and_then(|idx| self.registry.legacy_texture(idx))
-            .map(|t| &t.view)
+        let normal_view = self
+            .material_texture_view(material.normal_texture_index, from_pool)
             .unwrap_or(&self.fallback_normal_view);
-
-        let mr_view = material
-            .mr_texture_index
-            .and_then(|idx| self.registry.legacy_texture(idx))
-            .map(|t| &t.view)
+        let mr_view = self
+            .material_texture_view(material.mr_texture_index, from_pool)
             .unwrap_or(&self.fallback_mr_view);
-
-        let bind_group = self.pbr_pass.create_material_bind_group(
+        self.pbr_pass.create_material_bind_group(
             &self.device,
-            &buffer,
+            buffer,
             albedo_view,
             normal_view,
             mr_view,
             &self.common_sampler,
-        );
+        )
+    }
 
+    fn add_material_impl(&mut self, material: Material, from_pool: bool) -> usize {
+        let uniform = material.to_uniform(&self.device);
+        let buffer = buffer::create_uniform_buffer(
+            &self.device,
+            "material_uniform",
+            bytemuck::bytes_of(&uniform),
+        );
+        let bind_group = self.build_material_bind_group(&material, &buffer, from_pool);
         let idx = self
             .registry
             .push_legacy_material(material, buffer, bind_group);
+        self.registry.legacy_material_from_pool.push(from_pool);
         self.material_blend_flags.push(BlendMode::Opaque);
         self.vg_bind_groups_dirty = true;
         idx
+    }
+
+    /// Rebuilds the bind groups of the asset-flow materials that sample the pool texture in
+    /// `texture_slot`. Call it after that texture got a new view (streaming).
+    pub fn refresh_materials_using_texture(&mut self, texture_slot: usize) {
+        let users: Vec<usize> = self
+            .registry
+            .legacy_materials()
+            .iter()
+            .enumerate()
+            .filter(|(i, m)| {
+                self.registry
+                    .legacy_material_from_pool
+                    .get(*i)
+                    .copied()
+                    .unwrap_or(false)
+                    && [m.texture_index, m.normal_texture_index, m.mr_texture_index]
+                        .contains(&Some(texture_slot))
+            })
+            .map(|(i, _)| i)
+            .collect();
+        for idx in users {
+            let material = self.registry.legacy_materials()[idx].clone();
+            let bind_group = {
+                let buffer = &self.registry.legacy_material_uniform_buffers[idx];
+                self.build_material_bind_group(&material, buffer, true)
+            };
+            self.registry.legacy_material_bind_groups[idx] = bind_group;
+        }
+        self.vg_bind_groups_dirty = true;
     }
 
     /// Uploads a texture from raw bytes and returns its index.
@@ -157,11 +205,14 @@ impl Renderer {
             return self.registry.mesh_index_for(handle.id());
         }
         let gpu_mesh = {
-            let vb = buffer::create_vertex_buffer(
-                &self.device,
-                "mesh_vb",
-                bytemuck::cast_slice(&mesh.vertices),
-            );
+            // Same vertex encoding as `upload_mesh`: the pipelines expect the compressed
+            // layout whenever `use_compressed_vertices` is on.
+            let vertex_bytes: Vec<u8> = if self.use_compressed_vertices {
+                bytemuck::cast_slice(&compress_vertices(&mesh.vertices, &mesh.aabb)).to_vec()
+            } else {
+                bytemuck::cast_slice(&mesh.vertices).to_vec()
+            };
+            let vb = buffer::create_vertex_buffer(&self.device, "mesh_vb", &vertex_bytes);
             let ib = buffer::create_index_buffer(
                 &self.device,
                 "mesh_ib",
@@ -266,7 +317,7 @@ impl Renderer {
             layers: data.layers,
             sheen: data.sheen,
         };
-        let idx = self.add_material(material);
+        let idx = self.add_material_impl(material, true);
         self.material_blend_flags[idx] = data.blend;
         self.registry.link_material_index(handle.id(), idx);
         Some(idx)
