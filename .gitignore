@@ -44,3 +44,6 @@ tmp_bits.pdb
 local_full_render.md
 editor_layout.ron
 report.json]
+
+# Agent worktrees
+.claude/worktrees/

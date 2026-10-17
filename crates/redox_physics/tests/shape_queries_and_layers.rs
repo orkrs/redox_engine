@@ -52,52 +52,126 @@ fn scene() -> (PhysicsContext, Entity, Entity) {
     (ctx, wall, ball)
 }
 
-fn cast(ctx: &PhysicsContext, shape: QueryShape, direction: Vec3, max: f32, exclude: &[Entity], layers: u32) -> Option<redox_physics::ShapeHit> {
-    ctx.cast_shape(shape, Vec3::ZERO, Quat::IDENTITY, direction, max, exclude, layers)
+fn cast(
+    ctx: &PhysicsContext,
+    shape: QueryShape,
+    direction: Vec3,
+    max: f32,
+    exclude: &[Entity],
+    layers: u32,
+) -> Option<redox_physics::ShapeHit> {
+    ctx.cast_shape(
+        shape,
+        Vec3::ZERO,
+        Quat::IDENTITY,
+        direction,
+        max,
+        exclude,
+        layers,
+    )
 }
 
 #[test]
 fn a_sphere_stops_one_radius_before_the_wall() {
     let (ctx, wall, _) = scene();
-    let hit = cast(&ctx, QueryShape::Sphere { radius: 1.0 }, Vec3::NEG_Z, 50.0, &[], ALL).expect("hits the wall");
+    let hit = cast(
+        &ctx,
+        QueryShape::Sphere { radius: 1.0 },
+        Vec3::NEG_Z,
+        50.0,
+        &[],
+        ALL,
+    )
+    .expect("hits the wall");
     assert_eq!(hit.entity, Some(wall));
-    assert!((hit.distance - 8.5).abs() < 1e-2, "9.5 to the face minus the radius: {}", hit.distance);
-    assert!(hit.normal.z > 0.9, "normal faces the caster: {:?}", hit.normal);
-    assert!((hit.point.z + 9.5).abs() < 1e-2, "contact point on the face: {:?}", hit.point);
+    assert!(
+        (hit.distance - 8.5).abs() < 1e-2,
+        "9.5 to the face minus the radius: {}",
+        hit.distance
+    );
+    assert!(
+        hit.normal.z > 0.9,
+        "normal faces the caster: {:?}",
+        hit.normal
+    );
+    assert!(
+        (hit.point.z + 9.5).abs() < 1e-2,
+        "contact point on the face: {:?}",
+        hit.point
+    );
 }
 
 #[test]
 fn capsules_and_boxes_are_swept_with_their_own_extent() {
     let (ctx, wall, _) = scene();
-    let capsule = QueryShape::Capsule { half_height: 0.5, radius: 0.5 };
+    let capsule = QueryShape::Capsule {
+        half_height: 0.5,
+        radius: 0.5,
+    };
     let hit = cast(&ctx, capsule, Vec3::NEG_Z, 50.0, &[], ALL).unwrap();
     assert_eq!(hit.entity, Some(wall));
-    assert!((hit.distance - 9.0).abs() < 1e-2, "capsule radius 0.5: {}", hit.distance);
+    assert!(
+        (hit.distance - 9.0).abs() < 1e-2,
+        "capsule radius 0.5: {}",
+        hit.distance
+    );
 
-    let cuboid = QueryShape::Cuboid { half_extents: Vec3::new(1.0, 1.0, 2.0) };
+    let cuboid = QueryShape::Cuboid {
+        half_extents: Vec3::new(1.0, 1.0, 2.0),
+    };
     let hit = cast(&ctx, cuboid, Vec3::NEG_Z, 50.0, &[], ALL).unwrap();
-    assert!((hit.distance - 7.5).abs() < 1e-2, "box half depth 2: {}", hit.distance);
+    assert!(
+        (hit.distance - 7.5).abs() < 1e-2,
+        "box half depth 2: {}",
+        hit.distance
+    );
 }
 
 #[test]
 fn a_rotated_box_is_swept_in_its_rotated_frame() {
     let (ctx, _, _) = scene();
     // Long axis (z) turned to point along x: the box is now only 0.5 deep along the cast direction.
-    let shape = QueryShape::Cuboid { half_extents: Vec3::new(0.5, 0.5, 3.0) };
+    let shape = QueryShape::Cuboid {
+        half_extents: Vec3::new(0.5, 0.5, 3.0),
+    };
     let rotated = ctx
-        .cast_shape(shape, Vec3::ZERO, Quat::from_rotation_y(std::f32::consts::FRAC_PI_2), Vec3::NEG_Z, 50.0, &[], ALL)
+        .cast_shape(
+            shape,
+            Vec3::ZERO,
+            Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
+            Vec3::NEG_Z,
+            50.0,
+            &[],
+            ALL,
+        )
         .unwrap();
-    assert!((rotated.distance - 9.0).abs() < 1e-2, "{}", rotated.distance);
+    assert!(
+        (rotated.distance - 9.0).abs() < 1e-2,
+        "{}",
+        rotated.distance
+    );
 }
 
 #[test]
 fn casts_miss_out_of_range_away_or_sideways() {
     let (ctx, _, _) = scene();
     let sphere = QueryShape::Sphere { radius: 1.0 };
-    assert!(cast(&ctx, sphere, Vec3::NEG_Z, 5.0, &[], ALL).is_none(), "too short");
-    assert!(cast(&ctx, sphere, Vec3::Z, 50.0, &[], ALL).is_none(), "pointing away");
-    assert!(cast(&ctx, sphere, Vec3::Y, 50.0, &[], ALL).is_none(), "pointing up");
-    assert!(cast(&ctx, sphere, Vec3::ZERO, 50.0, &[], ALL).is_none(), "zero direction");
+    assert!(
+        cast(&ctx, sphere, Vec3::NEG_Z, 5.0, &[], ALL).is_none(),
+        "too short"
+    );
+    assert!(
+        cast(&ctx, sphere, Vec3::Z, 50.0, &[], ALL).is_none(),
+        "pointing away"
+    );
+    assert!(
+        cast(&ctx, sphere, Vec3::Y, 50.0, &[], ALL).is_none(),
+        "pointing up"
+    );
+    assert!(
+        cast(&ctx, sphere, Vec3::ZERO, 50.0, &[], ALL).is_none(),
+        "zero direction"
+    );
 }
 
 #[test]
@@ -112,17 +186,37 @@ fn overlap_returns_exactly_the_colliders_inside_the_shape() {
     let (ctx, wall, ball) = scene();
     let at = |shape, position| ctx.overlap_shape(shape, position, Quat::IDENTITY, &[], ALL);
 
-    assert!(at(QueryShape::Sphere { radius: 1.0 }, Vec3::ZERO).is_empty(), "nothing near the origin");
-    assert_eq!(at(QueryShape::Sphere { radius: 3.0 }, Vec3::new(0.0, 0.0, -8.0)), vec![wall]);
+    assert!(
+        at(QueryShape::Sphere { radius: 1.0 }, Vec3::ZERO).is_empty(),
+        "nothing near the origin"
+    );
+    assert_eq!(
+        at(
+            QueryShape::Sphere { radius: 3.0 },
+            Vec3::new(0.0, 0.0, -8.0)
+        ),
+        vec![wall]
+    );
     let both = at(QueryShape::Sphere { radius: 40.0 }, Vec3::ZERO);
     assert_eq!(both.len(), 2);
     assert!(both.contains(&wall) && both.contains(&ball));
     assert_eq!(
-        at(QueryShape::Cuboid { half_extents: Vec3::splat(2.0) }, Vec3::new(20.0, 0.0, 0.0)),
+        at(
+            QueryShape::Cuboid {
+                half_extents: Vec3::splat(2.0)
+            },
+            Vec3::new(20.0, 0.0, 0.0)
+        ),
         vec![ball]
     );
     assert_eq!(
-        at(QueryShape::Capsule { half_height: 1.0, radius: 0.5 }, Vec3::new(0.0, 0.0, -9.2)),
+        at(
+            QueryShape::Capsule {
+                half_height: 1.0,
+                radius: 0.5
+            },
+            Vec3::new(0.0, 0.0, -9.2)
+        ),
         vec![wall]
     );
 }
@@ -135,33 +229,58 @@ fn overlap_any_matches_overlap_shape_and_honours_exclusion() {
     assert!(ctx.overlap_any(shape, position, Quat::IDENTITY, &[], ALL));
     assert!(!ctx.overlap_any(shape, position, Quat::IDENTITY, &[wall], ALL));
     assert!(!ctx.overlap_any(shape, Vec3::ZERO, Quat::IDENTITY, &[], ALL));
-    assert!(ctx.overlap_shape(shape, position, Quat::IDENTITY, &[wall], ALL).is_empty());
+    assert!(
+        ctx.overlap_shape(shape, position, Quat::IDENTITY, &[wall], ALL)
+            .is_empty()
+    );
 }
 
 #[test]
 fn query_masks_select_colliders_by_their_layer() {
     let (mut ctx, wall, ball) = scene();
-    ctx.set_collider_layers(wall, CollisionLayers::new(0b01, ALL)).unwrap();
-    ctx.set_collider_layers(ball, CollisionLayers::new(0b10, ALL)).unwrap();
+    ctx.set_collider_layers(wall, CollisionLayers::new(0b01, ALL))
+        .unwrap();
+    ctx.set_collider_layers(ball, CollisionLayers::new(0b10, ALL))
+        .unwrap();
     ctx.step(1.0 / 60.0);
     let big = QueryShape::Sphere { radius: 40.0 };
 
-    assert_eq!(ctx.overlap_shape(big, Vec3::ZERO, Quat::IDENTITY, &[], 0b01), vec![wall]);
-    assert_eq!(ctx.overlap_shape(big, Vec3::ZERO, Quat::IDENTITY, &[], 0b10), vec![ball]);
-    assert_eq!(ctx.overlap_shape(big, Vec3::ZERO, Quat::IDENTITY, &[], 0b11).len(), 2);
-    assert!(ctx.overlap_shape(big, Vec3::ZERO, Quat::IDENTITY, &[], 0b100).is_empty());
+    assert_eq!(
+        ctx.overlap_shape(big, Vec3::ZERO, Quat::IDENTITY, &[], 0b01),
+        vec![wall]
+    );
+    assert_eq!(
+        ctx.overlap_shape(big, Vec3::ZERO, Quat::IDENTITY, &[], 0b10),
+        vec![ball]
+    );
+    assert_eq!(
+        ctx.overlap_shape(big, Vec3::ZERO, Quat::IDENTITY, &[], 0b11)
+            .len(),
+        2
+    );
+    assert!(
+        ctx.overlap_shape(big, Vec3::ZERO, Quat::IDENTITY, &[], 0b100)
+            .is_empty()
+    );
 
     let sphere = QueryShape::Sphere { radius: 1.0 };
-    assert!(cast(&ctx, sphere, Vec3::NEG_Z, 50.0, &[], 0b10).is_none(), "the wall is on another layer");
+    assert!(
+        cast(&ctx, sphere, Vec3::NEG_Z, 50.0, &[], 0b10).is_none(),
+        "the wall is on another layer"
+    );
     assert!(cast(&ctx, sphere, Vec3::NEG_Z, 50.0, &[], 0b01).is_some());
 }
 
 #[test]
 fn setting_layers_on_an_unknown_entity_is_an_error() {
     let (mut ctx, _, _) = scene();
+    // Entity ids restart in every `World`, so spawn past the two used by the scene.
     let mut world = World::new();
-    let stranger = world.spawn();
-    assert!(ctx.set_collider_layers(stranger, CollisionLayers::default()).is_err());
+    let stranger = (0..5).map(|_| world.spawn()).last().unwrap();
+    assert!(
+        ctx.set_collider_layers(stranger, CollisionLayers::default())
+            .is_err()
+    );
 }
 
 #[test]
@@ -194,7 +313,8 @@ fn drop_height(ball_layers: Option<CollisionLayers>) -> f32 {
             vec![ColliderBuilder::ball(0.5)],
         )
         .unwrap();
-    ctx.set_collider_layers(floor, CollisionLayers::new(0b100, ALL)).unwrap();
+    ctx.set_collider_layers(floor, CollisionLayers::new(0b100, ALL))
+        .unwrap();
     if let Some(layers) = ball_layers {
         ctx.set_collider_layers(ball, layers).unwrap();
     }
@@ -207,11 +327,17 @@ fn drop_height(ball_layers: Option<CollisionLayers>) -> f32 {
 #[test]
 fn layers_decide_whether_bodies_collide() {
     let lands = drop_height(None);
-    assert!(lands > 0.3 && lands < 0.7, "default layers: the ball rests on the floor, y = {lands}");
+    assert!(
+        lands > 0.3 && lands < 0.7,
+        "default layers: the ball rests on the floor, y = {lands}"
+    );
 
     // The ball is on layer 1 and only collides with layer 2; the floor is on layer 3: no contact.
     let falls = drop_height(Some(CollisionLayers::new(0b001, 0b010)));
-    assert!(falls < -5.0, "no collision: the ball falls through, y = {falls}");
+    assert!(
+        falls < -5.0,
+        "no collision: the ball falls through, y = {falls}"
+    );
 
     // The ball collides with layer 3 (the floor) again.
     let lands_again = drop_height(Some(CollisionLayers::new(0b001, 0b100)));
