@@ -3,19 +3,37 @@ use redox_editor_core::{Selection, WorldGitTracker, WorldSession};
 use redox_math::Transform;
 use redox_scene::{PartitionCell, StreamedActor};
 
+/// Panel listing cells and actors of the world.
 #[derive(Default)]
 pub struct OutlinerPanel {
+    /// Text filter for the list.
     pub filter: String,
 }
 
+/// Something the user asked the outliner to do.
 pub enum OutlinerAction {
+    /// Load a cell.
     LoadCell(PartitionCell),
+    /// Unload a cell.
     UnloadCell(PartitionCell),
-    FocusActor { cell: PartitionCell, id: String },
-    RevertActor { cell: PartitionCell, id: String },
+    /// Move the camera to an actor.
+    FocusActor {
+        /// Cell that contains the actor.
+        cell: PartitionCell,
+        /// Id of the actor.
+        id: String,
+    },
+    /// Restore an actor file from version control.
+    RevertActor {
+        /// Cell that contains the actor.
+        cell: PartitionCell,
+        /// Id of the actor.
+        id: String,
+    },
 }
 
 impl OutlinerPanel {
+    /// Draws the outliner and returns the actions requested this frame.
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,

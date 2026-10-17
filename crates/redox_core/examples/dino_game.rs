@@ -20,10 +20,10 @@ use redox_ecs::world::World;
 use redox_input::state::InputState;
 use redox_math::{Quat, Transform, Vec3};
 use redox_render::{
-    RenderContext,
+    FrameView, RenderContext,
     asset_types::{MaterialData, MeshData},
     camera::Camera,
-    light::{DirectionalLight, LightUniform, PointLight},
+    light::{DirectionalLight, LightScene, PointLight},
     mesh::primitive::{create_cube, create_sphere},
     systems::{MaterialHandle, MeshHandle, extract_render_objects, sync_assets_to_render},
 };
@@ -340,146 +340,46 @@ async fn run() {
                     ],
                 );
 
-                if let (Some(cam), Some(tf)) = (
-                    world.get_component::<Camera>(camera_entity),
-                    world.get_component::<Transform>(camera_entity),
-                ) {
+                // Camera, lights and objects for this frame.
+                let camera = world
+                    .get_component::<Camera>(camera_entity)
+                    .cloned()
+                    .expect("the camera entity has a Camera");
+                if let Some(tf) = world.get_component::<Transform>(camera_entity) {
                     render_ctx
                         .camera_uniform
-                        .update(cam, tf.translation, tf.rotation);
+                        .update(&camera, tf.translation, tf.rotation);
                     render_ctx.update_camera_buffer();
                 }
 
-                // Свет и Тени
-                let shadow_matrix = {
-                    let s = 30.0;
-                    let proj = redox_math::orthographic(-s, s, -s, s, -50.0, 50.0);
-                    let view = redox_math::look_at(Vec3::new(10.0, 20.0, 0.0), Vec3::ZERO, Vec3::Y);
-                    proj * view
-                };
-
-                if let Some(light) = world.get_component::<DirectionalLight>(sun) {
-                    let mut lu = LightUniform::new(light, Vec3::new(0.1, 0.1, 0.15));
-                    lu.shadow_view_proj = shadow_matrix.to_cols_array_2d();
-                    if let Some(ptf) = world.get_component::<Transform>(player) {
-                        lu.add_point_light(&PointLight::new(
-                            ptf.translation + Vec3::new(0.0, 1.5, 0.0),
-                            Vec3::new(1.0, 0.6, 0.2),
-                            8.0,
-                            15.0,
-                        ));
-                    }
-                    render_ctx.update_light_buffer(&lu);
+                let sun_light = world
+                    .get_component::<DirectionalLight>(sun)
+                    .cloned()
+                    .expect("the sun entity has a DirectionalLight");
+                let mut lights = LightScene::new(sun_light);
+                lights.ambient = Vec3::new(0.1, 0.1, 0.15);
+                if let Some(ptf) = world.get_component::<Transform>(player) {
+                    lights.points.push(PointLight::new(
+                        ptf.translation + Vec3::new(0.0, 1.5, 0.0),
+                        Vec3::new(1.0, 0.6, 0.2),
+                        8.0,
+                        15.0,
+                    ));
                 }
 
                 let render_objects = extract_render_objects(&world, &render_ctx);
                 render_ctx.update_model_buffer(&render_objects);
 
-                // --- РЕНДЕР ПАССЫ (Vulkan-safe sequence) ---
+                // The renderer draws shadows, the scene and tone mapping; the HUD goes on top.
                 let output = redox_render::acquire_surface_texture(render_ctx.surface()).unwrap();
                 let view = output
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
+                let frame_view = FrameView::new(&camera, &render_objects, &lights);
+                render_ctx.render_frame_view(&frame_view, &view).unwrap();
                 let mut encoder = render_ctx
                     .device()
                     .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-
-                // 1. Shadows
-                {
-                    let shadow_matrix_buf = redox_render::resource::buffer::create_uniform_buffer(
-                        render_ctx.device(),
-                        "sh",
-                        bytemuck::bytes_of(&shadow_matrix.to_cols_array_2d()),
-                    );
-                    let shadow_bg =
-                        render_ctx
-                            .device()
-                            .create_bind_group(&wgpu::BindGroupDescriptor {
-                                label: None,
-                                layout: &render_ctx.shadow_pass.bind_group_layout,
-                                entries: &[wgpu::BindGroupEntry {
-                                    binding: 0,
-                                    resource: shadow_matrix_buf.as_entire_binding(),
-                                }],
-                            });
-                    let mut s_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("Shadows"),
-                        color_attachments: &[],
-                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                            view: &render_ctx.shadow_view,
-                            depth_ops: Some(wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(1.0),
-                                store: wgpu::StoreOp::Store,
-                            }),
-                            stencil_ops: None,
-                        }),
-                        ..Default::default()
-                    });
-                    s_pass.set_pipeline(&render_ctx.shadow_pass.pipeline);
-                    s_pass.set_bind_group(0, &shadow_bg, &[]);
-                    s_pass.set_bind_group(1, &render_ctx.shadow_model_bind_group, &[]);
-                    for (i, obj) in render_objects.iter().enumerate() {
-                        if let Some(m) = render_ctx.registry.mesh_by_slot(obj.mesh_index) {
-                            s_pass.set_vertex_buffer(0, m.vertex_buffer.slice(..));
-                            s_pass.set_index_buffer(
-                                m.index_buffer.slice(..),
-                                wgpu::IndexFormat::Uint32,
-                            );
-                            s_pass.draw_indexed(0..m.index_count, 0, (i as u32)..(i as u32 + 1));
-                        }
-                    }
-                }
-
-                // 2. Scene HDR
-                {
-                    let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("HDR Scene"),
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            depth_slice: None,
-                            view: &render_ctx.hdr_view,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(wgpu::Color {
-                                    r: 0.01,
-                                    g: 0.01,
-                                    b: 0.03,
-                                    a: 1.0,
-                                }),
-                                store: wgpu::StoreOp::Store,
-                            },
-                        })],
-                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                            view: &render_ctx.depth_view,
-                            depth_ops: Some(wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(1.0),
-                                store: wgpu::StoreOp::Store,
-                            }),
-                            stencil_ops: None,
-                        }),
-                        ..Default::default()
-                    });
-                    render_ctx.record_draw(&mut rpass, &render_objects, &[]);
-                }
-
-                // 3. Tone Mapping
-                {
-                    let mut f_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("Final"),
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            depth_slice: None,
-                            view: &view,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                                store: wgpu::StoreOp::Store,
-                            },
-                        })],
-                        ..Default::default()
-                    });
-                    f_pass.set_pipeline(&render_ctx.tone_mapping_pipeline);
-                    f_pass.set_bind_group(0, &render_ctx.tone_mapping_bind_group, &[]);
-                    f_pass.draw(0..3, 0..1);
-                }
 
                 // 4. UI
                 ui_ctx.record_frame(dt);

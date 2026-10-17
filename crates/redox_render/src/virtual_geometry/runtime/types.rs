@@ -40,11 +40,17 @@ impl Default for VGConfig {
 /// Per-frame statistics reported by [`VGSystem`].
 #[derive(Clone, Debug, Default)]
 pub struct VGStats {
+    /// Meshlets before culling.
     pub total_meshlets: u32,
+    /// Meshlets after culling.
     pub visible_meshlets: u32,
+    /// Triangles before culling.
     pub total_triangles: u64,
+    /// Triangles after culling.
     pub visible_triangles: u64,
+    /// Registered virtual geometry assets.
     pub registered_assets: u32,
+    /// Instances that are drawn.
     pub active_instances: u32,
 }
 

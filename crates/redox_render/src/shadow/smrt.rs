@@ -19,6 +19,7 @@ pub enum SmrtQuality {
 }
 
 impl SmrtQuality {
+    /// Ray-tracing configuration of this quality level.
     pub fn config(self) -> SmrtConfig {
         match self {
             Self::Performance => SmrtConfig {
@@ -82,11 +83,17 @@ impl Default for SmrtConfig {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct SmrtUniform {
+    /// Number of shadow rays per pixel.
     pub ray_count: u32,
+    /// Depth samples per ray.
     pub samples_per_ray: u32,
+    /// Angular size of the light source in radians.
     pub source_angle: f32,
+    /// Radius of the light source.
     pub source_radius: f32,
+    /// Maximum distance a ray travels.
     pub max_trace_dist: f32,
+    /// Padding.
     pub _pad: [f32; 3],
 }
 
@@ -97,6 +104,7 @@ pub fn smrt_sample_params(cfg: &SmrtConfig) -> SmrtUniform {
 }
 
 impl SmrtUniform {
+    /// Converts a configuration to the GPU layout.
     pub fn from_config(cfg: &SmrtConfig) -> Self {
         Self {
             ray_count: cfg.ray_count,

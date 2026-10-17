@@ -48,10 +48,12 @@ const VIS_EPS: f32 = 1.0e-3;
 /// This is the CPU ground truth for `docs/reference/shaders/sdf_shadow.wgsl` and doubles as
 /// the offline validation path (unit tests, future DDGI ray budget checks).
 pub struct SdfShadowScene {
+    /// The brick atlas.
     pub atlas: SdfBrickAtlas,
 }
 
 impl SdfShadowScene {
+    /// Creates an empty scene.
     pub fn new() -> Self {
         Self {
             atlas: SdfBrickAtlas::new(),

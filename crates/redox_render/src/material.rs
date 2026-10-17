@@ -36,21 +36,35 @@ pub struct Material {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct MaterialUniform {
+    /// Base color (rgba).
     pub base_color: [f32; 4],
+    /// Emissive color (rgb) and strength.
     pub emissive: [f32; 4],
+    /// Metallic factor.
     pub metallic: f32,
+    /// Roughness.
     pub roughness: f32,
+    /// Bit set of [`material_flags`].
     pub flags: u32,
+    /// Sheen strength.
     pub sheen: f32,
+    /// Color (rgb) and metallic factor (w) of the first layer.
     pub layer0_color: [f32; 4],
+    /// Roughness (x) and blend weight (y) of the first layer.
     pub layer0_params: [f32; 4],
+    /// Color (rgb) and metallic factor (w) of the second layer.
     pub layer1_color: [f32; 4],
+    /// Roughness (x) and blend weight (y) of the second layer.
     pub layer1_params: [f32; 4],
 }
 
+/// Bit flags for [`MaterialUniform::flags`].
 pub mod material_flags {
+    /// The material has an albedo texture.
     pub const HAS_ALBEDO_TEX: u32 = 1 << 0;
+    /// The material has a normal map.
     pub const HAS_NORMAL_TEX: u32 = 1 << 1;
+    /// The material has a metallic-roughness texture.
     pub const HAS_MR_TEX: u32 = 1 << 2;
     /// Substrate secondary lobes are active (any layer weight > 0 or sheen > 0).
     pub const HAS_SUBSTRATE: u32 = 1 << 3;
@@ -89,41 +103,49 @@ impl Material {
         }
     }
 
+    /// Sets the metallic factor.
     pub fn metallic(mut self, metallic: f32) -> Self {
         self.metallic = metallic;
         self
     }
 
+    /// Sets the roughness.
     pub fn roughness(mut self, roughness: f32) -> Self {
         self.roughness = roughness;
         self
     }
 
+    /// Sets the emissive color.
     pub fn emissive(mut self, color: Vec3) -> Self {
         self.emissive = color;
         self
     }
 
+    /// Uses the texture at `texture_index` as normal map.
     pub fn with_normal(mut self, texture_index: usize) -> Self {
         self.normal_texture_index = Some(texture_index);
         self
     }
 
+    /// Uses the texture at `texture_index` as metallic-roughness map.
     pub fn with_mr(mut self, texture_index: usize) -> Self {
         self.mr_texture_index = Some(texture_index);
         self
     }
 
+    /// Sets the two material layers.
     pub fn with_layers(mut self, layers: [MaterialLayer; 2]) -> Self {
         self.layers = Some(layers);
         self
     }
 
+    /// Sets the sheen strength.
     pub fn sheen(mut self, sheen: f32) -> Self {
         self.sheen = sheen;
         self
     }
 
+    /// Converts to the GPU uniform layout.
     pub fn to_uniform(&self, _device: &wgpu::Device) -> MaterialUniform {
         let mut flags = 0;
         if self.texture_index.is_some() {

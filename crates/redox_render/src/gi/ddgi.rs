@@ -11,17 +11,22 @@ use super::ddgi_gpu::DDGI_OCT_SAMPLES;
 /// Grid dimensions in probe cells (X × Y × Z).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct GridDimensions {
+    /// Probe index along X.
     pub x: i32,
+    /// Probe index along Y.
     pub y: i32,
+    /// Probe index along Z.
     pub z: i32,
 }
 
 /// Single DDGI probe storing diffuse irradiance, octahedral samples, and validity.
 #[derive(Clone, Copy, Debug)]
 pub struct DdgiProbe {
+    /// World-space position of the probe.
     pub position: Vec3,
     /// L0 / average irradiance (CPU convenience).
     pub irradiance: Vec3,
+    /// How much of the probe's surroundings is valid (0..1).
     pub validity: f32,
     /// Octahedral irradiance samples (2×4) filled by [`crate::gi::DdgiGpu::update`].
     pub oct_samples: [Vec3; DDGI_OCT_SAMPLES],
@@ -41,9 +46,13 @@ impl Default for DdgiProbe {
 /// Regular 3-D probe grid for DDGI.
 #[derive(Clone, Debug)]
 pub struct DdgiProbeGrid {
+    /// World position of the first probe.
     pub origin: Vec3,
+    /// Distance between neighboring probes.
     pub spacing: f32,
+    /// Number of probes along each axis.
     pub dimensions: GridDimensions,
+    /// All probes in grid order.
     pub probes: Vec<DdgiProbe>,
 }
 

@@ -42,6 +42,7 @@ impl Renderer {
             .write_immediate(&self.queue, &self.shader_debug_buffer, 0, &bytes, false);
     }
 
+    /// Writes the model matrices of `objects` into the model buffer.
     pub fn update_model_buffer(&mut self, objects: &[RenderObject]) {
         self.model_uniform_scratch.clear();
         self.model_uniform_scratch.reserve(objects.len());

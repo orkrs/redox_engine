@@ -14,6 +14,7 @@ use crate::shader::{PBR_WGSL, create_shader_with_vertex_decode};
 
 /// Alpha-blended variant of the PBR pipeline.
 pub struct TransparentPass {
+    /// Render pipeline.
     pub pipeline: wgpu::RenderPipeline,
 }
 

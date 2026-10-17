@@ -4,46 +4,69 @@ use redox_anim::{Inertializer, LocalPose, Pose, SkinnedModel};
 use redox_ecs::Entity;
 use redox_gameplay::{AttributeSet, StateTree, StateTreeComponent, TransitionCondition};
 
+/// What the node canvas shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum GraphMode {
+    /// A behavior state tree.
     #[default]
     StateTree,
+    /// An animation graph with a skeleton preview.
     AnimGraph,
+    /// A procedural generation graph.
     Pcg,
 }
 
+/// A node of the graph.
 #[derive(Clone, Debug)]
 pub struct Node {
+    /// Identifier, unique within the graph.
     pub id: usize,
+    /// Kind of node, shown as its title.
     pub kind: String,
+    /// Position on the canvas.
     pub pos: egui::Pos2,
 }
 
+/// A connection between two nodes.
 #[derive(Clone, Debug)]
 pub struct Edge {
+    /// Id of the source node.
     pub from: usize,
+    /// Id of the target node.
     pub to: usize,
+    /// Label drawn on the connection.
     pub label: String,
 }
 
+/// Nodes and the connections between them.
 #[derive(Clone, Debug, Default)]
 pub struct NodeGraph {
+    /// All nodes.
     pub nodes: Vec<Node>,
+    /// All connections.
     pub edges: Vec<Edge>,
 }
 
 /// Pixels per world unit in the AnimGraph skeleton preview.
 const PREVIEW_SCALE: f32 = 56.0;
 
+/// Canvas that draws and animates node graphs.
 pub struct NodeCanvas {
+    /// What is being shown.
     pub mode: GraphMode,
+    /// The graph being drawn.
     pub graph: NodeGraph,
+    /// Node highlighted as currently active.
     pub active_id: Option<usize>,
+    /// Distance fed to the state tree demo.
     pub distance_preview: f32,
+    /// Playback time of the animation preview in seconds.
     pub anim_time: f32,
+    /// Whether the animation preview advances.
     pub anim_playing: bool,
     /// Rig and clips driving the AnimGraph (procedural demo rig until a model is loaded).
     pub rig: SkinnedModel,
+    /// Index of the clip playing.
     pub active_clip: usize,
     /// BlendSpace1D parameter (0 = first clip, 1 = second).
     pub blend_weight: f32,
@@ -74,6 +97,7 @@ impl Default for NodeCanvas {
 }
 
 impl NodeCanvas {
+    /// Shows the patrol/chase state tree demo.
     pub fn load_patrol_chase(&mut self) {
         let tree = redox_gameplay::sentinel_patrol_chase();
         self.graph_from_state_tree(&tree);
@@ -81,6 +105,7 @@ impl NodeCanvas {
         self.mode = GraphMode::StateTree;
     }
 
+    /// Highlights the node of the state `agent` is in.
     pub fn sync_from_agent(&mut self, agent: &StateTreeComponent) {
         self.graph_from_state_tree(&agent.tree);
         self.active_id = Some(agent.tree.active_id() as usize);
@@ -103,6 +128,7 @@ impl NodeCanvas {
         }
     }
 
+    /// Builds the graph from a state tree.
     pub fn graph_from_state_tree(&mut self, tree: &StateTree) {
         let mut sorted: Vec<_> = tree.iter_nodes().cloned().collect();
         sorted.sort_by_key(|n| n.id);
@@ -147,6 +173,7 @@ impl NodeCanvas {
         self.graph = NodeGraph { nodes, edges };
     }
 
+    /// Shows the animation graph demo.
     pub fn load_anim_demo(&mut self) {
         self.mode = GraphMode::AnimGraph;
         self.active_clip = self.active_clip.min(self.rig.clips.len().saturating_sub(1));
@@ -205,6 +232,7 @@ impl NodeCanvas {
         self.active_id = Some(3);
     }
 
+    /// Shows the procedural generation demo.
     pub fn load_pcg_demo(&mut self) {
         self.mode = GraphMode::Pcg;
         self.graph = NodeGraph {
@@ -351,6 +379,7 @@ impl NodeCanvas {
         }
     }
 
+    /// Draws the canvas and advances the animation by `dt`.
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,

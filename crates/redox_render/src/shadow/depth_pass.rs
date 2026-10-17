@@ -30,11 +30,14 @@ pub struct VsmPageDrawInfo {
 
 /// Holds the GPU pipeline and layouts for the VSM depth pass.
 pub struct VsmDepthPass {
+    /// Depth-only pipeline.
     pub pipeline: wgpu::RenderPipeline,
+    /// Layout of the bind group.
     pub bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl VsmDepthPass {
+    /// Creates the pass.
     pub fn new(device: &wgpu::Device) -> Self {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("vsm_depth_bgl"),

@@ -72,6 +72,7 @@ pub struct SdfBrickAtlas {
 }
 
 impl SdfBrickAtlas {
+    /// Creates an empty atlas.
     pub fn new() -> Self {
         Self::default()
     }
@@ -101,6 +102,7 @@ impl SdfBrickAtlas {
         self.bricks.len()
     }
 
+    /// Whether the atlas holds no bricks.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.bricks.is_empty()

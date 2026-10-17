@@ -18,3 +18,10 @@ glam = { workspace = true }
 serde = { workspace = true }
 bytemuck = { workspace = true }
 gltf = { workspace = true }
+
+[dev-dependencies]
+criterion = { version = "0.7", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "skinning"
+harness = false

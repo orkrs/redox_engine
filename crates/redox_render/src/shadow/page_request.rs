@@ -36,6 +36,7 @@ enum Readback {
     Mapping(Arc<AtomicBool>),
 }
 
+/// Compute pass that marks which shadow pages the visible pixels need.
 pub struct PageRequestPass {
     pipeline: wgpu::ComputePipeline,
     bgl: wgpu::BindGroupLayout,
@@ -47,6 +48,7 @@ pub struct PageRequestPass {
 }
 
 impl PageRequestPass {
+    /// Creates the pass.
     pub fn new(device: &wgpu::Device) -> Self {
         let shader = create_shader_module(device, "vsm_request", VSM_REQUEST_WGSL);
         let entry = |binding: u32, ty: wgpu::BindingType| wgpu::BindGroupLayoutEntry {

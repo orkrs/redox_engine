@@ -11,10 +11,15 @@ use parking_lot::Mutex;
 
 /// A GPU texture with its view and sampler, ready to be bound in a shader.
 pub struct Texture {
+    /// The GPU texture.
     pub texture: wgpu::Texture,
+    /// Default view of the texture.
     pub view: wgpu::TextureView,
+    /// Sampler used with the texture.
     pub sampler: wgpu::Sampler,
+    /// Width in texels.
     pub width: u32,
+    /// Height in texels.
     pub height: u32,
     /// Total mip levels generated for this texture.
     pub mip_levels: u32,

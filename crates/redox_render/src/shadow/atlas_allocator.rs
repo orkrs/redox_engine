@@ -28,6 +28,7 @@ pub struct ShadowAtlasAllocator {
 }
 
 impl ShadowAtlasAllocator {
+    /// Creates an allocator with every tile free.
     pub fn new() -> Self {
         Self {
             next_free: 0,

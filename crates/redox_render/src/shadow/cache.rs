@@ -14,8 +14,11 @@ pub enum InvalidationEvent {
         level: u32,
         /// Affected virtual page range (inclusive min/max).
         page_min_x: u32,
+        /// Smallest page row touched by the change.
         page_min_y: u32,
+        /// Largest page column touched by the change.
         page_max_x: u32,
+        /// Largest page row touched by the change.
         page_max_y: u32,
     },
     /// Complete invalidation (e.g. first frame, config change).

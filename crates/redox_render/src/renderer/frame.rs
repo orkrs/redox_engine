@@ -670,6 +670,7 @@ impl Renderer {
         self.render_frame_into(fv.objects, surface_view)
     }
 
+    /// Renders a frame of `objects` into the window surface.
     pub fn render_frame(
         &mut self,
         objects: &[RenderObject],

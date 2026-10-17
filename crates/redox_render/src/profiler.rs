@@ -18,7 +18,9 @@ const TICK_BYTES: u64 = 8;
 /// One measured stretch of GPU work.
 #[derive(Clone, Debug, PartialEq)]
 pub struct GpuTiming {
+    /// Pass label.
     pub label: &'static str,
+    /// GPU time in milliseconds.
     pub ms: f32,
 }
 
@@ -30,6 +32,7 @@ enum Readback {
     Mapping(Arc<AtomicBool>),
 }
 
+/// GPU timestamp profiler; inactive when the device lacks timestamp queries.
 pub struct GpuProfiler {
     query_set: Option<wgpu::QuerySet>,
     resolve: Option<wgpu::Buffer>,
@@ -44,6 +47,7 @@ pub struct GpuProfiler {
 }
 
 impl GpuProfiler {
+    /// Creates the profiler, enabled only when the device supports it.
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let enabled = device.features().contains(PROFILER_FEATURES);
         let buffers = enabled.then(|| {
@@ -84,6 +88,7 @@ impl GpuProfiler {
         }
     }
 
+    /// Whether timestamps are being recorded.
     pub fn is_enabled(&self) -> bool {
         self.query_set.is_some()
     }

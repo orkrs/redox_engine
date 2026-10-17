@@ -10,13 +10,18 @@ use crate::systems::RenderObject;
 /// Pass order is fixed inside [`crate::renderer::Renderer::render_frame`]:
 /// shadows → normals → SSAO → skybox → opaque PBR → transparent → VG → TAA → tonemap.
 pub struct FrameView<'a> {
+    /// Camera that renders the frame.
     pub camera: &'a Camera,
+    /// Objects to draw.
     pub objects: &'a [RenderObject],
+    /// Lights of the frame.
     pub lights: &'a LightScene,
+    /// Image-based lighting environment, if any.
     pub environment: Option<&'a IBLResource>,
 }
 
 impl<'a> FrameView<'a> {
+    /// Describes a frame without an environment.
     pub fn new(camera: &'a Camera, objects: &'a [RenderObject], lights: &'a LightScene) -> Self {
         Self {
             camera,
@@ -26,6 +31,7 @@ impl<'a> FrameView<'a> {
         }
     }
 
+    /// Adds an image-based lighting environment.
     pub fn with_environment(mut self, env: &'a IBLResource) -> Self {
         self.environment = Some(env);
         self

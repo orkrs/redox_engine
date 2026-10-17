@@ -27,6 +27,7 @@ pub const VIS_ID_SENTINEL: u32 = 0xFFFF_FFFF;
 
 /// Rasterizes VG meshlets into the visibility buffer.
 pub struct VgVisPass {
+    /// Render pipeline.
     pub pipeline: wgpu::RenderPipeline,
     /// group(1): `array<VGInstanceData>` storage (binding 0, vertex stage).
     pub vis_bgl: wgpu::BindGroupLayout,
@@ -113,6 +114,7 @@ impl VgVisPass {
         Self { pipeline, vis_bgl }
     }
 
+    /// Creates the bind group with the instance buffer.
     pub fn create_instances_bind_group(
         &self,
         device: &wgpu::Device,
@@ -147,11 +149,13 @@ pub fn bind_vis_draw_state<'a>(
 
 /// Fullscreen resolve shading the visibility buffer with full PBR lighting.
 pub struct VgResolvePass {
+    /// Render pipeline.
     pub pipeline: wgpu::RenderPipeline,
     resolve_bgl: wgpu::BindGroupLayout,
 }
 
 impl VgResolvePass {
+    /// Creates the pass.
     pub fn new(
         device: &wgpu::Device,
         hdr_format: wgpu::TextureFormat,
@@ -275,6 +279,7 @@ impl VgResolvePass {
         }
     }
 
+    /// Creates the bind group for the visibility targets.
     #[allow(clippy::too_many_arguments)]
     pub fn create_resolve_bind_group(
         &self,
@@ -323,6 +328,7 @@ impl VgResolvePass {
         })
     }
 
+    /// Draws the fullscreen resolve.
     pub fn draw<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
@@ -338,6 +344,7 @@ impl VgResolvePass {
     }
 }
 
+/// Packs materials into the storage buffer layout.
 pub fn build_material_storage(
     materials: &[Material],
     device: &wgpu::Device,
@@ -356,6 +363,7 @@ pub fn build_material_storage(
     buffer
 }
 
+/// Packs meshlet descriptors into the storage buffer layout.
 pub fn build_meshlet_storage(
     meshlets: &[MeshletDescriptor],
     device: &wgpu::Device,
@@ -385,11 +393,17 @@ const _: () = {
 
 /// GPU textures for the VG visibility pass (RT0–RT2).
 pub struct VgVisTargets {
+    /// Visibility ids (instance and triangle).
     pub id_texture: wgpu::Texture,
+    /// View of the id texture.
     pub id_view: wgpu::TextureView,
+    /// Packed normal and depth.
     pub normal_depth_texture: wgpu::Texture,
+    /// View of the normal-depth texture.
     pub normal_depth_view: wgpu::TextureView,
+    /// Texture coordinates.
     pub uv_texture: wgpu::Texture,
+    /// View of the uv texture.
     pub uv_view: wgpu::TextureView,
 }
 
@@ -433,11 +447,14 @@ pub fn create_vg_vis_targets(device: &wgpu::Device, width: u32, height: u32) -> 
 
 /// Depth-only meshlet draws for VSM / point-light shadow atlases.
 pub struct VgShadowPass {
+    /// Render pipeline.
     pub pipeline: wgpu::RenderPipeline,
+    /// Layout of the instances bind group.
     pub instances_bgl: wgpu::BindGroupLayout,
 }
 
 impl VgShadowPass {
+    /// Creates the pass for the given depth format.
     pub fn new(device: &wgpu::Device, depth_format: wgpu::TextureFormat) -> Self {
         let shadow_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("vg_shadow_matrix_bgl"),
@@ -517,6 +534,7 @@ impl VgShadowPass {
         }
     }
 
+    /// Creates the bind group with the instance buffer.
     pub fn create_instances_bind_group(
         &self,
         device: &wgpu::Device,
@@ -532,6 +550,7 @@ impl VgShadowPass {
         })
     }
 
+    /// Records the visibility draw.
     pub fn draw<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,

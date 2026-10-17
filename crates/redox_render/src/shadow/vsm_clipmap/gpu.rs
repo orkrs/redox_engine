@@ -8,10 +8,15 @@ use super::VSM_MAX_LEVELS;
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct VsmLevelGpu {
+    /// Light view-projection matrix of the level.
     pub view_proj: [[f32; 4]; 4],
+    /// Half the world extent covered by the level.
     pub world_half_extent: f32,
+    /// Offset of the level's entries in the page table buffer.
     pub page_table_offset: u32,
+    /// Number of pages along one side of the level.
     pub pages_per_side: u32,
+    /// World size of one texel.
     pub texel_world: f32,
 }
 
@@ -30,7 +35,9 @@ pub const VSM_PAGE_TABLE_WORDS: usize = VSM_MAX_LEVELS * VSM_PAGE_TABLE_WORDS_PE
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct VsmGpuInfo {
+    /// Number of active levels.
     pub level_count: u32,
+    /// Page size in texels.
     pub page_px: u32,
     /// Physical pages in the pool.
     pub phys_page_count: u32,
@@ -38,14 +45,20 @@ pub struct VsmGpuInfo {
     pub phys_pages_per_side: u32,
     /// SMRT params (mirror of `SmrtUniform`).
     pub ray_count: u32,
+    /// Depth samples per shadow ray.
     pub samples_per_ray: u32,
+    /// Angular size of the light source in radians.
     pub source_angle: f32,
+    /// Radius of the light source.
     pub source_radius: f32,
+    /// Maximum distance a ray travels.
     pub max_trace_dist: f32,
+    /// Padding.
     pub _pad0: [f32; 3],
     /// 16-byte alignment pad: WGSL `vec3<f32>` has size 16, so the following
     /// array<..mat4..> must start at a 16-aligned offset (shader struct = 8896 B).
     pub _pad_align: [f32; 4],
+    /// Per-level data for all levels.
     pub levels: [VsmLevelGpu; VSM_MAX_LEVELS],
     /// Concatenated page-table entries, `level * 256 + y * 16 + x`.
     pub page_tables: [u32; VSM_PAGE_TABLE_WORDS],

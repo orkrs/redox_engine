@@ -84,10 +84,12 @@ impl Renderer {
         self.vsm_shadow_temporal_alpha = alpha.clamp(0.05, 0.20);
     }
 
+    /// Turns ambient occlusion on or off.
     pub fn set_ssao_enabled(&mut self, enabled: bool) {
         self.ssao_enabled = enabled;
     }
 
+    /// Sets the exposure used by tone mapping.
     pub fn set_exposure(&mut self, exposure: f32) {
         self.exposure = exposure.max(0.0);
     }

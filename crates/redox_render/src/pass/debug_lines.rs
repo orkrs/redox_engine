@@ -12,11 +12,14 @@ use crate::pass::shared_layouts::multisample_state;
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub struct DebugLineVertex {
+    /// Position in world space.
     pub position: [f32; 3],
+    /// Color (rgba).
     pub color: [f32; 4],
 }
 
 impl DebugLineVertex {
+    /// Creates a vertex at `pos` with the color `(r, g, b, a)`.
     pub fn new(pos: Vec3, r: f32, g: f32, b: f32, a: f32) -> Self {
         Self {
             position: [pos.x, pos.y, pos.z],
@@ -29,6 +32,7 @@ impl DebugLineVertex {
 
 /// Pipeline and buffer for drawing debug lines (e.g. occlusion rays).
 pub struct DebugLinesPass {
+    /// Line pipeline.
     pub pipeline: wgpu::RenderPipeline,
     /// Staging buffer for line vertices (updated each frame).
     pub vertex_buffer: wgpu::Buffer,
@@ -37,10 +41,12 @@ pub struct DebugLinesPass {
 }
 
 impl DebugLinesPass {
+    /// Maximum number of lines drawn per frame.
     pub const MAX_LINES: usize = 512;
     const VERTEX_SIZE: u64 = std::mem::size_of::<DebugLineVertex>() as u64;
     const BUFFER_SIZE: u64 = Self::VERTEX_SIZE * (Self::MAX_LINES * 2) as u64;
 
+    /// Creates the pass for the given color and depth formats.
     pub fn new(
         device: &wgpu::Device,
         camera_bgl: &wgpu::BindGroupLayout,

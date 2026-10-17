@@ -28,6 +28,7 @@ impl DerefMut for RenderContext {
 }
 
 impl RenderContext {
+    /// Creates the renderer for `window`; see [`Renderer::new`].
     pub async fn new(window: Arc<Window>, present_mode: wgpu::PresentMode) -> Self {
         Self(Renderer::new(window, present_mode).await)
     }
@@ -49,6 +50,7 @@ impl RenderContext {
         self.0.render_frame(objects)
     }
 
+    /// Creates the virtual-geometry system with `config`.
     pub fn init_virtual_geometry(&mut self, config: VGConfig) {
         self.0.init_virtual_geometry(config);
     }

@@ -151,7 +151,9 @@ impl redox_reflect::Reflect for DirectionalLight {
 /// (inverse-square + `clip(1-(d/r)^4)^2`). Keeps unified scale with sun lux + EV100 exposure.
 #[derive(Clone, Debug)]
 pub struct PointLight {
+    /// World position.
     pub position: Vec3,
+    /// Light color (linear RGB).
     pub color: Vec3,
     /// Intensity in lumens (point) — scaled by windowed inverse-square in shader.
     pub intensity: f32,
@@ -164,6 +166,7 @@ pub struct PointLight {
 }
 
 impl PointLight {
+    /// Creates a point light.
     pub fn new(position: Vec3, color: Vec3, intensity: f32, radius: f32) -> Self {
         Self {
             position,
@@ -255,20 +258,28 @@ impl redox_reflect::Reflect for PointLight {
 /// ECS component for a spot light source.
 #[derive(Clone, Debug)]
 pub struct SpotLight {
+    /// World position.
     pub position: Vec3,
+    /// Direction the light shines in.
     pub direction: Vec3,
+    /// Light color (linear RGB).
     pub color: Vec3,
+    /// Brightness multiplier.
     pub intensity: f32,
+    /// Distance at which the light fades out.
     pub range: f32,
     /// Outer cone half-angle in radians.
     pub outer_cone_angle: f32,
     /// Inner cone half-angle in radians (full brightness).
     pub inner_cone_angle: f32,
+    /// Whether the light casts shadows.
     pub cast_shadows: bool,
+    /// Radius of the light source, used for soft shadows.
     pub source_radius: f32,
 }
 
 impl SpotLight {
+    /// Creates a light from its parameters.
     pub fn new(
         position: Vec3,
         direction: Vec3,
@@ -298,20 +309,27 @@ impl SpotLight {
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct LightUniform {
     // Directional light: xyz = direction, w = intensity
+    /// Sun color multiplied by intensity (rgb) and the intensity (w).
     pub dir_color: [f32; 4],
+    /// Direction (xyz) the sun shines in.
     pub dir_direction: [f32; 4],
 
     // Ambient color: xyz = color, w = ambient intensity (1.0 = full)
+    /// Ambient color (rgb) and ambient intensity (w).
     pub ambient: [f32; 4],
 
     // Shadow matrix
+    /// View-projection matrix of the directional shadow.
     pub shadow_view_proj: [[f32; 4]; 4],
 
     // Point lights (array of 128 for a more atmospheric forest)
     // pos.xyz, pos.w = intensity; color.xyz, color.w = radius
+    /// Point light positions (xyz) and intensities (w).
     pub point_lights_pos: [[f32; 4]; 128],
+    /// Point light colors (rgb) and radii (w).
     pub point_lights_color: [[f32; 4]; 128],
 
+    /// Number of valid entries in the point-light arrays.
     pub num_point_lights: u32,
     /// 1 = PCSS/VSM for directional; 2 = VSM clipmap path.
     pub soft_shadows: u32,
@@ -322,6 +340,7 @@ pub struct LightUniform {
 }
 
 impl LightUniform {
+    /// Creates the uniform from a directional light and an ambient color.
     pub fn new(dir_light: &DirectionalLight, ambient: Vec3) -> Self {
         let dc = dir_light.color * dir_light.intensity;
         Self {
@@ -347,6 +366,7 @@ impl LightUniform {
         }
     }
 
+    /// Appends a point light (ignored when the array is full).
     pub fn add_point_light(&mut self, light: &PointLight) {
         if self.num_point_lights < 128 {
             let i = self.num_point_lights as usize;
@@ -394,10 +414,13 @@ pub struct PointLightGpu {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
 pub struct ShaderDebugUniform {
+    /// Selects a debug visualization; 0 is off.
     pub debug_viz_mode: u32,
+    /// Frame counter used for temporal noise.
     pub frame_index: u32,
     /// 0 while dummy IBL is bound — PBR must not sample uninitialized cubemaps.
     pub ibl_enabled: u32,
+    /// Non-zero when ambient occlusion is applied.
     pub gtao_enabled: u32,
 }
 

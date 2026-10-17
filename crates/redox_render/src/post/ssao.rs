@@ -1,17 +1,26 @@
 use crate::shader::{GTAO_BLUR_WGSL, GTAO_UPSAMPLE_WGSL, GTAO_WGSL, create_shader_module};
 use bytemuck::{Pod, Zeroable};
 
+/// Ambient occlusion passes (GTAO): trace, blur and upsample.
 pub struct SSAOPass {
+    /// Occlusion pipeline.
     pub pipeline: wgpu::RenderPipeline,
+    /// Blur pipeline.
     pub blur_pipeline: wgpu::RenderPipeline,
+    /// Upsample pipeline.
     pub upsample_pipeline: wgpu::RenderPipeline,
+    /// Layout of the occlusion bind group.
     pub bind_group_layout: wgpu::BindGroupLayout,
+    /// Layout of the blur bind group.
     pub blur_bind_group_layout: wgpu::BindGroupLayout,
+    /// Layout of the upsample bind group.
     pub upsample_bind_group_layout: wgpu::BindGroupLayout,
+    /// Noise texture used to rotate samples.
     pub noise_texture: crate::resource::texture::Texture,
 }
 
 impl SSAOPass {
+    /// Creates the passes and the noise texture.
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let mut noise_data = Vec::new();
         for i in 0..16 {
@@ -249,6 +258,7 @@ impl SSAOPass {
         }
     }
 
+    /// Creates a blur bind group.
     pub fn create_blur_bind_group(
         &self,
         device: &wgpu::Device,
@@ -276,6 +286,7 @@ impl SSAOPass {
         })
     }
 
+    /// Creates an upsample bind group.
     pub fn create_upsample_bind_group(
         &self,
         device: &wgpu::Device,
@@ -358,31 +369,46 @@ impl SSAOPass {
     }
 }
 
+/// Per-frame uniform of the VSM shadow trace.
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub struct VsmPassUniform {
+    /// Frame counter for the sample pattern.
     pub frame_index: u32,
+    /// Padding.
     pub _pad: [u32; 3],
 }
 
+/// Uniform of the temporal filter for VSM shadows.
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub struct VsmTemporalUniform {
+    /// Weight of the current frame.
     pub blend_alpha: f32,
+    /// Non-zero resets the history.
     pub reset: u32,
+    /// Padding.
     pub _pad: [f32; 2],
 }
 
+/// Traces screen-space shadows through the virtual shadow maps and filters them over time.
 pub struct VsmShadowPass {
+    /// Trace pipeline.
     pub trace_pipeline: wgpu::RenderPipeline,
+    /// Temporal filter pipeline.
     pub temporal_pipeline: wgpu::RenderPipeline,
+    /// Layout of the trace bind group.
     pub trace_bgl: wgpu::BindGroupLayout,
+    /// Layout of the temporal bind group.
     pub temporal_bgl: wgpu::BindGroupLayout,
+    /// Uniform buffer of the trace.
     pub pass_uniform_buffer: wgpu::Buffer,
+    /// Uniform buffer of the temporal filter.
     pub temporal_uniform_buffer: wgpu::Buffer,
 }
 
 impl VsmShadowPass {
+    /// Creates the pass.
     pub fn new(device: &wgpu::Device) -> Self {
         use crate::shader::{VSM_SHADOW_TEMPORAL_WGSL, VSM_SHADOW_TRACE_WGSL};
 
@@ -509,6 +535,7 @@ impl VsmShadowPass {
         }
     }
 
+    /// Creates the trace bind group.
     pub fn create_trace_bind_group(
         &self,
         device: &wgpu::Device,
@@ -538,6 +565,7 @@ impl VsmShadowPass {
         })
     }
 
+    /// Creates the temporal bind group.
     pub fn create_temporal_bind_group(
         &self,
         device: &wgpu::Device,

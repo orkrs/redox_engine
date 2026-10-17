@@ -32,6 +32,7 @@ use super::smrt::SmrtConfig;
 
 /// Pages along one axis of every clipmap level's virtual window.
 pub const VSM_PAGES_PER_SIDE: u32 = 16;
+/// Maximum number of clipmap levels.
 pub const VSM_MAX_LEVELS: usize = 8;
 /// Full world-space width of level 0; each coarser level doubles it. With 256 px pages and 16
 /// pages per side level 0 has 0.4 cm texels; five levels reach 256 m (6 cm texels).
@@ -67,6 +68,7 @@ impl Default for VsmConfig {
         }
     }
 }
+/// One level of the clipmap: a square region of the world around the camera.
 #[derive(Clone, Debug)]
 pub struct ClipmapLevel {
     /// World→light-space projection covering this level's window.
@@ -154,18 +156,22 @@ impl VsmClipmap {
         }
     }
 
+    /// The configuration.
     pub fn config(&self) -> &VsmConfig {
         &self.config
     }
 
+    /// All clipmap levels.
     pub fn levels(&self) -> &[ClipmapLevel] {
         &self.levels
     }
 
+    /// Page tables, one per level.
     pub fn tables(&self) -> &[VirtualPageTable] {
         &self.tables
     }
 
+    /// Mutable page tables.
     pub fn tables_mut(&mut self) -> &mut [VirtualPageTable] {
         &mut self.tables
     }
@@ -175,10 +181,12 @@ impl VsmClipmap {
         (self.phys_pool.free_count(), self.phys_pool.capacity())
     }
 
+    /// Allocator of physical pages.
     pub fn phys_pool_mut(&mut self) -> &mut PhysPageAllocator {
         &mut self.phys_pool
     }
 
+    /// Statistics of the current frame.
     pub fn stats(&self) -> VsmStats {
         self.stats
     }

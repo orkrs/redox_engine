@@ -17,12 +17,16 @@ use std::sync::RwLock;
 /// Compilation target for Slang shaders.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SlangTarget {
+    /// SPIR-V binary.
     Spirv,
+    /// WGSL source.
     Wgsl,
+    /// HLSL source.
     Hlsl,
 }
 
 impl SlangTarget {
+    /// Name of the target as the Slang compiler expects it.
     pub fn as_target_str(&self) -> &'static str {
         match self {
             Self::Spirv => "spirv",
@@ -35,10 +39,15 @@ impl SlangTarget {
 /// Compilation profile for Slang.
 #[derive(Clone, Debug)]
 pub struct SlangCompileOptions {
+    /// Output language.
     pub target: SlangTarget,
+    /// Name of the entry point.
     pub entry_point: String,
+    /// Shader stage: "vertex", "fragment" or "compute".
     pub stage: &'static str, // "vertex", "fragment", "compute"
+    /// Directories searched for imported modules.
     pub search_paths: Vec<PathBuf>,
+    /// Preprocessor definitions.
     pub defines: HashMap<String, String>,
 }
 
@@ -61,7 +70,9 @@ impl Default for SlangCompileOptions {
 /// Compilation result containing source code or bytecode.
 #[derive(Clone, Debug)]
 pub enum SlangOutput {
+    /// Compiled text output.
     Source(String),
+    /// Compiled binary output.
     Bytecode(Vec<u8>),
 }
 

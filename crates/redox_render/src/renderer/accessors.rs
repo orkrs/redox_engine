@@ -8,24 +8,29 @@ impl Renderer {
         self.mt_command_recording = enabled;
     }
 
+    /// The wgpu device.
     pub fn device(&self) -> &wgpu::Device {
         &self.device
     }
 
+    /// The wgpu queue.
     pub fn queue(&self) -> &wgpu::Queue {
         &self.queue
     }
 
+    /// Color format of the surface.
     pub fn surface_format(&self) -> wgpu::TextureFormat {
         self.config.format
     }
 
+    /// The window surface.
     pub fn surface(&self) -> &wgpu::Surface<'_> {
         self.surface
             .as_ref()
             .expect("offscreen Renderer has no window surface")
     }
 
+    /// Current surface configuration.
     pub fn config(&self) -> &wgpu::SurfaceConfiguration {
         &self.config
     }

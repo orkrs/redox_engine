@@ -1,11 +1,18 @@
+/// A command that can be run from the palette.
 pub struct Command {
+    /// Identifier handed to the host when the command is picked.
     pub id: String,
+    /// Text shown in the list.
     pub label: String,
 }
 
+/// Searchable list of editor commands.
 pub struct CommandPalette {
+    /// Whether the palette is shown.
     pub open: bool,
+    /// Text typed into the search box.
     pub query: String,
+    /// All available commands.
     pub commands: Vec<Command>,
 }
 
@@ -82,6 +89,7 @@ impl Default for CommandPalette {
 }
 
 impl CommandPalette {
+    /// Opens or closes the palette; opening clears the query.
     pub fn toggle(&mut self) {
         self.open = !self.open;
         if self.open {

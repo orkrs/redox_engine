@@ -42,6 +42,7 @@ pub struct PreviousTransform {
 }
 
 impl PreviousTransform {
+    /// Creates an object with the given model matrix.
     pub fn new(matrix: Mat4) -> Self {
         Self { matrix }
     }
@@ -58,9 +59,13 @@ pub struct MaterialHandle(pub Handle<MaterialData>);
 /// Temporary structure built each frame during the `RenderPrep` stage.
 #[derive(Clone, Debug)]
 pub struct RenderObject {
+    /// Model matrix of the object.
     pub model_matrix: Mat4,
+    /// Object color (rgba).
     pub color: [f32; 4],
+    /// Index of the mesh slot to draw.
     pub mesh_index: usize,
+    /// Index of the material slot to draw with.
     pub material_index: usize,
     /// World-space AABB (Arvo-transformed), used by frustum culling.
     pub bounds: redox_math::Aabb,

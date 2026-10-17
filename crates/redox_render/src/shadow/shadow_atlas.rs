@@ -11,8 +11,11 @@ pub const VSM_ATLAS_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R32Float;
 
 /// GPU shadow atlas.
 pub struct ShadowAtlas {
+    /// The atlas depth texture.
     pub texture: wgpu::Texture,
+    /// View of the atlas.
     pub view: wgpu::TextureView,
+    /// Comparison sampler for the atlas.
     pub sampler: wgpu::Sampler,
     /// Number of pages along one axis of the atlas.
     pub pages_per_side: u32,

@@ -39,6 +39,7 @@ pub struct ViewportCubePass {
 }
 
 impl ViewportCubePass {
+    /// Creates the pass and its pipelines for the viewport.
     pub fn new(device: &wgpu::Device) -> Self {
         let shader_src = r#"
 struct Uniforms {
@@ -394,6 +395,7 @@ struct Uniforms { mvp: mat4x4<f32>, color: vec4<f32> }
         }
     }
 
+    /// Uploads the unit cube geometry to the GPU.
     pub fn upload_geometry(&self, queue: &wgpu::Queue) {
         // Face-expanded cube with normals
         let faces: [([f32; 3], [[f32; 3]; 4]); 6] = [

@@ -10,5 +10,17 @@ Run: `cargo bench -p redox_ecs --bench world`. Numbers are from the developer ma
 | `par_iter_100k` (same query, rayon) | ~0.20 ms |
 | `add_component_10k` (archetype migration) | ~1.5 ms |
 
-Not yet covered: `Animator::sample`, `SkinnedGeometry::deform_into`, meshlet building
-(roadmap A10.4).
+Animation: `cargo bench -p redox_anim` (64 bones, 60 keys per track, 50 000 vertices):
+
+| Benchmark | Time |
+|---|---|
+| `clip_sample_64_bones` | ~4.3 us |
+| `pose_skin_matrices_64_bones` | ~1.4 us |
+| `deform_into_50k_vertices` (CPU skinning, 2 bones per vertex) | ~0.53 ms |
+
+Virtual geometry: `cargo bench -p redox_render --bench meshlets` (`build_vg_asset`, default 3-level LOD chain):
+
+| Benchmark | Time |
+|---|---|
+| 8k triangles | ~8.8 ms |
+| 32k triangles | ~37 ms |

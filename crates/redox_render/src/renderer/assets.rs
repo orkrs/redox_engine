@@ -131,22 +131,27 @@ impl Renderer {
 
     // ----- Asset-handle–based upload (for redox_asset integration) -----
 
+    /// Mesh slot of a mesh asset handle.
     pub fn get_mesh_index(&self, handle: Handle<MeshData>) -> Option<usize> {
         self.registry.mesh_index_for(handle.id())
     }
 
+    /// Bounding box of the mesh in a slot.
     pub fn get_mesh_bounds(&self, slot: usize) -> Option<redox_math::Aabb> {
         self.registry.mesh_by_slot(slot).map(|m| m.local_bounds)
     }
 
+    /// Texture slot of a texture asset handle.
     pub fn get_texture_index(&self, handle: Handle<TextureData>) -> Option<usize> {
         self.registry.texture_index_for(handle.id())
     }
 
+    /// Material slot of a material asset handle.
     pub fn get_material_index(&self, handle: Handle<MaterialData>) -> Option<usize> {
         self.registry.material_index_for(handle.id())
     }
 
+    /// Uploads a mesh asset and returns its slot.
     pub fn add_mesh_from_asset(&mut self, handle: Handle<MeshData>, mesh: &Mesh) -> Option<usize> {
         if self.registry.has_mesh(handle.id()) {
             return self.registry.mesh_index_for(handle.id());
@@ -172,6 +177,7 @@ impl Renderer {
         Some(self.registry.insert_mesh(handle.id(), gpu_mesh))
     }
 
+    /// Uploads a texture asset and returns its slot.
     pub fn add_texture_from_asset(
         &mut self,
         handle: Handle<TextureData>,
@@ -201,6 +207,7 @@ impl Renderer {
         Ok(Some(idx))
     }
 
+    /// Uploads a material asset and returns its slot.
     pub fn add_material_from_asset(
         &mut self,
         handle: Handle<MaterialData>,

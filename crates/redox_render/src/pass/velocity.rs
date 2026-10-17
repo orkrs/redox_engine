@@ -58,6 +58,7 @@ pub struct VelocityPass {
 }
 
 impl VelocityPass {
+    /// Creates the pass.
     pub fn new(device: &wgpu::Device) -> Self {
         // ── Bind group layout ───────────────────────────────────────────────
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

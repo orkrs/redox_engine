@@ -11,6 +11,7 @@ use crate::shader::{SKYBOX_WGSL, create_shader_module};
 
 /// Skybox background pass: env cubemap + camera uniform in one bind group.
 pub struct SkyboxPass {
+    /// Render pipeline.
     pub pipeline: wgpu::RenderPipeline,
     /// Layout for group 0: (0) env cubemap view, (1) filtering sampler,
     /// (2) camera uniform matching [`crate::camera::CameraUniform`].

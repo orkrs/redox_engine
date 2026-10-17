@@ -21,6 +21,7 @@ pub struct CompressedVertex {
 }
 
 impl CompressedVertex {
+    /// Vertex buffer layout of the compressed vertex format.
     pub fn buffer_layout() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,

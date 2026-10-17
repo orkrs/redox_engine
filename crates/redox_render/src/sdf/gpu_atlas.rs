@@ -47,19 +47,29 @@ impl Default for SdfBrickPageGpu {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct SdfSceneGpu {
+    /// Atlas dimensions in bricks and texels.
     pub atlas_dims: [u32; 4],
+    /// Minimum corner of the world bounds (xyz).
     pub world_bounds_min: [f32; 4],
+    /// Maximum corner of the world bounds (xyz) and texel size (w).
     pub world_bounds_max_texel: [f32; 4],
+    /// Page table entries, one per brick.
     pub pages: [SdfBrickPageGpu; MAX_SDF_BRICKS],
 }
 
 /// Single-channel 128³ distance-field atlas on the GPU.
 pub struct SdfGpuAtlas {
+    /// 3D distance field texture.
     pub texture: wgpu::Texture,
+    /// View of the distance field texture.
     pub view: wgpu::TextureView,
+    /// Sampler for the distance field.
     pub sampler: wgpu::Sampler,
+    /// Uniform buffer with the scene description.
     pub scene_buffer: wgpu::Buffer,
+    /// CPU copy of the scene description.
     pub scene: SdfSceneGpu,
+    /// Whether distance field shadows are applied.
     pub enabled: bool,
 }
 

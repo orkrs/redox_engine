@@ -8,11 +8,15 @@ use crate::shader::{TONE_MAPPING_WGSL, create_shader_module};
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct TonemapUniform {
+    /// Exposure multiplier.
     pub exposure: f32,
+    /// Non-zero enables sharpening.
     pub sharpen_enabled: u32,
+    /// Non-zero adds the bloom.
     pub bloom_enabled: u32,
     /// RCAS sharpness in stops (0 = max, ~0.5 = mild).
     pub rcas_sharpness: f32,
+    /// Output size in pixels.
     pub output_size: [f32; 2],
 }
 
@@ -33,6 +37,7 @@ fn output_srgb_constants(format: wgpu::TextureFormat) -> [(&'static str, f64); 1
     [("OUTPUT_SRGB", if format.is_srgb() { 1.0 } else { 0.0 })]
 }
 
+/// Creates the tone mapping pipeline for `format`.
 pub fn create_tone_mapping_pipeline(
     device: &wgpu::Device,
     output_format: wgpu::TextureFormat,
@@ -121,6 +126,7 @@ pub fn create_tone_mapping_pipeline(
     })
 }
 
+/// Creates the sharpening pipeline that writes to the display surface.
 pub fn create_rcas_present_pipeline(
     device: &wgpu::Device,
     output_format: wgpu::TextureFormat,
@@ -209,6 +215,7 @@ pub fn create_rcas_present_pipeline(
     })
 }
 
+/// Creates the tone mapping bind group.
 pub fn create_tonemap_bind_group(
     device: &wgpu::Device,
     pipeline: &wgpu::RenderPipeline,

@@ -23,6 +23,7 @@ struct LineVert {
 impl ViewportLinesPass {
     const MAX_VERTS: u32 = 4096;
 
+    /// Creates the line pass and its pipeline.
     pub fn new(device: &wgpu::Device) -> Self {
         let shader_src = r#"
 struct Uniforms { mvp: mat4x4<f32> }
@@ -136,6 +137,7 @@ struct VsOut { @builtin(position) clip: vec4<f32>, @location(0) color: vec4<f32>
         }
     }
 
+    /// Draws line segments (start, end, RGBA color) into the viewport target.
     pub fn render(
         &self,
         encoder: &mut wgpu::CommandEncoder,

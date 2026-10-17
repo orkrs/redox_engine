@@ -13,17 +13,22 @@
 /// and [`crate::picker::pick_in_quad_pane`].
 pub const QUAD_ORTHO_HALF: f32 = 24.0;
 
+/// How the viewport shades the scene.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum ViewportShading {
+    /// Full lighting.
     #[default]
     Lit = 0,
+    /// No lighting.
     Unlit = 1,
+    /// Surface normals shown as colors.
     Normals = 2,
     /// Real edge/line geometry (not a fragment fresnel hack).
     Wireframe = 3,
 }
 
 impl ViewportShading {
+    /// Shading mode bound to function key F1..F4.
     pub fn from_f_key(n: u8) -> Option<Self> {
         match n {
             1 => Some(Self::Lit),
@@ -34,6 +39,7 @@ impl ViewportShading {
         }
     }
 
+    /// Name shown in the UI.
     pub fn label(self) -> &'static str {
         match self {
             Self::Lit => "Lit (F1)",
@@ -43,6 +49,7 @@ impl ViewportShading {
         }
     }
 
+    /// Numeric value passed to shaders.
     pub fn as_u32(self) -> u32 {
         self as u32
     }
@@ -53,14 +60,18 @@ impl ViewportShading {
     }
 }
 
+/// One viewport or four.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum ViewportLayout {
+    /// A single view.
     #[default]
     Single,
+    /// Four views: top, front, right and perspective.
     Quad,
 }
 
 impl ViewportLayout {
+    /// Switches between single and quad.
     pub fn toggle(self) -> Self {
         match self {
             Self::Single => Self::Quad,
@@ -72,7 +83,9 @@ impl ViewportLayout {
 /// Engine-style debug overlays. UI owns the flags; integrator applies them when drawing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct ViewportDebugFlags {
+    /// Highlight overdraw.
     pub show_overdraw: bool,
+    /// Draw bounding boxes.
     pub show_aabbs: bool,
 }
 
@@ -102,13 +115,18 @@ impl ViewportDebugFlags {
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QuadPane {
+    /// Top-down pane.
     Top,
+    /// Front pane.
     Front,
+    /// Right-side pane.
     Right,
+    /// Perspective pane.
     Perspective,
 }
 
 impl QuadPane {
+    /// Name shown in the UI.
     pub fn label(self) -> &'static str {
         match self {
             Self::Top => "Top",

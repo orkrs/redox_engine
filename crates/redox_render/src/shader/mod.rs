@@ -19,46 +19,85 @@ pub mod watch;
 pub use slang::{SlangCompileOptions, SlangCompiler, SlangOutput, SlangTarget};
 pub use watch::{ShaderReloadReport, ShaderWatcher};
 
+/// Source of `forward.wgsl`.
 pub const FORWARD_WGSL: &str = include_str!("../../shaders/forward.wgsl");
+/// Source of `pbr.wgsl`.
 pub const PBR_WGSL: &str = include_str!("../../shaders/pbr.wgsl");
+/// Source of `shadow.wgsl`.
 pub const SHADOW_WGSL: &str = include_str!("../../shaders/shadow.wgsl");
+/// Source of `normal.wgsl`.
 pub const NORMAL_WGSL: &str = include_str!("../../shaders/normal.wgsl");
+/// Source of `gtao.wgsl`.
 pub const GTAO_WGSL: &str = include_str!("../../shaders/gtao.wgsl");
+/// Source of `gtao_blur.wgsl`.
 pub const GTAO_BLUR_WGSL: &str = include_str!("../../shaders/gtao_blur.wgsl");
+/// Source of `gtao_upsample.wgsl`.
 pub const GTAO_UPSAMPLE_WGSL: &str = include_str!("../../shaders/gtao_upsample.wgsl");
+/// Source of `vsm_shadow_trace.wgsl`.
 pub const VSM_SHADOW_TRACE_WGSL: &str = include_str!("../../shaders/vsm_shadow_trace.wgsl");
+/// Source of `vsm_shadow_temporal.wgsl`.
 pub const VSM_SHADOW_TEMPORAL_WGSL: &str = include_str!("../../shaders/vsm_shadow_temporal.wgsl");
+/// Source of `velocity.wgsl`.
 pub const VELOCITY_WGSL: &str = include_str!("../../shaders/velocity.wgsl");
+/// Source of `taa.wgsl`.
 pub const TAA_WGSL: &str = include_str!("../../shaders/taa.wgsl");
+/// Source of `msaa_resolve.wgsl`.
 pub const MSAA_RESOLVE_WGSL: &str = include_str!("../../shaders/msaa_resolve.wgsl");
+/// Source of `tone_mapping.wgsl`.
 pub const TONE_MAPPING_WGSL: &str = include_str!("../../shaders/tone_mapping.wgsl");
+/// Source of `equirect_to_cube.wgsl`.
 pub const EQUIRECT_TO_CUBE_WGSL: &str = include_str!("../../shaders/equirect_to_cube.wgsl");
+/// Source of `irradiance_convolution.wgsl`.
 pub const IRRADIANCE_CONVOLUTION_WGSL: &str =
     include_str!("../../shaders/irradiance_convolution.wgsl");
+/// Source of `prefilter_convolution.wgsl`.
 pub const PREFILTER_CONVOLUTION_WGSL: &str =
     include_str!("../../shaders/prefilter_convolution.wgsl");
+/// Source of `brdf_lut.wgsl`.
 pub const BRDF_LUT_WGSL: &str = include_str!("../../shaders/brdf_lut.wgsl");
+/// Source of `debug_lines.wgsl`.
 pub const DEBUG_LINES_WGSL: &str = include_str!("../../shaders/debug_lines.wgsl");
+/// Source of `vg.wgsl`.
 pub const VG_WGSL: &str = include_str!("../../shaders/vg.wgsl");
+/// Source of `vg_vis.wgsl`.
 pub const VG_VIS_WGSL: &str = include_str!("../../shaders/vg_vis.wgsl");
+/// Source of `vg_resolve.wgsl`.
 pub const VG_RESOLVE_WGSL: &str = include_str!("../../shaders/vg_resolve.wgsl");
+/// Source of `vg_shadow.wgsl`.
 pub const VG_SHADOW_WGSL: &str = include_str!("../../shaders/vg_shadow.wgsl");
+/// Source of `vg_cull.wgsl`.
 pub const VG_CULL_WGSL: &str = include_str!("../../shaders/vg_cull.wgsl");
+/// Source of `hiz_copy.wgsl`.
 pub const HIZ_COPY_WGSL: &str = include_str!("../../shaders/hiz_copy.wgsl");
+/// Source of `hiz_downsample.wgsl`.
 pub const HIZ_DOWNSAMPLE_WGSL: &str = include_str!("../../shaders/hiz_downsample.wgsl");
+/// Source of `vertex_compressed.wgsl`.
 pub const VERTEX_COMPRESSED_WGSL: &str = include_str!("../../shaders/vertex_compressed.wgsl");
+/// Source of `skybox.wgsl`.
 pub const SKYBOX_WGSL: &str = include_str!("../../shaders/skybox.wgsl");
+/// Source of `vsm_depth.wgsl`.
 pub const VSM_DEPTH_WGSL: &str = include_str!("../../shaders/vsm_depth.wgsl");
+/// Source of `vsm_visibility.wgsl`.
 pub const VSM_VISIBILITY_WGSL: &str = include_str!("../../shaders/vsm_visibility.wgsl");
+/// Source of `vsm_request.wgsl`.
 pub const VSM_REQUEST_WGSL: &str = include_str!("../../shaders/vsm_request.wgsl");
+/// Source of `scatter_light.wgsl`.
 pub const SCATTER_LIGHT_WGSL: &str = include_str!("../../shaders/scatter_light.wgsl");
+/// Source of `bloom.wgsl`.
 pub const BLOOM_WGSL: &str = include_str!("../../shaders/bloom.wgsl");
+/// Source of `cluster_cull_lights.wgsl`.
 pub const CLUSTER_CULL_LIGHTS_WGSL: &str = include_str!("../../shaders/cluster_cull_lights.wgsl");
+/// Source of `particle_sim.wgsl`.
 pub const PARTICLE_SIM_WGSL: &str = include_str!("../../shaders/particle_sim.wgsl");
+/// Source of `particle_billboard.wgsl`.
 pub const PARTICLE_BILLBOARD_WGSL: &str = include_str!("../../shaders/particle_billboard.wgsl");
+/// Source of `ddgi_trace.wgsl`.
 pub const DDGI_TRACE_WGSL: &str = include_str!("../../shaders/ddgi_trace.wgsl");
+/// Source of `smaa/edge.wgsl`.
 pub const SMAA_EDGE_WGSL: &str = include_str!("../../shaders/smaa/edge.wgsl");
+/// Source of `smaa/blend_weights.wgsl`.
 pub const SMAA_BLEND_WGSL: &str = include_str!("../../shaders/smaa/blend_weights.wgsl");
+/// Source of `smaa/neighborhood.wgsl`.
 pub const SMAA_NEIGHBORHOOD_WGSL: &str = include_str!("../../shaders/smaa/neighborhood.wgsl");
 
 /// Every embedded shader: (file stem, path relative to `shaders/`, embedded source).

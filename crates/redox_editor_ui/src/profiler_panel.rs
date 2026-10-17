@@ -1,8 +1,10 @@
 use redox_editor_core::FrameProfiler;
 
+/// Panel that plots frame times.
 pub struct ProfilerPanel;
 
 impl ProfilerPanel {
+    /// Draws the frame time history of `profiler`.
     pub fn show(ui: &mut egui::Ui, profiler: &FrameProfiler) {
         ui.heading("⏱ Frame Profiler");
         ui.label(format!(

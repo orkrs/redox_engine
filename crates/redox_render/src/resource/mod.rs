@@ -2,6 +2,7 @@
 
 pub mod blue_noise;
 pub mod buffer;
+/// Image-based lighting resources.
 pub mod ibl;
 pub mod staging_ring;
 pub mod texture;

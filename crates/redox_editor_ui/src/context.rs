@@ -21,44 +21,74 @@ use std::path::PathBuf;
 
 /// Everything the dock / menus need without cloning the whole editor.
 pub struct EditorUiCtx {
+    /// The ECS world being edited.
     pub world: Arc<Mutex<World>>,
+    /// Selected entities.
     pub selection: Arc<Mutex<Selection>>,
+    /// Registered component types for the inspector and snapshots.
     pub registry: Arc<Mutex<TypeRegistry>>,
+    /// Gizmo state.
     pub gizmo: Arc<Mutex<GizmoState>>,
+    /// Undo and redo history.
     pub undo: Arc<Mutex<UndoStack>>,
+    /// Editor camera.
     pub camera: Arc<Mutex<EditorCamera>>,
+    /// Play-in-editor session.
     pub pie: Arc<Mutex<PieSession>>,
+    /// Recent world snapshots for scrubbing back.
     pub time_travel: Arc<Mutex<TimeTravelBuffer>>,
+    /// The open streaming world, if any.
     pub world_session: Arc<Mutex<Option<WorldSession>>>,
+    /// Version-control status of the actors.
     pub git: Arc<Mutex<WorldGitTracker>>,
+    /// Outliner panel state.
     pub outliner: Mutex<OutlinerPanel>,
+    /// Asset browser panel state.
     pub assets: Mutex<AssetBrowserPanel>,
+    /// Command palette state.
     pub palette: Mutex<CommandPalette>,
+    /// Brush panel state.
     pub brush: Mutex<BrushPanel>,
+    /// Node graph panel state.
     pub graph: Mutex<NodeCanvas>,
+    /// Packager panel state.
     pub packager: Mutex<PackagerPanel>,
+    /// Entity driven by the node graph demo, if any.
     pub demo_agent: Mutex<Option<Entity>>,
+    /// Actions requested by panels, executed by the host.
     pub pending_actions: Mutex<Vec<OutlinerAction>>,
     /// Asset browser Spawn clicks land here; integrator drains and places proxies.
     pub pending_asset_spawns: Mutex<Vec<AssetSpawnRequest>>,
+    /// Whether placed objects snap to surfaces.
     pub surface_snap: Mutex<bool>,
+    /// Whether gizmo axes follow the object's rotation.
     pub local_space: Mutex<bool>,
+    /// Whether the previous committed transforms are drawn as ghosts.
     pub show_git_ghosts: Mutex<bool>,
+    /// Shading mode of the viewport.
     pub shading: Mutex<ViewportShading>,
+    /// Layout of the viewport (single or quad).
     pub layout: Mutex<ViewportLayout>,
     /// F6 overdraw / F7 AABBs — integrator reads these for debug draws.
     pub debug_flags: Mutex<ViewportDebugFlags>,
+    /// Frame time history.
     pub profiler: Mutex<FrameProfiler>,
+    /// Position of the time-travel scrubber.
     pub tt_scrub_idx: Mutex<usize>,
+    /// Frames per second shown in the UI.
     pub fps: Mutex<f32>,
+    /// Frame time in milliseconds shown in the UI.
     pub frame_ms: Mutex<f32>,
+    /// Console lines (the newest 200 are kept).
     pub console: Mutex<Vec<String>>,
+    /// Text of the status bar.
     pub status: Mutex<String>,
     /// Integrator may overwrite with real GPU memory stats; shown in Viewport toolbar.
     pub vram_label: Mutex<String>,
 }
 
 impl EditorUiCtx {
+    /// Creates the shared context from the editor's core state.
     pub fn new(
         world: Arc<Mutex<World>>,
         selection: Arc<Mutex<Selection>>,
@@ -103,6 +133,7 @@ impl EditorUiCtx {
         }
     }
 
+    /// Appends a line to the console.
     pub fn log(&self, line: impl Into<String>) {
         let mut c = self.console.lock();
         c.push(line.into());

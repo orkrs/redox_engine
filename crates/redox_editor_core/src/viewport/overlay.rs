@@ -84,6 +84,8 @@ pub fn ghost_move_line(old: Vec3, new: Vec3) -> (Vec3, Vec3, [f32; 4]) {
     (old, new, [1.0, 0.85, 0.2, 0.9])
 }
 
+/// Maps an egui point inside `viewport_rect` to a pixel of the viewport texture; `None` outside the
+/// rect.
 pub fn egui_to_viewport_coords(
     egui_pos: egui::Pos2,
     viewport_rect: egui::Rect,

@@ -1,5 +1,6 @@
 use redox_editor_core::WorldGitTracker;
 
+/// Panel showing the version-control state of the world.
 pub struct GitOverlay;
 
 impl GitOverlay {

@@ -29,9 +29,13 @@ pub fn multisample_state(count: u32) -> wgpu::MultisampleState {
 
 /// Shared bind-group layouts for camera, light, model, and texture bindings.
 pub struct SharedLayouts {
+    /// Camera uniform layout.
     pub camera_bgl: wgpu::BindGroupLayout,
+    /// Light uniform layout.
     pub light_bgl: wgpu::BindGroupLayout,
+    /// Per-object uniform layout.
     pub model_bgl: wgpu::BindGroupLayout,
+    /// Texture and sampler layout.
     pub texture_bgl: wgpu::BindGroupLayout,
 }
 
@@ -42,14 +46,20 @@ pub struct SharedLayouts {
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ModelUniform {
+    /// Model matrix.
     pub model: [[f32; 4]; 4],
+    /// Normal matrix, three padded rows.
     pub normal_matrix: [[f32; 4]; 3],
+    /// Object color (rgba).
     pub color: [f32; 4],
+    /// Minimum corner of the object bounds (xyz).
     pub bounds_min: [f32; 4],
+    /// Size of the object bounds (xyz).
     pub bounds_extent: [f32; 4],
 }
 
 impl SharedLayouts {
+    /// Creates the layouts.
     pub fn new(device: &wgpu::Device) -> Self {
         let camera_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("camera_bgl"),
@@ -123,6 +133,7 @@ impl SharedLayouts {
         }
     }
 
+    /// Creates a camera bind group.
     pub fn create_camera_bind_group(
         &self,
         device: &wgpu::Device,
@@ -138,6 +149,7 @@ impl SharedLayouts {
         })
     }
 
+    /// Creates a light bind group.
     pub fn create_light_bind_group(
         &self,
         device: &wgpu::Device,
@@ -153,6 +165,7 @@ impl SharedLayouts {
         })
     }
 
+    /// Creates a per-object bind group.
     pub fn create_model_bind_group(
         &self,
         device: &wgpu::Device,
@@ -168,6 +181,7 @@ impl SharedLayouts {
         })
     }
 
+    /// Creates a texture bind group.
     pub fn create_texture_bind_group(
         &self,
         device: &wgpu::Device,
@@ -222,11 +236,14 @@ pub type ForwardPass = SharedLayouts;
 
 /// Factory for the planned frame-level bind group (camera + shared samplers).
 pub struct PbrFrameLayouts {
+    /// Camera uniform layout.
     pub camera_bgl: wgpu::BindGroupLayout,
+    /// Sampler layout.
     pub sampler_bgl: wgpu::BindGroupLayout,
 }
 
 impl PbrFrameLayouts {
+    /// Creates the layouts.
     pub fn new(device: &wgpu::Device) -> Self {
         let camera_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("pbr_frame_camera_bgl"),
@@ -267,11 +284,14 @@ impl PbrFrameLayouts {
 
 /// Factory for the planned scene/shadow bind group (clusters, VSM, SDF).
 pub struct PbrSceneLayouts {
+    /// Light uniform layout.
     pub light_bgl: wgpu::BindGroupLayout,
+    /// Shadow map layout.
     pub shadow_bgl: wgpu::BindGroupLayout,
 }
 
 impl PbrSceneLayouts {
+    /// Creates the layouts.
     pub fn new(device: &wgpu::Device) -> Self {
         let light_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("pbr_scene_light_bgl"),

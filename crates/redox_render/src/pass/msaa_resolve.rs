@@ -28,10 +28,12 @@ use crate::shader::{MSAA_RESOLVE_WGSL, create_shader_module};
 pub struct MsaaResolveUniform {
     /// Number of MSAA samples to blend (2 or 4).
     pub sample_count: u32,
+    /// Padding.
     pub _pad: [u32; 3],
 }
 
 impl MsaaResolveUniform {
+    /// Creates parameters for `sample_count` MSAA samples.
     pub fn new(sample_count: u32) -> Self {
         Self {
             sample_count,
@@ -42,7 +44,9 @@ impl MsaaResolveUniform {
 
 /// Fullscreen luma-weighted MSAA resolve into a single-sampled HDR target.
 pub struct MsaaResolvePass {
+    /// Resolve pipeline.
     pub pipeline: wgpu::RenderPipeline,
+    /// Layout of the resolve bind group.
     pub bind_group_layout: wgpu::BindGroupLayout,
     uniform_buffer: wgpu::Buffer,
 }

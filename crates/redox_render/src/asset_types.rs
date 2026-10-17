@@ -17,9 +17,13 @@ pub type TextureData = image::DynamicImage;
 /// Substrate-style material layer (clear coat, secondary BRDF lobe, etc.).
 #[derive(Clone, Copy, Debug)]
 pub struct MaterialLayer {
+    /// Base color of the layer.
     pub base_color: Vec3,
+    /// Metallic factor of the layer, 0..1.
     pub metallic: f32,
+    /// Roughness of the layer, 0..1.
     pub roughness: f32,
+    /// Blend weight of the layer, 0..1.
     pub weight: f32,
 }
 
@@ -51,12 +55,19 @@ pub enum BlendMode {
 /// the render context resolves these to texture indices.
 #[derive(Clone, Debug)]
 pub struct MaterialData {
+    /// Base color (linear RGB).
     pub base_color: Vec3,
+    /// Metallic factor, 0..1.
     pub metallic: f32,
+    /// Perceptual roughness, 0..1.
     pub roughness: f32,
+    /// Emitted light color.
     pub emissive: Vec3,
+    /// Albedo texture, if any.
     pub albedo_handle: Option<Handle<TextureData>>,
+    /// Normal map, if any.
     pub normal_handle: Option<Handle<TextureData>>,
+    /// Metallic-roughness texture, if any.
     pub mr_handle: Option<Handle<TextureData>>,
     /// How the surface is blended into the frame (default [`BlendMode::Opaque`]).
     pub blend: BlendMode,
@@ -67,6 +78,7 @@ pub struct MaterialData {
 }
 
 impl MaterialData {
+    /// A material of a single color with default metallic and roughness.
     pub fn solid(color: Vec3) -> Self {
         Self {
             base_color: color,
@@ -88,31 +100,37 @@ impl MaterialData {
         self
     }
 
+    /// Sets the metallic factor.
     pub fn metallic(mut self, metallic: f32) -> Self {
         self.metallic = metallic;
         self
     }
 
+    /// Sets the roughness.
     pub fn roughness(mut self, roughness: f32) -> Self {
         self.roughness = roughness;
         self
     }
 
+    /// Sets the emissive color.
     pub fn emissive(mut self, color: Vec3) -> Self {
         self.emissive = color;
         self
     }
 
+    /// Sets the albedo texture.
     pub fn with_albedo(mut self, handle: Handle<TextureData>) -> Self {
         self.albedo_handle = Some(handle);
         self
     }
 
+    /// Sets the normal map.
     pub fn with_normal(mut self, handle: Handle<TextureData>) -> Self {
         self.normal_handle = Some(handle);
         self
     }
 
+    /// Sets the metallic-roughness texture.
     pub fn with_mr(mut self, handle: Handle<TextureData>) -> Self {
         self.mr_handle = Some(handle);
         self

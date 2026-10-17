@@ -7,12 +7,16 @@ use crate::mesh::CompressedVertex;
 use crate::pass::forward::DEPTH_FORMAT;
 use crate::shader::{NORMAL_WGSL, create_shader_with_vertex_decode};
 
+/// Pass that renders view-space normals and depth before shading.
 pub struct NormalPass {
+    /// Render pipeline.
     pub pipeline: wgpu::RenderPipeline,
+    /// Layout of the bind group.
     pub bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl NormalPass {
+    /// Creates the pass with the given normal target format.
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("normal_pass_bgl"),

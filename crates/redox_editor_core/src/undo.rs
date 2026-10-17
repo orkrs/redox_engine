@@ -1,26 +1,40 @@
 use redox_ecs::{Entity, World};
 use redox_reflect::{EntitySnapshot, ReflectValue, TypeRegistry, WorldSnapshot};
 
+/// A reversible editor action.
 #[derive(Clone, Debug)]
 pub enum UndoCommand {
+    /// Changed one component of an entity.
     SetComponent {
+        /// The entity that was edited.
         entity: Entity,
+        /// Registered name of the component type.
         type_name: String,
+        /// Value before the edit (`None`: the component did not exist).
         before: Option<ReflectValue>,
+        /// Value after the edit (`None`: the component was removed).
         after: Option<ReflectValue>,
     },
+    /// Created an entity.
     Spawn {
+        /// The entity that was created.
         entity: Entity,
+        /// Components of the entity, used to recreate it on redo.
         snapshot: EntitySnapshot,
     },
+    /// Deleted an entity.
     Despawn {
+        /// The entity that was deleted.
         entity: Entity,
+        /// Components of the entity, used to bring it back on undo.
         snapshot: EntitySnapshot,
     },
+    /// Several commands applied and undone as one step.
     Batch(Vec<UndoCommand>),
 }
 
 impl UndoCommand {
+    /// Applies the command to `world`.
     pub fn apply(&self, world: &mut World, registry: &TypeRegistry) {
         match self {
             UndoCommand::SetComponent {
@@ -54,6 +68,7 @@ impl UndoCommand {
             }
         }
     }
+    /// The command that reverses this one.
     pub fn invert(&self) -> Self {
         match self {
             UndoCommand::SetComponent {
@@ -82,12 +97,18 @@ impl UndoCommand {
     }
 }
 
+/// Undo and redo history with merging of rapid edits.
 #[derive(Clone, Debug)]
 pub struct UndoStack {
+    /// Commands that can be undone, newest last.
     pub undo: Vec<UndoCommand>,
+    /// Commands that can be redone, newest last.
     pub redo: Vec<UndoCommand>,
+    /// Maximum number of undo steps kept.
     pub limit: usize,
+    /// When the last command was pushed.
     pub last_push_time: std::time::Instant,
+    /// Edits of the same value closer than this many seconds merge into one step.
     pub merge_window_secs: f32,
 }
 
@@ -104,6 +125,7 @@ impl Default for UndoStack {
 }
 
 impl UndoStack {
+    /// Creates a stack that keeps up to `limit` steps.
     pub fn new(limit: usize) -> Self {
         Self {
             undo: Vec::new(),
@@ -113,6 +135,7 @@ impl UndoStack {
             merge_window_secs: 0.5,
         }
     }
+    /// Records a command; it may merge with the previous one, and clears the redo history.
     pub fn push(&mut self, cmd: UndoCommand) {
         // Merge sequential SetComponent on same entity/type within window
         if let UndoCommand::SetComponent {
@@ -151,12 +174,15 @@ impl UndoStack {
             self.undo.remove(0);
         }
     }
+    /// Whether there is something to undo.
     pub fn can_undo(&self) -> bool {
         !self.undo.is_empty()
     }
+    /// Whether there is something to redo.
     pub fn can_redo(&self) -> bool {
         !self.redo.is_empty()
     }
+    /// Undoes the last command; returns whether anything was undone.
     pub fn undo(&mut self, world: &mut World, registry: &TypeRegistry) -> bool {
         if let Some(cmd) = self.undo.pop() {
             let inv = cmd.invert();
@@ -167,6 +193,7 @@ impl UndoStack {
             false
         }
     }
+    /// Redoes the last undone command; returns whether anything was redone.
     pub fn redo(&mut self, world: &mut World, registry: &TypeRegistry) -> bool {
         if let Some(cmd) = self.redo.pop() {
             // cmd is original, need to apply it (not invert)
@@ -206,14 +233,17 @@ impl UndoStack {
     }
 }
 
+/// Captures all registered components of an entity.
 pub fn capture_entity(world: &World, entity: Entity, registry: &TypeRegistry) -> EntitySnapshot {
     EntitySnapshot {
         components: registry.snapshot_entity(world, entity),
     }
 }
+/// Captures all entities with registered components.
 pub fn capture_world(world: &World, registry: &TypeRegistry) -> WorldSnapshot {
     registry.snapshot_world(world)
 }
+/// Replaces the world contents with `snapshot`.
 pub fn restore_world(world: &mut World, snapshot: &WorldSnapshot, registry: &TypeRegistry) {
     let entities: Vec<_> = world.all_entities().collect();
     for e in entities {

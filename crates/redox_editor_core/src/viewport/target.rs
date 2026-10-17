@@ -4,14 +4,20 @@ use wgpu::{Texture, TextureView};
 
 /// Offscreen viewport for editor (Rgba8Unorm color + Depth32Float depth, sampled by egui)
 pub struct EditorViewport {
+    /// Color texture the viewport renders into.
     pub color_tex: Texture,
+    /// View of the color texture.
     pub color_view: TextureView,
+    /// Depth texture of the viewport.
     pub depth_tex: Texture,
+    /// View of the depth texture.
     pub depth_view: TextureView,
+    /// Size in pixels.
     pub size: (u32, u32),
 }
 
 impl EditorViewport {
+    /// Creates a target of the given size.
     pub fn new(device: &wgpu::Device, width: u32, height: u32) -> Self {
         let w = width.max(1);
         let h = height.max(1);
@@ -54,13 +60,16 @@ impl EditorViewport {
         }
     }
 
+    /// Recreates the textures for a new size.
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
         *self = Self::new(device, width, height);
     }
 
+    /// View of the color texture.
     pub fn color_view(&self) -> &TextureView {
         &self.color_view
     }
+    /// View of the depth texture.
     pub fn depth_view(&self) -> &TextureView {
         &self.depth_view
     }

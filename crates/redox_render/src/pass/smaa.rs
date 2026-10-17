@@ -37,6 +37,7 @@ struct SmaaMetrics {
 
 // ─── Pass struct ─────────────────────────────────────────────────────────────
 
+/// Subpixel morphological anti-aliasing: edge detection, blend weights, neighborhood blending.
 pub struct SmaaPass {
     edge_pipeline: wgpu::RenderPipeline,
     edge_bgl: wgpu::BindGroupLayout,
@@ -64,6 +65,7 @@ pub struct SmaaPass {
 }
 
 impl SmaaPass {
+    /// Creates the pass and uploads its lookup textures.
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         // ── Upload area + search textures ────────────────────────────────────
         let (area_tex, area_tex_view) = upload_lut(

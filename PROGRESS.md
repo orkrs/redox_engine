@@ -1,77 +1,53 @@
-# RedOx Engine — Uplift v2 Status
+# RedOx Engine — статус
 
-> Master plan: `.cursor/plans/redox_uplift_v2_414efd3e.plan.md` (Cursor plan file)
+Обновлено 2026-10-17. Подробный план и журнал выполнения — `docs/ROADMAP_STAGE_0_1.md`,
+история изменений — `CHANGELOG.md`, устройство — `ARCHITECTURE_REALITY.md`.
 
-**Uplift v2 runtime phases 0–8:** закрыты по каркасу. Опциональные хвосты качества — ниже.
+## Готово
 
----
+- Этап 0 (гигиена): лицензии, линтеры (`clippy -D warnings`, `missing_docs`), `cargo deny`,
+  аудит `unsafe` в ECS и Miri, интеграционные тесты, бенчмарки, ADR, документация.
+- 1.1 Зависимости: wgpu 30, egui 0.36, rapier 0.36, kira 0.12, glam 0.33, winit 0.30 и др.
+- 1.2 Рендер: компилятор графа кадра и декларация кадра (сверяется с кодом тестом), кэш
+  пайплайнов на диске (Vulkan), проверка шейдеров при правке.
+- 1.3 ECS и ядро: `Commands` (в диспетчере сбрасываются между стадиями), порядок систем
+  `before/after`, `run_if`, `par_for_each_mut`, `#[derive(Reflect)]`, состояния приложения с
+  `OnEnter/OnExit`, хуки `on_add/on_remove`.
+- 1.4 Ассеты: GUID и `.meta`, `.pak` v2 со сжатием LZ4, `AssetSource` (папка/pak), счётчики ссылок
+  и выгрузка, зависимости, бюджет завершённых загрузок за кадр, KTX2/BCn, `redox_cook`
+  (`pack --compress --incremental`).
+- 1.5 Мир и ввод: сохранения (`SaveManager`), `world.bin` (postcard + индекс ячеек), переназначение
+  клавиш, контексты ввода, геймпады (gilrs), текст и IME.
+- winit: замыкание гоняется через `ApplicationHandler` (`RunClosure`), общих
+  `#![allow(deprecated)]` нет.
 
-## ✅ Закрыто
+## Не сделано
 
-### Phase 0–3
-ECS, Renderer/FrameView, VSM fixes, VG visibility+resolve, GPU/CPU cull, VG shadows — см. предыдущие секции.
+- Миграция проходов рендерера на граф кадра (граф только описывает кадр).
+- Пересборка пайплайнов при правке шейдера без перезапуска.
+- DDGI на трассировке лучей, SDF-страницы из стриминга, GPU-скиннинг, полный граф Substrate.
+- Стриминг текстур по приоритету и загрузка текстур KTX2 на GPU (загрузчик есть, рендерер не использует).
+- CI не используется (решение владельца); файлы в `.github/` — заготовка, на GitHub не запускались.
+- Живая проверка геймпада и IME. Редактор и примеры запускались по 12 секунд без паник и ошибок валидации
+  (после исправления падения egui 0.36), но игровая логика и вид кадра глазами не проверялись.
 
-### Phase 4 — ScatterLight
-- **`LightingMode::ScatterLight`** — RedOx stochastic K=8 point-light path
-- **`scatter_light.wgsl`** + **`ScatterLightPass`** wired в `record_hdr_post_fx`
-- PBR clustered points отключаются через `point_light_path` uniform
-- Showcase / Prism Vault: toggle **ScatterLight path**
+## Покрытие тестами
 
-### Phase 5 — TSR + DDGI + SDF + Bloom
-- **TSR:** `EngineConfig.render_scale` + slider (0.5–1.0); `Renderer::uses_tsr()`; TAA Catmull-Rom upscale при `render_scale < 1.0`
-- **DDGI GPU:** 8×4×8 grid, `@binding(22–23)`, trilinear + octahedral lookup в PBR
-  - ⚠️ **не** GPU RT: probes заполняются на CPU (directional + sky/ground)
-- **SDF GPU:** 128³ atlas + **8-slot page table**, `@binding(26–28)`, multi-brick demo (ground/pillar/crate)
-- **Bloom:** luminance threshold + **6-mip** downsample → tent upsample → composite (HDR `COPY_DST`)
-
-### Phase 6 — Substrate
-- **`MaterialLayer` / `MaterialData::layers`** + **`eval_substrate_lit` в `pbr.wgsl`** (directional / clustered / IBL)
-  - VG resolve теперь тоже считает слои (base + 2 layers + sheen, directional / clustered / IBL); не полный Unreal Substrate graph
-
-### Phase 7 — World Partition + PCG
-- **`WorldPartition::open` / `in_memory`**, `tick` / `tick_streaming`
-- **`StreamedActor` + `Transform`**, OFPA cells, streaming budget + hysteresis
-- **PCG CLI:** `cargo run -p redox_scene --bin pcg -- --out worlds/arena --kind arena …`
-- **Prism Vault** тикает partition от позиции игрока; стримит props/walls
-
-### Phase 8 — Gameplay / VFX / Audio (examples wired)
-- **StateTree:** `StateTreeComponent::patrol_chase()` на sentinels (Patrol ↔ Chase)
-- **VFX:** `ParticleSystem` + `upload_bytes()` на dash/pickup (GPU sim + draw pass подключены в кадре)
-- **Audio:** `with_audio` + `play_sfx("dash"|"pickup")` + mixer sync (no-op без устройства)
-
-**Gate:** `cargo check --example prism_vault -p redox_core` — ✅  
-**Gate:** `cargo check --workspace` — см. Verification
-
----
-
-## ⚠️ Хвосты (polish, вне обязательного каркаса v2)
-
-- [ ] DDGI GPU ray-tracing / visibility (сейчас CPU probe fill + GPU sample)
-- [ ] SDF page table ← scene streaming (сейчас baked demo bricks)
-- [x] Substrate lobes в VG resolve
-- [ ] Полный Substrate lobe graph
-- [x] GPU particle draw/compute pass
-- [x] Skeletal animation: pose sampling/blending, CPU skinning streamed into mesh slots, glTF skin import, two-bone IK (`redox_anim`, `skinned_demo`)
-- [x] Editor AnimGraph drives real keyframed clips with a live pose preview
-- [x] VSM: GPU page requests, LRU eviction, camera-following fine levels, 256 px pages (0.4 cm texels)
-- [x] GPU timestamp profiler, golden-frame regression mode, headless rendering parity
-- [x] sRGB tone-mapping fix, HDR environment upload fix, IBL intensity control
-- [ ] GPU skinning, skinned normal maps
-- [ ] Revive or remove the CSM path (shadows are VSM-only; CSM renders everything in shadow)
-- [ ] MetaSounds graph beyond bus routing (named graphs / modulators)
-- [ ] Editor / Godot-like UI — **не в scope Uplift v2** (OFPA = format + runtime + CLI)
-
----
-
-## Verification
+Замер `cargo llvm-cov` (2026-10-17) по десяти крейтам без GPU и UI: ecs, asset, input, scene, core, anim,
+gameplay, physics, math, reflect — **80,1 % строк** (14 025 строк, 2 797 не покрыты), 79,6 % регионов.
+Сильные места: ECS `world.rs` 96 %, `pak.rs` 91 %, `rebind.rs` 96 %, `state.rs` в core 97 %.
+Слабые: `core/app.rs` 10 % и `window.rs` 0 % (нужен живой цикл окна), `physics/sync.rs` 20 %,
+`scene/partition.rs` 61 %, `input/state.rs` 32 %, `math/matrix.rs` и `quat.rs`. Крейты рендера,
+редактора, аудио, ui и vfx не измерялись: их основной код требует GPU или окна.
 
 ```bash
-cargo check --workspace
-cargo check --example prism_vault -p redox_core
-cargo run --example showcase -p redox_core
-cargo run --example prism_vault -p redox_core
-# optional world regen:
-cargo run -p redox_scene --bin pcg -- --out worlds/arena --kind arena --width 6 --height 6 --cell-size 16 --seed 42
+cargo llvm-cov --summary-only -p redox_ecs -p redox_asset -p redox_input -p redox_scene -p redox_core
 ```
 
-**Prism Vault** (`examples/prism_vault.rs`): сбор кристаллов, StateTree-стражи, dash, VG-кристаллы, World Partition streaming, ParticleSystem, `play_sfx`, F1 debug panel с честным статусом TSR / VSM / ScatterLight / DDGI / SDF / Bloom / Substrate / VG / WorldPartition / StateTree.
+## Проверка
+
+```bash
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo run --release --example skinned_demo -p redox_core -- --golden crates/redox_core/tests/golden
+```

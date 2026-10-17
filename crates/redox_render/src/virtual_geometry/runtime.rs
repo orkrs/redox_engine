@@ -106,7 +106,9 @@ pub struct VGSystem {
     index_watermark: u32,
     instances_dirty: bool,
 
+    /// Configuration.
     pub config: VGConfig,
+    /// Statistics of the last frame.
     pub stats: VGStats,
 }
 
@@ -729,14 +731,17 @@ impl VGSystem {
         );
     }
 
+    /// GPU buffer with the instance data.
     pub fn instance_buffer(&self) -> &wgpu::Buffer {
         &self.instance_buffer
     }
 
+    /// GPU buffer with the meshlet descriptors.
     pub fn meshlet_buffer(&self) -> &wgpu::Buffer {
         &self.meshlet_gpu_buffer
     }
 
+    /// Number of instances drawn this frame.
     pub fn active_instance_count(&self) -> u32 {
         self.instance_data
             .iter()

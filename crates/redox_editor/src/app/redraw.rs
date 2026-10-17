@@ -487,7 +487,7 @@ impl EditorApp {
         }
     }
 
-    fn present(&mut self, full_output: egui::FullOutput) {
+    fn present(&mut self, mut full_output: egui::FullOutput) {
         let gpu = self
             .shared_gpu
             .as_ref()
@@ -565,6 +565,8 @@ impl EditorApp {
         for id in &full_output.textures_delta.free {
             renderer.free_texture(id);
         }
+        // egui 0.36 panics when a texture delta is dropped unhandled; this one is done.
+        full_output.textures_delta.clear();
         que.submit(Some(encoder.finish()));
         que.present(frame);
         self.window.request_redraw();

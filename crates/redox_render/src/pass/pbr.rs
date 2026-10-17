@@ -15,16 +15,22 @@ use crate::shader::{PBR_WGSL, create_shader_with_vertex_decode};
 
 /// The main PBR render pass.
 pub struct PbrPass {
+    /// Render pipeline.
     pub pipeline: wgpu::RenderPipeline,
 
     // Bind-group layouts
+    /// Layout of the per-frame bind group.
     pub frame_bgl: wgpu::BindGroupLayout,
+    /// Layout of the scene (lights, shadows, environment) bind group.
     pub scene_bgl: wgpu::BindGroupLayout,
+    /// Layout of the material bind group.
     pub material_bgl: wgpu::BindGroupLayout,
+    /// Layout of the per-object bind group.
     pub model_bgl: wgpu::BindGroupLayout,
 }
 
 impl PbrPass {
+    /// Creates the pass for the given color and depth formats.
     pub fn new(
         device: &wgpu::Device,
         surface_format: wgpu::TextureFormat,
@@ -447,6 +453,7 @@ impl PbrPass {
         }
     }
 
+    /// Creates the per-frame bind group.
     pub fn create_frame_bind_group(
         &self,
         device: &wgpu::Device,
@@ -499,6 +506,7 @@ impl PbrPass {
         })
     }
 
+    /// Creates the scene bind group.
     pub fn create_scene_bind_group(
         &self,
         device: &wgpu::Device,
@@ -611,6 +619,7 @@ impl PbrPass {
         })
     }
 
+    /// Creates the bind group of one material.
     pub fn create_material_bind_group(
         &self,
         device: &wgpu::Device,

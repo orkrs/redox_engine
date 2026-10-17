@@ -125,7 +125,9 @@ impl Default for TaaUniform {
 /// The **ping-pong history textures** are owned by `RenderContext` so they
 /// can be shared with the tone-mapping pass.
 pub struct TaaPass {
+    /// Resolve pipeline.
     pub pipeline: wgpu::RenderPipeline,
+    /// Layout of the bind group.
     pub bind_group_layout: wgpu::BindGroupLayout,
     /// Bilinear clamp sampler used for all TAA texture samples.
     pub sampler: wgpu::Sampler,

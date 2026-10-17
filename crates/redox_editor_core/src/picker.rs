@@ -11,14 +11,19 @@ const GPU_PICK_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// Hardware Entity ID picker (R32Uint) — optional GPU path with safe timed polling.
 pub struct EntityPicker {
+    /// Width of the pick texture in pixels.
     pub width: u32,
+    /// Height of the pick texture in pixels.
     pub height: u32,
+    /// Texture that stores entity ids; `None` until created.
     pub id_texture: Option<wgpu::Texture>,
+    /// View of the id texture.
     pub id_view: Option<wgpu::TextureView>,
     staging_buffer: Option<wgpu::Buffer>,
 }
 
 impl EntityPicker {
+    /// Creates a picker with an id texture of the given size.
     pub fn new(device: &wgpu::Device, width: u32, height: u32) -> Self {
         let (tex, view, buf) = Self::create_resources(device, width, height);
         Self {
@@ -63,6 +68,7 @@ impl EntityPicker {
         })
     }
 
+    /// Recreates the id texture for a new size.
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
         let (tex, view, buf) = Self::create_resources(device, width, height);
         self.width = width.max(1);
@@ -276,8 +282,11 @@ pub fn pick_unit_cubes(entities: &[(u32, Transform)], origin: Vec3, dir: Vec3) -
 /// Result of mapping a click in the full quad texture to a camera ray.
 #[derive(Clone, Copy, Debug)]
 pub struct QuadPickRay {
+    /// Quad-view pane the ray was cast from.
     pub pane: QuadPane,
+    /// Ray origin in world space.
     pub origin: Vec3,
+    /// Ray direction in world space.
     pub dir: Vec3,
     /// UV within the hit pane, in `[0, 1]²`.
     pub pane_uv: Vec2,

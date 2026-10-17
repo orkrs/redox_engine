@@ -4,17 +4,23 @@
 
 use crate::shader::{SHADOW_WGSL, create_shader_with_vertex_decode};
 
+/// Depth format of shadow maps.
 pub const SHADOW_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+/// Edge length of a shadow map in texels.
 pub const SHADOW_SIZE: u32 = 2048;
 
 /// Pass for rendering shadow maps.
 pub struct ShadowPass {
+    /// Depth-only pipeline.
     pub pipeline: wgpu::RenderPipeline,
+    /// Layout of the light bind group.
     pub bind_group_layout: wgpu::BindGroupLayout,
+    /// Layout of the per-object bind group.
     pub model_bgl: wgpu::BindGroupLayout,
 }
 
 impl ShadowPass {
+    /// Creates the pass.
     pub fn new(device: &wgpu::Device) -> Self {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("shadow_bgl"),

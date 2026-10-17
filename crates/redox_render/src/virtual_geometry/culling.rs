@@ -130,9 +130,13 @@ fn normalize3(v: [f32; 3]) -> [f32; 3] {
 
 /// Output of the culling pass: a compact list of visible draw commands.
 pub struct CullingResult {
+    /// Indirect draw commands for the visible meshlets.
     pub commands: Vec<DrawIndexedIndirectCmd>,
+    /// Number of meshlets that survived culling.
     pub visible_meshlet_count: u32,
+    /// Number of triangles in the visible meshlets.
     pub visible_triangle_count: u64,
+    /// Number of meshlets before culling.
     pub total_meshlet_count: u32,
 }
 

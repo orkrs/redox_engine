@@ -9,11 +9,17 @@ use crate::shader::{CLUSTER_CULL_LIGHTS_WGSL, create_shader_module};
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub struct ClusterCullParams {
+    /// Camera position (xyz) in world space.
     pub cam_pos: [f32; 4],
+    /// View-projection matrix.
     pub view_proj: [[f32; 4]; 4],
+    /// Number of lights to assign to clusters.
     pub num_lights: u32,
+    /// Maximum lights stored per cluster.
     pub max_lights_per_cluster: u32,
+    /// Size of the shared light-index buffer.
     pub indices_capacity: u32,
+    /// Padding to the uniform alignment.
     pub _pad: u32,
 }
 
@@ -26,6 +32,7 @@ pub struct ClusterGpuCull {
 }
 
 impl ClusterGpuCull {
+    /// Creates the compute pipeline and its layouts.
     pub fn new(device: &wgpu::Device) -> Self {
         let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("cluster_cull_bgl"),

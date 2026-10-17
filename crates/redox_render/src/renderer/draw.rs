@@ -35,6 +35,7 @@ impl Renderer {
         })
     }
 
+    /// Records the draw call for one object into `pass`.
     pub fn record_draw<'a>(
         &'a self,
         render_pass: &mut wgpu::RenderPass<'a>,

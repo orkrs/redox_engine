@@ -15,14 +15,23 @@ pub const DDGI_OCT_SAMPLES: usize = 8;
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct DdgiGridGpu {
+    /// Grid origin (xyz) in world space.
     pub origin: [f32; 4],
+    /// Distance between probes.
     pub spacing: f32,
+    /// Probe count along X.
     pub dims_x: u32,
+    /// Probe count along Y.
     pub dims_y: u32,
+    /// Probe count along Z.
     pub dims_z: u32,
+    /// Non-zero when DDGI lighting is applied.
     pub enabled: u32,
+    /// Padding.
     pub _pad0: u32,
+    /// Padding.
     pub _pad1: u32,
+    /// Padding.
     pub _pad2: u32,
 }
 
@@ -33,6 +42,7 @@ pub struct DdgiGridGpu {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct DdgiProbeGpu {
+    /// Eight octahedral irradiance samples (rgb); the probe validity is packed in `samples[0].w`.
     pub samples: [[f32; 4]; DDGI_OCT_SAMPLES],
 }
 
@@ -71,8 +81,11 @@ struct SceneBoxGpu {
 
 /// CPU grid + GPU buffers; probe irradiance is filled by compute rays vs AABBs.
 pub struct DdgiGpu {
+    /// CPU-side probe grid.
     pub grid: DdgiProbeGrid,
+    /// GPU uniform buffer with the grid description.
     pub grid_buffer: wgpu::Buffer,
+    /// GPU storage buffer with the probe data.
     pub probe_buffer: wgpu::Buffer,
     /// When false, skips GPU fill (shader sees `enabled = 0`).
     pub enabled: bool,
@@ -95,6 +108,7 @@ impl DdgiGpu {
         Self::from_grid(device, DdgiProbeGrid::new(origin, spacing, dims))
     }
 
+    /// Uploads `grid` to the GPU.
     pub fn from_grid(device: &wgpu::Device, grid: DdgiProbeGrid) -> Self {
         let probe_count = grid.probes.len().max(1);
         let grid_buffer = device.create_buffer(&wgpu::BufferDescriptor {

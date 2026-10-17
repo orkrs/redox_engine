@@ -319,6 +319,7 @@ impl ViewportCubePass {
         );
     }
 
+    /// Renders entity ids into the pick target for mouse picking.
     pub fn render_pick_entities(
         &self,
         device: &wgpu::Device,
@@ -411,6 +412,7 @@ impl ViewportCubePass {
         }
     }
 
+    /// Renders one entity id at the identity transform into the pick target.
     pub fn render_pick(
         &self,
         device: &wgpu::Device,
@@ -431,6 +433,7 @@ impl ViewportCubePass {
         );
     }
 
+    /// Draws one unlit preview object at `ghost_transform` (used while placing).
     pub fn render_ghost(
         &self,
         device: &wgpu::Device,

@@ -9,15 +9,22 @@ pub const BLOOM_MIP_COUNT: usize = 6;
 
 /// Bloom extraction, 6-mip blur, and HDR composite.
 pub struct BloomPass {
+    /// Downsample with brightness threshold (first mip).
     pub downsample_threshold_pipeline: wgpu::RenderPipeline,
+    /// Downsample pipeline for the remaining mips.
     pub downsample_pipeline: wgpu::RenderPipeline,
+    /// Upsample pipeline that adds mips back together.
     pub upsample_pipeline: wgpu::RenderPipeline,
+    /// Pipeline that adds the bloom to the HDR image.
     pub composite_pipeline: wgpu::RenderPipeline,
+    /// Layout of the downsample and upsample bind groups.
     pub bind_group_layout: wgpu::BindGroupLayout,
+    /// Layout of the composite bind group.
     pub composite_bgl: wgpu::BindGroupLayout,
 }
 
 impl BloomPass {
+    /// Creates the pipelines for `format`.
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
         let shader = create_shader_module(device, "bloom_shader", BLOOM_WGSL);
 
@@ -169,6 +176,7 @@ impl BloomPass {
         }
     }
 
+    /// Creates a bind group for one downsample or upsample step.
     pub fn create_bind_group(
         &self,
         device: &wgpu::Device,
@@ -191,6 +199,7 @@ impl BloomPass {
         })
     }
 
+    /// Creates the bind group for the composite step.
     pub fn create_composite_bind_group(
         &self,
         device: &wgpu::Device,

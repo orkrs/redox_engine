@@ -24,7 +24,9 @@ struct PendingWrite {
 
 /// Allocation result: byte range inside the staging buffer.
 pub struct StagingAlloc<'a> {
+    /// Offset of the allocation in the ring buffer.
     pub offset: u64,
+    /// Mapped bytes to write into.
     pub data: &'a mut [u8],
 }
 
@@ -35,6 +37,7 @@ pub struct StagingRing {
     head: u64,
     /// Alignments snapped from device limits (portable default 256).
     pub uniform_align: u64,
+    /// Alignment required for storage buffer offsets.
     pub storage_align: u64,
     /// Watermark at end of each completed frame (for reclaim).
     frame_ends: VecDeque<u64>,
@@ -45,6 +48,7 @@ pub struct StagingRing {
 }
 
 impl StagingRing {
+    /// Creates a ring of `capacity` bytes.
     pub fn new(device: &wgpu::Device, capacity: u64) -> Self {
         let limits = device.limits();
         let uniform_align = limits.min_uniform_buffer_offset_alignment as u64;

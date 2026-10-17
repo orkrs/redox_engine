@@ -50,6 +50,7 @@ impl Default for LodLevelConfig {
 /// Full LOD chain configuration passed to the asset pipeline.
 #[derive(Clone, Debug)]
 pub struct LodChainConfig {
+    /// Levels from the most to the least detailed.
     pub levels: Vec<LodLevelConfig>,
 }
 

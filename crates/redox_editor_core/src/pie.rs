@@ -11,18 +11,23 @@ use redox_reflect::{ReflectValue, TypeRegistry, WorldSnapshot};
 /// Only components registered in the [`TypeRegistry`] are snapshotted and restored.
 #[derive(Clone, Debug, Default)]
 pub struct PieSession {
+    /// World snapshot taken when play started, restored on stop.
     pub snapshot: Option<WorldSnapshot>,
+    /// Whether the game is running.
     pub running: bool,
+    /// Whether a running game is paused.
     pub paused: bool,
     existing: HashSet<Entity>,
     saved: Vec<(Entity, Vec<ReflectValue>)>,
 }
 
 impl PieSession {
+    /// Creates a stopped session.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Starts playing: snapshots `world` so it can be restored later.
     pub fn start(&mut self, world: &World, registry: &TypeRegistry) {
         self.snapshot = Some(registry.snapshot_world(world));
         self.existing = world.all_entities().collect();
@@ -37,13 +42,16 @@ impl PieSession {
         self.paused = false;
     }
 
+    /// Pauses the running game.
     pub fn pause(&mut self) {
         self.paused = true;
     }
+    /// Resumes a paused game.
     pub fn resume(&mut self) {
         self.paused = false;
     }
 
+    /// Stops playing and restores the snapshot taken at start.
     pub fn stop(&mut self, world: &mut World, registry: &TypeRegistry) {
         if self.snapshot.take().is_some() {
             let alive: HashSet<Entity> = world.all_entities().collect();
@@ -68,6 +76,7 @@ impl PieSession {
         self.paused = false;
     }
 
+    /// Whether the game is running (paused counts as running).
     pub fn is_running(&self) -> bool {
         self.running && !self.paused
     }

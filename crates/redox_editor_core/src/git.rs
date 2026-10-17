@@ -6,15 +6,27 @@ use redox_math::{Transform, Vec3};
 use redox_scene::ofpa::{self, ActorRecord};
 use redox_scene::{PartitionCell, StreamedActor};
 
+/// Change state of one actor relative to its last committed state.
 #[derive(Clone, Debug)]
 pub enum ActorGitStatus {
+    /// Same as the committed version.
     Unmodified,
-    Modified { old_transform: Transform },
+    /// Changed since the commit; carries the committed transform.
+    Modified {
+        /// Transform stored in the committed version.
+        old_transform: Transform,
+    },
+    /// New file, not committed yet.
     Added,
-    Deleted { last_transform: Transform },
+    /// Deleted from the working tree; carries the last committed transform.
+    Deleted {
+        /// Transform the actor had when it was last committed.
+        last_transform: Transform,
+    },
 }
 
 impl ActorGitStatus {
+    /// Colored marker shown next to the actor in the outliner.
     pub fn badge(&self) -> &'static str {
         match self {
             Self::Unmodified => "🔵",
@@ -24,10 +36,12 @@ impl ActorGitStatus {
         }
     }
 
+    /// Whether the actor differs from the commit in any way.
     pub fn is_dirty(&self) -> bool {
         !matches!(self, Self::Unmodified)
     }
 
+    /// The committed transform, when there is one.
     pub fn old_transform(&self) -> Option<Transform> {
         match self {
             Self::Modified { old_transform } => Some(*old_transform),
@@ -41,7 +55,9 @@ impl ActorGitStatus {
 pub struct WorldGitTracker {
     #[cfg(feature = "editor-git")]
     repo: Option<git2::Repository>,
+    /// Cached status per actor id.
     pub status_cache: HashMap<String, ActorGitStatus>,
+    /// Root directory of the world files.
     pub world_root: PathBuf,
     /// Ghost transforms to draw (actor_id → old transform).
     pub ghosts: Vec<(String, Transform)>,
@@ -60,6 +76,8 @@ impl std::fmt::Debug for WorldGitTracker {
 }
 
 impl WorldGitTracker {
+    /// Creates a tracker for the world stored under `world_root` (uses git when the `editor-git`
+    /// feature is on).
     pub fn new(world_root: impl AsRef<Path>) -> Self {
         Self {
             #[cfg(feature = "editor-git")]
@@ -169,6 +187,8 @@ impl WorldGitTracker {
         self.refresh_from_world(world);
     }
 
+    /// Rebuilds the status cache by comparing the actor files under `world_root` with the committed
+    /// state.
     pub fn refresh_status(&mut self, world_root: &Path) {
         self.set_world_root(world_root);
         // Disk-only fallback when no world handed in
@@ -190,6 +210,7 @@ impl WorldGitTracker {
         }
     }
 
+    /// Cached status of an actor (`Unmodified` for unknown ids).
     pub fn status_for(&self, actor_id: &str) -> &ActorGitStatus {
         self.status_cache
             .get(actor_id)
@@ -208,6 +229,8 @@ impl WorldGitTracker {
         ids
     }
 
+    /// Restores the actor file in cell (`cell_x`, `cell_y`) from HEAD; returns `false` when git is
+    /// unavailable or the checkout failed.
     pub fn revert_actor(&self, cell_x: i32, cell_y: i32, actor_id: &str) -> bool {
         let cell = PartitionCell {
             x: cell_x,

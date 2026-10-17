@@ -3,13 +3,20 @@ use redox_math::{Quat, Vec3};
 use redox_physics::PhysicsContext;
 use std::path::PathBuf;
 
+/// Settings of the scatter brush used to paint props into the world.
 #[derive(Clone, Debug)]
 pub struct BrushSettings {
+    /// Brush radius in world units.
     pub radius: f32,
+    /// Controls how many instances one application places (about 1.5 per unit).
     pub density: f32,
+    /// Minimum and maximum scale factor of a placed instance.
     pub scale_range: (f32, f32),
+    /// Minimum and maximum yaw of a placed instance, in degrees.
     pub yaw_range: (f32, f32),
+    /// Asset paths the brush picks from.
     pub palette: Vec<PathBuf>,
+    /// Whether placed instances are projected onto the surface under the brush.
     pub surface_snap: bool,
 }
 
@@ -26,12 +33,17 @@ impl Default for BrushSettings {
     }
 }
 
+/// One brush application: where it touched the surface.
 #[derive(Clone, Debug)]
 pub struct BrushStroke {
+    /// Hit point on the surface.
     pub center: Vec3,
+    /// Surface normal at the hit point.
     pub normal: Vec3,
 }
 
+/// Deterministic scatter positions inside a disc of `radius` around `center`; the same `seed` gives
+/// the same layout.
 pub fn scatter_positions(center: Vec3, radius: f32, density: f32, seed: u64) -> Vec<Vec3> {
     scatter_poses(center, radius, density, seed)
         .into_iter()

@@ -9,18 +9,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
   Directional shadows are VSM-only. The `shadow_probe` example (a CSM probe) was deleted.
 
 ### Fixed
+- UI: every egui-based app (all examples except `skinned_demo`, and the editor) panicked at start since the egui 0.36 upgrade
+  (`TexturesDelta` dropped unhandled); the deltas are now cleared after they are applied (`redox_ui`, editor).
+- `dino_game` drew with a non-multisampled pass against MSAA pipelines (wgpu validation error); it now renders through `FrameView`.
 - ECS: `World::remove_component` now drops the removed value; `Column::replace` is panic-safe
   and `add_component` no longer double-drops when an old value's destructor panics.
 - ECS: aliasing `&mut` in `Query::iter_mut`, duplicate component types in `spawn_bundle`,
   ZST alignment (found by the unsafe audit).
 
 ### Changed
+- winit: the closure event loop now runs through `ApplicationHandler` (`redox_core::window::RunClosure`);
+  the eight file-wide `#![allow(deprecated)]` are gone (three narrow `create_window` opt-outs remain).
+- `PakWriter` format is version 2 (per-entry raw size and codec); archives written by the first version are rejected.
+- `ActionBinding` has new variants (`PadButton`, `PadAxis`); `ActionMap::evaluate` keeps its signature, `evaluate_with` takes all devices.
 - `ReadOnlyQueryData` is now an `unsafe trait`.
 - Minimum supported Rust version is 1.88 (verified with `cargo check --workspace`).
 - Line endings normalized to LF (`.gitattributes`).
 - Large files split: editor `main.rs`, `viewport.rs`, `frame.rs`, VG `runtime.rs`, `vsm_clipmap.rs`, `prism_vault`.
 
 ### Added
+- Core: application states (`State`, `NextState`, `AppBuilder::add_state/on_enter/on_exit`, `in_state`); `SharedCommands` flushed by the dispatcher between stages.
+- ECS: component hooks `World::on_add` / `World::on_remove` (spawn, add, remove, despawn).
+- Asset: `retain`/`release` ownership with unloading, `add_dependency` and `status_with_dependencies`, loading through a `.pak`/folder source, per-frame completion budget, KTX2/BCn loader, LZ4 compression in `.pak`; `redox_cook pack --compress --incremental`.
+- Scene: binary `world.bin` (`world_bin`: postcard, cell index, checksums, OFPA conversion).
+- Input: gamepads (`GamepadsState`, gilrs backend, `PadButton`/`PadAxis` bindings), text entry with IME (`TextInput`), layered `InputContexts`; the app polls pads and toggles the platform IME.
+- Render: `pipeline_cache` (on-disk Vulkan pipeline cache, saved when the renderer drops); `frame_graph` declares the frame as a `RenderGraph` and a test keeps it in sync with `renderer/frame.rs`.
+- Benchmarks: animation (`redox_anim`) and virtual-geometry build (`redox_render`); `missing_docs` also in `redox_render`, `redox_editor_core`, `redox_editor_ui`.
+- Docs: `PROJECT_MAP.md`, `ARCHITECTURE_REALITY.md`, `PROGRESS.md` rewritten against the current code.
 - Scene: `SaveManager` (crash-safe, versioned save slots with migrations and backups).
 - Input: runtime rebinding (`ActionMap::rebind`, conflicts, RON persistence, `Rebinder` capture).
 - Asset: `AssetGuid` + `.meta` sidecars + `AssetRegistry`; `.pak` archives (`PakWriter`/`PakReader`) and `AssetSource` (`DirSource`, `PakSource`); new `redox_cook` CLI (scan/pack/list/verify).

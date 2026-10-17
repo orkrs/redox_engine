@@ -57,4 +57,9 @@ meshopt = { workspace = true }
 notify = { workspace = true, optional = true }
 
 [dev-dependencies]
+criterion = { version = "0.7", default-features = false, features = ["cargo_bench_support"] }
 naga = "30"
+
+[[bench]]
+name = "meshlets"
+harness = false

@@ -3,40 +3,60 @@ use redox_math::{Mat4, Quat, Transform, Vec3};
 use redox_reflect::Reflect;
 use redox_reflect::TypeRegistry;
 
+/// What dragging the gizmo does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum GizmoMode {
+    /// Move along an axis or plane.
     #[default]
     Translate,
+    /// Rotate around an axis.
     Rotate,
+    /// Scale along an axis.
     Scale,
 }
 
+/// Axis (or plane) picked by the gizmo.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum GizmoAxis {
+    /// The world X axis.
     #[default]
     X,
+    /// The world Y axis.
     Y,
+    /// The world Z axis.
     Z,
+    /// Free movement in the screen plane.
     Screen,
 }
 
+/// Snapping settings for gizmo drags.
 #[derive(Clone, Debug, Default)]
 pub struct GridSettings {
+    /// Whether snapping is on.
     pub enabled: bool,
+    /// Translation snap step in world units.
     pub step: f32,
+    /// Rotation snap step in degrees.
     pub angle_step: f32,
 }
 
+/// Gizmo mode and the state of the drag in progress.
 #[derive(Clone, Debug, Default)]
 pub struct GizmoState {
+    /// Current mode.
     pub mode: GizmoMode,
+    /// Axis being dragged, if a drag is active.
     pub axis: Option<GizmoAxis>,
+    /// World-space point where the drag started.
     pub drag_start: Option<Vec3>,
+    /// Transform of the entity when the drag started.
     pub entity_start: Option<Transform>,
+    /// Snapping settings.
     pub grid: GridSettings,
 }
 
 impl GizmoState {
+    /// Creates an idle gizmo in translate mode.
     pub fn new() -> Self {
         Self {
             mode: GizmoMode::Translate,
@@ -49,6 +69,8 @@ impl GizmoState {
         }
     }
 
+    /// Starts a drag from the mouse ray. Axis picking is not implemented yet, so this always
+    /// returns `false`.
     pub fn start_drag(
         &mut self,
         ray_origin: Vec3,
@@ -90,6 +112,8 @@ impl GizmoState {
         false
     }
 
+    /// Offset along the dragged axis for the current mouse ray, snapped to the grid when enabled;
+    /// `None` without an active drag.
     pub fn update_drag(
         &self,
         ray_origin: Vec3,
@@ -116,6 +140,7 @@ impl GizmoState {
         Some(offset)
     }
 
+    /// Applies the drag `offset` to `entity` according to the gizmo mode and records an undo step.
     pub fn apply_drag(
         &self,
         world: &mut World,
@@ -176,6 +201,7 @@ impl GizmoState {
         out
     }
 
+    /// Ends the drag and forgets its start state.
     pub fn end_drag(&mut self) {
         self.axis = None;
         self.drag_start = None;
@@ -196,6 +222,8 @@ fn snap_angle(angle_rad: f32, grid: &GridSettings) -> f32 {
     }
 }
 
+/// Parameter along the ray of its closest approach to the axis line; `None` when they are parallel
+/// or the point is behind the ray origin.
 pub fn ray_intersect_axis(
     ray_origin: Vec3,
     ray_dir: Vec3,
@@ -216,6 +244,7 @@ pub fn ray_intersect_axis(
     let t = (b * e - c * d) / denom;
     if t < 0.0 { None } else { Some(t) }
 }
+/// Point where the ray hits the plane; `None` when parallel or behind the ray origin.
 pub fn ray_plane_intersect(
     ray_origin: Vec3,
     ray_dir: Vec3,
@@ -233,6 +262,8 @@ pub fn ray_plane_intersect(
         Some(ray_origin + ray_dir * t)
     }
 }
+/// Projects a world position to viewport pixels (x, y) with NDC depth in z; `None` when the
+/// clip-space w is zero.
 pub fn screen_project(pos: Vec3, view_proj: Mat4, viewport_size: (u32, u32)) -> Option<Vec3> {
     let clip = view_proj * pos.extend(1.0);
     if clip.w.abs() < 1e-6 {

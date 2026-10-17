@@ -10,31 +10,47 @@ use redox_scene::{
     CELLS_DIR, PcgKind, PcgParams, generate_to, load_cell_actors, load_manifest, parse_cell_dir,
 };
 
+/// Result of baking a world for shipping.
 #[derive(Clone, Debug)]
 pub struct BakeReport {
+    /// Root directory of the baked world.
     pub world_root: PathBuf,
+    /// Number of cells.
     pub cell_count: usize,
+    /// Number of actor files.
     pub actor_files: usize,
+    /// Where the report was written.
     pub report_path: PathBuf,
+    /// Lines of the report.
     pub lines: Vec<String>,
 }
 
+/// Status of the CPU bakes.
 #[derive(Clone, Debug, Default)]
 pub struct BakeStatus {
+    /// Result of the meshlet bake.
     pub meshlets: String,
+    /// Result of the SDF bake.
     pub sdf: String,
 }
 
+/// Panel that inventories a world and exports a shipping package.
 #[derive(Default)]
 pub struct PackagerPanel {
+    /// Root directory of the world.
     pub world_root: String,
+    /// Name of the exported package.
     pub package_name: String,
+    /// Report of the last bake.
     pub last_report: Option<BakeReport>,
+    /// Status of the bakes.
     pub bake_status: BakeStatus,
+    /// Message shown at the bottom of the panel.
     pub status: String,
 }
 
 impl PackagerPanel {
+    /// Creates the panel for a world; the package is named after its directory.
     pub fn new(world_root: impl Into<String>) -> Self {
         let world_root = world_root.into();
         let package_name = Path::new(&world_root)
@@ -49,6 +65,7 @@ impl PackagerPanel {
         }
     }
 
+    /// Draws the panel.
     pub fn show(&mut self, ui: &mut egui::Ui) {
         ui.heading("Project Packager");
         ui.label("OFPA inventory, CPU meshlet/SDF bake, shipping package export");
@@ -149,6 +166,7 @@ impl PackagerPanel {
         }
     }
 
+    /// Writes the bake report and returns a status message.
     pub fn write_bake_report(&mut self) -> anyhow::Result<String> {
         let report = write_bake_report(Path::new(&self.world_root), &self.bake_status)?;
         let msg = format!("Wrote {}", report.report_path.display());

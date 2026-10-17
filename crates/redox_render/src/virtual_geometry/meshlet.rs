@@ -65,6 +65,7 @@ pub struct MeshletDescriptor {
     pub lod_level: u32,
     /// Index into the global material array.
     pub material_index: u32,
+    /// Padding.
     pub _pad: u32,
 }
 
@@ -84,6 +85,7 @@ pub struct VGInstanceData {
     pub meshlet_count: u32,
     /// Bitfield flags (LOD level in lower bits when culling).
     pub flags: u32,
+    /// Padding.
     pub _pad: u32,
     /// Local-space AABB min (xyz) for compressed vertex decode.
     pub bounds_min: [f32; 4],
@@ -96,9 +98,13 @@ pub struct VGInstanceData {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct DrawIndexedIndirectCmd {
+    /// Number of indices to draw.
     pub index_count: u32,
+    /// Number of instances to draw.
     pub instance_count: u32,
+    /// First index in the index buffer.
     pub first_index: u32,
+    /// Value added to each index.
     pub base_vertex: i32,
     /// Instance index; used by the vertex shader to fetch the transform from
     /// the `vg_instances` storage buffer.

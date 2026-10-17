@@ -15,15 +15,21 @@ use crate::shader::{PARTICLE_BILLBOARD_WGSL, PARTICLE_SIM_WGSL};
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
 pub struct ParticleDrawIndirect {
+    /// Vertices per instance.
     pub vertex_count: u32,
+    /// Number of instances to draw.
     pub instance_count: u32,
+    /// First vertex to draw.
     pub first_vertex: u32,
+    /// First instance to draw.
     pub first_instance: u32,
 }
 
 /// GPU resources for particle simulation and billboard drawing.
 pub struct ParticleGpuSystem {
+    /// Maximum number of particles.
     pub capacity: u32,
+    /// Whether particles are simulated on the GPU.
     pub gpu_sim_enabled: bool,
     /// Alive count after last upload / sim (for CPU-side queries).
     pub last_alive_count: u32,
@@ -52,6 +58,7 @@ pub struct ParticleGpuSystem {
 }
 
 impl ParticleGpuSystem {
+    /// Creates the pass for up to `capacity` particles.
     pub fn new(device: &wgpu::Device, capacity: u32, hdr_format: wgpu::TextureFormat) -> Self {
         let capacity = capacity.max(1);
         let particle_bytes = (capacity as u64) * GpuParticle::STRIDE as u64;

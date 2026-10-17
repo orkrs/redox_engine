@@ -22,13 +22,17 @@ pub struct HiZPyramid {
     downsample_bgl: wgpu::BindGroupLayout,
     params_buffer: wgpu::Buffer,
     depth_sampler: wgpu::Sampler,
+    /// Width of the base level in texels.
     pub width: u32,
+    /// Height of the base level in texels.
     pub height: u32,
+    /// Number of mip levels.
     pub mip_count: u32,
     ready: bool,
 }
 
 impl HiZPyramid {
+    /// Creates a Hi-Z pyramid for a depth buffer of the given size.
     pub fn new(device: &wgpu::Device, width: u32, height: u32) -> Self {
         let w = width.max(1);
         let h = height.max(1);
@@ -189,6 +193,7 @@ impl HiZPyramid {
         }
     }
 
+    /// Recreates the pyramid for a new size.
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
         if self.width == width.max(1) && self.height == height.max(1) {
             return;
@@ -196,14 +201,17 @@ impl HiZPyramid {
         *self = Self::new(device, width, height);
     }
 
+    /// Whether the pyramid has been built at least once.
     pub fn is_ready(&self) -> bool {
         self.ready
     }
 
+    /// View of one mip level.
     pub fn view(&self, mip: u32) -> &wgpu::TextureView {
         &self.views[mip.min(self.mip_count - 1) as usize]
     }
 
+    /// Sampler for the pyramid.
     pub fn sampler(&self) -> &wgpu::Sampler {
         &self.depth_sampler
     }

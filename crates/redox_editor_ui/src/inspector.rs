@@ -3,9 +3,11 @@ use redox_editor_core::{UndoCommand, UndoStack};
 use redox_gameplay::AttributeSet;
 use redox_reflect::{ReflectValue, TypeRegistry};
 
+/// Panel that edits the components of the selected entity.
 pub struct InspectorPanel;
 
 impl InspectorPanel {
+    /// Draws the components of `entity` and records edits on `undo`.
     pub fn show(
         ui: &mut egui::Ui,
         registry: &TypeRegistry,

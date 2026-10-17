@@ -13,15 +13,23 @@ use crate::shader::{VG_CULL_WGSL, create_shader_module};
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub struct CullParamsUniform {
+    /// Frustum planes.
     pub planes: [[f32; 4]; 6],
+    /// Camera position (xyz).
     pub camera_pos: [f32; 4],
+    /// View-projection matrix.
     pub view_proj: [[f32; 4]; 4],
+    /// Size of the Hi-Z base level in texels.
     pub hiz_size: [f32; 2],
+    /// Number of Hi-Z mip levels.
     pub hiz_mip_count: u32,
+    /// Non-zero enables occlusion culling against the Hi-Z.
     pub hiz_enabled: u32,
     /// 0 = phase 1 (reset + cull), 1 = phase 2 (append Hi-Z rejects).
     pub cull_mode: u32,
+    /// Capacity of the buffer that collects meshlets rejected by the first phase.
     pub reject_capacity: u32,
+    /// Padding.
     pub _pad: [u32; 2],
 }
 
@@ -41,6 +49,7 @@ pub struct VgGpuCull {
 }
 
 impl VgGpuCull {
+    /// Creates the compute pipelines.
     pub fn new(device: &wgpu::Device) -> Self {
         let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("vg_cull_bgl"),
@@ -226,6 +235,7 @@ impl VgGpuCull {
         }
     }
 
+    /// Capacity of the reject buffer.
     pub fn reject_capacity(&self) -> u32 {
         self.reject_capacity
     }

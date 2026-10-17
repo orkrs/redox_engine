@@ -128,7 +128,7 @@ impl UiContext {
         surface_view: &wgpu::TextureView,
         screen_descriptor: egui_wgpu::ScreenDescriptor,
     ) {
-        let full_output = self.egui_ctx.end_pass();
+        let mut full_output = self.egui_ctx.end_pass();
 
         self.egui_state
             .handle_platform_output(window, full_output.platform_output);
@@ -173,6 +173,8 @@ impl UiContext {
         for id in &full_output.textures_delta.free {
             self.egui_renderer.free_texture(id);
         }
+        // egui 0.36 panics when a texture delta is dropped unhandled; this one is done.
+        full_output.textures_delta.clear();
     }
 }
 

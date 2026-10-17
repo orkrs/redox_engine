@@ -4,13 +4,18 @@ use std::path::{Path, PathBuf};
 /// Coarse asset classification used for thumbnails and spawn routing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AssetKind {
+    /// A mesh or model file.
     Mesh,
+    /// An image file.
     Texture,
+    /// A scene file.
     Scene,
+    /// Any other file.
     Other,
 }
 
 impl AssetKind {
+    /// Classifies a file by its extension.
     pub fn from_path(path: &Path) -> Self {
         match path
             .extension()
@@ -49,13 +54,16 @@ impl AssetKind {
 /// Asset browser never mutates the ECS world itself.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AssetSpawnRequest {
+    /// File to spawn.
     pub path: PathBuf,
     /// Display name (usually file stem); optional for callers that only have a path.
     pub label: Option<String>,
+    /// Kind of the file.
     pub kind: AssetKind,
 }
 
 impl AssetSpawnRequest {
+    /// Creates a request for `path`; the label is the file stem.
     pub fn new(path: PathBuf) -> Self {
         let kind = AssetKind::from_path(&path);
         let label = path
@@ -69,7 +77,9 @@ impl AssetSpawnRequest {
 /// CPU-side marker: render/main can resolve `path` into GPU mesh later.
 #[derive(Clone, Debug)]
 pub struct EditorMeshProxy {
+    /// File the proxy refers to.
     pub path: PathBuf,
+    /// Display name.
     pub label: Option<String>,
 }
 
@@ -79,8 +89,11 @@ struct GltfMeta {
     meshes: usize,
 }
 
+/// Panel that lists the files of the assets directory.
 pub struct AssetBrowserPanel {
+    /// Directory being shown.
     pub current_dir: PathBuf,
+    /// Text filter for file names.
     pub filter: String,
     /// Path selected for potential viewport drop.
     pub selected: Option<PathBuf>,

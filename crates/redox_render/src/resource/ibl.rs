@@ -2,9 +2,13 @@ use crate::resource::texture::Texture;
 
 /// Holds the pre-processed textures for IBL.
 pub struct IBLResource {
+    /// Diffuse irradiance cubemap view.
     pub irradiance_view: wgpu::TextureView,
+    /// Prefiltered specular cubemap view.
     pub prefiltered_view: wgpu::TextureView,
+    /// BRDF lookup table view.
     pub brdf_lut_view: wgpu::TextureView,
+    /// The original environment cubemap view.
     pub environment_view: wgpu::TextureView, // Original cubemap
     /// Whether a real environment was loaded (`from_equirect`).
     /// `dummy()` leaves this false so consumers (e.g. the skybox pass) can
@@ -17,20 +21,28 @@ pub struct IBLResource {
 
 /// Represents a Skybox (environment map).
 pub struct Skybox {
+    /// Cubemap texture.
     pub cubemap: wgpu::Texture,
+    /// View of the cubemap.
     pub view: wgpu::TextureView,
 }
 
 /// Processor to generate IBL maps using compute shaders.
 pub struct IBLProcessor {
+    /// Compute pipeline that converts an equirectangular map to a cubemap.
     pub pipeline_equirect_to_cube: wgpu::ComputePipeline,
+    /// Compute pipeline for the irradiance convolution.
     pub pipeline_irradiance: wgpu::ComputePipeline,
+    /// Compute pipeline for the specular prefilter.
     pub pipeline_prefilter: wgpu::ComputePipeline,
+    /// Compute pipeline that bakes the BRDF lookup table.
     pub pipeline_brdf_lut: wgpu::ComputePipeline,
+    /// Sampler for the generated textures.
     pub sampler: wgpu::Sampler,
 }
 
 impl IBLProcessor {
+    /// Creates the processor and its pipelines.
     pub fn new(device: &wgpu::Device) -> Self {
         use crate::shader::{
             BRDF_LUT_WGSL, EQUIRECT_TO_CUBE_WGSL, IRRADIANCE_CONVOLUTION_WGSL,

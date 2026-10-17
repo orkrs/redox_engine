@@ -4,6 +4,8 @@
 //! procedural mesh generation, texture loading, and ECS integration
 //! through the `redox_ecs` crate.
 
+#![warn(missing_docs)]
+
 pub mod asset_types;
 pub mod camera;
 pub mod cluster_gpu_cull;
@@ -18,6 +20,7 @@ pub mod material;
 pub mod mesh;
 pub mod pass;
 pub mod pipeline_cache;
+/// Post-processing passes.
 pub mod post;
 pub mod profiler;
 pub mod registry;

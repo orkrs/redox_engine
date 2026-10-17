@@ -13,11 +13,17 @@ pub const SCATTER_LIGHT_SAMPLE_COUNT: u32 = 8;
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct ScatterLightUniform {
+    /// Number of lights.
     pub num_lights: u32,
+    /// Light samples per pixel.
     pub sample_count: u32,
+    /// Frame counter for the sample pattern.
     pub frame_index: u32,
+    /// Padding.
     pub _pad: u32,
+    /// Render target size in pixels.
     pub resolution: [f32; 2],
+    /// Padding.
     pub _pad2: [f32; 2],
     /// Clip -> world transform used to rebuild positions from the depth buffer.
     pub inv_view_proj: [[f32; 4]; 4],
@@ -44,12 +50,16 @@ impl Default for ScatterLightUniform {
 
 /// Fullscreen ScatterLight compositing pass.
 pub struct ScatterLightPass {
+    /// Render pipeline.
     pub pipeline: wgpu::RenderPipeline,
+    /// Layout of the bind group.
     pub bind_group_layout: wgpu::BindGroupLayout,
+    /// Uniform buffer.
     pub uniform_buffer: wgpu::Buffer,
 }
 
 impl ScatterLightPass {
+    /// Creates the pass for the HDR format.
     pub fn new(device: &wgpu::Device, hdr_format: wgpu::TextureFormat) -> Self {
         let shader = create_shader_module(device, "scatter_light_shader", SCATTER_LIGHT_WGSL);
 
@@ -151,6 +161,7 @@ impl ScatterLightPass {
         }
     }
 
+    /// Creates the bind group for the frame's textures.
     pub fn create_bind_group(
         &self,
         device: &wgpu::Device,
@@ -187,6 +198,7 @@ impl ScatterLightPass {
         })
     }
 
+    /// Draws the fullscreen pass.
     pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, bind_group: &'a wgpu::BindGroup) {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, bind_group, &[]);

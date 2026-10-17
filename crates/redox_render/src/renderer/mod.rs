@@ -41,9 +41,12 @@ use crate::light::{LightUniform, LightingMode, ShaderDebugUniform};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[repr(u32)]
 pub enum ShaderDebugVizMode {
+    /// Debug visualization off.
     #[default]
     None = 0,
+    /// Shows the light cluster index.
     ClusterIndex = 1,
+    /// Shows the shadow value.
     ShadowValue = 2,
     /// Magenta=SSAO · Lime=VSM · Yellow=SDF (darkening amounts).
     ShadowSources = 3,
@@ -105,11 +108,14 @@ enum HdrGeometryResolvePass {
 /// Central GPU renderer — owns device, passes, frame state, and [`GpuRegistry`].
 pub struct Renderer {
     // --- wgpu core ---
+    /// The wgpu device.
     pub device: wgpu::Device,
+    /// The wgpu queue.
     pub queue: wgpu::Queue,
     /// Window swapchain. `None` for offscreen editor hosts that only call
     /// [`Self::render_frame_into`] (egui SharedGpu owns the real surface).
     pub surface: Option<wgpu::Surface<'static>>,
+    /// Current surface configuration.
     pub config: wgpu::SurfaceConfiguration,
     /// Internal render scale for TAAU (render at lower res, upscale temporally).
     pub render_scale: f32,
@@ -119,27 +125,40 @@ pub struct Renderer {
     pub internal_height: u32,
 
     // --- Render pass ---
+    /// Bind group layouts shared by several passes.
     pub shared_layouts: SharedLayouts,
     /// Planned decoupled PBR frame bind groups (Phase 2.2 factories).
     pub pbr_frame_layouts: PbrFrameLayouts,
+    /// Main PBR forward pass.
     pub pbr_pass: PbrPass,
+    /// Shadow depth pass.
     pub shadow_pass: ShadowPass,
+    /// Pass that renders normals and depth.
     pub normal_pass: NormalPass,
+    /// Ambient occlusion passes.
     pub ssao_pass: SSAOPass,
 
     // --- Global Uniforms ---
+    /// GPU buffer with the camera uniform.
     pub camera_buffer: wgpu::Buffer,
+    /// CPU copy of the camera uniform.
     pub camera_uniform: CameraUniform,
     /// Near/far of the last uploaded camera — must match `camera_uniform.proj`
     /// for the VSM clipmap and cluster setup.
     pub camera_near: f32,
+    /// Far plane distance of the main camera.
     pub camera_far: f32,
 
+    /// CPU copy of the light uniform.
     pub light_uniform: LightUniform,
+    /// GPU buffer with the light uniform.
     pub light_buffer: wgpu::Buffer,
+    /// GPU buffer with the shader debug uniform.
     pub shader_debug_buffer: wgpu::Buffer,
 
+    /// Bind group with per-frame data (camera).
     pub frame_bind_group: wgpu::BindGroup,
+    /// Bind group with scene data (lights, shadows, environment).
     pub scene_bind_group: wgpu::BindGroup,
 
     // --- HDR & Post-processing ---
@@ -147,12 +166,17 @@ pub struct Renderer {
     pub msaa_sample_count: u32,
     /// Preferred HDR MSAA count when TAA is on (queried from adapter at init).
     hdr_msaa_target_count: u32,
+    /// HDR color target the scene is shaded into.
     pub hdr_texture: wgpu::Texture,
+    /// View of the HDR target.
     pub hdr_view: wgpu::TextureView,
     /// 2× multisampled HDR colour target for geometry passes.
     pub hdr_msaa_texture: wgpu::Texture,
+    /// Multisampled HDR view used when MSAA is on.
     pub hdr_msaa_view: wgpu::TextureView,
+    /// Pipeline that tone-maps the HDR image to the surface.
     pub tone_mapping_pipeline: wgpu::RenderPipeline,
+    /// Bind group of the tone-mapping pass.
     pub tone_mapping_bind_group: wgpu::BindGroup,
     /// Uniform for the tone-mapping pass (`TonemapUniform`: exposure /
     /// sharpen toggle / output size). Written each frame before submission.
@@ -161,21 +185,33 @@ pub struct Renderer {
     pub exposure: f32,
     /// RCAS sharpness in stops (lower = sharper post-TAA recovery).
     pub rcas_sharpness: f32,
+    /// Sampler for reading the HDR image.
     pub hdr_sampler: wgpu::Sampler,
 
     // --- Normal pass + SSAO ---
+    /// View-space normal target.
     pub normal_texture: wgpu::Texture,
+    /// View of the normal target.
     pub normal_view: wgpu::TextureView,
+    /// Bind group for reading the normal target.
     pub normal_bind_group: wgpu::BindGroup,
+    /// Raw ambient occlusion (half resolution).
     pub ssao_raw_texture: wgpu::Texture,
+    /// View of the raw occlusion texture.
     pub ssao_raw_view: wgpu::TextureView,
     /// Half-res bilateral blur output (fed into the upsample pass).
     pub ssao_half_blurred_texture: wgpu::Texture,
+    /// View of the half-resolution blurred occlusion.
     pub ssao_half_blurred_view: wgpu::TextureView,
+    /// Full-resolution blurred occlusion texture.
     pub ssao_blurred_texture: wgpu::Texture,
+    /// View of the full-resolution occlusion.
     pub ssao_blurred_view: wgpu::TextureView,
+    /// Bind group of the occlusion trace.
     pub ssao_bind_group: wgpu::BindGroup,
+    /// Bind group of the occlusion blur.
     pub ssao_blur_bind_group: wgpu::BindGroup,
+    /// Bind group of the occlusion upsample.
     pub ssao_upsample_bind_group: wgpu::BindGroup,
     /// Sampler for sampling SSAO texture in PBR (Nearest — matches filterable: false / R16Float).
     pub ssao_pbr_sampler: wgpu::Sampler,
@@ -195,8 +231,10 @@ pub struct Renderer {
     vsm_shadow_pbr_sampler: wgpu::Sampler,
 
     // --- Depth ---
+    /// Scene depth texture.
     #[allow(dead_code)]
     pub depth_texture: wgpu::Texture,
+    /// View of the scene depth.
     pub depth_view: wgpu::TextureView,
     /// Multisampled depth for HDR geometry passes (matches `msaa_sample_count`).
     depth_msaa_texture: wgpu::Texture,
@@ -205,16 +243,25 @@ pub struct Renderer {
     prev_depth_texture: wgpu::Texture,
     prev_depth_view: wgpu::TextureView,
 
+    /// View of the directional shadow map.
     pub shadow_view: wgpu::TextureView,
+    /// Comparison sampler for shadow maps.
     pub shadow_sampler: wgpu::Sampler,
+    /// Atlas of point-light shadow maps.
     pub local_shadow_atlas: wgpu::Texture,
+    /// View of the local shadow atlas.
     pub local_shadow_atlas_view: wgpu::TextureView,
 
     // --- GPU resource registry ---
+    /// GPU resources of meshes, materials and textures.
     pub registry: GpuRegistry,
+    /// Bind group with fallback textures.
     pub fallback_texture_bg: wgpu::BindGroup,
+    /// Fallback normal map (flat).
     pub fallback_normal_view: wgpu::TextureView,
+    /// Fallback metallic-roughness texture.
     pub fallback_mr_view: wgpu::TextureView,
+    /// Sampler shared by material textures.
     pub common_sampler: wgpu::Sampler,
     /// Per-material blend mode, parallel to registry legacy material indices.
     pub material_blend_flags: Vec<BlendMode>,
@@ -222,9 +269,11 @@ pub struct Renderer {
     /// Per-object model-matrix buffer (reused each frame).
     model_buffer: wgpu::Buffer,
     model_bind_group: wgpu::BindGroup,
+    /// Bind group for the model buffer used by shadow passes.
     pub shadow_model_bind_group: wgpu::BindGroup,
 
     // --- Clustered Forward Rendering ---
+    /// Assigns lights to view-space clusters.
     pub cluster_manager: ClusterManager,
 
     /// Forward lighting path (clustered vs ScatterLight).
@@ -260,6 +309,7 @@ pub struct Renderer {
 
     /// Dual-filter bloom post-process (6-mip chain).
     pub bloom_pass: BloomPass,
+    /// Whether bloom is applied.
     pub bloom_enabled: bool,
     bloom_mip_textures: [wgpu::Texture; crate::post::bloom::BLOOM_MIP_COUNT],
     bloom_mip_views: [wgpu::TextureView; crate::post::bloom::BLOOM_MIP_COUNT],
@@ -272,7 +322,9 @@ pub struct Renderer {
     bloom_composite_bg: wgpu::BindGroup,
 
     // --- Phase 5 GI / SDF ---
+    /// GPU side of the DDGI probe grid.
     pub ddgi_gpu: crate::gi::DdgiGpu,
+    /// GPU signed distance field atlas.
     pub sdf_gpu: crate::sdf::SdfGpuAtlas,
     #[allow(dead_code)]
     blue_noise_texture: wgpu::Texture,
@@ -284,10 +336,13 @@ pub struct Renderer {
     pub use_compressed_vertices: bool,
 
     // --- IBL ---
+    /// Converts environment maps into IBL textures.
     pub ibl_processor: IBLProcessor,
+    /// The current image-based lighting environment.
     pub ibl_resource: IBLResource,
 
     // --- Debug visualization (e.g. audio occlusion rays) ---
+    /// Pass that draws debug lines.
     pub debug_lines_pass: DebugLinesPass,
     /// Lines to draw this frame: (start, end, occluded). Set via [`Self::set_debug_lines`].
     pub current_debug_lines: Vec<(Vec3, Vec3, bool)>,
@@ -331,22 +386,29 @@ pub struct Renderer {
     /// the history write idx of the current frame.
     pub taa_tone_bgs: [wgpu::BindGroup; 2],
     // --- Skybox (background env pass; None until set_skybox(true)) ---
+    /// Skybox pass; present once a real environment is set.
     pub skybox_pass: Option<SkyboxPass>,
 
     // --- Transparent geometry (alpha-blended PBR variant) ---
+    /// Transparent object pass.
     pub transparent_pass: TransparentPass,
 
     // --- Virtual Shadow Maps (directional; enabled via `set_shadow_mode`) ---
+    /// Pass that renders depth into virtual shadow map pages.
     pub vsm_depth_pass: crate::shadow::depth_pass::VsmDepthPass,
+    /// Clipmap of virtual shadow map pages.
     pub vsm_clipmap: crate::shadow::vsm_clipmap::VsmClipmap,
     /// Per-page R32Float layers (one layer per physical page).
     pub vsm_pages_tex: wgpu::Texture,
+    /// Views of the physical shadow pages.
     pub vsm_pages_views: Vec<wgpu::TextureView>,
     /// Dynamic-offset uniform feeding `PageDrawInfo` per rendered page.
     pub vsm_pageinfo_buffer: wgpu::Buffer,
+    /// Bind group with the page table information.
     pub vsm_pageinfo_bg: wgpu::BindGroup,
     /// Group-25 resources sampled by the PBR shader in VSM mode.
     pub vsm_info_buffer: wgpu::Buffer,
+    /// Sampler for the virtual shadow maps.
     pub vsm_sampler: wgpu::Sampler,
     /// Runtime switch for VSM + SMRT sampling.
     pub vsm_enabled: bool,
@@ -361,6 +423,7 @@ pub struct Renderer {
     /// Screen-space VSM trace (1 Vogel ray + temporal, 90-95% history) — default ON.
     /// PBR samples `t_vsm_shadow` (1 filtered fetch) instead of inline 16-ray `vsm_shadow()`.
     pub vsm_screen_shadows: bool,
+    /// Number of shadow pages rendered last frame.
     pub vsm_dirty_pages_last_frame: u32,
     /// SMRT ray/sample budget uploaded with VSM info.
     pub smrt_config: crate::shadow::smrt::SmrtConfig,
@@ -377,6 +440,7 @@ pub struct Renderer {
     vg_bind_groups_dirty: bool,
 
     // --- Virtual Geometry (Nanite-like) ---
+    /// Virtual geometry system, when enabled.
     pub vg_system: Option<VGSystem>,
     /// Visibility-buffer raster pass (Phase 3).
     pub vg_vis_pass: VgVisPass,
@@ -384,6 +448,7 @@ pub struct Renderer {
     pub vg_resolve_pass: VgResolvePass,
     /// Depth-only meshlet pass for shadow maps.
     pub vg_shadow_pass: VgShadowPass,
+    /// Render targets of the visibility buffer.
     pub vg_vis_targets: VgVisTargets,
     vg_material_buffer: wgpu::Buffer,
     vg_resolve_bind_group: wgpu::BindGroup,

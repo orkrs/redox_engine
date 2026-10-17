@@ -5,13 +5,18 @@ use redox_math::Vec3;
 use redox_scene::ofpa::{self, ActorRecord, WorldManifest};
 use redox_scene::{PartitionCell, SceneResult, WorldPartition};
 
+/// The world open in the editor.
 pub struct WorldSession {
+    /// Streams cells in and out as the viewer moves.
     pub partition: WorldPartition,
+    /// Header of the world file.
     pub manifest: WorldManifest,
+    /// Directory the world is stored in.
     pub root: PathBuf,
 }
 
 impl WorldSession {
+    /// Opens the world stored under `root`.
     pub fn open(root: impl AsRef<Path>) -> SceneResult<Self> {
         let root = root.as_ref().to_path_buf();
         let partition = WorldPartition::open(&root)?;
@@ -65,6 +70,8 @@ impl WorldSession {
         }
     }
 
+    /// Creates the world directory with a default manifest (cell size 16, seed 42) and opens it;
+    /// the kind and size arguments are not used yet.
     pub fn create_new(
         root: impl AsRef<Path>,
         _kind: &str,
@@ -87,18 +94,22 @@ impl WorldSession {
         })
     }
 
+    /// Streams cells around `viewer_pos` into and out of `world`.
     pub fn tick(&mut self, world: &mut World, viewer_pos: Vec3) {
         let _ = self.partition.tick(world, viewer_pos);
     }
 
+    /// Loads a cell regardless of the streaming distance.
     pub fn force_load(&mut self, world: &mut World, cell: PartitionCell) -> SceneResult<()> {
         self.partition.force_load(world, cell)
     }
 
+    /// Unloads a cell regardless of the streaming distance.
     pub fn force_unload(&mut self, world: &mut World, cell: PartitionCell) {
         self.partition.force_unload(world, cell);
     }
 
+    /// Whether the cell is currently loaded.
     pub fn is_loaded(&self, cell: PartitionCell) -> bool {
         self.partition.is_loaded(cell)
     }
@@ -124,10 +135,13 @@ impl WorldSession {
             .collect()
     }
 
+    /// Actors stored for a cell on disk.
     pub fn list_cell_actors(&self, cell: PartitionCell) -> Vec<ActorRecord> {
         ofpa::load_cell_actors(&self.root, cell).unwrap_or_default()
     }
 
+    /// Marker for the cell list: green when loaded, yellow when within the load radius of the
+    /// viewer's cell, black otherwise.
     pub fn cell_status_emoji(&self, cell: PartitionCell, viewer: PartitionCell) -> &'static str {
         if self.is_loaded(cell) {
             "🟩"
@@ -141,6 +155,7 @@ impl WorldSession {
         }
     }
 
+    /// Grid line segments around the world origin; the flag is set for the axis lines.
     pub fn grid_lines(&self) -> Vec<(Vec3, Vec3, bool)> {
         let cell_size = self.manifest.cell_size;
         let half = 3.0 * cell_size;

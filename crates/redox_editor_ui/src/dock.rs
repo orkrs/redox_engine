@@ -9,16 +9,26 @@ use crate::inspector::InspectorPanel;
 use crate::profiler_panel::ProfilerPanel;
 use redox_editor_core::{GizmoMode, ViewportLayout, ViewportShading};
 
+/// Tabs of the editor dock.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Tab {
+    /// The 3D viewport.
     Viewport,
+    /// World outliner.
     Outliner,
+    /// Component inspector.
     Inspector,
+    /// Asset browser.
     AssetBrowser,
+    /// Console.
     Console,
+    /// Node graph editor.
     Graph,
+    /// Time-travel scrubber.
     TimeTravel,
+    /// Frame profiler.
     Profiler,
+    /// Project packager.
     Packager,
 }
 
@@ -38,7 +48,9 @@ impl std::fmt::Display for Tab {
     }
 }
 
+/// The dock layout of the editor.
 pub struct EditorDock {
+    /// Layout tree of the tabs.
     pub tree: DockState<Tab>,
 }
 
@@ -62,6 +74,7 @@ impl EditorDock {
         Tab::Packager,
     ];
 
+    /// Creates the dock with the default layout.
     pub fn new() -> Self {
         let layout_path = std::path::Path::new("editor_layout.ron");
         if let Ok(s) = std::fs::read_to_string(layout_path)
@@ -76,6 +89,7 @@ impl EditorDock {
         }
     }
 
+    /// The default layout.
     pub fn default_tree() -> DockState<Tab> {
         let mut tree = DockState::new(vec![Tab::Viewport]);
         let [_a, _b] = tree.main_surface_mut().split_left(
@@ -103,6 +117,7 @@ impl EditorDock {
         tree
     }
 
+    /// Restores the default layout.
     pub fn reset_layout(&mut self) {
         self.tree = Self::default_tree();
     }
@@ -125,6 +140,8 @@ impl EditorDock {
         }
     }
 
+    /// Draws the dock into `ui`; the viewport tab shows `viewport_tex_id` and reports its rectangle
+    /// through `viewport_rect`.
     pub fn show_with_ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -143,12 +160,14 @@ impl EditorDock {
             .show_inside(ui, &mut viewer);
     }
 
+    /// Saves the layout as RON.
     pub fn save_to_file(&self, path: &std::path::Path) -> anyhow::Result<()> {
         let s = ron::ser::to_string_pretty(&self.tree, ron::ser::PrettyConfig::default())?;
         std::fs::write(path, s)?;
         Ok(())
     }
 
+    /// Loads a layout saved by [`Self::save_to_file`] and adds tabs that are missing.
     pub fn load_from_file(&mut self, path: &std::path::Path) -> anyhow::Result<()> {
         let s = std::fs::read_to_string(path)?;
         self.tree = ron::from_str(&s)?;
@@ -156,10 +175,12 @@ impl EditorDock {
         Ok(())
     }
 
+    /// Serializes the layout to a RON string.
     pub fn save_to_string(&self) -> String {
         ron::ser::to_string(&self.tree).unwrap_or_default()
     }
 
+    /// Loads a layout from a RON string; invalid input keeps the current layout.
     pub fn load_from_string(&mut self, s: &str) {
         if let Ok(tree) = ron::from_str(s) {
             self.tree = tree;
@@ -172,6 +193,7 @@ impl EditorDock {
         let _ = ctx;
     }
 
+    /// Does nothing; kept for callers of the old windowed API.
     pub fn show_with_viewport(
         &mut self,
         ctx: &egui::Context,
