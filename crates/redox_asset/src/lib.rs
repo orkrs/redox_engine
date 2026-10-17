@@ -11,14 +11,17 @@
 
 pub mod error;
 pub mod event;
+pub mod guid;
 pub mod handle;
 pub mod hot_reload;
 pub mod loader;
 pub mod manager;
+pub mod pak;
 pub mod storage;
 
 pub use error::AssetError;
 pub use event::{AssetLoadFailedEvent, AssetLoadedEvent, AssetReloadedEvent};
+pub use guid::{AssetGuid, AssetMeta, AssetRegistry, RegistryError, ScanReport};
 pub use handle::{AssetId, AssetStatus, Handle, WeakHandle};
 pub use hot_reload::{HotReloadWatcher, ReloadRequest};
 pub use loader::{
@@ -26,4 +29,5 @@ pub use loader::{
     GltfTextureData, ImageLoader, load_scene_from_path,
 };
 pub use manager::AssetManager;
+pub use pak::{AssetSource, DirSource, PakError, PakReader, PakSource, PakWriter};
 pub use storage::AssetStorage;
