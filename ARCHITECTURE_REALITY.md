@@ -22,7 +22,8 @@ redox_render    GPU-рендерер; зависит от anim, asset, ecs, math
 redox_scene     OFPA-мир, world.bin, сохранения, streaming, PCG
 redox_gameplay  способности, StateTree
 redox_physics   rapier3d     redox_audio  kira + окклюзия через raycast физики
-redox_anim      скелет, клипы, CPU-скиннинг, IK
+redox_anim      скелет, клипы, CPU-скиннинг, IK, граф анимации
+redox_script    WASM-скрипты (wasmi, необязательный wasmtime), топливо/память/права, хост-API v1a
 redox_asset     загрузка, GUID/.meta, .pak, счётчики ссылок
 redox_input     клавиатура, мышь, геймпады, текст/IME, контексты
 redox_ecs       archetype ECS     redox_reflect(+_derive)   redox_math   redox_vfx
@@ -80,7 +81,12 @@ redox_ecs       archetype ECS     redox_reflect(+_derive)   redox_math   redox_v
 
 - DDGI не использует трассировку лучей: пробы заполняются на CPU (направленный свет + небо/земля).
 - SDF-страницы — запечённые демо-кирпичи, не привязаны к стримингу сцены.
-- Скиннинг — на CPU; GPU-скиннинга и normal map для скинов нет.
+- Скиннинг: CPU по умолчанию, GPU (`SkinnedMeshBinding::update_gpu`, compute) работает, но по одному submit на
+  персонажа и поэтому на мелких мешах медленнее CPU; normal map для скинов нет (тангент фиксированный).
+- Объекты кадра сортируются по (меш, материал) и рисуются instanced draw'ами (CPU-инстансинг); прозрачные и проход
+  скорости движущихся объектов не сливаются.
+- Физика: шарниры (fixed, hinge, slider, ball, spring, rope) с разрывом по силе и моменту; нет лимитов углов,
+  моторов, ragdoll.
 - Порядок проходов задаёт граф, но зависимости текстур в нём объявлены вручную и не выводятся из кода проходов;
   память транзиентных текстур по графу не выделяется (проходы владеют своими текстурами).
 - Горячая перезагрузка шейдеров (`ShaderHotReload`, feature `shader-hot-reload`) пересобирает 13 групп

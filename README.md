@@ -20,7 +20,8 @@ still a viewer rather than a production tool. Everything below is what the code 
 | Renderer (wgpu 30) | **Working**: clustered forward, virtual shadow maps, GTAO, TAA, bloom, SMAA, virtual geometry, DDGI-lite, IBL |
 | Textures | **Working**: KTX2 with Zstd and Basis Universal (UASTC, ETC1S), BC7/RGBA8 targets, cube maps, arrays, baked IBL, priority streaming with a memory budget |
 | Assets | **Working**: GUIDs, `.pak` v2 (LZ4, range reads), ref counting, dependencies, priority queue with workers, `redox_cook` tool |
-| Physics, audio, input | **Working**: rapier 0.36, kira 0.12, gamepads, key rebinding, text/IME input (gamepad and IME not checked on live hardware) |
+| Physics, audio, input | **Working**: rapier 0.36 (layers from a file, shape casts, contact events, joints), kira 0.12 (sound cues with priorities), gamepads, key rebinding, text/IME input (gamepad and IME not checked on live hardware) |
+| Scripting | **Prototype**: WebAssembly (`wasmi`, optional `wasmtime`) with fuel, memory cap and permissions; small host API (named values, events), modules from folders or `.pak` ([ADR 0006](docs/adr/0006-wasm-runtime.md)) |
 | World and saves | **Working**: partitioned world, binary `world.bin`, save manager |
 | Animation | **Working**: clips, CPU skinning, two-bone IK, animation graph (state machines, blend trees, masked layers, root motion) |
 | Editor | **Early**: docking UI, outliner, inspector, asset browser, viewport; not a full authoring tool yet |
@@ -30,7 +31,8 @@ Quality gates that pass on `main`: `cargo fmt`, `cargo clippy --workspace --all-
 `cargo test --workspace`, `cargo doc` with warnings denied, `cargo deny`, golden-frame regression for
 `skinned_demo`. There is no CI yet (the files in `.github/` are a draft); run the checks locally.
 
-**Not done, honestly:** no networking, no scripting layer, GPU skinning (CPU today), ray-traced DDGI,
+**Not done, honestly:** no networking, scripting only as a prototype (no world queries, no SDK), GPU skinning is
+slower than CPU on small meshes, ray-traced DDGI,
 a full Substrate material graph, hot reload of the VG compute passes and IBL, and nobody has judged the
 rendered look on more than one machine. See the [roadmap](#roadmap) and [`PROGRESS.md`](PROGRESS.md).
 
@@ -369,16 +371,16 @@ bakes headlessly.
 **Done recently:** KTX2 with Zstd and Basis, cube maps, IBL from KTX2, texture streaming with a memory budget;
 animation graph; game UI toolkit with localisation; the `courier` prototype that uses them together.
 
-**Next (days):** turn `courier` into a full loop (save the best time, sound, settings, gamepad navigation);
-glTF skeletons and clips into the animation graph; import PNG→KTX2 and streaming state in the editor;
+**Next (days):** `courier` has the loop now (best time saved, sound, gamepad); it still needs a settings screen
+and a live check of sound and gamepad; glTF skeletons and clips into the animation graph; import PNG→KTX2 and streaming state in the editor;
 coverage for render and editor code.
 
-**Soon (weeks):** WebAssembly scripting prototype ([ADR 0005](docs/adr/0005-scripting-wasm.md)); 2D blend spaces,
-additive layers and clip events; GPU skinning; an editor that can save scenes, undo and import assets; hot reload
+**Soon (weeks):** the script host API (world queries, input, SDK; [ADR 0005](docs/adr/0005-scripting-wasm.md)); 2D blend spaces,
+additive layers and clip events; batched GPU skinning; character controller 2.0; an editor that can save scenes, undo and import assets; hot reload
 of VG compute and IBL; frame-graph dependency inference and transient memory aliasing.
 
 **Later (months):** ray-traced DDGI, a full Substrate material graph, text input and IME in the game UI,
-navigation, joints and ragdolls, networking; release hygiene (versions, publishing, CI).
+navigation, ragdolls, networking; release hygiene (versions, publishing, CI).
 
 Cross-platform work (Linux, macOS, other GPUs, DX12/Metal) is out of the plan for now (owner decision).
 
