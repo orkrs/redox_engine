@@ -10,6 +10,7 @@
 
 pub mod context;
 pub mod debug;
+pub mod game;
 
 pub use context::UiContext;
 pub use debug::DebugOverlay;
