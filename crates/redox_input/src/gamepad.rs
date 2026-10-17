@@ -326,18 +326,55 @@ mod backend {
         use super::*;
 
         #[test]
-        fn face_buttons_and_sticks_map() {
-            assert_eq!(map_button(gilrs::Button::South), Some(GamepadButton::South));
-            assert_eq!(
-                map_button(gilrs::Button::RightTrigger2),
-                Some(GamepadButton::RightTrigger)
-            );
+        fn every_supported_gilrs_button_maps_to_its_counterpart() {
+            use gilrs::Button as B;
+            let table = [
+                (B::South, GamepadButton::South),
+                (B::East, GamepadButton::East),
+                (B::West, GamepadButton::West),
+                (B::North, GamepadButton::North),
+                (B::LeftTrigger, GamepadButton::LeftShoulder),
+                (B::RightTrigger, GamepadButton::RightShoulder),
+                (B::LeftTrigger2, GamepadButton::LeftTrigger),
+                (B::RightTrigger2, GamepadButton::RightTrigger),
+                (B::Select, GamepadButton::Select),
+                (B::Start, GamepadButton::Start),
+                (B::LeftThumb, GamepadButton::LeftThumb),
+                (B::RightThumb, GamepadButton::RightThumb),
+                (B::DPadUp, GamepadButton::DPadUp),
+                (B::DPadDown, GamepadButton::DPadDown),
+                (B::DPadLeft, GamepadButton::DPadLeft),
+                (B::DPadRight, GamepadButton::DPadRight),
+            ];
+            for (raw, expected) in table {
+                assert_eq!(map_button(raw), Some(expected), "{raw:?}");
+            }
+        }
+
+        #[test]
+        fn unmapped_gilrs_buttons_are_ignored() {
             assert_eq!(map_button(gilrs::Button::Mode), None);
-            assert_eq!(
-                map_axis(gilrs::Axis::LeftStickY),
-                Some(GamepadAxis::LeftStickY)
-            );
+            assert_eq!(map_button(gilrs::Button::C), None);
+            assert_eq!(map_button(gilrs::Button::Z), None);
+            assert_eq!(map_button(gilrs::Button::Unknown), None);
+        }
+
+        #[test]
+        fn every_supported_gilrs_axis_maps_to_its_counterpart() {
+            use gilrs::Axis as A;
+            let table = [
+                (A::LeftStickX, GamepadAxis::LeftStickX),
+                (A::LeftStickY, GamepadAxis::LeftStickY),
+                (A::RightStickX, GamepadAxis::RightStickX),
+                (A::RightStickY, GamepadAxis::RightStickY),
+                (A::LeftZ, GamepadAxis::LeftTrigger),
+                (A::RightZ, GamepadAxis::RightTrigger),
+            ];
+            for (raw, expected) in table {
+                assert_eq!(map_axis(raw), Some(expected), "{raw:?}");
+            }
             assert_eq!(map_axis(gilrs::Axis::DPadX), None);
+            assert_eq!(map_axis(gilrs::Axis::DPadY), None);
         }
 
         #[test]
@@ -353,6 +390,8 @@ mod backend {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
 
     const PAD: GamepadId = GamepadId(0);
@@ -404,5 +443,174 @@ mod tests {
         pads.disconnect(b);
         assert!(!pads.any_pressed(GamepadButton::Start));
         assert!((pads.any_axis(GamepadAxis::LeftStickX) - 0.3).abs() < 1e-5);
+    }
+
+    #[test]
+    fn default_deadzone_is_applied_to_new_state() {
+        let mut pads = GamepadsState::new();
+        pads.set_axis(PAD, GamepadAxis::RightStickY, DEFAULT_DEADZONE);
+        assert_eq!(pads.any_axis(GamepadAxis::RightStickY), 0.0);
+
+        pads.set_axis(PAD, GamepadAxis::RightStickY, 0.2);
+        let expected = (0.2 - DEFAULT_DEADZONE) / (1.0 - DEFAULT_DEADZONE);
+        assert!((pads.any_axis(GamepadAxis::RightStickY) - expected).abs() < 1e-5);
+    }
+
+    #[test]
+    fn deadzone_is_clamped_to_a_valid_range() {
+        let mut pads = GamepadsState::new();
+        pads.set_deadzone(-1.0);
+        pads.set_axis(PAD, GamepadAxis::LeftStickY, 0.05);
+        assert!((pads.any_axis(GamepadAxis::LeftStickY) - 0.05).abs() < 1e-5);
+
+        pads.set_deadzone(5.0);
+        pads.set_axis(PAD, GamepadAxis::LeftStickY, 0.995);
+        assert!((pads.any_axis(GamepadAxis::LeftStickY) - 0.5).abs() < 1e-3);
+    }
+
+    #[test]
+    fn negative_stick_values_use_the_same_deadzone() {
+        let mut pads = GamepadsState::new();
+        pads.set_deadzone(0.2);
+        pads.set_axis(PAD, GamepadAxis::RightStickX, -0.1);
+        assert_eq!(pads.any_axis(GamepadAxis::RightStickX), 0.0);
+
+        pads.set_axis(PAD, GamepadAxis::RightStickX, -0.6);
+        assert!((pads.any_axis(GamepadAxis::RightStickX) + 0.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn triggers_ignore_the_stick_deadzone() {
+        let mut pads = GamepadsState::new();
+        pads.set_deadzone(0.9);
+        pads.set_axis(PAD, GamepadAxis::LeftTrigger, 0.5);
+        assert_eq!(pads.any_axis(GamepadAxis::LeftTrigger), 0.5);
+    }
+
+    #[test]
+    fn unreported_axes_and_empty_state_read_as_zero() {
+        let pads = GamepadsState::new();
+        assert_eq!(pads.any_axis(GamepadAxis::LeftStickX), 0.0);
+        assert!(pads.pad(PAD).is_none());
+
+        let mut with_pad = GamepadsState::new();
+        with_pad.connect(PAD);
+        let state = with_pad.pad(PAD).unwrap();
+        assert_eq!(state.axis(GamepadAxis::RightTrigger), 0.0);
+        assert!(!state.is_pressed(GamepadButton::East));
+    }
+
+    #[test]
+    fn pressing_an_unknown_pad_connects_it() {
+        let mut pads = GamepadsState::new();
+        pads.press(GamepadId(9), GamepadButton::West);
+        assert_eq!(pads.connected().collect::<Vec<_>>(), [GamepadId(9)]);
+        assert!(pads.any_just_pressed(GamepadButton::West));
+    }
+
+    #[test]
+    fn connect_is_idempotent_and_keeps_existing_state() {
+        let mut pads = GamepadsState::new();
+        pads.press(PAD, GamepadButton::North);
+        pads.connect(PAD);
+        assert_eq!(pads.connected().count(), 1);
+        assert!(pads.any_pressed(GamepadButton::North));
+    }
+
+    #[test]
+    fn disconnecting_an_unknown_pad_is_a_no_op() {
+        let mut pads = GamepadsState::new();
+        pads.connect(PAD);
+        pads.disconnect(GamepadId(42));
+        assert_eq!(pads.connected().collect::<Vec<_>>(), [PAD]);
+    }
+
+    #[test]
+    fn disconnect_only_forgets_the_removed_pad() {
+        let mut pads = GamepadsState::new();
+        let (a, b) = (GamepadId(1), GamepadId(2));
+        pads.press(a, GamepadButton::South);
+        pads.press(b, GamepadButton::South);
+        pads.set_axis(b, GamepadAxis::RightTrigger, 0.7);
+
+        pads.disconnect(a);
+        assert!(pads.pad(a).is_none());
+        assert!(
+            pads.any_pressed(GamepadButton::South),
+            "pad b still holds it"
+        );
+        assert!((pads.any_axis(GamepadAxis::RightTrigger) - 0.7).abs() < 1e-5);
+    }
+
+    #[test]
+    fn releasing_a_button_that_is_not_held_produces_no_edge() {
+        let mut pads = GamepadsState::new();
+        pads.connect(PAD);
+        pads.release(PAD, GamepadButton::Start);
+        assert!(!pads.pad(PAD).unwrap().just_released(GamepadButton::Start));
+    }
+
+    #[test]
+    fn just_released_is_cleared_by_begin_frame() {
+        let mut pads = GamepadsState::new();
+        pads.press(PAD, GamepadButton::Select);
+        pads.begin_frame();
+        pads.release(PAD, GamepadButton::Select);
+        assert!(pads.pad(PAD).unwrap().just_released(GamepadButton::Select));
+
+        pads.begin_frame();
+        assert!(!pads.pad(PAD).unwrap().just_released(GamepadButton::Select));
+    }
+
+    #[test]
+    fn any_helpers_look_across_every_pad() {
+        let mut pads = GamepadsState::new();
+        let (a, b) = (GamepadId(1), GamepadId(2));
+        pads.connect(a);
+        pads.connect(b);
+        assert!(!pads.any_pressed(GamepadButton::East));
+
+        pads.press(b, GamepadButton::East);
+        assert!(pads.any_pressed(GamepadButton::East));
+        assert!(pads.any_just_pressed(GamepadButton::East));
+
+        pads.begin_frame();
+        assert!(pads.any_pressed(GamepadButton::East));
+        assert!(!pads.any_just_pressed(GamepadButton::East));
+    }
+
+    #[test]
+    fn any_axis_is_zero_without_pads() {
+        let pads = GamepadsState::new();
+        assert_eq!(pads.any_axis(GamepadAxis::LeftTrigger), 0.0);
+    }
+
+    #[test]
+    fn first_pressed_reports_the_lowest_button_from_this_frame_only() {
+        let mut pads = GamepadsState::new();
+        let (a, b) = (GamepadId(1), GamepadId(2));
+        pads.press(a, GamepadButton::East);
+        pads.press(b, GamepadButton::South);
+        assert_eq!(pads.first_pressed(), Some(GamepadButton::South));
+
+        pads.begin_frame();
+        assert_eq!(pads.first_pressed(), None);
+    }
+
+    #[test]
+    fn default_state_has_no_pads() {
+        let pads = GamepadsState::default();
+        assert_eq!(pads.connected().count(), 0);
+        assert_eq!(pads.first_pressed(), None);
+    }
+
+    #[test]
+    fn pad_state_reports_held_and_edge_flags() {
+        let mut pads = GamepadsState::new();
+        pads.press(PAD, GamepadButton::DPadUp);
+        let state = pads.pad(PAD).unwrap();
+        assert!(state.is_pressed(GamepadButton::DPadUp));
+        assert!(state.just_pressed(GamepadButton::DPadUp));
+        assert!(!state.just_released(GamepadButton::DPadUp));
     }
 }

@@ -137,4 +137,121 @@ mod tests {
         assert!((mouse.delta[0] - 10.0).abs() < 0.001);
         assert!((mouse.delta[1] - (-10.0)).abs() < 0.001);
     }
+
+    #[test]
+    fn just_released_is_true_only_on_the_frame_after_release() {
+        let mut mouse = MouseState::new();
+        mouse.press(MouseButton::Right);
+        mouse.begin_frame();
+        assert!(!mouse.just_released(MouseButton::Right), "still held");
+
+        mouse.release(MouseButton::Right);
+        assert!(mouse.just_released(MouseButton::Right));
+        assert!(!mouse.is_pressed(MouseButton::Right));
+
+        mouse.begin_frame();
+        assert!(!mouse.just_released(MouseButton::Right), "edge cleared");
+        assert!(!mouse.is_pressed(MouseButton::Right));
+    }
+
+    #[test]
+    fn repeated_press_in_one_frame_produces_a_single_edge() {
+        let mut mouse = MouseState::new();
+        mouse.begin_frame();
+        mouse.press(MouseButton::Middle);
+        mouse.press(MouseButton::Middle);
+        assert!(mouse.just_pressed(MouseButton::Middle));
+
+        mouse.begin_frame();
+        assert!(mouse.is_pressed(MouseButton::Middle));
+        assert!(!mouse.just_pressed(MouseButton::Middle));
+    }
+
+    #[test]
+    fn releasing_an_unpressed_button_is_harmless() {
+        let mut mouse = MouseState::new();
+        mouse.release(MouseButton::Left);
+        assert!(!mouse.is_pressed(MouseButton::Left));
+        assert!(!mouse.just_released(MouseButton::Left));
+    }
+
+    #[test]
+    fn buttons_are_tracked_independently_including_other_indices() {
+        let mut mouse = MouseState::new();
+        mouse.press(MouseButton::Left);
+        mouse.press(MouseButton::Other(4));
+        mouse.release(MouseButton::Left);
+
+        assert!(!mouse.is_pressed(MouseButton::Left));
+        assert!(mouse.is_pressed(MouseButton::Other(4)));
+        assert!(!mouse.is_pressed(MouseButton::Other(5)));
+    }
+
+    #[test]
+    fn position_delta_accumulates_within_a_frame() {
+        let mut mouse = MouseState::new();
+        mouse.set_position(10.0, 10.0);
+        mouse.set_position(15.0, 5.0);
+        mouse.set_position(12.0, 8.0);
+
+        assert_eq!(mouse.position, [12.0, 8.0]);
+        assert_eq!(mouse.delta, [12.0, 8.0]);
+    }
+
+    #[test]
+    fn delta_resets_each_frame_but_position_persists() {
+        let mut mouse = MouseState::new();
+        mouse.set_position(3.0, 4.0);
+        mouse.begin_frame();
+
+        assert_eq!(mouse.delta, [0.0, 0.0]);
+        assert_eq!(mouse.position, [3.0, 4.0]);
+    }
+
+    #[test]
+    fn scroll_accumulates_within_a_frame_and_resets() {
+        let mut mouse = MouseState::new();
+        mouse.scroll(0.0, 1.0);
+        mouse.scroll(0.5, -2.0);
+        assert_eq!(mouse.scroll_delta, [0.5, -1.0]);
+
+        mouse.begin_frame();
+        assert_eq!(mouse.scroll_delta, [0.0, 0.0]);
+    }
+
+    #[test]
+    fn default_is_the_same_as_new() {
+        let mouse = MouseState::default();
+        assert_eq!(mouse.position, [0.0, 0.0]);
+        assert_eq!(mouse.delta, [0.0, 0.0]);
+        assert!(!mouse.is_pressed(MouseButton::Left));
+    }
+
+    #[test]
+    fn winit_buttons_convert_to_mouse_buttons() {
+        use winit::event::MouseButton as Winit;
+
+        assert_eq!(MouseButton::from(Winit::Left), MouseButton::Left);
+        assert_eq!(MouseButton::from(Winit::Right), MouseButton::Right);
+        assert_eq!(MouseButton::from(Winit::Middle), MouseButton::Middle);
+        assert_eq!(MouseButton::from(Winit::Other(7)), MouseButton::Other(7));
+    }
+
+    #[test]
+    fn unrecognised_winit_buttons_fall_back_to_other_zero() {
+        // Characterises the current `_` arm. Back and Forward both land here, see the
+        // ignored test below for why that is a problem.
+        assert_eq!(
+            MouseButton::from(winit::event::MouseButton::Back),
+            MouseButton::Other(0)
+        );
+    }
+
+    #[test]
+    #[ignore = "bug: winit Back and Forward buttons both collapse to Other(0), so they cannot be told apart"]
+    fn back_and_forward_buttons_are_distinct() {
+        let back = MouseButton::from(winit::event::MouseButton::Back);
+        let forward = MouseButton::from(winit::event::MouseButton::Forward);
+        assert_ne!(back, forward);
+    }
 }
