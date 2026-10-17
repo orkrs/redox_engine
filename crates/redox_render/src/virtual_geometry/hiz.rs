@@ -141,7 +141,7 @@ impl HiZPyramid {
         let down_shader = create_shader_module(device, "hiz_downsample", HIZ_DOWNSAMPLE_WGSL);
 
         let copy_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("hiz_copy_pipeline"),
             layout: Some(&copy_layout),
             module: &copy_shader,
@@ -150,7 +150,7 @@ impl HiZPyramid {
         });
         let downsample_pipeline =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                cache: None,
+                cache: crate::pipeline_cache::get(),
                 label: Some("hiz_downsample_pipeline"),
                 layout: Some(&down_layout),
                 module: &down_shader,

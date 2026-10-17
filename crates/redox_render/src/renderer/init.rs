@@ -47,6 +47,8 @@ impl Renderer {
             required_features |= wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
         }
         required_features |= adapter.features() & crate::profiler::PROFILER_FEATURES;
+        // Lets pipelines be cached on disk between runs (Vulkan).
+        required_features |= adapter.features() & wgpu::Features::PIPELINE_CACHE;
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("redox_device"),
@@ -93,6 +95,9 @@ impl Renderer {
         surface: Option<wgpu::Surface<'static>>,
         config: wgpu::SurfaceConfiguration,
     ) -> Self {
+        // Before any pipeline is built, so they all pick the cache up.
+        crate::pipeline_cache::install(&device, &adapter.get_info());
+
         let staging_ring =
             crate::resource::StagingRing::new(&device, crate::resource::DEFAULT_RING_CAPACITY);
 

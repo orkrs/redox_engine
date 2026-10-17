@@ -152,7 +152,7 @@ impl DdgiGpu {
         });
         let shader = create_shader_module(device, "ddgi_trace", DDGI_TRACE_WGSL);
         let trace_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("ddgi_trace_pipeline"),
             layout: Some(&layout),
             module: &shader,

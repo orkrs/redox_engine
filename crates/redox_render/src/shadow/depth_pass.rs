@@ -73,7 +73,7 @@ impl VsmDepthPass {
         let shader = create_shader_with_vertex_decode(device, "vsm_depth_shader", VSM_DEPTH_WGSL);
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("vsm_depth_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {

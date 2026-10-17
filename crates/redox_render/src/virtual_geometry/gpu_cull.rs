@@ -79,7 +79,7 @@ impl VgGpuCull {
 
         let shader = create_shader_module(device, "vg_cull_shader", VG_CULL_WGSL);
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("vg_cull_pipeline"),
             layout: Some(&pipeline_layout),
             module: &shader,

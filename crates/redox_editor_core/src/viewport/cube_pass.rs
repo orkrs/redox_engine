@@ -133,7 +133,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
             immediate_size: 0,
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: redox_render::pipeline_cache::get(),
             label: Some("editor_lit_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
@@ -211,7 +211,7 @@ struct Uniforms { mvp: mat4x4<f32>, id: u32, _pad0: u32, _pad1: u32, _pad2: u32 
             }],
         });
         let pick_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: redox_render::pipeline_cache::get(),
             label: Some("editor_pick_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
@@ -321,7 +321,7 @@ struct Uniforms { mvp: mat4x4<f32>, color: vec4<f32> }
             immediate_size: 0,
         });
         let wire_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: redox_render::pipeline_cache::get(),
             label: Some("editor_wire_pipeline"),
             layout: Some(&wire_pl),
             vertex: wgpu::VertexState {

@@ -424,3 +424,12 @@ pub struct Renderer {
     /// When true, the normal prepass records on a worker thread.
     pub mt_command_recording: bool,
 }
+
+impl Drop for Renderer {
+    /// Persists the pipeline cache so the next start skips shader compilation.
+    fn drop(&mut self) {
+        if let Some(bytes) = crate::pipeline_cache::save() {
+            log::info!("pipeline cache saved ({bytes} bytes)");
+        }
+    }
+}

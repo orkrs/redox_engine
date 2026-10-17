@@ -402,7 +402,7 @@ impl PbrPass {
         let shader = create_shader_with_vertex_decode(device, "pbr_shader", PBR_WGSL);
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("pbr_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {

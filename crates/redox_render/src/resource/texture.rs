@@ -447,7 +447,7 @@ fn blit_pipeline(device: &wgpu::Device, format: wgpu::TextureFormat) -> Arc<wgpu
     });
     let pipeline = Arc::new(
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("blit_mipmap_pipeline"),
             layout: Some(&layout),
             vertex: wgpu::VertexState {

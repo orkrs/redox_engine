@@ -89,7 +89,7 @@ pub fn create_tone_mapping_pipeline(
     });
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        cache: None,
+        cache: crate::pipeline_cache::get(),
         label: Some("tone_mapping_pipeline"),
         layout: Some(&layout),
         vertex: wgpu::VertexState {
@@ -177,7 +177,7 @@ pub fn create_rcas_present_pipeline(
     });
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        cache: None,
+        cache: crate::pipeline_cache::get(),
         label: Some("rcas_present_pipeline"),
         layout: Some(&layout),
         vertex: wgpu::VertexState {

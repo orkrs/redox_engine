@@ -62,7 +62,7 @@ impl VgVisPass {
         let shader = create_shader_with_vertex_decode(device, "vg_vis_shader", VG_VIS_WGSL);
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("vg_vis_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
@@ -244,7 +244,7 @@ impl VgResolvePass {
         let shader = create_shader_module(device, "vg_resolve_shader", VG_RESOLVE_WGSL);
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("vg_resolve_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
@@ -480,7 +480,7 @@ impl VgShadowPass {
         );
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("vg_shadow_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {

@@ -89,7 +89,7 @@ impl PageRequestPass {
             immediate_size: 0,
         });
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("vsm_request_pipeline"),
             layout: Some(&layout),
             module: &shader,

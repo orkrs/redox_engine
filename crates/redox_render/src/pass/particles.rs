@@ -130,7 +130,7 @@ impl ParticleGpuSystem {
         });
 
         let reset_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("particle_reset_pipeline"),
             layout: Some(&sim_layout),
             module: &sim_shader,
@@ -138,7 +138,7 @@ impl ParticleGpuSystem {
             compilation_options: Default::default(),
         });
         let sim_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("particle_sim_pipeline"),
             layout: Some(&sim_layout),
             module: &sim_shader,
@@ -146,7 +146,7 @@ impl ParticleGpuSystem {
             compilation_options: Default::default(),
         });
         let finalize_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("particle_finalize_pipeline"),
             layout: Some(&sim_layout),
             module: &sim_shader,
@@ -223,7 +223,7 @@ impl ParticleGpuSystem {
         };
 
         let draw_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("particle_draw_pipeline"),
             layout: Some(&draw_layout),
             vertex: wgpu::VertexState {
@@ -259,7 +259,7 @@ impl ParticleGpuSystem {
 
         let draw_pipeline_reactive =
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                cache: None,
+                cache: crate::pipeline_cache::get(),
                 label: Some("particle_draw_pipeline_reactive"),
                 layout: Some(&draw_layout),
                 vertex: wgpu::VertexState {

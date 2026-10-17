@@ -480,7 +480,7 @@ fn create_fullscreen_pipeline(
         immediate_size: 0,
     });
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        cache: None,
+        cache: crate::pipeline_cache::get(),
         label: Some(label),
         layout: Some(&layout),
         vertex: wgpu::VertexState {

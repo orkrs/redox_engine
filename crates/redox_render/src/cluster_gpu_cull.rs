@@ -52,7 +52,7 @@ impl ClusterGpuCull {
             CLUSTER_CULL_LIGHTS_WGSL,
         );
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("cluster_cull_pipeline"),
             layout: Some(&pipeline_layout),
             module: &shader,

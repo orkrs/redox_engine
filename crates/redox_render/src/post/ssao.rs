@@ -131,7 +131,7 @@ impl SSAOPass {
         let gtao_fmt = wgpu::TextureFormat::Rgba16Float;
         let shader = create_shader_module(device, "gtao_shader", GTAO_WGSL);
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("gtao_pipeline"),
             layout: Some(
                 &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -167,7 +167,7 @@ impl SSAOPass {
 
         let blur_shader = create_shader_module(device, "gtao_blur_shader", GTAO_BLUR_WGSL);
         let blur_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("gtao_blur_pipeline"),
             layout: Some(
                 &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -204,7 +204,7 @@ impl SSAOPass {
         let upsample_shader =
             create_shader_module(device, "gtao_upsample_shader", GTAO_UPSAMPLE_WGSL);
         let upsample_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("gtao_upsample_pipeline"),
             layout: Some(
                 &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -415,7 +415,7 @@ impl VsmShadowPass {
 
         let trace_shader = create_shader_module(device, "vsm_shadow_trace", VSM_SHADOW_TRACE_WGSL);
         let trace_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("vsm_shadow_trace_pipeline"),
             layout: Some(
                 &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -452,7 +452,7 @@ impl VsmShadowPass {
         let temporal_shader =
             create_shader_module(device, "vsm_shadow_temporal", VSM_SHADOW_TEMPORAL_WGSL);
         let temporal_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("vsm_shadow_temporal_pipeline"),
             layout: Some(
                 &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {

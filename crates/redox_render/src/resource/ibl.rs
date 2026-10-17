@@ -67,7 +67,7 @@ impl IBLProcessor {
 
         let pipeline_equirect_to_cube =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                cache: None,
+                cache: crate::pipeline_cache::get(),
                 label: Some("equirect_to_cube_pipeline"),
                 layout: None,
                 module: &equirect_shader,
@@ -77,7 +77,7 @@ impl IBLProcessor {
 
         let pipeline_irradiance =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                cache: None,
+                cache: crate::pipeline_cache::get(),
                 label: Some("irradiance_pipeline"),
                 layout: None,
                 module: &irradiance_shader,
@@ -86,7 +86,7 @@ impl IBLProcessor {
             });
 
         let pipeline_prefilter = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("prefilter_pipeline"),
             layout: None,
             module: &prefilter_shader,
@@ -95,7 +95,7 @@ impl IBLProcessor {
         });
 
         let pipeline_brdf_lut = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("brdf_lut_pipeline"),
             layout: None,
             module: &brdf_lut_shader,

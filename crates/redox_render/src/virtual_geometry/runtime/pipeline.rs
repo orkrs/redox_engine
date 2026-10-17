@@ -24,7 +24,7 @@ pub(super) fn build_pipeline(
     });
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        cache: None,
+        cache: crate::pipeline_cache::get(),
         label: Some("vg_pipeline"),
         layout: Some(&layout),
         vertex: wgpu::VertexState {

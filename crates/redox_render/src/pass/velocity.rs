@@ -98,7 +98,7 @@ impl VelocityPass {
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("velocity_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {

@@ -88,7 +88,7 @@ impl MsaaResolvePass {
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("msaa_resolve_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {

@@ -51,7 +51,7 @@ impl BloomPass {
 
         let make_pipeline = |label: &str, entry: &str, blend: Option<wgpu::BlendState>| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                cache: None,
+                cache: crate::pipeline_cache::get(),
                 label: Some(label),
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
@@ -116,7 +116,7 @@ impl BloomPass {
             immediate_size: 0,
         });
         let composite_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: crate::pipeline_cache::get(),
             label: Some("bloom_composite_pipeline"),
             layout: Some(&composite_layout),
             vertex: wgpu::VertexState {

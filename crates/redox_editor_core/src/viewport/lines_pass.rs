@@ -73,7 +73,7 @@ struct VsOut { @builtin(position) clip: vec4<f32>, @location(0) color: vec4<f32>
             immediate_size: 0,
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: None,
+            cache: redox_render::pipeline_cache::get(),
             label: Some("editor_lines_pipeline"),
             layout: Some(&pl),
             vertex: wgpu::VertexState {
