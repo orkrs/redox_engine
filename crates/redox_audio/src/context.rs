@@ -445,8 +445,11 @@ fn fxhash_name(name: &str) -> u64 {
 /// Kira reverb parameters derived from a [`ReverbPreset`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ReverbParams {
+    /// Reverb feedback, 0.5 to 0.95 (longer decay at higher values).
     pub feedback: f64,
+    /// High-frequency damping, 0 to 1.
     pub damping: f64,
+    /// Stereo width, 0 (mono) to 1 (full).
     pub stereo_width: f64,
     /// Wet share, 0.0 = fully dry.
     pub mix: f64,

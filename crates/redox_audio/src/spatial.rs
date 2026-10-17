@@ -1,6 +1,7 @@
 //! Spatial audio helpers.
 use crate::components::{AudioEmitter, AudioListener};
 
+/// Linear distance falloff: 1 at the listener, 0 at the emitter's `max_distance` and beyond.
 pub fn distance_attenuation(emitter: &AudioEmitter, listener: &AudioListener) -> f32 {
     let dist = emitter.position.distance(listener.position);
     if dist >= emitter.max_distance {
@@ -9,6 +10,7 @@ pub fn distance_attenuation(emitter: &AudioEmitter, listener: &AudioListener) ->
     1.0 - (dist / emitter.max_distance)
 }
 
+/// Left/right pan in -1..1 from the emitter's direction relative to the listener (0 when they coincide).
 pub fn stereo_pan(emitter: &AudioEmitter, listener: &AudioListener) -> f32 {
     let vec_to_emitter = emitter.position - listener.position;
     if vec_to_emitter.length_squared() < 0.001 {

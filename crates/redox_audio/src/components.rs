@@ -79,6 +79,7 @@ pub struct AudioListener {
 }
 
 impl AudioListener {
+    /// Creates a listener; `forward` and `up` are normalised.
     pub fn new(position: Vec3, forward: Vec3, up: Vec3) -> Self {
         Self {
             position,
@@ -149,6 +150,7 @@ pub struct SpatialAudioEmitter {
 }
 
 impl SpatialAudioEmitter {
+    /// Creates an emitter at `position` with a hard acoustic material and default occlusion radii.
     pub fn new(position: Vec3) -> Self {
         Self {
             emitter: AudioEmitter::new(position),
@@ -160,16 +162,19 @@ impl SpatialAudioEmitter {
         }
     }
 
+    /// Sets the acoustic material.
     pub fn with_material(mut self, material: AcousticMaterial) -> Self {
         self.material = material;
         self
     }
 
+    /// Sets the occlusion radius (clamped to at least 0.1).
     pub fn with_occlusion_radius(mut self, radius: f32) -> Self {
         self.occlusion_radius = radius.max(0.1);
         self
     }
 
+    /// Sets the obstruction radius (clamped to at least 0.1).
     pub fn with_obstruction_radius(mut self, radius: f32) -> Self {
         self.obstruction_radius = radius.max(0.1);
         self
@@ -204,6 +209,7 @@ pub struct ReverbZone {
 }
 
 impl ReverbZone {
+    /// Creates a zone using the named reverb preset with a 100 m3 cube volume.
     pub fn new(preset_name: &str) -> Self {
         let room_volume = 100.0;
         Self {
@@ -224,11 +230,13 @@ impl ReverbZone {
         self
     }
 
+    /// Sets the zone box half-size per axis (absolute values, at least 0.01).
     pub fn with_half_extents(mut self, half_extents: Vec3) -> Self {
         self.half_extents = half_extents.abs().max(Vec3::splat(0.01));
         self
     }
 
+    /// Sets the total surface area of the room in m2 (at least 1).
     pub fn with_surface_area(mut self, area: f32) -> Self {
         self.surface_area = area.max(1.0);
         self

@@ -28,6 +28,8 @@
 //! let upload = system.buffer().upload_bytes(); // → queue.write_buffer(...)
 //! ```
 
+#![warn(missing_docs)]
+
 use bytemuck::{Pod, Zeroable};
 use redox_math::Vec3;
 
@@ -35,17 +37,25 @@ use redox_math::Vec3;
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
 pub struct GpuParticle {
+    /// World position in `xyz`; `w` is 1.
     pub position: [f32; 4],
+    /// Velocity in `xyz`; `w` is unused.
     pub velocity: [f32; 4],
+    /// Linear RGBA colour.
     pub color: [f32; 4],
+    /// Remaining lifetime in seconds; the particle is dead at 0 or below.
     pub life: f32,
+    /// Billboard half-size in world units.
     pub size: f32,
+    /// Padding that keeps the record at 64 bytes.
     pub _pad: [f32; 2],
 }
 
 impl GpuParticle {
+    /// Size of one record in bytes (64).
     pub const STRIDE: usize = std::mem::size_of::<Self>();
 
+    /// Creates a particle from spawn parameters (opaque, alive for `life` seconds).
     pub fn from_spawn(pos: Vec3, vel: Vec3, color: Vec3, life: f32, size: f32) -> Self {
         Self {
             position: [pos.x, pos.y, pos.z, 1.0],
@@ -57,14 +67,17 @@ impl GpuParticle {
         }
     }
 
+    /// Whether the particle still has life left.
     pub fn alive(&self) -> bool {
         self.life > 0.0
     }
 
+    /// Position as a vector.
     pub fn position_vec3(&self) -> Vec3 {
         Vec3::new(self.position[0], self.position[1], self.position[2])
     }
 
+    /// Velocity as a vector.
     pub fn velocity_vec3(&self) -> Vec3 {
         Vec3::new(self.velocity[0], self.velocity[1], self.velocity[2])
     }
@@ -80,6 +93,7 @@ pub struct ParticleBuffer {
 }
 
 impl ParticleBuffer {
+    /// Creates a buffer with room for `capacity` particles, all dead.
     pub fn with_capacity(capacity: usize) -> Self {
         let mut particles = Vec::with_capacity(capacity);
         particles.resize(capacity, GpuParticle::default());
@@ -89,18 +103,22 @@ impl ParticleBuffer {
         }
     }
 
+    /// Maximum number of particles.
     pub fn capacity(&self) -> usize {
         self.particles.len()
     }
 
+    /// Number of alive particles (they occupy the front of the buffer).
     pub fn alive_count(&self) -> usize {
         self.alive_count
     }
 
+    /// The alive particles.
     pub fn as_slice(&self) -> &[GpuParticle] {
         &self.particles[..self.alive_count]
     }
 
+    /// The alive particles, mutable.
     pub fn as_mut_slice(&mut self) -> &mut [GpuParticle] {
         &mut self.particles[..self.alive_count]
     }
@@ -153,6 +171,7 @@ impl ParticleBuffer {
         self.alive_count = write;
     }
 
+    /// Marks every particle dead.
     pub fn clear(&mut self) {
         self.alive_count = 0;
     }
@@ -162,14 +181,20 @@ impl ParticleBuffer {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
 pub struct ParticleSimUniforms {
+    /// Time step in seconds.
     pub delta_time: f32,
+    /// Gravity vector.
     pub gravity: [f32; 3],
+    /// Buffer capacity in particles.
     pub capacity: u32,
+    /// Alive particle count.
     pub alive_count: u32,
+    /// Padding for 16-byte alignment.
     pub _pad: [u32; 2],
 }
 
 impl ParticleSimUniforms {
+    /// Fills the block from a buffer's current counts.
     pub fn from_buffer(buffer: &ParticleBuffer, delta_time: f32, gravity: Vec3) -> Self {
         Self {
             delta_time,
@@ -184,15 +209,23 @@ impl ParticleSimUniforms {
 /// CPU-side emitter that feeds a [`ParticleBuffer`] / [`ParticleSystem`].
 #[derive(Clone, Debug)]
 pub struct ParticleEmitter {
+    /// Maximum number of simultaneously alive particles of this emitter.
     pub max_particles: u32,
+    /// Particles spawned per second.
     pub spawn_rate: f32,
+    /// Lifetime of each particle in seconds.
     pub lifetime: f32,
+    /// Speed at spawn, in world units per second.
     pub initial_speed: f32,
+    /// Particle size at spawn.
     pub size: f32,
+    /// Particle colour at spawn.
     pub color: Vec3,
     /// Cone half-angle in radians around `direction` (0 = exact).
     pub spread: f32,
+    /// Fractional particles carried over between frames.
     pub accumulator: f32,
+    /// Particles this emitter currently has alive.
     pub alive: u32,
 }
 
@@ -280,6 +313,7 @@ impl ParticleEmitter {
         tmp.as_slice().to_vec()
     }
 
+    /// Gives back `count` particles of the alive budget (e.g. after they died).
     pub fn retire(&mut self, count: u32) {
         self.alive = self.alive.saturating_sub(count);
     }
@@ -293,6 +327,7 @@ pub struct ParticleSystem {
 }
 
 impl ParticleSystem {
+    /// Creates a system whose shared buffer holds `capacity` particles; default gravity is -9.8 on Y.
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             buffer: ParticleBuffer::with_capacity(capacity),
@@ -300,22 +335,27 @@ impl ParticleSystem {
         }
     }
 
+    /// Sets the gravity used by `tick`.
     pub fn set_gravity(&mut self, gravity: Vec3) {
         self.gravity = gravity;
     }
 
+    /// The shared particle buffer.
     pub fn buffer(&self) -> &ParticleBuffer {
         &self.buffer
     }
 
+    /// The shared particle buffer, mutable.
     pub fn buffer_mut(&mut self) -> &mut ParticleBuffer {
         &mut self.buffer
     }
 
+    /// Number of alive particles.
     pub fn alive_count(&self) -> usize {
         self.buffer.alive_count()
     }
 
+    /// Spawns the particles `emitter` owes for `delta_time` and returns how many fit in the buffer.
     pub fn spawn_from_emitter(
         &mut self,
         emitter: &mut ParticleEmitter,
@@ -333,17 +373,20 @@ impl ParticleSystem {
         actual
     }
 
+    /// Advances the simulation by `delta_time` seconds with the stored gravity.
     pub fn tick(&mut self, delta_time: f32) {
         let before = self.buffer.alive_count();
         self.buffer.tick(delta_time, self.gravity);
         let _died = before.saturating_sub(self.buffer.alive_count());
     }
 
+    /// Sets the gravity, then advances the simulation.
     pub fn tick_with_gravity(&mut self, delta_time: f32, gravity: Vec3) {
         self.gravity = gravity;
         self.tick(delta_time);
     }
 
+    /// Builds the uniform block describing the current state.
     pub fn sim_uniforms(&self, delta_time: f32) -> ParticleSimUniforms {
         ParticleSimUniforms::from_buffer(&self.buffer, delta_time, self.gravity)
     }
@@ -353,8 +396,11 @@ impl ParticleSystem {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
 pub struct BillboardVertex {
+    /// World-space corner position.
     pub position: [f32; 3],
+    /// Texture coordinate of the corner.
     pub uv: [f32; 2],
+    /// Colour with alpha faded by remaining life.
     pub color: [f32; 4],
 }
 
@@ -394,7 +440,9 @@ pub fn expand_billboards(
 /// ECS component linking an entity to a GPU particle emitter.
 #[derive(Clone, Debug, Default)]
 pub struct ParticleEmitterComponent {
+    /// Emitter configuration and state.
     pub emitter: ParticleEmitter,
+    /// Offset of the emission point from the entity's position.
     pub world_offset: Vec3,
 }
 

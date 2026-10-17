@@ -26,6 +26,7 @@ pub struct AudioDebugDraw {
 }
 
 impl AudioDebugDraw {
+    /// Creates an empty debug draw state.
     pub fn new() -> Self {
         Self::default()
     }

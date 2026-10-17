@@ -12,6 +12,8 @@
 //!
 //! Use `Handle<AudioData>` with the asset manager for async loading.
 
+#![warn(missing_docs)]
+
 pub mod asset_types;
 pub mod components;
 pub mod context;

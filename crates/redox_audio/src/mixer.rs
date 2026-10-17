@@ -13,18 +13,25 @@ use std::collections::HashMap;
 /// Identifies a mixer bus in the MetaSounds-lite hierarchy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MixerBusId {
+    /// Final output bus; every other bus feeds it.
     Master,
+    /// Background music.
     Music,
+    /// Sound effects.
     Sfx,
+    /// Dialogue and voice-over.
     Voice,
+    /// Interface sounds.
     Ui,
 }
 
 impl MixerBusId {
+    /// The four buses below master: music, sfx, voice, ui.
     pub fn all_sub_buses() -> [MixerBusId; 4] {
         [Self::Music, Self::Sfx, Self::Voice, Self::Ui]
     }
 
+    /// Default linear volume of the bus.
     pub fn default_volume(self) -> f32 {
         match self {
             Self::Master => 1.0,
@@ -35,6 +42,7 @@ impl MixerBusId {
         }
     }
 
+    /// Lowercase bus name for UI and logs.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Master => "master",
@@ -49,12 +57,16 @@ impl MixerBusId {
 /// Single mixer bus with linear volume and mute state.
 #[derive(Clone, Debug)]
 pub struct MixerBus {
+    /// Which bus this is.
     pub id: MixerBusId,
+    /// Linear volume, 0 to 2.
     pub volume: f32,
+    /// When set the bus is silent regardless of volume.
     pub muted: bool,
 }
 
 impl MixerBus {
+    /// Creates a bus with its default volume, unmuted.
     pub fn new(id: MixerBusId) -> Self {
         Self {
             id,
@@ -72,10 +84,12 @@ impl MixerBus {
         }
     }
 
+    /// Sets the linear volume, clamped to 0..=2.
     pub fn set_volume(&mut self, volume: f32) {
         self.volume = volume.clamp(0.0, 2.0);
     }
 
+    /// Mutes or unmutes the bus.
     pub fn set_muted(&mut self, muted: bool) {
         self.muted = muted;
     }
@@ -84,20 +98,25 @@ impl MixerBus {
 /// How a clip should be scheduled on a bus.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlayMode {
+    /// Plays once and stops.
     OneShot,
+    /// Repeats until stopped.
     Loop,
 }
 
 /// Request to play a named or handle-backed clip through the mixer.
 #[derive(Clone, Debug)]
 pub struct PlayRequest {
+    /// Bus the voice is routed to.
     pub bus: MixerBusId,
+    /// One-shot or looping playback.
     pub mode: PlayMode,
     /// Per-voice gain multiplied by bus routing.
     pub gain: f32,
 }
 
 impl PlayRequest {
+    /// A one-shot on `bus` at linear `gain`.
     pub fn one_shot(bus: MixerBusId, gain: f32) -> Self {
         Self {
             bus,
@@ -106,6 +125,7 @@ impl PlayRequest {
         }
     }
 
+    /// A looping voice on `bus` at linear `gain`.
     pub fn looping(bus: MixerBusId, gain: f32) -> Self {
         Self {
             bus,
@@ -114,6 +134,7 @@ impl PlayRequest {
         }
     }
 
+    /// A one-shot on the Sfx bus at linear `gain`.
     pub fn sfx(gain: f32) -> Self {
         Self::one_shot(MixerBusId::Sfx, gain)
     }
@@ -157,6 +178,7 @@ pub struct DuckingController {
 }
 
 impl DuckingController {
+    /// Creates a controller that lowers `target_bus` by `duck_depth_db` while `trigger_bus` is active (attack 0.1 s, release 0.4 s).
     pub fn new(target_bus: MixerBusId, trigger_bus: MixerBusId, duck_depth_db: f32) -> Self {
         Self {
             target_bus,
@@ -202,11 +224,17 @@ impl DuckingController {
 /// Hierarchical mixer routing all gameplay buses into master.
 #[derive(Clone, Debug)]
 pub struct MixerGraph {
+    /// Master bus.
     pub master: MixerBus,
+    /// Music bus.
     pub music: MixerBus,
+    /// Sound-effects bus.
     pub sfx: MixerBus,
+    /// Voice bus.
     pub voice: MixerBus,
+    /// Interface bus.
     pub ui: MixerBus,
+    /// Optional ducking of one bus by another.
     pub ducking: Option<DuckingController>,
 }
 
@@ -217,6 +245,7 @@ impl Default for MixerGraph {
 }
 
 impl MixerGraph {
+    /// Creates a graph with default bus volumes and no ducking.
     pub fn new() -> Self {
         Self {
             master: MixerBus::new(MixerBusId::Master),
@@ -228,6 +257,7 @@ impl MixerGraph {
         }
     }
 
+    /// Ducks the music bus by `depth_db` while the voice bus plays.
     pub fn with_voice_ducking(mut self, depth_db: f32) -> Self {
         self.ducking = Some(DuckingController::new(
             MixerBusId::Music,
@@ -237,12 +267,14 @@ impl MixerGraph {
         self
     }
 
+    /// Advances the ducking envelope by `dt` seconds.
     pub fn update(&mut self, dt: f32) {
         if let Some(ducking) = &mut self.ducking {
             ducking.update(dt);
         }
     }
 
+    /// Mutable access to a bus by id.
     pub fn bus_mut(&mut self, id: MixerBusId) -> &mut MixerBus {
         match id {
             MixerBusId::Master => &mut self.master,
@@ -253,6 +285,7 @@ impl MixerGraph {
         }
     }
 
+    /// Shared access to a bus by id.
     pub fn bus(&self, id: MixerBusId) -> &MixerBus {
         match id {
             MixerBusId::Master => &self.master,
