@@ -135,7 +135,7 @@ calls; динамические объекты в TAA не оставляют х
 | B1 🟡 | Слои коллизий + QueryFilter | 32 слоя, матрица из файла, фильтры в запросах | горячая смена, события по слоям | 3 дня. **Минимум сделан 2026-10-17** (`CollisionLayers`, `set_collider_layers`, маска слоёв в запросах); осталось: файл конфигурации с именами слоёв и матрицей, автосинхронизация компонента ECS |
 | B2 ✅ | Касты (sphere/capsule/box) и overlap | cast_shape, cast_all, overlap_shape/any/point | closest_point, convex hull | 3 дня. **Минимум сделан 2026-10-17** (`cast_shape`, `overlap_shape`, `overlap_any`); осталось: `cast_shape_all`, `overlap_point`, `closest_point`, выпуклые формы |
 | B3 ✅ | События контактов + материалы физики | enter/stay/exit с импульсом, трение/упругость | пороги для звука, комбинирование | 3 дня. **Сделано 2026-10-17** (enter/exit, без stay; см. раздел 0) |
-| B4 ✅ | Joints | fixed, hinge, slider, ball, spring, rope; разрыв по силе | motor-профили, generic | 5 дней |
+| B4 ✅ минимум | Joints | fixed, hinge, slider, ball, spring, rope; разрыв по силе | motor-профили, generic | 5 дней |
 | B5 ⬜ | Character controller 2.0 | склоны, ступени, платформы | прилипание, спец-режимы | 4 дня |
 | B6 ✅ | WASM: прототип и ядро | wasmi/wasmtime, ассет из pak, лимиты, `on_update`, `log` | оба рантайма за трейтом | 7 дней. **Сделано 2026-10-17**: оба рантайма за трейтом, лимиты, `on_update`, `log`; осталась загрузка из `.pak` |
 | B7 🟡 | WASM: API хоста v1 + SDK Rust | query/read/write батчи, команды, события, ввод; монеты Courier как модуль | горячая перезагрузка | 10 дней |
