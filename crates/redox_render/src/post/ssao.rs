@@ -365,6 +365,7 @@ impl SSAOPass {
             width: 4,
             height: 4,
             mip_levels: 1,
+            view_dimension: wgpu::TextureViewDimension::D2,
         }
     }
 }

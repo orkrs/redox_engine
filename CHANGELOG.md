@@ -28,6 +28,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - Large files split: editor `main.rs`, `viewport.rs`, `frame.rs`, VG `runtime.rs`, `vsm_clipmap.rs`, `prism_vault`.
 
 ### Added
+- KTX2: Zstandard supercompression, cube maps, 2D arrays and cube arrays, RGBA16F; `Ktx2Texture` now has `layers`/`faces` (`new_2d` for plain images), `to_ktx2_bytes`; `redox_asset::testing::Ktx2Builder`; `redox_cook texture-info`; `Texture::from_ktx2` keeps the texture shape (`Texture::view_dimension`).
 - Render: the frame now runs from the compiled frame graph (`frame_pass_order`): `render_frame_into` is split into one method per pass and executed in graph order (golden frames unchanged).
 - Render: `ShaderHotReload` (editor and `AppBuilder` with the `shader-hot-reload` feature) validates edited shaders and rebuilds 13 pass groups, now including tone mapping and the VG raster passes; verified by editing a real shader file under a running renderer.
 - Assets/Render: KTX2 textures flow through `AssetManager` (built-in loader, previously the built-in loaders had no storage inserters and never delivered results), `sync_ktx2_textures_to_render` and `MaterialData::with_*_ktx2`.

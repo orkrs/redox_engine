@@ -18,6 +18,8 @@ pub mod loader;
 pub mod manager;
 pub mod pak;
 pub mod storage;
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 
 pub use error::AssetError;
 pub use event::{AssetLoadFailedEvent, AssetLoadedEvent, AssetReloadedEvent};

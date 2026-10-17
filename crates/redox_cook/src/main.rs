@@ -6,6 +6,7 @@
 //!                                          pack a folder into a deterministic archive
 //! redox_cook list <file.pak>               print the entries of an archive
 //! redox_cook verify <file.pak>             read every entry and check its hash
+//! redox_cook texture-info <file.ktx2>      print format, size, mips, layers, faces, compression
 //! ```
 //!
 //! `.meta` sidecars are not packed (they are editor data); everything else is.
@@ -18,7 +19,7 @@ use std::process::ExitCode;
 
 use redox_asset::{AssetRegistry, PakReader, PakWriter};
 
-const USAGE: &str = "usage:\n  redox_cook scan <assets-dir>\n  redox_cook pack <assets-dir> <out.pak> [--compress] [--incremental]\n  redox_cook list <file.pak>\n  redox_cook verify <file.pak>";
+const USAGE: &str = "usage:\n  redox_cook scan <assets-dir>\n  redox_cook pack <assets-dir> <out.pak> [--compress] [--incremental]\n  redox_cook list <file.pak>\n  redox_cook verify <file.pak>\n  redox_cook texture-info <file.ktx2>";
 
 /// A parsed command line.
 #[derive(Debug, PartialEq, Eq)]
@@ -32,6 +33,7 @@ enum Command {
     },
     List(PathBuf),
     Verify(PathBuf),
+    TextureInfo(PathBuf),
 }
 
 fn parse(args: &[String]) -> Result<Command, String> {
@@ -64,8 +66,9 @@ fn parse(args: &[String]) -> Result<Command, String> {
         }
         ["list", pak] => Ok(Command::List(pak.into())),
         ["verify", pak] => Ok(Command::Verify(pak.into())),
+        ["texture-info", file] => Ok(Command::TextureInfo(file.into())),
         [] => Err("missing command".into()),
-        [cmd, ..] if !["scan", "pack", "list", "verify"].contains(cmd) => {
+        [cmd, ..] if !["scan", "pack", "list", "verify", "texture-info"].contains(cmd) => {
             Err(format!("unknown command: {cmd}"))
         }
         _ => Err("wrong number of arguments".into()),
@@ -128,6 +131,11 @@ fn run(command: Command) -> Result<(), String> {
             }
             Ok(())
         }
+        Command::TextureInfo(file) => {
+            let bytes = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+            println!("{}", texture_info(&bytes)?);
+            Ok(())
+        }
         Command::Verify(pak) => {
             let reader = PakReader::open(&pak).map_err(|e| e.to_string())?;
             let mut bad = 0usize;
@@ -147,6 +155,38 @@ fn run(command: Command) -> Result<(), String> {
             }
         }
     }
+}
+
+/// Human-readable summary of a KTX2 file (what `texture-info` prints).
+fn texture_info(bytes: &[u8]) -> Result<String, String> {
+    use redox_asset::{AssetLoader, Ktx2Loader};
+
+    let reader = ktx2::Reader::new(bytes).map_err(|e| format!("not a KTX2 file: {e:?}"))?;
+    let header = reader.header();
+    let scheme = header
+        .supercompression_scheme
+        .map_or_else(|| "none".to_string(), |s| format!("{s:?}"));
+    let stored: usize = reader.levels().map(|l| l.data.len()).sum();
+    let mut text = format!(
+        "{}x{}, {} mips, {} layers, {} faces, vkFormat {}, supercompression {scheme}, {stored} bytes stored",
+        header.pixel_width,
+        header.pixel_height,
+        header.level_count.max(1),
+        header.layer_count.max(1),
+        header.face_count,
+        header.format.map_or(0, |f| f.value()),
+    );
+    match Ktx2Loader.load(bytes) {
+        Ok(tex) => {
+            let decoded: usize = tex.levels.iter().map(Vec::len).sum();
+            text.push_str(&format!(
+                "\nloads as {:?}, {decoded} bytes decoded",
+                tex.format
+            ));
+        }
+        Err(e) => text.push_str(&format!("\ncannot be loaded by the engine: {e}")),
+    }
+    Ok(text)
 }
 
 /// Every packable file below `dir` (`.meta` sidecars excluded), sorted.
@@ -272,6 +312,32 @@ mod tests {
         assert!(parse(&args(&["pack", "only-one"])).is_err());
         assert!(parse(&args(&["pack", "a", "o", "--bogus"])).is_err());
         assert!(parse(&args(&["scan", "a", "b"])).is_err());
+    }
+
+    #[test]
+    fn texture_info_describes_supported_and_unsupported_files() {
+        use redox_asset::TextureFormat;
+        use redox_asset::testing::{Ktx2Builder, Supercompression};
+
+        let file = Ktx2Builder::new(TextureFormat::Bc7Unorm, 8, 8)
+            .cube()
+            .supercompression(Supercompression::Zstd)
+            .build();
+        let info = texture_info(&file).unwrap();
+        assert!(info.contains("8x8, 4 mips, 1 layers, 6 faces"), "{info}");
+        assert!(
+            info.contains("Zstandard") && info.contains("loads as Bc7Unorm"),
+            "{info}"
+        );
+        let odd = Ktx2Builder::new(TextureFormat::Bc7Unorm, 4, 4)
+            .vk_format(1000)
+            .build();
+        assert!(texture_info(&odd).unwrap().contains("cannot be loaded"));
+        assert!(texture_info(b"junk").is_err());
+        assert_eq!(
+            parse(&args(&["texture-info", "a.ktx2"])),
+            Ok(Command::TextureInfo("a.ktx2".into()))
+        );
     }
 
     #[test]

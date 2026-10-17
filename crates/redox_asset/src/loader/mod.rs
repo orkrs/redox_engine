@@ -13,6 +13,8 @@ pub use gltf_loader::{
     load_scene_from_path,
 };
 pub use image_loader::ImageLoader;
+#[cfg(any(test, feature = "testing"))]
+pub use ktx2_loader::ktx2_container;
 pub use ktx2_loader::{Ktx2Loader, Ktx2Texture, TextureFormat};
 
 use crate::error::AssetError;

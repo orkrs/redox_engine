@@ -23,6 +23,8 @@ pub struct Texture {
     pub height: u32,
     /// Total mip levels generated for this texture.
     pub mip_levels: u32,
+    /// How the default view reads the texture (2D, array, cube, ...).
+    pub view_dimension: wgpu::TextureViewDimension,
 }
 
 impl Texture {
@@ -33,6 +35,7 @@ impl Texture {
         match format {
             F::Rgba8Unorm => W::Rgba8Unorm,
             F::Rgba8Srgb => W::Rgba8UnormSrgb,
+            F::Rgba16Float => W::Rgba16Float,
             F::Bc1Unorm => W::Bc1RgbaUnorm,
             F::Bc1Srgb => W::Bc1RgbaUnormSrgb,
             F::Bc3Unorm => W::Bc3RgbaUnorm,
@@ -43,95 +46,153 @@ impl Texture {
         }
     }
 
-    /// Uploads a loaded KTX2 texture with its stored mip chain (no CPU decoding or mip generation).
+    /// View dimension that matches the shape of a KTX2 texture.
+    pub fn ktx2_view_dimension(ktx: &redox_asset::Ktx2Texture) -> wgpu::TextureViewDimension {
+        use wgpu::TextureViewDimension as D;
+        match (ktx.is_cube(), ktx.layers > 1) {
+            (true, true) => D::CubeArray,
+            (true, false) => D::Cube,
+            (false, true) => D::D2Array,
+            (false, false) => D::D2,
+        }
+    }
+
+    /// Whether this device can hold `ktx` as it is (block-compressed formats need
+    /// [`wgpu::Features::TEXTURE_COMPRESSION_BC`] and a size that is a multiple of 4).
+    pub fn supports_ktx2(device: &wgpu::Device, ktx: &redox_asset::Ktx2Texture) -> bool {
+        !ktx.format.is_block_compressed()
+            || (device
+                .features()
+                .contains(wgpu::Features::TEXTURE_COMPRESSION_BC)
+                && ktx.width.is_multiple_of(4)
+                && ktx.height.is_multiple_of(4))
+    }
+
+    /// Allocates the GPU texture for `ktx` (all mips, all layers and faces) without filling it.
+    pub fn create_ktx2_storage(
+        device: &wgpu::Device,
+        ktx: &redox_asset::Ktx2Texture,
+        label: &str,
+    ) -> wgpu::Texture {
+        device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width: ktx.width,
+                height: ktx.height,
+                depth_or_array_layers: ktx.subimage_count(),
+            },
+            mip_level_count: ktx.levels.len() as u32,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: Self::wgpu_format(ktx.format),
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        })
+    }
+
+    /// Writes one mip level (all layers and faces) of `ktx` into `texture`.
+    pub fn upload_ktx2_level(
+        queue: &wgpu::Queue,
+        texture: &wgpu::Texture,
+        ktx: &redox_asset::Ktx2Texture,
+        mip: usize,
+    ) {
+        let (w, h) = ktx.mip_size(mip);
+        let block = if ktx.format.is_block_compressed() {
+            4
+        } else {
+            1
+        };
+        let rows = h.div_ceil(block);
+        let sub_size = ktx.subimage_size(mip);
+        for sub in 0..ktx.subimage_count() {
+            let start = sub as usize * sub_size;
+            let Some(data) = ktx.levels[mip].get(start..start + sub_size) else {
+                continue;
+            };
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture,
+                    mip_level: mip as u32,
+                    origin: wgpu::Origin3d { x: 0, y: 0, z: sub },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                data,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some((sub_size as u32) / rows),
+                    rows_per_image: Some(rows),
+                },
+                wgpu::Extent3d {
+                    width: w.next_multiple_of(block),
+                    height: h.next_multiple_of(block),
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+    }
+
+    /// Wraps an already filled KTX2 storage texture with a view and sampler.
+    pub fn from_ktx2_storage(
+        device: &wgpu::Device,
+        texture: wgpu::Texture,
+        ktx: &redox_asset::Ktx2Texture,
+        label: &str,
+    ) -> Self {
+        let view_dimension = Self::ktx2_view_dimension(ktx);
+        let view = texture.create_view(&wgpu::TextureViewDescriptor {
+            label: Some(label),
+            dimension: Some(view_dimension),
+            ..Default::default()
+        });
+        let address = if ktx.is_cube() {
+            wgpu::AddressMode::ClampToEdge
+        } else {
+            wgpu::AddressMode::Repeat
+        };
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some(label),
+            address_mode_u: address,
+            address_mode_v: address,
+            address_mode_w: address,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            ..Default::default()
+        });
+        Self {
+            texture,
+            view,
+            sampler,
+            width: ktx.width,
+            height: ktx.height,
+            mip_levels: ktx.levels.len() as u32,
+            view_dimension,
+        }
+    }
+
+    /// Uploads a loaded KTX2 texture with its stored mip chain (no CPU decoding or mip
+    /// generation). Cube maps, arrays and cube arrays keep their shape (see
+    /// [`Self::view_dimension`]).
     ///
-    /// Block-compressed formats need [`wgpu::Features::TEXTURE_COMPRESSION_BC`] and a size that
-    /// is a multiple of 4; otherwise this returns `None` so the caller can fall back to a decoded image.
+    /// Returns `None` when [`Self::supports_ktx2`] is false, so the caller can fall back to a
+    /// decoded image.
     pub fn from_ktx2(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         ktx: &redox_asset::Ktx2Texture,
         label: &str,
     ) -> Option<Self> {
-        if ktx.format.is_block_compressed()
-            && (!device
-                .features()
-                .contains(wgpu::Features::TEXTURE_COMPRESSION_BC)
-                // wgpu requires the base level to be a whole number of 4x4 blocks.
-                || !ktx.width.is_multiple_of(4)
-                || !ktx.height.is_multiple_of(4))
-        {
+        if !Self::supports_ktx2(device, ktx) {
             return None;
         }
-        let format = Self::wgpu_format(ktx.format);
-        let mip_levels = ktx.levels.len() as u32;
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(label),
-            size: wgpu::Extent3d {
-                width: ktx.width,
-                height: ktx.height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: mip_levels,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        for (mip, data) in ktx.levels.iter().enumerate() {
-            let (w, h) = ((ktx.width >> mip).max(1), (ktx.height >> mip).max(1));
-            let block_rows = if ktx.format.is_block_compressed() {
-                h.div_ceil(4)
-            } else {
-                h
-            };
-            queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &texture,
-                    mip_level: mip as u32,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                data,
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(data.len() as u32 / block_rows),
-                    rows_per_image: Some(block_rows),
-                },
-                wgpu::Extent3d {
-                    width: w.next_multiple_of(if ktx.format.is_block_compressed() {
-                        4
-                    } else {
-                        1
-                    }),
-                    height: h.next_multiple_of(if ktx.format.is_block_compressed() {
-                        4
-                    } else {
-                        1
-                    }),
-                    depth_or_array_layers: 1,
-                },
-            );
+        let texture = Self::create_ktx2_storage(device, ktx, label);
+        for mip in 0..ktx.levels.len() {
+            Self::upload_ktx2_level(queue, &texture, ktx, mip);
         }
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some(label),
-            address_mode_u: wgpu::AddressMode::Repeat,
-            address_mode_v: wgpu::AddressMode::Repeat,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::MipmapFilterMode::Linear,
-            ..Default::default()
-        });
-        Some(Self {
-            texture,
-            view,
-            sampler,
-            width: ktx.width,
-            height: ktx.height,
-            mip_levels,
-        })
+        Some(Self::from_ktx2_storage(device, texture, ktx, label))
     }
 
     /// Decodes image bytes (PNG, JPEG, etc.) and uploads the result to the GPU.
@@ -292,6 +353,7 @@ impl Texture {
             width,
             height,
             mip_levels,
+            view_dimension: wgpu::TextureViewDimension::D2,
         }
     }
 
@@ -434,6 +496,7 @@ impl Texture {
             width,
             height,
             mip_levels,
+            view_dimension: wgpu::TextureViewDimension::D2,
         }
     }
 

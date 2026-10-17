@@ -27,12 +27,7 @@ fn ktx(format: TextureFormat, w: u32, h: u32) -> Ktx2Texture {
         lw = (lw / 2).max(1);
         lh = (lh / 2).max(1);
     }
-    Ktx2Texture {
-        width: w,
-        height: h,
-        format,
-        levels,
-    }
+    Ktx2Texture::new_2d(w, h, format, levels)
 }
 
 #[test]

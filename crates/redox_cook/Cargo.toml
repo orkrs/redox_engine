@@ -10,3 +10,7 @@ workspace = true
 
 [dependencies]
 redox_asset = { path = "../redox_asset" }
+ktx2 = "0.5"
+
+[dev-dependencies]
+redox_asset = { path = "../redox_asset", features = ["testing"] }
