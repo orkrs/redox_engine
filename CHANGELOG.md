@@ -10,6 +10,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - Audio (B8, first part): data-driven `SoundCue` (variants without repeats, volume/pitch ranges, cooldown), `CueLibrary` from RON, `AudioContext::play_cue`. Music streaming is not done; `priority` is stored but unused.
 - Scripting (B6): `redox_script` crate, WASM runtime on `wasmi` with fuel, memory cap, import permissions and per-instance disable; optional `wasmtime` backend. Measurements in ADR 0006.
 - Docs: ADR 0006 (WASM runtime), ADR 0007 (navigation).
+- Physics (B4, B2): joints (fixed, hinge, slider, ball, spring, rope, break force) and `cast_shape_all`, `overlap_point`, `closest_point`.
+- Render (A3): GPU skinning compute pass (`SkinnedMeshBinding::update_gpu`, `Renderer::read_mesh_vertex_bytes`); `skinned_demo` uses it.
+- Scripting (B7a): host API `get_f32`/`set_f32`/`emit_event` with `ApiPermissions`, module loading from a folder or `.pak`.
+- Audio (B8): `MusicDirector` (equal-power crossfade) and `VoiceBudget` (priority voice limit), not yet wired to `AudioContext`.
 
 ### Removed
 - Old examples `showcase`, `prism_vault`, `ball_score`, `shadow_lab` (kept: `skinned_demo`, `dino_runner`, `dino_game`).
