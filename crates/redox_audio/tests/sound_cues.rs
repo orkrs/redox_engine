@@ -93,10 +93,13 @@ fn volume_and_pitch_stay_in_range_and_actually_vary() {
         .collect();
     assert!(plays.iter().all(|p| (0.8..=1.0).contains(&p.volume)));
     assert!(plays.iter().all(|p| (0.95..=1.05).contains(&p.pitch)));
-    let (min, max) = plays
-        .iter()
-        .fold((f32::MAX, f32::MIN), |(lo, hi), p| (lo.min(p.volume), hi.max(p.volume)));
-    assert!(max - min > 0.15, "volume spreads over its range: {min}..{max}");
+    let (min, max) = plays.iter().fold((f32::MAX, f32::MIN), |(lo, hi), p| {
+        (lo.min(p.volume), hi.max(p.volume))
+    });
+    assert!(
+        max - min > 0.15,
+        "volume spreads over its range: {min}..{max}"
+    );
 }
 
 #[test]
@@ -117,9 +120,18 @@ fn the_cooldown_blocks_replays_and_rejections_change_nothing() {
     let mut c = cue(&["a", "b"]);
     c.cooldown = 0.1;
     assert!(selector.select(&c, 0.0, &mut rng).is_some());
-    assert!(selector.select(&c, 0.05, &mut rng).is_none(), "inside the cooldown");
-    assert!(selector.select(&c, 0.09, &mut rng).is_none(), "still inside; the 0.05 call did not restart it");
-    assert!(selector.select(&c, 0.1, &mut rng).is_some(), "exactly at the cooldown");
+    assert!(
+        selector.select(&c, 0.05, &mut rng).is_none(),
+        "inside the cooldown"
+    );
+    assert!(
+        selector.select(&c, 0.09, &mut rng).is_none(),
+        "still inside; the 0.05 call did not restart it"
+    );
+    assert!(
+        selector.select(&c, 0.1, &mut rng).is_some(),
+        "exactly at the cooldown"
+    );
 }
 
 #[test]
@@ -132,7 +144,10 @@ fn cooldowns_are_per_cue() {
     jump.name = "jump".into();
     jump.cooldown = 1.0;
     assert!(selector.select(&step, 0.0, &mut rng).is_some());
-    assert!(selector.select(&jump, 0.0, &mut rng).is_some(), "another cue is not blocked");
+    assert!(
+        selector.select(&jump, 0.0, &mut rng).is_some(),
+        "another cue is not blocked"
+    );
     assert!(selector.select(&step, 0.5, &mut rng).is_none());
 }
 
@@ -142,7 +157,10 @@ fn single_variants_may_repeat_and_empty_cues_play_nothing() {
     let mut rng = SplitMix64(13);
     let one = cue(&["only"]);
     for i in 0..5 {
-        assert_eq!(selector.select(&one, i as f32, &mut rng).unwrap().variant, 0);
+        assert_eq!(
+            selector.select(&one, i as f32, &mut rng).unwrap().variant,
+            0
+        );
     }
     assert!(selector.select(&cue(&[]), 0.0, &mut rng).is_none());
 }
@@ -154,7 +172,10 @@ fn time_going_backwards_does_not_panic() {
     let mut c = cue(&["a", "b"]);
     c.cooldown = 1.0;
     assert!(selector.select(&c, 10.0, &mut rng).is_some());
-    assert!(selector.select(&c, 2.0, &mut rng).is_some(), "clock reset: the cue is ready again");
+    assert!(
+        selector.select(&c, 2.0, &mut rng).is_some(),
+        "clock reset: the cue is ready again"
+    );
 }
 
 #[test]
@@ -190,16 +211,28 @@ fn libraries_parse_from_ron() {
 
 #[test]
 fn bad_libraries_are_rejected_with_a_specific_error() {
-    assert!(matches!(CueLibrary::parse("not ron at all"), Err(CueError::Parse(_))));
+    assert!(matches!(
+        CueLibrary::parse("not ron at all"),
+        Err(CueError::Parse(_))
+    ));
     let dup = r#"[(name: "a", variants: ["x"], volume: (1.0, 1.0), pitch: (1.0, 1.0), cooldown: 0.0, bus: Sfx, priority: 1),
                   (name: "a", variants: ["y"], volume: (1.0, 1.0), pitch: (1.0, 1.0), cooldown: 0.0, bus: Sfx, priority: 1)]"#;
     assert!(matches!(CueLibrary::parse(dup), Err(CueError::DuplicateName(n)) if n == "a"));
     let backwards = r#"[(name: "a", variants: ["x"], volume: (1.0, 0.5), pitch: (1.0, 1.0), cooldown: 0.0, bus: Sfx, priority: 1)]"#;
-    assert!(matches!(CueLibrary::parse(backwards), Err(CueError::Invalid(_))));
+    assert!(matches!(
+        CueLibrary::parse(backwards),
+        Err(CueError::Invalid(_))
+    ));
     let negative = r#"[(name: "a", variants: ["x"], volume: (1.0, 1.0), pitch: (1.0, 1.0), cooldown: -1.0, bus: Sfx, priority: 1)]"#;
-    assert!(matches!(CueLibrary::parse(negative), Err(CueError::Invalid(_))));
+    assert!(matches!(
+        CueLibrary::parse(negative),
+        Err(CueError::Invalid(_))
+    ));
     let unnamed = r#"[(name: "", variants: ["x"], volume: (1.0, 1.0), pitch: (1.0, 1.0), cooldown: 0.0, bus: Sfx, priority: 1)]"#;
-    assert!(matches!(CueLibrary::parse(unnamed), Err(CueError::Invalid(_))));
+    assert!(matches!(
+        CueLibrary::parse(unnamed),
+        Err(CueError::Invalid(_))
+    ));
 }
 
 #[test]
@@ -207,7 +240,10 @@ fn playing_cues_without_a_device_or_sounds_never_panics() {
     let lib = CueLibrary::parse(LIBRARY).unwrap();
     let mut ctx = AudioContext::new();
     let mut selector = CueSelector::new();
-    assert!(ctx.play_cue(&lib, &mut selector, "nope", 0.0).is_none(), "unknown cue");
+    assert!(
+        ctx.play_cue(&lib, &mut selector, "nope", 0.0).is_none(),
+        "unknown cue"
+    );
     let play = ctx.play_cue(&lib, &mut selector, "footstep", 0.0);
     assert!(play.is_none() || play.unwrap().variant < 3);
 }

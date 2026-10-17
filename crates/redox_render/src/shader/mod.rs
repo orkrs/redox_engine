@@ -39,6 +39,8 @@ pub const VSM_SHADOW_TRACE_WGSL: &str = include_str!("../../shaders/vsm_shadow_t
 pub const VSM_SHADOW_TEMPORAL_WGSL: &str = include_str!("../../shaders/vsm_shadow_temporal.wgsl");
 /// Source of `velocity.wgsl`.
 pub const VELOCITY_WGSL: &str = include_str!("../../shaders/velocity.wgsl");
+/// Source of `object_velocity.wgsl`.
+pub const OBJECT_VELOCITY_WGSL: &str = include_str!("../../shaders/object_velocity.wgsl");
 /// Source of `taa.wgsl`.
 pub const TAA_WGSL: &str = include_str!("../../shaders/taa.wgsl");
 /// Source of `msaa_resolve.wgsl`.
@@ -122,6 +124,11 @@ const EMBEDDED: &[(&str, &str, &str)] = &[
         VSM_SHADOW_TEMPORAL_WGSL,
     ),
     ("velocity", "velocity.wgsl", VELOCITY_WGSL),
+    (
+        "object_velocity",
+        "object_velocity.wgsl",
+        OBJECT_VELOCITY_WGSL,
+    ),
     ("taa", "taa.wgsl", TAA_WGSL),
     ("msaa_resolve", "msaa_resolve.wgsl", MSAA_RESOLVE_WGSL),
     ("tone_mapping", "tone_mapping.wgsl", TONE_MAPPING_WGSL),
@@ -186,6 +193,7 @@ const WITH_VERTEX_DECODE: &[&str] = &[
     "pbr",
     "shadow",
     "normal",
+    "object_velocity",
     "vg",
     "vg_vis",
     "vg_shadow",
@@ -351,6 +359,7 @@ mod tests {
             ("pbr", super::PBR_WGSL),
             ("shadow", super::SHADOW_WGSL),
             ("normal", super::NORMAL_WGSL),
+            ("object_velocity", super::OBJECT_VELOCITY_WGSL),
             ("vg", super::VG_WGSL),
             ("vg_vis", super::VG_VIS_WGSL),
             ("vg_shadow", super::VG_SHADOW_WGSL),

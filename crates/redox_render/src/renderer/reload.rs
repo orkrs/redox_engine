@@ -95,7 +95,7 @@ impl ReloadablePass {
             "bloom" | "bloom_composite" => Self::Bloom,
             "msaa_resolve" => Self::MsaaResolve,
             "taa" => Self::Taa,
-            "velocity" => Self::Velocity,
+            "velocity" | "object_velocity" => Self::Velocity,
             "debug_lines" => Self::DebugLines,
             "tone_mapping" => Self::Tonemap,
             "vg_vis" | "vg_resolve" | "vg_shadow" | "vertex_compressed" => Self::VirtualGeometry,

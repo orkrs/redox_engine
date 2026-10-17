@@ -10,9 +10,10 @@ mod draw;
 mod frame;
 mod helpers;
 mod init;
+pub mod motion;
 mod passes;
 mod post;
-pub mod reload;
+mod reload;
 pub use reload::{ReloadablePass, ShaderHotReload};
 mod resize;
 mod scene_sync;
@@ -74,7 +75,7 @@ use crate::pass::taa::{
     create_velocity_texture, halton_jitter_ndc,
 };
 use crate::pass::transparent::TransparentPass;
-use crate::pass::velocity::{VelocityPass, VelocityUniform};
+use crate::pass::velocity::{ObjectVelocityPass, VelocityPass, VelocityUniform};
 use crate::pass::vg_resolve::{
     VIS_ID_SENTINEL, VgResolvePass, VgShadowPass, VgVisPass, VgVisTargets, build_material_storage,
     create_vg_vis_targets,
@@ -366,6 +367,15 @@ pub struct Renderer {
     pub taa_pass: TaaPass,
     /// Velocity (motion-vector) generation pass.
     pub velocity_pass: VelocityPass,
+    /// Redraws moving objects into the velocity texture.
+    pub object_velocity_pass: ObjectVelocityPass,
+    /// Previous-frame model matrices (parallel to `model_buffer`).
+    prev_model_buffer: wgpu::Buffer,
+    object_velocity_bg: wgpu::BindGroup,
+    /// Which objects moved and where they were last frame.
+    object_motion: motion::ObjectMotion,
+    /// Object ids supplied for the frame being rendered (see `FrameView::with_object_ids`).
+    frame_object_ids: Option<Vec<u64>>,
     /// Ping-pong history texture 0.
     pub taa_history_tex: [wgpu::Texture; 2],
     /// Views into the ping-pong history textures.

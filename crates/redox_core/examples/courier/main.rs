@@ -192,9 +192,12 @@ impl Scene {
         }
     }
 
-    fn objects(&self, r: &Renderer, world: &World, time: f32) -> Vec<RenderObject> {
+    /// Objects to draw plus a stable id per object (ground 1, hero 2, crates 100+, coins 1000+),
+    /// so the renderer follows each object's motion even when coins vanish from the list.
+    fn objects(&self, r: &Renderer, world: &World, time: f32) -> (Vec<RenderObject>, Vec<u64>) {
         let half = world.level.half;
         let mut out = Vec::new();
+        let mut ids: Vec<u64> = Vec::new();
         let ground = Mat4::from_scale_rotation_translation(
             Vec3::new(half * 2.0, 0.25, half * 2.0),
             Quat::IDENTITY,
@@ -206,7 +209,8 @@ impl Scene {
             self.cube,
             self.ground.material(self.solid_ground),
         ));
-        for c in &world.level.crates {
+        ids.push(1);
+        for (i, c) in world.level.crates.iter().enumerate() {
             let model = Mat4::from_scale_rotation_translation(
                 Vec3::splat(c.half * 2.0),
                 Quat::IDENTITY,
@@ -218,6 +222,7 @@ impl Scene {
                 self.cube,
                 self.crate_tex.material(self.solid_crate),
             ));
+            ids.push(100 + i as u64);
         }
         for (i, ((x, z), taken)) in world.level.coins.iter().zip(&world.taken).enumerate() {
             if *taken {
@@ -230,6 +235,7 @@ impl Scene {
                 Vec3::new(*x, bob, *z),
             );
             out.push(object(r, model, self.coin_mesh, self.coin_material));
+            ids.push(1000 + i as u64);
         }
         let hero = model_matrix(world.pos, world.yaw);
         out.push(RenderObject {
@@ -239,7 +245,8 @@ impl Scene {
             material_index: self.hero_material,
             bounds: self.hero.bounds.transform(hero),
         });
-        out
+        ids.push(2);
+        (out, ids)
     }
 }
 
@@ -467,12 +474,13 @@ fn main() {
                         let (pos, rot) = camera_pose(&world, orbit);
                         ctx.camera_uniform.update(&camera, pos, rot);
                         ctx.update_camera_buffer();
-                        let objects = scene.objects(&ctx, &world, time);
+                        let (objects, object_ids) = scene.objects(&ctx, &world, time);
                         streamer.update_from_scene(&ctx, &objects);
                         streamer.update(&mut ctx, &mut assets);
 
                         let lights = light_scene();
-                        let fv = FrameView::new(&camera, &objects, &lights);
+                        let fv = FrameView::new(&camera, &objects, &lights)
+                            .with_object_ids(&object_ids);
                         let output = match redox_render::acquire_surface_texture(ctx.surface()) {
                             Ok(output) => output,
                             Err(

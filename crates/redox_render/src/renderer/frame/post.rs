@@ -77,6 +77,8 @@ impl Renderer {
                 vel_pass.set_bind_group(0, &self.velocity_bg, &[]);
                 vel_pass.draw(0..3, 0..1);
             }
+            // Moving objects overwrite the camera-only motion of their pixels.
+            self.record_object_velocity(encoder);
 
             // --- 6c. Update TAA uniform ---
             let is_first_frame = self.taa_frame_count == 0;

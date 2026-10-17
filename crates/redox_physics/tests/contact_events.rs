@@ -86,14 +86,37 @@ fn a_landing_ball_reports_one_enter_with_a_vertical_normal_and_a_real_impulse() 
             ContactEvent::Exit(_) => None,
         })
         .collect();
-    assert_eq!(enters.len(), 1, "a ball that comes to rest lands once: {events:?}");
+    assert_eq!(
+        enters.len(),
+        1,
+        "a ball that comes to rest lands once: {events:?}"
+    );
     let enter = enters[0];
     assert!(pair_is(enter.a, enter.b, scene.floor, scene.ball));
-    assert!((enter.normal.length() - 1.0).abs() < 1e-3, "unit normal: {:?}", enter.normal);
-    assert!(enter.normal.y.abs() > 0.9, "vertical normal: {:?}", enter.normal);
-    assert!(enter.impulse > 0.5, "falling 2 m gives a real impact: {}", enter.impulse);
-    assert!(enter.point.y.abs() < 0.2, "contact on the floor surface: {:?}", enter.point);
-    assert!(scene.ctx.drain_contact_events().is_empty(), "drain empties the queue");
+    assert!(
+        (enter.normal.length() - 1.0).abs() < 1e-3,
+        "unit normal: {:?}",
+        enter.normal
+    );
+    assert!(
+        enter.normal.y.abs() > 0.9,
+        "vertical normal: {:?}",
+        enter.normal
+    );
+    assert!(
+        enter.impulse > 0.5,
+        "falling 2 m gives a real impact: {}",
+        enter.impulse
+    );
+    assert!(
+        enter.point.y.abs() < 0.2,
+        "contact on the floor surface: {:?}",
+        enter.point
+    );
+    assert!(
+        scene.ctx.drain_contact_events().is_empty(),
+        "drain empties the queue"
+    );
 }
 
 #[test]
@@ -121,7 +144,13 @@ fn a_bouncing_ball_alternates_enter_and_exit() {
     for entity in [scene.floor, scene.ball] {
         scene
             .ctx
-            .set_physics_material(entity, PhysicsMaterial { friction: 0.5, restitution: 0.9 })
+            .set_physics_material(
+                entity,
+                PhysicsMaterial {
+                    friction: 0.5,
+                    restitution: 0.9,
+                },
+            )
             .unwrap();
     }
     scene.ctx.set_contact_events(scene.ball, true).unwrap();
@@ -150,14 +179,25 @@ fn peak_after_first_contact(restitution: f32) -> f32 {
     for entity in [scene.floor, scene.ball] {
         scene
             .ctx
-            .set_physics_material(entity, PhysicsMaterial { friction: 0.5, restitution })
+            .set_physics_material(
+                entity,
+                PhysicsMaterial {
+                    friction: 0.5,
+                    restitution,
+                },
+            )
             .unwrap();
     }
     let mut touched = false;
     let mut peak = 0.0f32;
     for _ in 0..240 {
         scene.ctx.step(DT);
-        let y = scene.ctx.get_rigid_body_transform(scene.handle).unwrap().0.y;
+        let y = scene
+            .ctx
+            .get_rigid_body_transform(scene.handle)
+            .unwrap()
+            .0
+            .y;
         if touched {
             peak = peak.max(y);
         } else if y < 0.58 {
@@ -169,7 +209,10 @@ fn peak_after_first_contact(restitution: f32) -> f32 {
 
 #[test]
 fn restitution_decides_how_high_the_ball_bounces() {
-    assert!(peak_after_first_contact(0.9) > 1.0, "bouncy ball rebounds high");
+    assert!(
+        peak_after_first_contact(0.9) > 1.0,
+        "bouncy ball rebounds high"
+    );
     assert!(peak_after_first_contact(0.0) < 0.7, "dead ball stays down");
 }
 
@@ -195,8 +238,14 @@ fn slide_distance(friction: f32) -> f32 {
         )
         .unwrap();
     for entity in [floor, block] {
-        ctx.set_physics_material(entity, PhysicsMaterial { friction, restitution: 0.0 })
-            .unwrap();
+        ctx.set_physics_material(
+            entity,
+            PhysicsMaterial {
+                friction,
+                restitution: 0.0,
+            },
+        )
+        .unwrap();
     }
     for _ in 0..60 {
         ctx.step(DT);
@@ -217,7 +266,12 @@ fn materials_and_events_need_a_known_entity() {
     // Entity ids restart per World: spawn past the two used by the scene.
     let stranger = (0..5).map(|_| other.spawn()).last().unwrap();
     assert!(scene.ctx.set_contact_events(stranger, true).is_err());
-    assert!(scene.ctx.set_physics_material(stranger, PhysicsMaterial::default()).is_err());
+    assert!(
+        scene
+            .ctx
+            .set_physics_material(stranger, PhysicsMaterial::default())
+            .is_err()
+    );
 }
 
 #[test]

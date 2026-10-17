@@ -18,6 +18,10 @@ pub struct FrameView<'a> {
     pub lights: &'a LightScene,
     /// Image-based lighting environment, if any.
     pub environment: Option<&'a IBLResource>,
+    /// Stable id of every object (same length as `objects`), if the caller has them.
+    /// With ids the renderer can tell which objects moved between frames even when the list
+    /// changes; without them objects are matched by their position in the list.
+    pub object_ids: Option<&'a [u64]>,
 }
 
 impl<'a> FrameView<'a> {
@@ -28,7 +32,14 @@ impl<'a> FrameView<'a> {
             objects,
             lights,
             environment: None,
+            object_ids: None,
         }
+    }
+
+    /// Supplies a stable id per object (see [`Self::object_ids`]).
+    pub fn with_object_ids(mut self, ids: &'a [u64]) -> Self {
+        self.object_ids = Some(ids);
+        self
     }
 
     /// Adds an image-based lighting environment.

@@ -118,6 +118,7 @@ impl Renderer {
 
         // 0. Update Buffers
         self.update_model_buffer(objects);
+        self.update_object_motion(objects);
 
         // VSM-only policy: keep GPU light flag in sync even if callers forgot
         // to set DirectionalLight::vsm.
@@ -741,6 +742,7 @@ impl Renderer {
     ) -> Result<(), crate::surface::SurfaceError> {
         self.camera_near = fv.camera.near;
         self.camera_far = fv.camera.far;
+        self.frame_object_ids = fv.object_ids.map(<[u64]>::to_vec);
         let mut light_u = fv.lights.to_legacy_uniform();
         light_u.ambient[3] = self.ibl_intensity;
         self.update_light_buffer(&light_u);

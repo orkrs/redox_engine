@@ -128,9 +128,15 @@ fn an_endless_loop_runs_out_of_fuel_and_only_that_instance_is_disabled() {
     let spinner = rt.instantiate(&wasm(SPINNER)).unwrap();
     let healthy = rt.instantiate(&wasm(CLOCK)).unwrap();
 
-    assert!(matches!(rt.update(spinner, 0.016), Err(ScriptError::OutOfFuel)));
+    assert!(matches!(
+        rt.update(spinner, 0.016),
+        Err(ScriptError::OutOfFuel)
+    ));
     assert!(rt.is_disabled(spinner));
-    assert!(matches!(rt.update(spinner, 0.016), Err(ScriptError::Disabled)));
+    assert!(matches!(
+        rt.update(spinner, 0.016),
+        Err(ScriptError::Disabled)
+    ));
 
     rt.update(healthy, 0.016).unwrap();
     assert!(!rt.is_disabled(healthy));
@@ -177,17 +183,26 @@ fn a_module_that_starts_above_the_memory_limit_is_refused() {
 #[test]
 fn imports_need_permission() {
     let mut rt = ScriptRuntime::new(ScriptConfig {
-        permissions: Permissions { log: true, time: false },
+        permissions: Permissions {
+            log: true,
+            time: false,
+        },
         ..ScriptConfig::default()
     });
-    assert!(matches!(rt.instantiate(&wasm(CLOCK)), Err(ScriptError::Link(_))), "time is not permitted");
+    assert!(
+        matches!(rt.instantiate(&wasm(CLOCK)), Err(ScriptError::Link(_))),
+        "time is not permitted"
+    );
     assert!(rt.instantiate(&wasm(LOGGER)).is_ok(), "log is permitted");
 
     let mut none = ScriptRuntime::new(ScriptConfig {
         permissions: Permissions::none(),
         ..ScriptConfig::default()
     });
-    assert!(matches!(none.instantiate(&wasm(LOGGER)), Err(ScriptError::Link(_))));
+    assert!(matches!(
+        none.instantiate(&wasm(LOGGER)),
+        Err(ScriptError::Link(_))
+    ));
     // A module that imports nothing needs no permission.
     assert!(none.instantiate(&wasm(TRAPPER)).is_ok());
 }
@@ -198,13 +213,19 @@ fn unknown_imports_are_link_errors() {
         r#"(module (import "env" "does_not_exist" (func))
              (func (export "on_update") (param f32)))"#,
     );
-    assert!(matches!(runtime().instantiate(&module), Err(ScriptError::Link(_))));
+    assert!(matches!(
+        runtime().instantiate(&module),
+        Err(ScriptError::Link(_))
+    ));
 }
 
 #[test]
 fn bad_modules_are_rejected_with_the_right_error() {
     let mut rt = runtime();
-    assert!(matches!(rt.instantiate(b"this is not wasm"), Err(ScriptError::Compile(_))));
+    assert!(matches!(
+        rt.instantiate(b"this is not wasm"),
+        Err(ScriptError::Compile(_))
+    ));
     let no_update = wasm(r#"(module (func (export "something_else")))"#);
     match rt.instantiate(&no_update) {
         Err(ScriptError::MissingExport(name)) => assert_eq!(name, "on_update"),
@@ -216,8 +237,14 @@ fn bad_modules_are_rejected_with_the_right_error() {
 fn calling_an_unknown_export_is_an_error_not_a_panic() {
     let mut rt = runtime();
     let id = rt.instantiate(&wasm(GROWER)).unwrap();
-    assert!(matches!(rt.call_i32(id, "nope"), Err(ScriptError::MissingExport(_))));
-    assert!(!rt.is_disabled(id), "a bad call does not disable the instance");
+    assert!(matches!(
+        rt.call_i32(id, "nope"),
+        Err(ScriptError::MissingExport(_))
+    ));
+    assert!(
+        !rt.is_disabled(id),
+        "a bad call does not disable the instance"
+    );
 }
 
 #[test]

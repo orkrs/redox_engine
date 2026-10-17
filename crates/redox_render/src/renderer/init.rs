@@ -515,6 +515,20 @@ impl Renderer {
         // --- TAA infrastructure ---
         let taa_pass = TaaPass::new(&device, &queue, hdr_format);
         let velocity_pass = VelocityPass::new(&device);
+        let object_velocity_pass = ObjectVelocityPass::new(&device);
+        let prev_model_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("prev_model_storage_buffer"),
+            size: (std::mem::size_of::<[[f32; 4]; 4]>() * 10000) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let object_velocity_bg = object_velocity_pass.create_bind_group(
+            &device,
+            &camera_buffer,
+            &model_buffer,
+            &prev_model_buffer,
+            &velocity_pass.uniform_buffer,
+        );
 
         let (taa_history_tex0, taa_history_view0) =
             create_history_texture(&device, config.width, config.height, "taa_history_0");
@@ -922,6 +936,11 @@ impl Renderer {
             taa_prev_vp_unjittered: Mat4::IDENTITY,
             taa_pass,
             velocity_pass,
+            object_velocity_pass,
+            prev_model_buffer,
+            object_velocity_bg,
+            object_motion: Default::default(),
+            frame_object_ids: None,
             taa_history_tex: [taa_history_tex0, taa_history_tex1],
             taa_history_view: [taa_history_view0, taa_history_view1],
             taa_blend_alpha,
