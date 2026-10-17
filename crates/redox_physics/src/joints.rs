@@ -1,4 +1,4 @@
-//! Joints between rigid bodies, with optional break force.
+//! Joints between rigid bodies, with optional break force and break torque.
 
 use std::collections::HashMap;
 
@@ -56,16 +56,23 @@ pub struct JointDesc {
     pub anchor_b: Vec3,
     /// The joint is removed when its constraint force exceeds this value (N).
     pub break_force: Option<f32>,
+    /// The joint is removed when its constraint torque exceeds this value (N*m).
+    ///
+    /// Checked on the angular part of the constraint impulse divided by the step `dt`, after
+    /// each step. Either `break_force` or `break_torque` breaking the joint removes it.
+    /// `None` (the default) means torque never breaks the joint.
+    pub break_torque: Option<f32>,
 }
 
 impl JointDesc {
-    /// Creates a description with zero anchors and no break force.
+    /// Creates a description with zero anchors and no break force or break torque.
     pub fn new(kind: JointKind) -> Self {
         Self {
             kind,
             anchor_a: Vec3::ZERO,
             anchor_b: Vec3::ZERO,
             break_force: None,
+            break_torque: None,
         }
     }
 
@@ -115,6 +122,7 @@ struct JointRecord {
     a: Entity,
     b: Entity,
     break_force: Option<f32>,
+    break_torque: Option<f32>,
 }
 
 /// Joint bookkeeping owned by the physics context.
@@ -125,10 +133,24 @@ pub(crate) struct JointBook {
     broken: Vec<JointBroken>,
 }
 
-/// Magnitude of the linear constraint impulse stored in a joint.
+/// Euclidean magnitude of three impulse components.
+fn magnitude3(c: &[f32]) -> f32 {
+    (c[0] * c[0] + c[1] * c[1] + c[2] * c[2]).sqrt()
+}
+
+/// Magnitude of the linear constraint impulse stored in a joint (components `0..3`).
 fn linear_impulse(joint: &ImpulseJoint) -> f32 {
-    let i = &joint.impulses;
-    (i[0] * i[0] + i[1] * i[1] + i[2] * i[2]).sqrt()
+    magnitude3(&joint.impulses[0..3])
+}
+
+/// Magnitude of the angular constraint impulse stored in a joint (components `3..6`).
+fn angular_impulse(joint: &ImpulseJoint) -> f32 {
+    magnitude3(&joint.impulses[3..6])
+}
+
+/// True when `impulse / dt` is above `limit`; a missing limit is never exceeded.
+fn exceeds(impulse: f32, dt: f32, limit: Option<f32>) -> bool {
+    limit.is_some_and(|limit| impulse / dt > limit)
 }
 
 impl PhysicsContext {
@@ -159,6 +181,7 @@ impl PhysicsContext {
                 a,
                 b,
                 break_force: desc.break_force,
+                break_torque: desc.break_torque,
             },
         );
         Ok(id)
@@ -192,7 +215,7 @@ impl PhysicsContext {
             .retain(|_, r| r.a != entity && r.b != entity);
     }
 
-    /// Removes joints whose constraint force over the last step exceeded their break force.
+    /// Removes joints whose constraint force or torque over the last step exceeded their limits.
     pub(crate) fn break_overloaded_joints(&mut self, dt: f32) {
         if dt <= 0.0 {
             return;
@@ -201,7 +224,7 @@ impl PhysicsContext {
             .joints
             .records
             .iter()
-            .filter(|(_, r)| self.exceeds_break_force(r, dt))
+            .filter(|(_, r)| self.exceeds_break_limits(r, dt))
             .map(|(id, _)| *id)
             .collect();
         overloaded.sort_by_key(|id| id.0);
@@ -217,12 +240,13 @@ impl PhysicsContext {
         }
     }
 
-    fn exceeds_break_force(&self, record: &JointRecord, dt: f32) -> bool {
-        let Some(limit) = record.break_force else {
-            return false;
-        };
+    /// True when the joint's force exceeds `break_force` or its torque exceeds `break_torque`.
+    fn exceeds_break_limits(&self, record: &JointRecord, dt: f32) -> bool {
         self.impulse_joint_set
             .get(record.handle)
-            .is_some_and(|joint| linear_impulse(joint) / dt > limit)
+            .is_some_and(|joint| {
+                exceeds(linear_impulse(joint), dt, record.break_force)
+                    || exceeds(angular_impulse(joint), dt, record.break_torque)
+            })
     }
 }
