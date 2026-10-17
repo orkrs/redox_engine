@@ -11,6 +11,10 @@ pub enum MouseButton {
     Right,
     /// Middle button (wheel click).
     Middle,
+    /// Back button (thumb button, usually "browser back").
+    Back,
+    /// Forward button (thumb button, usually "browser forward").
+    Forward,
     /// Any other button, identified by its platform index.
     Other(u16),
 }
@@ -21,8 +25,9 @@ impl From<winit::event::MouseButton> for MouseButton {
             winit::event::MouseButton::Left => Self::Left,
             winit::event::MouseButton::Right => Self::Right,
             winit::event::MouseButton::Middle => Self::Middle,
+            winit::event::MouseButton::Back => Self::Back,
+            winit::event::MouseButton::Forward => Self::Forward,
             winit::event::MouseButton::Other(id) => Self::Other(id),
-            _ => Self::Other(0),
         }
     }
 }
@@ -238,17 +243,6 @@ mod tests {
     }
 
     #[test]
-    fn unrecognised_winit_buttons_fall_back_to_other_zero() {
-        // Characterises the current `_` arm. Back and Forward both land here, see the
-        // ignored test below for why that is a problem.
-        assert_eq!(
-            MouseButton::from(winit::event::MouseButton::Back),
-            MouseButton::Other(0)
-        );
-    }
-
-    #[test]
-    #[ignore = "bug: winit Back and Forward buttons both collapse to Other(0), so they cannot be told apart"]
     fn back_and_forward_buttons_are_distinct() {
         let back = MouseButton::from(winit::event::MouseButton::Back);
         let forward = MouseButton::from(winit::event::MouseButton::Forward);
