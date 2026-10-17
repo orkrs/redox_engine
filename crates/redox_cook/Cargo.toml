@@ -13,7 +13,8 @@ workspace = true
 bake = ["dep:redox_render", "dep:wgpu", "dep:pollster"]
 
 [dependencies]
-redox_asset = { path = "../redox_asset" }
+redox_asset = { path = "../redox_asset", features = ["encode"] }
+image = { workspace = true }
 ktx2 = "0.5"
 redox_render = { path = "../redox_render", optional = true }
 wgpu = { workspace = true, optional = true }

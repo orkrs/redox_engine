@@ -2,10 +2,12 @@
 //!
 //! ```text
 //! redox_cook scan <assets-dir>             create/repair .meta sidecars (GUIDs)
-//! redox_cook pack <assets-dir> <out.pak> [--compress] [--incremental]
+//! redox_cook pack <assets-dir> <out.pak> [--compress] [--incremental] [--textures]
 //!                                          pack a folder into a deterministic archive
 //! redox_cook list <file.pak>               print the entries of an archive
 //! redox_cook verify <file.pak>             read every entry and check its hash
+//! redox_cook texture <out.ktx2> <images...> [--etc1s] [--linear] [--no-mips] [--array|--cube]
+//!                                          encode images to KTX2 (UASTC or ETC1S, with mips)
 //! redox_cook texture-info <file.ktx2>      print format, size, mips, layers, faces, compression
 //! redox_cook bake-ibl <sky.hdr> <out-dir>  bake IBL maps to KTX2 (build with --features bake)
 //! ```
@@ -17,13 +19,14 @@
 
 #[cfg(feature = "bake")]
 mod bake;
+mod texture;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use redox_asset::{AssetRegistry, PakReader, PakWriter};
 
-const USAGE: &str = "usage:\n  redox_cook scan <assets-dir>\n  redox_cook pack <assets-dir> <out.pak> [--compress] [--incremental]\n  redox_cook list <file.pak>\n  redox_cook verify <file.pak>\n  redox_cook texture-info <file.ktx2>\n  redox_cook bake-ibl <sky.hdr> <out-dir>";
+const USAGE: &str = "usage:\n  redox_cook scan <assets-dir>\n  redox_cook pack <assets-dir> <out.pak> [--compress] [--incremental] [--textures]\n  redox_cook texture <out.ktx2> <images...> [--etc1s] [--linear] [--no-mips] [--no-zstd] [--array|--cube]\n  redox_cook list <file.pak>\n  redox_cook verify <file.pak>\n  redox_cook texture-info <file.ktx2>\n  redox_cook bake-ibl <sky.hdr> <out-dir>";
 
 /// A parsed command line.
 #[derive(Debug, PartialEq, Eq)]
@@ -34,7 +37,9 @@ enum Command {
         out: PathBuf,
         compress: bool,
         incremental: bool,
+        textures: bool,
     },
+    Texture(texture::TextureJob),
     List(PathBuf),
     Verify(PathBuf),
     TextureInfo(PathBuf),
@@ -54,11 +59,13 @@ fn parse(args: &[String]) -> Result<Command, String> {
                 out: out.into(),
                 compress: false,
                 incremental: false,
+                textures: false,
             };
             for flag in flags {
                 let Command::Pack {
                     compress,
                     incremental,
+                    textures,
                     ..
                 } = &mut command
                 else {
@@ -67,12 +74,14 @@ fn parse(args: &[String]) -> Result<Command, String> {
                 match *flag {
                     "--compress" => *compress = true,
                     "--incremental" => *incremental = true,
+                    "--textures" => *textures = true,
                     other => return Err(format!("unknown option: {other}")),
                 }
             }
             Ok(command)
         }
         ["list", pak] => Ok(Command::List(pak.into())),
+        ["texture", args @ ..] => texture::parse_texture(args).map(Command::Texture),
         ["verify", pak] => Ok(Command::Verify(pak.into())),
         ["texture-info", file] => Ok(Command::TextureInfo(file.into())),
         ["bake-ibl", input, out] => Ok(Command::BakeIbl {
@@ -81,7 +90,16 @@ fn parse(args: &[String]) -> Result<Command, String> {
         }),
         [] => Err("missing command".into()),
         [cmd, ..]
-            if !["scan", "pack", "list", "verify", "texture-info", "bake-ibl"].contains(cmd) =>
+            if ![
+                "scan",
+                "pack",
+                "list",
+                "verify",
+                "texture",
+                "texture-info",
+                "bake-ibl",
+            ]
+            .contains(cmd) =>
         {
             Err(format!("unknown command: {cmd}"))
         }
@@ -114,10 +132,11 @@ fn run(command: Command) -> Result<(), String> {
             out,
             compress,
             incremental,
+            textures,
         } => {
             let stamp_path = PathBuf::from(format!("{}.stamp", out.display()));
             let stamp = if incremental {
-                Some(input_stamp(&dir, compress)?)
+                Some(input_stamp(&dir, compress, textures)?)
             } else {
                 None
             };
@@ -130,7 +149,7 @@ fn run(command: Command) -> Result<(), String> {
             }
             let mut writer = PakWriter::new();
             writer.set_compression(compress);
-            add_cooked(&mut writer, &dir)?;
+            add_cooked(&mut writer, &dir, textures)?;
             writer.write_to(&out).map_err(|e| e.to_string())?;
             if let Some(stamp) = stamp {
                 std::fs::write(&stamp_path, stamp).map_err(|e| e.to_string())?;
@@ -143,6 +162,11 @@ fn run(command: Command) -> Result<(), String> {
             for name in reader.names() {
                 println!("{name}");
             }
+            Ok(())
+        }
+        Command::Texture(job) => {
+            let size = texture::run_texture(&job)?;
+            println!("wrote {} ({size} bytes)", job.out.display());
             Ok(())
         }
         Command::TextureInfo(file) => {
@@ -239,8 +263,8 @@ fn cooked_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 /// Fingerprint of the inputs: path, size and modification time of each file plus the options.
-fn input_stamp(dir: &Path, compress: bool) -> Result<String, String> {
-    let mut stamp = format!("compress={compress}\n");
+fn input_stamp(dir: &Path, compress: bool, textures: bool) -> Result<String, String> {
+    let mut stamp = format!("compress={compress} textures={textures}\n");
     for file in cooked_files(dir)? {
         let meta = std::fs::metadata(&file).map_err(|e| format!("{}: {e}", file.display()))?;
         let modified = meta
@@ -254,7 +278,7 @@ fn input_stamp(dir: &Path, compress: bool) -> Result<String, String> {
 }
 
 /// Adds every file below `dir` except `.meta` sidecars.
-fn add_cooked(writer: &mut PakWriter, dir: &Path) -> Result<(), String> {
+fn add_cooked(writer: &mut PakWriter, dir: &Path, textures: bool) -> Result<(), String> {
     for file in cooked_files(dir)? {
         let rel = file
             .strip_prefix(dir)
@@ -263,8 +287,27 @@ fn add_cooked(writer: &mut PakWriter, dir: &Path) -> Result<(), String> {
             .map(|c| c.as_os_str().to_string_lossy().into_owned())
             .collect::<Vec<_>>()
             .join("/");
-        let bytes = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-        writer.add(&rel, bytes).map_err(|e| e.to_string())?;
+        let (rel, bytes) = if textures && texture::is_convertible(&file) {
+            let ktx2 = Path::new(&rel).with_extension("ktx2");
+            (
+                ktx2.to_string_lossy()
+                    .replace(std::path::MAIN_SEPARATOR, "/"),
+                texture::encode_for_pack(&file)?,
+            )
+        } else {
+            (
+                rel,
+                std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?,
+            )
+        };
+        // Textures are already compressed and are read in pieces by the streamer: keep them raw.
+        let keep_raw = rel.ends_with(".ktx2") || rel.ends_with(".basis");
+        if keep_raw {
+            writer.add_uncompressed(&rel, bytes)
+        } else {
+            writer.add(&rel, bytes)
+        }
+        .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -308,6 +351,7 @@ mod tests {
                 out: "o.pak".into(),
                 compress: false,
                 incremental: false,
+                textures: false,
             })
         );
         assert_eq!(
@@ -323,6 +367,7 @@ mod tests {
                 out: "o.pak".into(),
                 compress: true,
                 incremental: true,
+                textures: false,
             })
         );
         assert_eq!(
@@ -392,6 +437,7 @@ mod tests {
             out: pak.clone(),
             compress: false,
             incremental: false,
+            textures: false,
         })
         .unwrap();
         let reader = PakReader::open(&pak).unwrap();
@@ -412,6 +458,7 @@ mod tests {
             out: pak.clone(),
             compress,
             incremental: true,
+            textures: false,
         };
 
         run(pack(true)).unwrap();
@@ -435,6 +482,39 @@ mod tests {
             std::fs::metadata(&pak).unwrap().len() > 1000,
             "option change repacks"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pack_textures_converts_images_and_keeps_them_uncompressed() {
+        use redox_asset::{AssetLoader, Ktx2Loader};
+
+        let dir = std::env::temp_dir().join(format!("redox_cook_pt_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("assets/tex")).unwrap();
+        image::RgbaImage::from_fn(16, 16, |x, y| {
+            image::Rgba([x as u8 * 16, y as u8 * 16, 7, 255])
+        })
+        .save(dir.join("assets/tex/rock_albedo.png"))
+        .unwrap();
+        std::fs::write(dir.join("assets/readme.txt"), "x".repeat(2000)).unwrap();
+        let pak = dir.join("out.pak");
+        run(Command::Pack {
+            dir: dir.join("assets"),
+            out: pak.clone(),
+            compress: true,
+            incremental: false,
+            textures: true,
+        })
+        .unwrap();
+        let reader = PakReader::open(&pak).unwrap();
+        assert_eq!(
+            reader.names().collect::<Vec<_>>(),
+            ["readme.txt", "tex/rock_albedo.ktx2"]
+        );
+        let ktx2 = reader.read("tex/rock_albedo.ktx2").unwrap();
+        let tex = Ktx2Loader::default().load(&ktx2).unwrap();
+        assert_eq!((tex.width, tex.levels.len()), (16, 5));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

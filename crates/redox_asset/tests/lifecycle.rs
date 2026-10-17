@@ -308,3 +308,26 @@ fn builtin_loaders_deliver_ktx2_textures_through_the_manager() {
     let tex = mgr.get(handle).unwrap();
     assert_eq!((tex.width, tex.height, tex.levels.len()), (4, 4, 1));
 }
+
+#[test]
+fn entries_added_uncompressed_stay_raw_even_in_a_compressed_archive() {
+    let dir = TempDir::new("raw");
+    let text = "abc".repeat(1000);
+    let mut w = PakWriter::new();
+    w.set_compression(true);
+    w.add("packed.txt", text.clone().into_bytes()).unwrap();
+    w.add_uncompressed("raw.txt", text.clone().into_bytes())
+        .unwrap();
+    let bytes = w.to_bytes();
+    // Only the packed copy shrank: the archive holds about one raw copy plus a small one.
+    assert!(
+        bytes.len() > text.len() && bytes.len() < text.len() * 3 / 2,
+        "{}",
+        bytes.len()
+    );
+    let path = dir.0.join("m.pak");
+    std::fs::write(&path, &bytes).unwrap();
+    let reader = PakReader::open(&path).unwrap();
+    assert_eq!(reader.read("packed.txt").unwrap(), text.as_bytes());
+    assert_eq!(reader.read("raw.txt").unwrap(), text.as_bytes());
+}

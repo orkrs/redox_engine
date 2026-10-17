@@ -33,6 +33,8 @@ pub use loader::{
 };
 #[cfg(feature = "basis")]
 pub use loader::{BasisTarget, basis_file_format, basis_file_to_ktx2, uastc_dfd};
+#[cfg(feature = "encode")]
+pub use loader::{EncodeMode, EncodeOptions, EncodeShape, encode_basis, encode_ktx2};
 pub use manager::AssetManager;
 pub use pak::{AssetSource, DirSource, PakError, PakReader, PakSource, PakWriter};
 pub use storage::AssetStorage;

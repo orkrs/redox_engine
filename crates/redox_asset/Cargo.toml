@@ -17,6 +17,8 @@ testing = []
 # Basis Universal (UASTC / ETC1S) transcoding; builds the C++ transcoder.
 basis = ["dep:basis-universal"]
 default = ["basis"]
+# Offline texture encoding (KTX2 from images); used by `redox_cook`.
+encode = ["basis"]
 
 [dependencies]
 redox_ecs = { path = "../redox_ecs" }

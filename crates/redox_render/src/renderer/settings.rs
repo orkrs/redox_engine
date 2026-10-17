@@ -29,6 +29,30 @@ impl Renderer {
         }
     }
 
+    /// The Basis Universal target this device handles best: BC7 when the device supports
+    /// block-compressed textures, uncompressed RGBA8 otherwise.
+    pub fn basis_target(&self) -> redox_asset::BasisTarget {
+        if self
+            .device
+            .features()
+            .contains(wgpu::Features::TEXTURE_COMPRESSION_BC)
+        {
+            redox_asset::BasisTarget::Bc7
+        } else {
+            redox_asset::BasisTarget::Rgba8
+        }
+    }
+
+    /// A KTX2 / Basis loader configured for this device. Register it so textures load in a format
+    /// the GPU can use directly:
+    /// `assets.register_loader::<Ktx2Texture, _>(renderer.ktx2_loader())`.
+    pub fn ktx2_loader(&self) -> redox_asset::Ktx2Loader {
+        redox_asset::Ktx2Loader::with_options(redox_asset::LoadOptions {
+            basis_target: self.basis_target(),
+            srgb: true,
+        })
+    }
+
     /// Sets the linear exposure multiplier used by the ACES tone mapper.
     ///
     /// `1.0` is neutral; larger values brighten the frame. Takes effect on

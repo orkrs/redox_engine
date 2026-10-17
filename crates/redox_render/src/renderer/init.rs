@@ -47,6 +47,8 @@ impl Renderer {
             required_features |= wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
         }
         required_features |= adapter.features() & crate::profiler::PROFILER_FEATURES;
+        // Block-compressed (BC1-BC7) textures from KTX2 and Basis files.
+        required_features |= adapter.features() & wgpu::Features::TEXTURE_COMPRESSION_BC;
         // Lets pipelines be cached on disk between runs (Vulkan).
         required_features |= adapter.features() & wgpu::Features::PIPELINE_CACHE;
         let (device, queue) = adapter

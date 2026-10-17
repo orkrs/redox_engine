@@ -67,6 +67,8 @@ pub fn is_valid_entry_name(name: &str) -> bool {
 #[derive(Debug, Default)]
 pub struct PakWriter {
     entries: BTreeMap<String, Vec<u8>>,
+    /// Entries that must never be compressed (already compressed, or read in pieces).
+    raw: std::collections::BTreeSet<String>,
     compress: bool,
 }
 
@@ -79,6 +81,14 @@ impl PakWriter {
     /// Enables or disables LZ4 compression of entries (off by default).
     pub fn set_compression(&mut self, enabled: bool) {
         self.compress = enabled;
+    }
+
+    /// Adds an entry that is stored as is even when compression is on (for data that is
+    /// already compressed or that is read in pieces, such as textures).
+    pub fn add_uncompressed(&mut self, name: &str, bytes: Vec<u8>) -> Result<(), PakError> {
+        self.add(name, bytes)?;
+        self.raw.insert(name.to_owned());
+        Ok(())
     }
 
     /// Adds (or replaces) an entry.
@@ -134,8 +144,7 @@ impl PakWriter {
         let mut index = Vec::new();
         for (name, bytes) in &self.entries {
             let offset = HEADER_LEN + data.len() as u64;
-            let packed = self
-                .compress
+            let packed = (self.compress && !self.raw.contains(name))
                 .then(|| lz4_flex::block::compress(bytes))
                 .filter(|c| c.len() < bytes.len());
             let (stored, codec) = match &packed {

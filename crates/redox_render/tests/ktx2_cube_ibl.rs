@@ -203,3 +203,48 @@ fn shared_layouts_bind_every_texture_shape() {
     let error = pollster::block_on(scope.pop());
     assert!(error.is_none(), "validation error: {error:?}");
 }
+
+#[test]
+fn basis_files_load_in_the_best_format_for_the_device_and_upload() {
+    let Some(adapter) = common::adapter() else {
+        eprintln!("no GPU adapter, skipping");
+        return;
+    };
+    let Some(renderer) = common::renderer(&adapter, 32) else {
+        return;
+    };
+    let expected = if renderer
+        .device
+        .features()
+        .contains(wgpu::Features::TEXTURE_COMPRESSION_BC)
+    {
+        redox_asset::BasisTarget::Bc7
+    } else {
+        redox_asset::BasisTarget::Rgba8
+    };
+    assert_eq!(renderer.basis_target(), expected);
+
+    let scope = renderer
+        .device
+        .push_error_scope(wgpu::ErrorFilter::Validation);
+    for file in [
+        &include_bytes!("../../redox_asset/tests/data/rust-logo-etc.basis")[..],
+        &include_bytes!("../../redox_asset/tests/data/rust-logo-uastc.basis")[..],
+    ] {
+        let ktx = renderer.ktx2_loader().load(file).expect("transcodes");
+        let want = if expected == redox_asset::BasisTarget::Bc7 {
+            TextureFormat::Bc7Srgb
+        } else {
+            TextureFormat::Rgba8Srgb
+        };
+        assert_eq!(ktx.format, want);
+        let texture = Texture::from_ktx2(&renderer.device, &renderer.queue, &ktx, "logo")
+            .expect("the device takes the format it asked for");
+        assert_eq!(texture.mip_levels, 7);
+        let _ = renderer
+            .shared_layouts
+            .create_texture_bind_group(&renderer.device, &texture);
+    }
+    let error = pollster::block_on(scope.pop());
+    assert!(error.is_none(), "validation error: {error:?}");
+}

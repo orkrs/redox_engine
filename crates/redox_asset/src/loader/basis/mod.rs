@@ -4,6 +4,8 @@
 //! [`LoadOptions::basis_target`]: BC7/BC3/BC1 for desktop GPUs, or plain RGBA8 anywhere.
 //! Transcoding itself is done by the Basis Universal library (`basis-universal` crate).
 
+#[cfg(feature = "encode")]
+mod encode;
 mod file;
 mod ktx2_bridge;
 
@@ -14,6 +16,8 @@ use basis_universal::{
 use super::ktx2_loader::{Ktx2Texture, TextureFormat};
 use crate::error::AssetError;
 
+#[cfg(feature = "encode")]
+pub use encode::{EncodeMode, EncodeOptions, EncodeShape, encode_basis, encode_ktx2};
 pub use ktx2_bridge::{basis_file_to_ktx2, uastc_dfd};
 pub(crate) use ktx2_bridge::{basislz_to_basis, uastc_to_basis};
 
