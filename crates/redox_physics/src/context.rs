@@ -5,7 +5,7 @@ use redox_ecs::world::World;
 use redox_math::{Quat, Vec3};
 use std::collections::{HashMap, HashSet};
 
-use crate::contacts::ContactEvent;
+use crate::contacts::{ContactEvent, ContactStay};
 use crate::raycast::{RaycastRequest, RaycastResult};
 
 /// Errors of the physics layer.
@@ -58,6 +58,10 @@ pub struct PhysicsContext {
     pub(crate) contact_raw: std::sync::Mutex<Vec<CollisionEvent>>,
     /// Converted contact events waiting for `drain_contact_events`.
     pub(crate) contact_events: Vec<ContactEvent>,
+    /// Entities opted in to `stay` contact reports.
+    pub(crate) contact_stay_entities: HashSet<Entity>,
+    /// `stay` contact reports waiting for `drain_contact_stays`.
+    pub(crate) contact_stays: Vec<ContactStay>,
     /// Joint id bookkeeping and broken-joint events.
     pub(crate) joints: crate::joints::JointBook,
 }
@@ -85,6 +89,8 @@ impl PhysicsContext {
             collision_events: std::sync::Mutex::new(Vec::new()),
             contact_raw: std::sync::Mutex::new(Vec::new()),
             contact_events: Vec::new(),
+            contact_stay_entities: HashSet::new(),
+            contact_stays: Vec::new(),
             joints: Default::default(),
         }
     }
@@ -147,6 +153,7 @@ impl PhysicsContext {
             &sink,
         );
         self.collect_contact_events();
+        self.collect_contact_stays();
         self.break_overloaded_joints(dt);
     }
 

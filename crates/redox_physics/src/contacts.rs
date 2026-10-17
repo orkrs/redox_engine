@@ -3,7 +3,7 @@
 //! Contact events are opt-in per entity (see [`PhysicsContext::set_contact_events`]). Sensor
 //! overlaps are not contacts; they keep flowing through the trigger path.
 
-use rapier3d::geometry::{Collider, ColliderHandle, CollisionEvent, ContactManifold};
+use rapier3d::geometry::{Collider, ColliderHandle, CollisionEvent, ContactManifold, ContactPair};
 use rapier3d::prelude::ActiveEvents;
 use redox_ecs::Entity;
 use redox_math::Vec3;
@@ -41,6 +41,18 @@ pub enum ContactEvent {
     Enter(ContactEnter),
     /// The pair stopped touching.
     Exit(ContactExit),
+}
+
+/// Two solid colliders stayed in contact for one step (opt-in, see
+/// [`PhysicsContext::set_contact_stay`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ContactStay {
+    /// One entity of the pair (order is unspecified).
+    pub a: Entity,
+    /// The other entity of the pair.
+    pub b: Entity,
+    /// Total normal impulse of the pair's contacts in this step.
+    pub impulse: f32,
 }
 
 /// Surface properties applied to every collider of an entity.
@@ -88,6 +100,58 @@ impl PhysicsContext {
     /// Takes all contact events collected since the last call, oldest first.
     pub fn drain_contact_events(&mut self) -> Vec<ContactEvent> {
         std::mem::take(&mut self.contact_events)
+    }
+
+    /// Opts `entity` in or out of per-step [`ContactStay`] reports. Independent of
+    /// [`Self::set_contact_events`]; off by default.
+    ///
+    /// A report is produced for a pair while it touches, when at least one of its entities
+    /// opted in.
+    pub fn set_contact_stay(&mut self, entity: Entity, enabled: bool) -> Result<(), PhysicsError> {
+        self.collider_handles(entity)
+            .ok_or(PhysicsError::EntityNotFound)?;
+        if enabled {
+            self.contact_stay_entities.insert(entity);
+        } else {
+            self.contact_stay_entities.remove(&entity);
+        }
+        Ok(())
+    }
+
+    /// Takes all stay reports collected since the last call, oldest first.
+    pub fn drain_contact_stays(&mut self) -> Vec<ContactStay> {
+        std::mem::take(&mut self.contact_stays)
+    }
+
+    /// Records one [`ContactStay`] for every touching pair with an opted-in entity.
+    ///
+    /// Must run after the pipeline step, like [`Self::collect_contact_events`].
+    pub(crate) fn collect_contact_stays(&mut self) {
+        if self.contact_stay_entities.is_empty() {
+            return;
+        }
+        let stays: Vec<ContactStay> = self
+            .narrow_phase
+            .contact_pairs()
+            .filter_map(|pair| self.stay_of_pair(pair))
+            .collect();
+        self.contact_stays.extend(stays);
+    }
+
+    /// The stay report of `pair`, if it touches and one of its entities opted in.
+    fn stay_of_pair(&self, pair: &ContactPair) -> Option<ContactStay> {
+        if !pair.has_any_active_contact() {
+            return None;
+        }
+        let a = self.entity_of_collider(pair.collider1)?;
+        let b = self.entity_of_collider(pair.collider2)?;
+        let opted_in =
+            self.contact_stay_entities.contains(&a) || self.contact_stay_entities.contains(&b);
+        opted_in.then(|| ContactStay {
+            a,
+            b,
+            impulse: pair.total_impulse_magnitude(),
+        })
     }
 
     /// Sets friction and restitution on every collider of `entity`.

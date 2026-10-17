@@ -25,7 +25,7 @@ pub mod trigger;
 
 pub use character::move_character_controllers;
 pub use components::{CharacterController, Collider, Kinematic, RigidBody, Trigger, Velocity};
-pub use contacts::{ContactEnter, ContactEvent, ContactExit, PhysicsMaterial};
+pub use contacts::{ContactEnter, ContactEvent, ContactExit, ContactStay, PhysicsMaterial};
 pub use context::{PhysicsContext, PhysicsError};
 pub use joints::{JointBroken, JointDesc, JointId, JointKind};
 pub use layer_config::{LayerConfig, LayerConfigError};

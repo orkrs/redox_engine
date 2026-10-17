@@ -150,24 +150,40 @@ fn send_contact_events(world: &mut World, contacts: Vec<crate::contacts::Contact
     }
 }
 
+/// Sends opt-in contact stay reports into the ECS when an `Events<ContactStay>` resource exists.
+fn send_contact_stays(world: &mut World, stays: Vec<crate::contacts::ContactStay>) {
+    if stays.is_empty() {
+        return;
+    }
+    if let Some(events) =
+        world.get_resource_mut::<redox_ecs::Events<crate::contacts::ContactStay>>()
+    {
+        for stay in stays {
+            events.send(stay);
+        }
+    }
+}
+
 /// One physics frame: KCC, Rapier step, trigger + raycast ECS events (no resource removal).
 pub fn tick_physics(world: &mut World, dt: f32) {
     crate::character::move_character_controllers(world, dt);
     step_physics(world, dt);
 
-    let (triggers, raycasts, contacts) = {
+    let (triggers, raycasts, contacts, stays) = {
         if let Some(context) = world.get_resource_mut::<PhysicsContext>() {
             (
                 context.drain_trigger_events(),
                 context.drain_raycast_results(),
                 context.drain_contact_events(),
+                context.drain_contact_stays(),
             )
         } else {
-            (Vec::new(), Vec::new(), Vec::new())
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new())
         }
     };
 
     send_contact_events(world, contacts);
+    send_contact_stays(world, stays);
 
     if !triggers.is_empty() {
         if let Some(events) =
