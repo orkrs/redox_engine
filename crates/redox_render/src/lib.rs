@@ -17,6 +17,8 @@ pub mod frame_graph;
 pub mod gi;
 pub mod light;
 pub mod material;
+/// GPU memory bookkeeping by category (pure accounting, no GPU access).
+pub mod memory_budget;
 pub mod mesh;
 pub mod pass;
 pub mod pipeline_cache;
@@ -46,6 +48,7 @@ pub use light::{
     DirectionalLight, LightScene, LightUniform, LightingMode, PointLight, PointLightGpu, SpotLight,
 };
 pub use material::Material;
+pub use memory_budget::{CategoryUsage, MemoryBudget, MemoryCategory};
 pub use mesh::{Mesh, Vertex};
 pub use profiler::{GpuProfiler, GpuTiming, PROFILER_FEATURES};
 pub use renderer::{Renderer, pick_hdr_msaa_sample_count};
