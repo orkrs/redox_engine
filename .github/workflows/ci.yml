@@ -22,6 +22,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
       - run: python scripts/check_file_sizes.py
+      - run: python scripts/gen_crates_doc.py --check
 
   msrv:
     runs-on: windows-latest
