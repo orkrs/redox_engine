@@ -11,6 +11,8 @@ pub mod context;
 pub mod physics;
 /// Raycast requests and results.
 pub mod raycast;
+/// Shape casts, overlap queries and collision layers.
+pub mod shapes;
 /// ECS to rapier synchronisation and the fixed-step tick.
 pub mod sync;
 pub mod trigger;
@@ -19,5 +21,6 @@ pub use character::move_character_controllers;
 pub use components::{CharacterController, Collider, Kinematic, RigidBody, Trigger, Velocity};
 pub use context::{PhysicsContext, PhysicsError};
 pub use raycast::{RaycastRequest, RaycastResult};
+pub use shapes::{CollisionLayers, QueryShape, ShapeHit};
 pub use sync::{step_physics, sync_from_physics, sync_to_physics, tick_physics};
 pub use trigger::{TriggerEnter, TriggerExit};

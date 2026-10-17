@@ -326,6 +326,28 @@ impl PhysicsContext {
         }
     }
 
+    /// Returns the collider handles attached to the entity's body, if it has one.
+    pub(crate) fn collider_handles(&self, entity: Entity) -> Option<&[ColliderHandle]> {
+        self.entity_to_body
+            .get(&entity)
+            .map(|(_, cols)| cols.as_slice())
+    }
+
+    /// Returns the entity owning the given collider, if it is mapped.
+    pub(crate) fn entity_of_collider(&self, handle: ColliderHandle) -> Option<Entity> {
+        self.collider_to_entity.get(&handle).copied()
+    }
+
+    /// Collects the colliders of every excluded entity, for use in query predicates.
+    pub(crate) fn excluded_colliders(&self, exclude: &[Entity]) -> HashSet<ColliderHandle> {
+        exclude
+            .iter()
+            .filter_map(|e| self.collider_handles(*e))
+            .flatten()
+            .copied()
+            .collect()
+    }
+
     /// Returns iterator over all registered entities and their bodies.
     pub fn active_bodies(&self) -> impl Iterator<Item = (&Entity, &RigidBodyHandle)> {
         self.entity_to_body.iter().map(|(e, (h, _))| (e, h))
@@ -346,11 +368,7 @@ impl PhysicsContext {
         }
         let direction = direction / dir_len;
         let ray = Ray::new(origin, direction);
-        let excluded: HashSet<ColliderHandle> = exclude_entities
-            .iter()
-            .filter_map(|e| self.entity_to_body.get(e))
-            .flat_map(|(_, colliders)| colliders.iter().copied())
-            .collect();
+        let excluded = self.excluded_colliders(exclude_entities);
         let predicate = |handle: ColliderHandle, _: &Collider| !excluded.contains(&handle);
         let filter = QueryFilter::default().predicate(&predicate);
         let (handle, intersection) =
@@ -387,11 +405,7 @@ impl PhysicsContext {
         let direction = to_origin / distance;
         let ray = Ray::new(origin, direction);
 
-        let excluded: HashSet<ColliderHandle> = exclude_entities
-            .iter()
-            .filter_map(|e| self.entity_to_body.get(e))
-            .flat_map(|(_, colliders)| colliders.iter().copied())
-            .collect();
+        let excluded = self.excluded_colliders(exclude_entities);
 
         let predicate = |handle: ColliderHandle, _: &Collider| !excluded.contains(&handle);
         let filter = QueryFilter::default().predicate(&predicate);
