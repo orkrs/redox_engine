@@ -111,7 +111,7 @@ where
     /// Panics if `Q` accesses a component type twice with at least one mutable
     /// access (e.g. `(&mut T, &T)`, `(&mut T, &mut T)`), which would hand out
     /// aliasing references from safe code.
-    fn assert_no_aliasing() {
+    pub(super) fn assert_no_aliasing() {
         let mut seen: Vec<(std::any::TypeId, bool)> = Vec::new();
         Q::for_each_access(&mut |tid, mutable| seen.push((tid, mutable)));
         for (i, &(tid, mutable)) in seen.iter().enumerate() {

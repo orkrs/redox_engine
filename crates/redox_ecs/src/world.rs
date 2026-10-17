@@ -57,6 +57,26 @@ impl World {
         self.change_tick
     }
 
+    /// Runs `f` with a [`Commands`](crate::Commands) recorder and applies everything it
+    /// recorded once `f` returns. Handy for systems that iterate with shared access and
+    /// need to spawn or despawn afterwards.
+    ///
+    /// ```
+    /// # use redox_ecs::World;
+    /// let mut world = World::new();
+    /// let e = world.with_commands(|_world, cmds| cmds.spawn((1u32,)));
+    /// assert_eq!(world.get_component::<u32>(e), Some(&1));
+    /// ```
+    pub fn with_commands<R>(&mut self, f: impl FnOnce(&World, &mut crate::Commands<'_>) -> R) -> R {
+        let mut queue = crate::CommandQueue::new();
+        let result = {
+            let mut commands = crate::Commands::new(self, &mut queue);
+            f(self, &mut commands)
+        };
+        queue.apply(self);
+        result
+    }
+
     /// Reserves a new entity id. It owns no components until some are added.
     pub fn spawn(&mut self) -> Entity {
         self.entities.allocate()

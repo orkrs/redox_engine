@@ -6,12 +6,14 @@
 //! on `Q` statically forbids mutable fetches from being distributed across
 //! threads.
 
+use super::QueryData;
 use super::iter::Query;
 use super::{NullFilter, QueryFilter, ReadOnlyQueryData, TickCtx};
 use crate::archetype::Archetype;
 use crate::world::World;
 use rayon::iter::plumbing::UnindexedConsumer;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::slice::ParallelSlice;
 use std::marker::PhantomData;
 
 // ---------------------------------------------------------------------------
@@ -143,5 +145,76 @@ where
             // create shared references and nothing can mutate the data meanwhile.
             return Some(unsafe { Q::fetch(self.arch, row) });
         }
+    }
+}
+
+/// Rows handed to one Rayon task by [`Query::par_for_each_mut`].
+const PAR_MUT_CHUNK: usize = 2048;
+
+impl<Q, F> Query<Q, F>
+where
+    Q: QueryData,
+    F: QueryFilter,
+{
+    /// Calls `f` for every matching entity, in parallel, with mutable access.
+    ///
+    /// Work is split by archetype and, inside an archetype, into chunks of rows, so a
+    /// single large archetype is processed by many threads. Like
+    /// [`Query::iter_mut`], this takes the world exclusively, rejects queries that
+    /// alias a component mutably, and stamps the change tick of every mutated
+    /// component on the visited rows (before `f` runs).
+    ///
+    /// # Panics
+    /// If `Q` accesses the same component twice with at least one mutable access.
+    pub fn par_for_each_mut<'w>(&self, world: &'w mut World, f: impl Fn(Q::Item<'w>) + Send + Sync)
+    where
+        Q::Item<'w>: Send,
+    {
+        Self::assert_no_aliasing();
+        let ctx = TickCtx {
+            frame_tick: world.frame_tick,
+        };
+        let stamp_tick = world.next_tick();
+        let archetypes: &'w mut [Archetype] = &mut world.archetypes[..];
+
+        // Sequential pre-pass: evaluate row filters against the *old* ticks, then stamp.
+        let mut work: Vec<(usize, Vec<u32>)> = Vec::new();
+        for (idx, arch) in archetypes.iter_mut().enumerate() {
+            if !Q::matches(arch) || !F::matches(arch, ctx) {
+                continue;
+            }
+            let rows: Vec<u32> = (0..arch.table.row_count())
+                .filter(|&row| F::row_matches(arch, row, ctx))
+                .map(|row| row as u32)
+                .collect();
+            if rows.is_empty() {
+                continue;
+            }
+            Q::for_each_mutated(&mut |tid| {
+                if let Some(col) = arch.table.column_mut(tid) {
+                    for &row in &rows {
+                        col.set_tick(row as usize, stamp_tick);
+                    }
+                }
+            });
+            work.push((idx, rows));
+        }
+
+        let archetypes: &'w [Archetype] = archetypes;
+        work.par_iter().for_each(|(idx, rows)| {
+            let arch = &archetypes[*idx];
+            rows.par_chunks(PAR_MUT_CHUNK).for_each(|chunk| {
+                for &row in chunk {
+                    // SAFETY: `arch` satisfies `Q::matches` and every `row` is below
+                    // its row count. The world is borrowed exclusively for `'w`, rows
+                    // are unique (each appears once in exactly one chunk), and
+                    // `assert_no_aliasing` guarantees no component is fetched mutably
+                    // twice per row, so the yielded `&mut` references are disjoint
+                    // across threads and rows.
+                    let item = unsafe { Q::fetch(arch, row as usize) };
+                    f(item);
+                }
+            });
+        });
     }
 }

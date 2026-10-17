@@ -82,6 +82,124 @@ impl SystemMeta {
     }
 }
 
+/// Optional label and ordering constraints of one system inside its stage.
+///
+/// Systems without constraints keep their registration order. A constraint names the
+/// label of another system of the same stage: `after("physics")` runs behind it,
+/// `before("render")` runs ahead of it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SystemOrder {
+    /// Name other systems can refer to.
+    pub label: Option<&'static str>,
+    /// Labels of systems this one must run before.
+    pub before: Vec<&'static str>,
+    /// Labels of systems this one must run after.
+    pub after: Vec<&'static str>,
+}
+
+impl SystemOrder {
+    /// No label and no constraints.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Names the system.
+    pub fn label(mut self, label: &'static str) -> Self {
+        self.label = Some(label);
+        self
+    }
+
+    /// Requires this system to run before the one labelled `label`.
+    pub fn before(mut self, label: &'static str) -> Self {
+        self.before.push(label);
+        self
+    }
+
+    /// Requires this system to run after the one labelled `label`.
+    pub fn after(mut self, label: &'static str) -> Self {
+        self.after.push(label);
+        self
+    }
+}
+
+/// The ordering constraints of a stage contain a cycle.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OrderCycle {
+    /// Labels (or `#index` for unlabelled systems) of the systems that could not be placed.
+    pub involved: Vec<String>,
+}
+
+impl std::fmt::Display for OrderCycle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "system ordering cycle among: {}",
+            self.involved.join(", ")
+        )
+    }
+}
+
+impl std::error::Error for OrderCycle {}
+
+/// Computes the execution order (a permutation of `0..orders.len()`) that satisfies all
+/// `before`/`after` constraints. Among systems that are free to run, the one registered
+/// first goes first, so unconstrained systems keep their registration order. Constraints
+/// that name an unknown label are ignored.
+pub fn resolve_system_order(orders: &[SystemOrder]) -> Result<Vec<usize>, OrderCycle> {
+    let n = orders.len();
+    let by_label: HashMap<&str, usize> = orders
+        .iter()
+        .enumerate()
+        .filter_map(|(i, o)| o.label.map(|l| (l, i)))
+        .collect();
+    let mut indegree = vec![0usize; n];
+    let mut edges: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut add_edge = |from: usize, to: usize| {
+        if from != to && !edges[from].contains(&to) {
+            edges[from].push(to);
+            indegree[to] += 1;
+        }
+    };
+    for (i, o) in orders.iter().enumerate() {
+        for l in &o.after {
+            if let Some(&j) = by_label.get(l) {
+                add_edge(j, i);
+            }
+        }
+        for l in &o.before {
+            if let Some(&j) = by_label.get(l) {
+                add_edge(i, j);
+            }
+        }
+    }
+    let mut ready: std::collections::BTreeSet<usize> =
+        (0..n).filter(|&i| indegree[i] == 0).collect();
+    let mut out = Vec::with_capacity(n);
+    while let Some(i) = ready.pop_first() {
+        out.push(i);
+        for &next in &edges[i] {
+            indegree[next] -= 1;
+            if indegree[next] == 0 {
+                ready.insert(next);
+            }
+        }
+    }
+    if out.len() == n {
+        return Ok(out);
+    }
+    let placed: HashSet<usize> = out.into_iter().collect();
+    Err(OrderCycle {
+        involved: (0..n)
+            .filter(|i| !placed.contains(i))
+            .map(|i| {
+                orders[i]
+                    .label
+                    .map_or_else(|| format!("#{i}"), str::to_owned)
+            })
+            .collect(),
+    })
+}
+
 enum SystemSlot<Context> {
     Sequential(Box<dyn FnMut(&mut World, &mut Context)>),
     Parallel {
@@ -95,6 +213,10 @@ enum SystemSlot<Context> {
 /// Generic over `Context` (usually `RenderContext`).
 pub struct Dispatcher<Context> {
     systems: HashMap<Stage, Vec<SystemSlot<Context>>>,
+    /// Ordering constraints, kept in lockstep with `systems` (same stage, same index).
+    orders: HashMap<Stage, Vec<SystemOrder>>,
+    /// Set when systems were added since the stage orders were last resolved.
+    order_dirty: bool,
     /// Per-frame maintenance hooks (e.g. `Events::update` for registered event types).
     frame_end_hooks: Vec<Box<dyn FnMut(&mut World)>>,
 }
@@ -169,6 +291,8 @@ where
     pub fn new() -> Self {
         Self {
             systems: HashMap::new(),
+            orders: HashMap::new(),
+            order_dirty: false,
             frame_end_hooks: Vec::new(),
         }
     }
@@ -178,10 +302,36 @@ where
     where
         F: FnMut(&mut World, &mut Context) + 'static,
     {
+        self.add_system_ordered(stage, SystemOrder::new(), system);
+    }
+
+    /// Registers a sequential system with a label and/or ordering constraints.
+    pub fn add_system_ordered<F>(&mut self, stage: Stage, order: SystemOrder, system: F)
+    where
+        F: FnMut(&mut World, &mut Context) + 'static,
+    {
         self.systems
             .entry(stage)
             .or_default()
             .push(SystemSlot::Sequential(Box::new(system)));
+        self.orders.entry(stage).or_default().push(order);
+        self.order_dirty = true;
+    }
+
+    /// Registers a sequential system that only runs while `condition` returns true.
+    ///
+    /// The condition is evaluated every frame (every fixed step for
+    /// [`Stage::PhysicsSync`]) right before the system.
+    pub fn add_system_if<C, F>(&mut self, stage: Stage, condition: C, mut system: F)
+    where
+        C: Fn(&World, &Context) -> bool + 'static,
+        F: FnMut(&mut World, &mut Context) + 'static,
+    {
+        self.add_system(stage, move |world, context| {
+            if condition(world, context) {
+                system(world, context);
+            }
+        });
     }
 
     /// Registers a parallel-safe system with explicit access metadata.
@@ -199,6 +349,43 @@ where
                 meta,
                 func: Arc::new(system),
             });
+        self.orders
+            .entry(stage)
+            .or_default()
+            .push(SystemOrder::new());
+        self.order_dirty = true;
+    }
+
+    /// Re-sorts every stage according to its ordering constraints. Called automatically
+    /// by [`Self::run`]; a cycle is logged and that stage keeps its registration order.
+    pub fn resolve_orders(&mut self) {
+        if !self.order_dirty {
+            return;
+        }
+        self.order_dirty = false;
+        for (stage, orders) in self.orders.iter_mut() {
+            if orders.iter().all(|o| *o == SystemOrder::default()) {
+                continue;
+            }
+            let order = match resolve_system_order(orders) {
+                Ok(order) => order,
+                Err(cycle) => {
+                    log::error!("{stage:?}: {cycle}; keeping registration order");
+                    continue;
+                }
+            };
+            let Some(slots) = self.systems.get_mut(stage) else {
+                continue;
+            };
+            let mut taken_slots: Vec<Option<SystemSlot<Context>>> =
+                std::mem::take(slots).into_iter().map(Some).collect();
+            let mut taken_orders: Vec<Option<SystemOrder>> =
+                std::mem::take(orders).into_iter().map(Some).collect();
+            for i in order {
+                slots.extend(taken_slots[i].take());
+                orders.extend(taken_orders[i].take());
+            }
+        }
     }
 
     /// Register several independent sim systems (Physics / Audio / AI) on
@@ -290,6 +477,7 @@ where
 
     /// Runs all registered systems in order.
     pub fn run(&mut self, world: &mut World, context: &mut Context) {
+        self.resolve_orders();
         world.begin_frame();
 
         let stages_in_order = [
@@ -352,6 +540,60 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn labelled(label: &'static str) -> SystemOrder {
+        SystemOrder::new().label(label)
+    }
+
+    #[test]
+    fn unconstrained_systems_keep_registration_order() {
+        let orders = vec![SystemOrder::new(); 4];
+        assert_eq!(resolve_system_order(&orders).unwrap(), vec![0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn after_and_before_move_systems() {
+        let orders = vec![
+            labelled("a").after("c"),
+            labelled("b"),
+            labelled("c"),
+            labelled("d").before("b"),
+        ];
+        let order = resolve_system_order(&orders).unwrap();
+        let pos = |i: usize| order.iter().position(|&x| x == i).unwrap();
+        assert!(pos(2) < pos(0), "c before a");
+        assert!(pos(3) < pos(1), "d before b");
+    }
+
+    #[test]
+    fn unknown_labels_are_ignored() {
+        let orders = vec![labelled("a").after("missing"), labelled("b")];
+        assert_eq!(resolve_system_order(&orders).unwrap(), vec![0, 1]);
+    }
+
+    #[test]
+    fn cycles_are_reported() {
+        let orders = vec![labelled("a").after("b"), labelled("b").after("a")];
+        let err = resolve_system_order(&orders).unwrap_err();
+        assert_eq!(err.involved, vec!["a".to_string(), "b".to_string()]);
+        assert!(err.to_string().contains("cycle"));
+    }
+
+    #[test]
+    fn dispatcher_runs_ordered_systems_and_skips_false_conditions() {
+        let mut dispatcher: Dispatcher<Vec<&'static str>> = Dispatcher::new();
+        dispatcher.add_system_ordered(Stage::Update, labelled("late").after("early"), |_, log| {
+            log.push("late")
+        });
+        dispatcher.add_system_ordered(Stage::Update, labelled("early"), |_, log| log.push("early"));
+        dispatcher.add_system_if(Stage::Update, |_, _| false, |_, log| log.push("skipped"));
+        dispatcher.add_system_if(Stage::Update, |_, _| true, |_, log| log.push("ran"));
+
+        let mut world = World::new();
+        let mut log = Vec::new();
+        dispatcher.run(&mut world, &mut log);
+        assert_eq!(log, vec!["early", "late", "ran"]);
+    }
 
     #[test]
     fn access_compatible_disjoint_writes() {
