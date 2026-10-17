@@ -30,6 +30,8 @@ too_many_arguments = "allow"
 type_complexity = "allow"
 field_reassign_with_default = "allow"
 new_ret_no_self = "allow"
+# Library code returns errors instead of panicking on external input.
+unwrap_used = "warn"
 
 [profile.release]
 opt-level = 3

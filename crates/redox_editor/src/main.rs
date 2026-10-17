@@ -35,7 +35,8 @@ fn main() {
     env_logger::init();
     log::info!("RedOx Studio Editor starting...");
 
-    let event_loop = winit::event_loop::EventLoop::new().unwrap();
+    let event_loop =
+        winit::event_loop::EventLoop::new().expect("failed to create the winit event loop");
     let window = Arc::new(
         #[allow(deprecated)]
         event_loop
@@ -44,7 +45,7 @@ fn main() {
                     .with_title("RedOx Studio — Editor")
                     .with_inner_size(winit::dpi::LogicalSize::new(1600, 900)),
             )
-            .unwrap(),
+            .expect("failed to create the editor window"),
     );
 
     let mut app = app::EditorApp::new(window, &cli);

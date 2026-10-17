@@ -311,7 +311,10 @@ impl EditorApp {
 
     /// Resize the RTT to last frame's dock viewport rect; re-register the egui texture.
     fn resize_viewport_target(&mut self) {
-        let renderer = self.egui_renderer.as_mut().unwrap();
+        let renderer = self
+            .egui_renderer
+            .as_mut()
+            .expect("ensure_gpu() created the egui renderer earlier in this frame");
         if let (Some(host), Some(rect)) = (self.render_host.as_mut(), *self.viewport_rect.lock()) {
             let ppp = self.window.scale_factor() as f32;
             let w = (rect.width() * ppp).round().max(1.0) as u32;
@@ -485,14 +488,23 @@ impl EditorApp {
     }
 
     fn present(&mut self, full_output: egui::FullOutput) {
-        let gpu = self.shared_gpu.as_ref().unwrap();
+        let gpu = self
+            .shared_gpu
+            .as_ref()
+            .expect("ensure_gpu() created the GPU earlier in this frame");
         let surf = &gpu.surface;
         let cfg = &gpu.config;
-        let renderer = self.egui_renderer.as_mut().unwrap();
+        let renderer = self
+            .egui_renderer
+            .as_mut()
+            .expect("ensure_gpu() created the egui renderer earlier in this frame");
         self.egui_winit
             .handle_platform_output(&self.window, full_output.platform_output);
 
-        let host = self.render_host.as_ref().unwrap();
+        let host = self
+            .render_host
+            .as_ref()
+            .expect("ensure_gpu() created the render host earlier in this frame");
         let dev = host.device();
         let que = host.queue();
 

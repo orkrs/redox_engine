@@ -102,7 +102,7 @@ impl StatsPanel {
         }
         let mut sorted: Vec<f32> = self.frame_times.iter().copied().collect();
         // Sort descending by frame time (worst frames first).
-        sorted.sort_by(|a, b| b.partial_cmp(a).unwrap());
+        sorted.sort_by(|a, b| b.total_cmp(a));
 
         // How many frames constitute the given percentile (at least 1).
         let count = ((sorted.len() as f32 * percentile / 100.0).ceil() as usize).max(1);

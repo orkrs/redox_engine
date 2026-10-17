@@ -147,7 +147,7 @@ pub fn occlusion_raycast_system(world: &mut World) {
     if use_physics {
         let physics = world
             .get_resource::<redox_physics::PhysicsContext>()
-            .unwrap();
+            .expect("use_physics was computed from the presence of this resource");
         for (entity, emitter_pos) in &emitters {
             let mut exclude = vec![*entity];
             if let Some(le) = listener_entity {

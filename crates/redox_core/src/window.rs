@@ -9,7 +9,7 @@ use crate::config::EngineConfig;
 
 /// Creates an event loop and a configured winit window.
 pub fn create_window(config: &EngineConfig) -> (EventLoop<()>, Arc<Window>) {
-    let event_loop = EventLoop::new().unwrap();
+    let event_loop = EventLoop::new().expect("failed to create the winit event loop");
     let mut builder = Window::default_attributes()
         .with_title(config.window_title.clone())
         .with_inner_size(LogicalSize::new(

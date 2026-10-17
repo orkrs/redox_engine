@@ -14,6 +14,8 @@
 //!              renders three fixed frames and compares them with the stored images (exit code
 //!              1 on a mismatch); add `--update-golden` to rewrite the references.
 
+// Demo code: panicking on setup failure is acceptable here.
+#![allow(clippy::unwrap_used)]
 // winit 0.30 deprecates the closure event loop; migrating to `ApplicationHandler` is tracked in the roadmap.
 #![allow(deprecated)]
 

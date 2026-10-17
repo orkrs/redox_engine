@@ -232,7 +232,10 @@ pub(super) fn create_bloom_mip_chain(
         textures.push(tex);
         views.push(view);
     }
-    (textures.try_into().unwrap(), views.try_into().unwrap())
+    (
+        textures.try_into().expect("one texture per array slot"),
+        views.try_into().expect("one view per array slot"),
+    )
 }
 
 pub(super) fn create_bloom_downsample_bgs(
@@ -248,7 +251,7 @@ pub(super) fn create_bloom_downsample_bgs(
         let src = if i == 0 { hdr_view } else { &mip_views[i - 1] };
         bgs.push(bloom_pass.create_bind_group(device, src, sampler));
     }
-    bgs.try_into().unwrap()
+    bgs.try_into().expect("one bind group per array slot")
 }
 
 pub(super) fn create_bloom_upsample_bgs(
@@ -263,5 +266,5 @@ pub(super) fn create_bloom_upsample_bgs(
         // Upsample reads the coarser mip (i+1) into mip i.
         bgs.push(bloom_pass.create_bind_group(device, &mip_views[i + 1], sampler));
     }
-    bgs.try_into().unwrap()
+    bgs.try_into().expect("one bind group per array slot")
 }

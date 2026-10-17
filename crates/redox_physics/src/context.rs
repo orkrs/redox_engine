@@ -75,7 +75,10 @@ impl PhysicsContext {
                 event: CollisionEvent,
                 _pair: Option<&ContactPair>,
             ) {
-                self.buf.lock().unwrap().push(event);
+                self.buf
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .push(event);
             }
             fn handle_contact_force_event(
                 &self,
@@ -111,7 +114,12 @@ impl PhysicsContext {
 
     /// Drains and maps Rapier collision events without requiring a World borrow.
     pub fn drain_trigger_events(&mut self) -> Vec<(bool, crate::trigger::TriggerEnter)> {
-        let raw: Vec<CollisionEvent> = self.collision_events.lock().unwrap().drain(..).collect();
+        let raw: Vec<CollisionEvent> = self
+            .collision_events
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .drain(..)
+            .collect();
         raw.into_iter()
             .filter_map(|event| {
                 crate::trigger::map_collision_event(

@@ -5,6 +5,9 @@
 //! Run: `cargo run -p redox_core --example dino_runner --release`
 //! Space / W / Up — jump · R — restart after crash
 
+// Demo code: panicking on setup failure is acceptable here.
+#![allow(clippy::unwrap_used)]
+
 use std::f32::consts::TAU;
 use std::sync::Arc;
 

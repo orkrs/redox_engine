@@ -179,12 +179,13 @@ impl Column {
         let (new_cap, new_layout) = if self.cap == 0 {
             (
                 8,
-                Layout::from_size_align(8 * self.info.size, self.info.align).unwrap(),
+                Layout::from_size_align(8 * self.info.size, self.info.align)
+                    .expect("column layout comes from a Rust type and is always valid"),
             )
         } else {
             let new_cap = self.cap * 2;
-            let new_layout =
-                Layout::from_size_align(new_cap * self.info.size, self.info.align).unwrap();
+            let new_layout = Layout::from_size_align(new_cap * self.info.size, self.info.align)
+                .expect("grown column layout stays below isize::MAX");
             (new_cap, new_layout)
         };
 
@@ -198,7 +199,8 @@ impl Column {
                 alloc::alloc(new_layout)
             } else {
                 let old_layout =
-                    Layout::from_size_align(self.cap * self.info.size, self.info.align).unwrap();
+                    Layout::from_size_align(self.cap * self.info.size, self.info.align)
+                        .expect("existing column layout was valid when allocated");
                 alloc::realloc(self.data.as_ptr(), old_layout, new_layout.size())
             }
         };
@@ -246,8 +248,8 @@ impl Drop for Column {
             }
         }
         if self.cap > 0 {
-            let layout =
-                Layout::from_size_align(self.cap * self.info.size, self.info.align).unwrap();
+            let layout = Layout::from_size_align(self.cap * self.info.size, self.info.align)
+                .expect("existing column layout was valid when allocated");
             // SAFETY: `cap > 0` implies `data` was allocated by the global allocator with
             // size `cap * size` and alignment `align`, matching `layout`; it is freed
             // once, here. (`cap > 0` only occurs when `size > 0`.)

@@ -71,7 +71,7 @@ impl GizmoState {
                 if dist < 1.5 {
                     // within gizmo length
                     let score = (hit - ray_origin).length();
-                    if best.is_none() || score < best.unwrap().1 {
+                    if best.is_none_or(|b| score < b.1) {
                         best = Some((axis, score));
                     }
                 }

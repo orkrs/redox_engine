@@ -211,7 +211,7 @@ impl AppBuilder {
                     _ => {}
                 }
             })
-            .unwrap();
+            .expect("winit event loop terminated with an error");
 
         std::process::exit(0)
     }

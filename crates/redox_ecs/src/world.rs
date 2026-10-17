@@ -72,7 +72,10 @@ impl World {
         // `entity_locations`, which is kept in sync with the table, so it is `< len`.
         // The `&self` borrow prevents any `&mut` access for the returned lifetime.
         unsafe {
-            let col = arch.table.columns.get(&type_id).unwrap();
+            let col =
+                arch.table.columns.get(&type_id).expect(
+                    "archetype of a located entity has a column for each of its components",
+                );
             Some(&*(col.get(row) as *const T))
         }
     }
@@ -89,7 +92,10 @@ impl World {
         // `&mut self` borrow guarantees the returned `&mut T` is the only live
         // reference to that element.
         unsafe {
-            let col = arch.table.columns.get_mut(&type_id).unwrap();
+            let col =
+                arch.table.columns.get_mut(&type_id).expect(
+                    "archetype of a located entity has a column for each of its components",
+                );
             col.set_tick(row, tick);
             Some(&mut *(col.get(row) as *mut T))
         }
@@ -233,7 +239,7 @@ impl World {
                     let src_ptr = old_arch
                         .table
                         .get_component_ptr(info.type_id, old_row)
-                        .unwrap();
+                        .expect("the old archetype holds every component being migrated");
                     new_arch
                         .table
                         .push_component_raw(info.type_id, src_ptr, tick);

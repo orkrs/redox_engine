@@ -262,7 +262,7 @@ impl VgGpuCull {
         let mapped = slice
             .get_mapped_range()
             .expect("buffer was mapped before reading");
-        let count = u32::from_le_bytes(mapped[0..4].try_into().unwrap());
+        let count = u32::from_le_bytes(mapped[0..4].try_into().expect("slice is exactly 4 bytes"));
         drop(mapped);
         self.count_staging.unmap();
         indirect.count = count.min(indirect.capacity as u32);
@@ -310,7 +310,7 @@ impl VgGpuCull {
             let mapped = slice
                 .get_mapped_range()
                 .expect("buffer was mapped before reading");
-            u32::from_le_bytes(mapped[0..4].try_into().unwrap())
+            u32::from_le_bytes(mapped[0..4].try_into().expect("slice is exactly 4 bytes"))
         });
 
         let capped = count.min(indirect.capacity as u32);

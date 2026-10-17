@@ -8,6 +8,8 @@
 //! WASD orbit · Q/E height · Arrows orbit sun · 1 shadows off · 2 VSM ·
 //! 3 toggle point shadows · Space pause · R reset · ESC quit
 
+// Demo code: panicking on setup failure is acceptable here.
+#![allow(clippy::unwrap_used)]
 // winit 0.30 deprecates the closure event loop; migrating to `ApplicationHandler` is tracked in the roadmap.
 #![allow(deprecated)]
 
