@@ -17,14 +17,20 @@ use crate::{PartitionCell, SceneResult};
 /// Marker on every entity spawned from a streamed cell.
 #[derive(Clone, Debug)]
 pub struct StreamedActor {
+    /// Cell the actor was loaded from.
     pub cell: PartitionCell,
+    /// Actor id from its file.
     pub id: String,
+    /// Actor kind from its file.
     pub kind: String,
 }
 
+/// Per-tick limit on streaming work.
 #[derive(Clone, Copy, Debug)]
 pub struct StreamingBudget {
+    /// Cells loaded per tick at most.
     pub max_loads: usize,
+    /// Cells unloaded per tick at most.
     pub max_unloads: usize,
 }
 
@@ -37,12 +43,14 @@ impl Default for StreamingBudget {
     }
 }
 
+/// Radii and budget of the streamer.
 #[derive(Clone, Copy, Debug)]
 pub struct StreamingConfig {
     /// Chebyshev radius (in cells) that must be resident.
     pub load_radius: i32,
     /// Unload only outside this radius (`>= load_radius`).
     pub unload_radius: i32,
+    /// Work limits per tick.
     pub budget: StreamingBudget,
 }
 
@@ -56,11 +64,16 @@ impl Default for StreamingConfig {
     }
 }
 
+/// What one streaming tick did.
 #[derive(Clone, Debug, Default)]
 pub struct StreamingReport {
+    /// Cells loaded this tick.
     pub loaded: Vec<PartitionCell>,
+    /// Cells unloaded this tick.
     pub unloaded: Vec<PartitionCell>,
+    /// Cells reloaded because their files changed.
     pub reloaded: Vec<PartitionCell>,
+    /// Number of files written back.
     pub written: usize,
 }
 
@@ -71,8 +84,11 @@ struct LoadedCell {
 
 /// Runtime streamer. Call [`WorldPartition::tick`] (or [`tick_streaming`]) each frame.
 pub struct WorldPartition {
+    /// World root directory (empty for in-memory worlds).
     pub root: PathBuf,
+    /// Manifest of the world.
     pub manifest: WorldManifest,
+    /// Streaming parameters.
     pub config: StreamingConfig,
     catalog: HashSet<PartitionCell>,
     loaded: HashMap<PartitionCell, LoadedCell>,
@@ -81,6 +97,7 @@ pub struct WorldPartition {
 }
 
 impl WorldPartition {
+    /// Opens a world from its root directory.
     pub fn open(root: impl AsRef<Path>) -> SceneResult<Self> {
         let root = root.as_ref().to_path_buf();
         let manifest = load_manifest(&root)?;
@@ -95,6 +112,7 @@ impl WorldPartition {
         })
     }
 
+    /// Creates a world from in-memory cells (tests and generated worlds).
     pub fn in_memory(
         cell_size: f32,
         origin: [f32; 3],
@@ -114,10 +132,12 @@ impl WorldPartition {
         }
     }
 
+    /// Edge length of a cell.
     pub fn cell_size(&self) -> f32 {
         self.manifest.cell_size
     }
 
+    /// Cell containing a world position.
     pub fn cell_at(&self, world_pos: Vec3) -> PartitionCell {
         PartitionCell::from_world(
             self.manifest.cell_size,
@@ -126,14 +146,17 @@ impl WorldPartition {
         )
     }
 
+    /// Whether the cell is currently loaded.
     pub fn is_loaded(&self, cell: PartitionCell) -> bool {
         self.loaded.contains_key(&cell)
     }
 
+    /// Iterates over the loaded cells.
     pub fn loaded_cells(&self) -> impl Iterator<Item = PartitionCell> + '_ {
         self.loaded.keys().copied()
     }
 
+    /// Number of entities in all loaded cells.
     pub fn loaded_entity_count(&self) -> usize {
         self.loaded.values().map(|c| c.entities.len()).sum()
     }

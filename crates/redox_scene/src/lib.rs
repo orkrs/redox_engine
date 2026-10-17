@@ -1,3 +1,8 @@
+//! World data for streaming: the one-file-per-actor (OFPA) on-disk layout, the `WorldPartition`
+//! runtime streamer and deterministic procedural generation.
+
+#![warn(missing_docs)]
+
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::fmt;
@@ -23,14 +28,21 @@ pub use partition::{
 pub use pcg::{GeneratedWorld, PcgKind, PcgParams, generate, generate_to};
 pub use redox_reflect::{EntitySnapshot, ReflectValue, TypeRegistry, WorldSnapshot};
 
+/// Result type of the scene crate.
 pub type SceneResult<T> = Result<T, SceneError>;
 
+/// Errors from reading or writing world files.
 #[derive(Debug)]
 pub enum SceneError {
+    /// File-system error.
     Io(io::Error),
+    /// RON serialization error.
     Ron(ron::Error),
+    /// RON parse error with a source position.
     RonSpanned(ron::error::SpannedError),
+    /// The world has no `world.ron` manifest (path attached).
     MissingManifest(String),
+    /// A cell directory or file is malformed (message attached).
     InvalidCell(String),
 }
 
@@ -70,16 +82,21 @@ pub struct ComponentRegistry {
     entries: HashMap<TypeId, ComponentRegistryEntry>,
 }
 
+/// Registered component type with its runtime metadata.
 #[derive(Debug, Clone)]
 pub struct ComponentRegistryEntry {
+    /// Rust type name.
     pub type_name: &'static str,
+    /// ECS metadata (size, alignment, drop glue).
     pub info: ComponentInfo,
 }
 
 impl ComponentRegistry {
+    /// Creates an empty registry.
     pub fn new() -> Self {
         Self::default()
     }
+    /// Registers component type `T`.
     pub fn register<T: redox_ecs::Component + 'static>(&mut self) {
         self.entries.insert(
             TypeId::of::<T>(),
@@ -89,9 +106,11 @@ impl ComponentRegistry {
             },
         );
     }
+    /// Looks up an entry by type id.
     pub fn get(&self, type_id: TypeId) -> Option<&ComponentRegistryEntry> {
         self.entries.get(&type_id)
     }
+    /// Iterates over all registered components.
     pub fn iter(&self) -> impl Iterator<Item = (&TypeId, &ComponentRegistryEntry)> {
         self.entries.iter()
     }
@@ -117,17 +136,21 @@ impl ComponentRegistry {
 /// World-space partition cell identifier (XZ grid, Y unused).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PartitionCell {
+    /// Column of the cell along X.
     pub x: i32,
+    /// Row of the cell along Z.
     pub y: i32,
 }
 
 impl PartitionCell {
+    /// Cell containing the world position `pos` for a grid of `cell_size` anchored at `origin`.
     pub fn from_world(cell_size: f32, origin: [f32; 3], pos: [f32; 3]) -> Self {
         let size = cell_size.max(1e-4);
         let x = ((pos[0] - origin[0]) / size).floor() as i32;
         let y = ((pos[2] - origin[2]) / size).floor() as i32;
         Self { x, y }
     }
+    /// Cell containing `pos` for a grid anchored at the world origin.
     pub fn from_world_pos(pos: redox_math::Vec3, cell_size: f32) -> Self {
         Self::from_world(cell_size, [0.0; 3], pos.to_array())
     }

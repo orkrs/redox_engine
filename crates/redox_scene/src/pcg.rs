@@ -5,13 +5,17 @@ use crate::{PartitionCell, SceneResult};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+/// Kind of generated world.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PcgKind {
+    /// A filled rectangle of cells.
     Arena,
+    /// A seed-dependent layout of occupied cells.
     Dungeon,
 }
 
 impl PcgKind {
+    /// Parses `"arena"` or `"dungeon"`.
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "arena" => Some(Self::Arena),
@@ -21,13 +25,20 @@ impl PcgKind {
     }
 }
 
+/// Parameters of world generation.
 #[derive(Clone, Debug)]
 pub struct PcgParams {
+    /// Name written to the manifest.
     pub name: String,
+    /// Kind of world.
     pub kind: PcgKind,
+    /// Grid width in cells.
     pub width: i32,
+    /// Grid height in cells.
     pub height: i32,
+    /// Cell edge length in world units.
     pub cell_size: f32,
+    /// Seed; the same seed gives the same world.
     pub seed: u64,
 }
 
@@ -44,12 +55,16 @@ impl Default for PcgParams {
     }
 }
 
+/// A generated world, not yet written to disk.
 pub struct GeneratedWorld {
+    /// Manifest describing the cells.
     pub manifest: WorldManifest,
+    /// Actors per cell.
     pub cells: Vec<(PartitionCell, Vec<ActorRecord>)>,
 }
 
 impl GeneratedWorld {
+    /// Writes the manifest and all cells under `root`.
     pub fn write(&self, root: impl AsRef<Path>) -> SceneResult<()> {
         write_world(root, self.manifest.clone(), &self.cells)
     }
@@ -64,6 +79,7 @@ pub fn cell_seed(world_seed: u64, cell: PartitionCell) -> u64 {
     )
 }
 
+/// Generates a world deterministically from the parameters.
 pub fn generate(params: &PcgParams) -> GeneratedWorld {
     let occupied = match params.kind {
         PcgKind::Arena => arena_cells(params.width, params.height),

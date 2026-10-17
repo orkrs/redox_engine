@@ -8,7 +8,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{PartitionCell, SceneResult};
 
+/// Directory under the world root that holds the cells.
 pub const CELLS_DIR: &str = "cells";
+/// Name of the manifest file.
 pub const WORLD_FILE: &str = "world.ron";
 
 fn default_schema_version() -> u32 {
@@ -18,16 +20,23 @@ fn default_schema_version() -> u32 {
 /// On-disk world header (`world.ron`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WorldManifest {
+    /// Schema version of the file (defaults to 1 when absent).
     #[serde(default = "default_schema_version")]
     pub version: u32,
+    /// Display name of the world.
     pub name: String,
+    /// Edge length of a cell in world units.
     pub cell_size: f32,
+    /// World position of the grid origin.
     pub origin: [f32; 3],
+    /// Seed used to generate the world.
     pub seed: u64,
+    /// Cells that exist on disk.
     pub cells: Vec<PartitionCell>,
 }
 
 impl WorldManifest {
+    /// Creates an empty manifest of schema version 1.
     pub fn new(name: impl Into<String>, cell_size: f32, seed: u64) -> Self {
         Self {
             version: 1,
@@ -43,25 +52,33 @@ impl WorldManifest {
 /// One actor saved as a `.ron` file inside a cell directory.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ActorRecord {
+    /// Unique id; also the file name (`<id>.ron`).
     pub id: String,
+    /// Kind of actor, interpreted by the game.
     pub kind: String,
+    /// World position.
     pub position: [f32; 3],
+    /// Rotation around the Y axis in radians.
     #[serde(default)]
     pub yaw: f32,
+    /// Free-form labels.
     #[serde(default)]
     pub tags: Vec<String>,
 }
 
+/// Path of the manifest file under `root`.
 pub fn world_ron(root: impl AsRef<Path>) -> PathBuf {
     root.as_ref().join(WORLD_FILE)
 }
 
+/// Directory of a cell: `<root>/cells/<x>_<y>`.
 pub fn cell_dir(root: impl AsRef<Path>, cell: PartitionCell) -> PathBuf {
     root.as_ref()
         .join(CELLS_DIR)
         .join(format!("{}_{}", cell.x, cell.y))
 }
 
+/// Path of one actor file inside a cell.
 pub fn actor_path(root: impl AsRef<Path>, cell: PartitionCell, actor_id: &str) -> PathBuf {
     cell_dir(root, cell).join(format!("{actor_id}.ron"))
 }
@@ -95,12 +112,14 @@ pub fn parse_cell_dir(name: &str) -> Option<PartitionCell> {
     })
 }
 
+/// Reads `world.ron`.
 pub fn load_manifest(root: impl AsRef<Path>) -> SceneResult<WorldManifest> {
     let path = world_ron(&root);
     let text = fs::read_to_string(&path)?;
     Ok(ron::from_str(&text)?)
 }
 
+/// Writes `world.ron` atomically.
 pub fn save_manifest(root: impl AsRef<Path>, manifest: &WorldManifest) -> SceneResult<()> {
     let root = root.as_ref();
     let pretty = ron::ser::PrettyConfig::new();
@@ -109,6 +128,7 @@ pub fn save_manifest(root: impl AsRef<Path>, manifest: &WorldManifest) -> SceneR
     Ok(())
 }
 
+/// Reads every actor file of a cell (an absent cell directory yields no actors).
 pub fn load_cell_actors(
     root: impl AsRef<Path>,
     cell: PartitionCell,
@@ -128,6 +148,7 @@ pub fn load_cell_actors(
     Ok(actors)
 }
 
+/// Replaces a cell's directory with one file per actor.
 pub fn save_cell_actors(
     root: impl AsRef<Path>,
     cell: PartitionCell,
@@ -146,6 +167,7 @@ pub fn save_cell_actors(
     Ok(())
 }
 
+/// Writes a single actor file atomically.
 pub fn save_actor(
     root: impl AsRef<Path>,
     cell: PartitionCell,
@@ -157,6 +179,7 @@ pub fn save_actor(
     Ok(())
 }
 
+/// Modification time of a cell directory, used to detect external edits.
 pub fn cell_mtime(root: impl AsRef<Path>, cell: PartitionCell) -> Option<SystemTime> {
     fs::metadata(cell_dir(root, cell))
         .and_then(|m| m.modified())
