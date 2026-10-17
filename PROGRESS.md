@@ -38,8 +38,7 @@
 
 Пауза (2026-10-17): решение по скриптингу — WASM ([ADR 0005](docs/adr/0005-scripting-wasm.md)). Из добивки текстур
 замерено покрытие `redox_asset` (новые модули 80–99 % строк: basis/file 99, ktx2_loader 96, queue 95, stream 89,
-pak 87, manager 82, basis/mod 81). Не начато: покрытие `redox_render` (стример), golden-кадры IBL и стриминга,
-проверка BasisLZ на сторонних файлах, прототип (анимационный граф, игровой UI).
+pak 87, manager 82, basis/mod 81). Добивка текстур закрыта: покрытие стримера 92 %, IBL 99 %; golden-кадры IBL из KTX2 и стриминга (`redox_render/tests/golden_frames.rs`); BasisLZ на сторонних файлах. Дальше: прототип (анимационный граф, игровой UI).
 
 ## Куда дальше (предложение)
 
@@ -67,7 +66,7 @@ pak 87, manager 82, basis/mod 81). Не начато: покрытие `redox_re
   приоритетная очередь загрузки, потоковая догрузка mip и `TextureStreamer` с бюджетом памяти.
   План и итоги: [`docs/PLAN_TEXTURES.md`](docs/PLAN_TEXTURES.md), решение: [`docs/adr/0004-ktx2-basis-streaming.md`](docs/adr/0004-ktx2-basis-streaming.md),
   как готовить ассеты: [`docs/ASSETS.md`](docs/ASSETS.md).
-- Не проверено: BasisLZ из сторонних KTX2. Данные Basis из недоверенных источников защищены контрольными суммами,
+- BasisLZ и UASTC+Zstd из сторонних KTX2 (Khronos KTX-Software, 6 файлов) проверены: грузятся, ETC1S и UASTC одной картинки расходятся на 2,2/255. Данные Basis из недоверенных источников защищены контрольными суммами,
   структурными проверками и `catch_unwind`, но C++ транскодер остаётся внешним кодом.
 
 ## Отложено (решение владельца, 2026-10-17)

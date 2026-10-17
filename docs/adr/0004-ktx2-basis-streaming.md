@@ -37,4 +37,4 @@ Status: accepted (2026-10-17)
 
 - The build needs a C++ compiler for `basis-universal`.
 - Basis input from untrusted sources is mitigated, not proven safe.
-- BasisLZ from third-party KTX2 files is untested (no external sample was available).
+- BasisLZ and UASTC+Zstd KTX2 files made by Khronos KTX-Software (6 files, including 2048 px cube maps) load correctly: `REDOX_THIRD_PARTY_KTX2=<folder> cargo test -p redox_asset --test third_party`. The ETC1S and UASTC versions of one picture decode to within 2.2/255 of each other. The files are not committed (fetch them from KTX-Software `tests/resources/ktx2`, Git LFS).

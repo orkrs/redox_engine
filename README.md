@@ -365,7 +365,7 @@ bakes headlessly.
 ## 20) Roadmap
 
 **Next (days):** import PNG→KTX2 from the editor; show streaming state in the asset panel; a golden frame for
-IBL from KTX2; test BasisLZ against third-party files; hook `TextureStreamer` into `dino_runner` and measure
+IBL from KTX2; hook `TextureStreamer` into `dino_runner` and measure
 memory; coverage for render and editor code.
 
 **Soon (weeks):** hot reload of VG compute and IBL; frame-graph dependency inference and transient memory
