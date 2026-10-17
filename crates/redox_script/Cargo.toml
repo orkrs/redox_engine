@@ -1,0 +1,20 @@
+[package]
+name = "redox_script"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+thiserror = { workspace = true }
+log = { workspace = true }
+wasmi = "2.0.0"
+
+[dev-dependencies]
+wat = "1.262.0"
