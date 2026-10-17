@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 ## [Unreleased]
 
 ### Removed
+- Old examples `showcase`, `prism_vault`, `ball_score`, `shadow_lab` (kept: `skinned_demo`, `dino_runner`, `dino_game`).
 - Cascaded shadow maps (CSM): `shadow/csm.rs`, cascade buffers/bindings and shader branches.
   Directional shadows are VSM-only. The `shadow_probe` example (a CSM probe) was deleted.
 

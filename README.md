@@ -297,8 +297,6 @@ Requires a stable Rust toolchain and a GPU with Vulkan, DX12 or Metal.
 ```bash
 cargo check --workspace
 cargo test -p redox_ecs -p redox_audio -p redox_render -p redox_anim
-cargo run --example prism_vault -p redox_core --release   # flagship showcase
-cargo run --example showcase -p redox_core
 cargo run --example dino_runner -p redox_core
 cargo run --example skinned_demo -p redox_core --release  # skeletal animation + IK
 ```
