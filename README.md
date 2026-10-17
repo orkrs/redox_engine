@@ -382,6 +382,8 @@ navigation, joints and ragdolls, networking; release hygiene (versions, publishi
 
 Cross-platform work (Linux, macOS, other GPUs, DX12/Metal) is out of the plan for now (owner decision).
 
+Detailed per-area plans: [`docs/PLAN_TECH_OVERVIEW.md`](docs/PLAN_TECH_OVERVIEW.md).
+
 Details and history: [`PROGRESS.md`](PROGRESS.md), [`CHANGELOG.md`](CHANGELOG.md),
 [`docs/PLAN_TEXTURES.md`](docs/PLAN_TEXTURES.md), [`ARCHITECTURE_REALITY.md`](ARCHITECTURE_REALITY.md).
 
