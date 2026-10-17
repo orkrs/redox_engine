@@ -1,10 +1,17 @@
 //! KTX2 texture loader: GPU-ready (block-compressed) textures without CPU decoding.
 //!
-//! Only containers without supercompression are accepted; the mip levels are handed to the
-//! renderer as they are. Basis Universal / Zstandard payloads are reported as unsupported.
+//! Block-compressed and RGBA containers are handed to the renderer as they are (Zstandard is
+//! unpacked); Basis Universal data is transcoded, see [`LoadOptions`].
 
 use crate::error::AssetError;
 use crate::loader::AssetLoader;
+#[cfg(feature = "basis")]
+pub use crate::loader::basis::LoadOptions;
+
+/// Placeholder options (Basis support is disabled in this build).
+#[cfg(not(feature = "basis"))]
+#[derive(Default, Clone, Copy, Debug)]
+pub struct LoadOptions;
 
 /// Pixel format of a [`Ktx2Texture`], limited to what the renderer can upload directly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,6 +97,13 @@ impl TextureFormat {
         }
     }
 }
+
+/// Most array layers accepted in a Basis Universal KTX2 file.
+#[cfg(feature = "basis")]
+const MAX_BASIS_LAYERS: u32 = 4096;
+/// Most mip levels accepted in a Basis Universal KTX2 file.
+#[cfg(feature = "basis")]
+const MAX_BASIS_LEVELS: usize = 16;
 
 /// Hard limit for the decoded size of one mip level (guards against hostile headers).
 pub const MAX_LEVEL_BYTES: usize = 1 << 30;
@@ -279,12 +293,24 @@ pub fn ktx2_container(
     })
 }
 
-/// Loads `.ktx2` files as [`Ktx2Texture`].
+/// Loads `.ktx2` and `.basis` files as [`Ktx2Texture`].
 ///
-/// Supports uncompressed block formats (see [`TextureFormat`]) with or without Zstandard
-/// supercompression, 2D images, arrays, cube maps and cube arrays.
-#[derive(Default)]
-pub struct Ktx2Loader;
+/// Supports the block formats of [`TextureFormat`] with or without Zstandard supercompression,
+/// 2D images, arrays, cube maps and cube arrays. With the `basis` feature it also transcodes
+/// Basis Universal data (UASTC and ETC1S/BasisLZ, in KTX2 or `.basis` files) to the format
+/// chosen in [`LoadOptions`].
+#[derive(Default, Clone, Copy, Debug)]
+pub struct Ktx2Loader {
+    /// How Basis data is converted.
+    pub options: LoadOptions,
+}
+
+impl Ktx2Loader {
+    /// A loader with the given options (for example `BasisTarget::Bc7` on desktop GPUs).
+    pub fn with_options(options: LoadOptions) -> Self {
+        Self { options }
+    }
+}
 
 fn unsupported(msg: impl Into<String>) -> AssetError {
     AssetError::UnsupportedFormat(msg.into())
@@ -320,6 +346,23 @@ impl AssetLoader for Ktx2Loader {
     type Asset = Ktx2Texture;
 
     fn load(&self, bytes: &[u8]) -> Result<Self::Asset, AssetError> {
+        // The parsing crates assume well-formed files in places; turn their panics into errors.
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.load_inner(bytes)))
+            .unwrap_or_else(|_| Err(bad("the file is malformed (parser panic)")))
+    }
+
+    fn extensions(&self) -> Vec<&'static str> {
+        vec!["ktx2", "basis"]
+    }
+}
+
+impl Ktx2Loader {
+    fn load_inner(&self, bytes: &[u8]) -> Result<Ktx2Texture, AssetError> {
+        #[cfg(feature = "basis")]
+        if super::basis::is_basis_file(bytes) {
+            return super::basis::decode_basis_file(bytes, self.options, None);
+        }
+
         use ktx2::SupercompressionScheme as Scheme;
 
         let reader = ktx2::Reader::new(bytes).map_err(|e| bad(format!("{e:?}")))?;
@@ -336,57 +379,143 @@ impl AssetLoader for Ktx2Loader {
         if header.face_count == 6 && header.pixel_width != header.pixel_height {
             return Err(bad("cube map faces must be square"));
         }
-        let zstd = match header.supercompression_scheme {
-            None => false,
-            Some(Scheme::Zstandard) => true,
-            Some(other) => return Err(unsupported(format!("KTX2 supercompression {other:?}"))),
+        let scheme = header.supercompression_scheme;
+        let zstd = scheme == Some(Scheme::Zstandard);
+        let (width, height) = (header.pixel_width, header.pixel_height.max(1));
+        let (layers, faces) = (header.layer_count.max(1), header.face_count);
+
+        let Some(vk) = header.format else {
+            #[cfg(feature = "basis")]
+            return self.load_basis_ktx2(&reader, zstd);
+            #[cfg(not(feature = "basis"))]
+            return Err(unsupported(
+                "KTX2 without a Vulkan format (Basis Universal)",
+            ));
         };
-        let vk = header
-            .format
-            .ok_or_else(|| unsupported("KTX2 without a Vulkan format (Basis Universal)"))?;
+        if scheme.is_some() && !zstd {
+            return Err(unsupported(format!("KTX2 supercompression {scheme:?}")));
+        }
         let format =
             TextureFormat::from_vk(vk).ok_or_else(|| unsupported(format!("KTX2 format {vk:?}")))?;
 
         let mut texture = Ktx2Texture {
-            width: header.pixel_width,
-            height: header.pixel_height.max(1),
+            width,
+            height,
             format,
-            layers: header.layer_count.max(1),
-            faces: header.face_count,
+            layers,
+            faces,
             levels: Vec::new(),
         };
-        for (index, level) in reader.levels().enumerate() {
-            let expected = texture.subimage_size(index) * texture.subimage_count() as usize;
-            if expected > MAX_LEVEL_BYTES {
-                return Err(bad(format!("level {index} would need {expected} bytes")));
-            }
-            let data = if zstd {
-                if level.uncompressed_byte_length != expected as u64 {
-                    return Err(bad(format!(
-                        "level {index}: declares {} decoded bytes, expected {expected}",
-                        level.uncompressed_byte_length
-                    )));
-                }
-                zstd_decode(level.data, expected, index)?
-            } else {
-                if level.data.len() != expected {
-                    return Err(bad(format!(
-                        "level {index}: {} bytes, expected {expected}",
-                        level.data.len()
-                    )));
-                }
-                level.data.to_vec()
-            };
-            texture.levels.push(data);
-        }
+        let sizes: Vec<usize> = (0..reader.levels().len())
+            .map(|i| texture.subimage_size(i) * texture.subimage_count() as usize)
+            .collect();
+        texture.levels = read_levels(&reader, zstd, &sizes)?;
         if texture.levels.is_empty() {
             return Err(bad("no mip levels"));
         }
         Ok(texture)
     }
+}
 
-    fn extensions(&self) -> Vec<&'static str> {
-        vec!["ktx2"]
+/// The payload of every level, decoded from Zstandard when needed and checked against the size
+/// each level must have (`expected[i]` bytes).
+fn read_levels(
+    reader: &ktx2::Reader<&[u8]>,
+    zstd: bool,
+    expected: &[usize],
+) -> Result<Vec<Vec<u8>>, AssetError> {
+    let mut levels = Vec::new();
+    for (index, level) in reader.levels().enumerate() {
+        let expected = *expected.get(index).ok_or_else(|| bad("too many levels"))?;
+        if expected > MAX_LEVEL_BYTES {
+            return Err(bad(format!("level {index} would need {expected} bytes")));
+        }
+        levels.push(if zstd {
+            if level.uncompressed_byte_length != expected as u64 {
+                return Err(bad(format!(
+                    "level {index}: declares {} decoded bytes, expected {expected}",
+                    level.uncompressed_byte_length
+                )));
+            }
+            zstd_decode(level.data, expected, index)?
+        } else {
+            if level.data.len() != expected {
+                return Err(bad(format!(
+                    "level {index}: {} bytes, expected {expected}",
+                    level.data.len()
+                )));
+            }
+            level.data.to_vec()
+        });
+    }
+    Ok(levels)
+}
+
+#[cfg(feature = "basis")]
+impl Ktx2Loader {
+    /// KTX2 files whose format is "undefined": Basis Universal UASTC or ETC1S data.
+    fn load_basis_ktx2(
+        &self,
+        reader: &ktx2::Reader<&[u8]>,
+        zstd: bool,
+    ) -> Result<Ktx2Texture, AssetError> {
+        use ktx2::ColorModel;
+
+        let header = reader.header();
+        let dfd = reader
+            .basic_dfd()
+            .ok_or_else(|| unsupported("KTX2 without a format and without a data descriptor"))?;
+        let srgb = dfd.transfer_function.is_some_and(|t| t.value() == 2);
+        let (width, height) = (header.pixel_width, header.pixel_height.max(1));
+        let (layers, faces) = (header.layer_count.max(1), header.face_count);
+        if width > 16_384 || height > 16_384 {
+            return Err(bad(format!("{width}x{height} is too large")));
+        }
+        if layers > MAX_BASIS_LAYERS || reader.levels().len() > MAX_BASIS_LEVELS {
+            return Err(bad(format!(
+                "{layers} layers and {} levels are more than supported",
+                reader.levels().len()
+            )));
+        }
+        match dfd.color_model {
+            Some(ColorModel::UASTC) => {
+                let alpha = dfd
+                    .sample_information
+                    .first()
+                    .is_some_and(|s| matches!(s.channel_type, 3 | 5));
+                // Each sub-image is a grid of 16-byte UASTC blocks.
+                let sizes: Vec<usize> = (0..reader.levels().len())
+                    .map(|i| {
+                        let (w, h) = ((width >> i).max(1), (height >> i).max(1));
+                        (w.div_ceil(4) * h.div_ceil(4)) as usize * 16 * (layers * faces) as usize
+                    })
+                    .collect();
+                let levels = read_levels(reader, zstd, &sizes)?;
+                let basis = super::basis::uastc_to_basis(
+                    &levels, width, height, layers, faces, alpha, srgb,
+                )?;
+                super::basis::decode_basis_file(&basis, self.options, Some(srgb))
+            }
+            Some(ColorModel::ETC1S) => {
+                if header.supercompression_scheme != Some(ktx2::SupercompressionScheme::BasisLZ) {
+                    return Err(bad("ETC1S data without BasisLZ supercompression"));
+                }
+                let payloads: Vec<&[u8]> = reader.levels().map(|l| l.data).collect();
+                let basis = super::basis::basislz_to_basis(
+                    reader.supercompression_global_data(),
+                    &payloads,
+                    width,
+                    height,
+                    layers,
+                    faces,
+                    srgb,
+                )?;
+                super::basis::decode_basis_file(&basis, self.options, Some(srgb))
+            }
+            other => Err(unsupported(format!(
+                "KTX2 data with colour model {other:?} and no format"
+            ))),
+        }
     }
 }
 
@@ -396,7 +525,7 @@ mod tests {
     use crate::testing::{Ktx2Builder, Supercompression, pattern_byte};
 
     fn load(builder: &Ktx2Builder) -> Result<Ktx2Texture, AssetError> {
-        Ktx2Loader.load(&builder.build())
+        Ktx2Loader::default().load(&builder.build())
     }
 
     #[test]
@@ -452,7 +581,7 @@ mod tests {
         with_reference.extend_from_slice(&reference);
         // Patch the stored length in the level index (offset 8 of the first entry).
         with_reference[80 + 8..80 + 16].copy_from_slice(&(reference.len() as u64).to_le_bytes());
-        let tex = Ktx2Loader
+        let tex = Ktx2Loader::default()
             .load(&with_reference)
             .expect("reference frame decodes");
         assert_eq!(tex.levels[0], mip0);
@@ -478,10 +607,10 @@ mod tests {
         for i in 0..bytes.len() {
             let mut broken = bytes.clone();
             broken[i] ^= 0xA5;
-            let _ = Ktx2Loader.load(&broken);
+            let _ = Ktx2Loader::default().load(&broken);
         }
         for cut in 0..bytes.len() {
-            let _ = Ktx2Loader.load(&bytes[..cut]);
+            let _ = Ktx2Loader::default().load(&bytes[..cut]);
         }
     }
 
@@ -489,8 +618,8 @@ mod tests {
     fn rejects_wrong_level_sizes_and_garbage() {
         let bad_size = Ktx2Builder::new(TextureFormat::Bc7Unorm, 8, 8).level_data(0, vec![0u8; 15]);
         assert!(load(&bad_size).is_err());
-        assert!(Ktx2Loader.load(b"not a ktx2 file").is_err());
-        assert!(Ktx2Loader.load(&[]).is_err());
+        assert!(Ktx2Loader::default().load(b"not a ktx2 file").is_err());
+        assert!(Ktx2Loader::default().load(&[]).is_err());
         let unknown = Ktx2Builder::new(TextureFormat::Bc7Unorm, 4, 4).vk_format(1000);
         assert!(matches!(
             load(&unknown),
@@ -564,7 +693,9 @@ mod tests {
         )
         .unwrap();
         for zstd in [false, true] {
-            let again = Ktx2Loader.load(&original.to_ktx2_bytes(zstd)).unwrap();
+            let again = Ktx2Loader::default()
+                .load(&original.to_ktx2_bytes(zstd))
+                .unwrap();
             assert_eq!(again.levels, original.levels, "zstd={zstd}");
             assert_eq!((again.layers, again.faces), (2, 6));
             assert_eq!(again.format, TextureFormat::Rgba16Float);

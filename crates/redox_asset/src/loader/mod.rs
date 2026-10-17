@@ -4,10 +4,14 @@
 //! The manager is responsible for reading the file and passing the bytes to
 //! the appropriate loader based on file extension.
 
+#[cfg(feature = "basis")]
+pub(crate) mod basis;
 mod gltf_loader;
 mod image_loader;
 mod ktx2_loader;
 
+#[cfg(feature = "basis")]
+pub use basis::{BasisTarget, basis_file_format, basis_file_to_ktx2, uastc_dfd};
 pub use gltf_loader::{
     GltfLoader, GltfMaterialData, GltfMeshData, GltfNodeData, GltfSceneData, GltfTextureData,
     load_scene_from_path,
@@ -15,7 +19,7 @@ pub use gltf_loader::{
 pub use image_loader::ImageLoader;
 #[cfg(any(test, feature = "testing"))]
 pub use ktx2_loader::ktx2_container;
-pub use ktx2_loader::{Ktx2Loader, Ktx2Texture, TextureFormat};
+pub use ktx2_loader::{Ktx2Loader, Ktx2Texture, LoadOptions, TextureFormat};
 
 use crate::error::AssetError;
 

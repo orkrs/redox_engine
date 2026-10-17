@@ -77,7 +77,7 @@ mod tests {
         }
         for name in OUTPUT_FILES {
             let bytes = std::fs::read(out.join(name)).unwrap();
-            let tex = Ktx2Loader
+            let tex = Ktx2Loader::default()
                 .load(&bytes)
                 .unwrap_or_else(|e| panic!("{name}: {e}"));
             assert_eq!(tex.is_cube(), name != "brdf_lut.ktx2", "{name}");

@@ -14,6 +14,9 @@ path = "src/lib.rs"
 [features]
 # In-memory KTX2 builder (`redox_asset::testing`) for tests of other crates.
 testing = []
+# Basis Universal (UASTC / ETC1S) transcoding; builds the C++ transcoder.
+basis = ["dep:basis-universal"]
+default = ["basis"]
 
 [dependencies]
 redox_ecs = { path = "../redox_ecs" }
@@ -29,6 +32,12 @@ uuid = { version = "1", features = ["v4"] }
 lz4_flex = "0.14"
 ktx2 = "0.5"
 ruzstd = "0.9"
+basis-universal = { version = "0.3", optional = true }
 
 [dev-dependencies]
 zstd = "0.14"
+criterion = { version = "0.7", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "ktx2"
+harness = false

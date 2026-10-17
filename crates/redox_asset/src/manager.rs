@@ -73,9 +73,17 @@ impl<L: AssetLoader> LoaderErased for LoaderWrapper<L> {
         path: &Path,
         bytes: &[u8],
     ) -> Result<Box<dyn Any + Send + Sync>, crate::error::AssetError> {
-        self.inner
-            .load_from_path(path, bytes)
-            .map(|a| Box::new(a) as Box<dyn Any + Send + Sync>)
+        // A loader that panics on hostile data must not take the loading thread down with it
+        // (builds with `panic = "abort"` still abort; this protects dev builds and tools).
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.inner.load_from_path(path, bytes)
+        }))
+        .unwrap_or_else(|_| {
+            Err(crate::error::AssetError::LoadFailed(format!(
+                "the loader for {path:?} panicked on this file"
+            )))
+        })
+        .map(|a| Box::new(a) as Box<dyn Any + Send + Sync>)
     }
     fn extensions(&self) -> Vec<&'static str> {
         self.inner.extensions()
@@ -221,7 +229,8 @@ impl AssetManager {
         // Built-in formats; callers may replace any of them with `register_loader`.
         manager.register_loader::<image::DynamicImage, _>(ImageLoader);
         manager.register_loader::<GltfSceneData, _>(GltfLoader);
-        manager.register_loader::<crate::loader::Ktx2Texture, _>(crate::loader::Ktx2Loader);
+        manager
+            .register_loader::<crate::loader::Ktx2Texture, _>(crate::loader::Ktx2Loader::default());
         manager
     }
 

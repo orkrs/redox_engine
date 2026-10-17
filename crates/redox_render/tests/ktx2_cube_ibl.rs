@@ -8,7 +8,9 @@ use redox_render::resource::ibl::{IBLProcessor, IBLResource, read_texture_ktx2};
 use redox_render::resource::texture::Texture;
 
 fn load(builder: &Ktx2Builder) -> Ktx2Texture {
-    Ktx2Loader.load(&builder.build()).expect("valid ktx2")
+    Ktx2Loader::default()
+        .load(&builder.build())
+        .expect("valid ktx2")
 }
 
 fn gpu() -> Option<(wgpu::Device, wgpu::Queue)> {
@@ -123,7 +125,7 @@ fn baked_ibl_round_trips_through_ktx2_and_lights_a_frame() {
     );
     assert!(!baked.brdf_lut.is_cube());
     let reload = |tex: &Ktx2Texture| {
-        let loaded = Ktx2Loader
+        let loaded = Ktx2Loader::default()
             .load(&tex.to_ktx2_bytes(true))
             .expect("baked file loads");
         assert_eq!(loaded.levels, tex.levels);

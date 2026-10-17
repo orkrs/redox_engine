@@ -206,7 +206,7 @@ fn texture_info(bytes: &[u8]) -> Result<String, String> {
         header.face_count,
         header.format.map_or(0, |f| f.value()),
     );
-    match Ktx2Loader.load(bytes) {
+    match Ktx2Loader::default().load(bytes) {
         Ok(tex) => {
             let decoded: usize = tex.levels.iter().map(Vec::len).sum();
             text.push_str(&format!(
