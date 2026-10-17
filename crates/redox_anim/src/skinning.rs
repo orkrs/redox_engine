@@ -5,17 +5,22 @@ use redox_math::{Mat4, Vec3};
 /// Bind-pose geometry with per-vertex bone influences (up to four).
 #[derive(Clone, Debug, Default)]
 pub struct SkinnedGeometry {
+    /// Bind-pose vertex positions.
     pub positions: Vec<[f32; 3]>,
+    /// Bind-pose vertex normals.
     pub normals: Vec<[f32; 3]>,
+    /// Texture coordinates.
     pub uvs: Vec<[f32; 2]>,
     /// Bone indices per vertex.
     pub joints: Vec<[u16; 4]>,
     /// Matching weights per vertex (normalised while deforming).
     pub weights: Vec<[f32; 4]>,
+    /// Triangle list indices into the vertex arrays.
     pub indices: Vec<u32>,
 }
 
 impl SkinnedGeometry {
+    /// Number of vertices.
     pub fn vertex_count(&self) -> usize {
         self.positions.len()
     }

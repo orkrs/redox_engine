@@ -37,22 +37,27 @@ pub struct StateTreeContext {
 }
 
 impl StateTreeContext {
+    /// Creates an empty context.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Sets a named flag.
     pub fn set_flag(&mut self, name: &'static str, value: bool) {
         self.flags.insert(name, value);
     }
 
+    /// Reads a flag (false when unset).
     pub fn flag(&self, name: &'static str) -> bool {
         self.flags.get(name).copied().unwrap_or(false)
     }
 
+    /// Sets a named float value.
     pub fn set_float(&mut self, name: &'static str, value: f32) {
         self.floats.insert(name, value);
     }
 
+    /// Reads a float value (0 when unset).
     pub fn float(&self, name: &'static str) -> f32 {
         self.floats.get(name).copied().unwrap_or(0.0)
     }
@@ -61,7 +66,9 @@ impl StateTreeContext {
 /// Condition evaluated against a [`StateTreeContext`] when considering a transition.
 #[derive(Clone, Debug)]
 pub enum TransitionCondition {
+    /// Always true.
     Always,
+    /// Always false.
     Never,
     /// `distance_to_target <= threshold`
     TargetCloserThan(f32),
@@ -69,16 +76,24 @@ pub enum TransitionCondition {
     TargetFartherThan(f32),
     /// `elapsed_in_state >= secs`
     ElapsedGreaterThan(f32),
+    /// The named flag is set.
     FlagSet(&'static str),
+    /// The named flag is not set.
     FlagClear(&'static str),
+    /// The named float is at least the value.
     FloatAtLeast(&'static str, f32),
+    /// The named float is at most the value.
     FloatAtMost(&'static str, f32),
+    /// Both conditions hold.
     And(Box<TransitionCondition>, Box<TransitionCondition>),
+    /// At least one condition holds.
     Or(Box<TransitionCondition>, Box<TransitionCondition>),
+    /// The inner condition does not hold.
     Not(Box<TransitionCondition>),
 }
 
 impl TransitionCondition {
+    /// Evaluates the condition against the context.
     pub fn evaluate(&self, ctx: &StateTreeContext) -> bool {
         match self {
             Self::Always => true,
@@ -100,11 +115,14 @@ impl TransitionCondition {
 /// Edge from the owning state to `target` when `condition` is true.
 #[derive(Clone, Debug)]
 pub struct StateTransition {
+    /// State entered when the condition holds.
     pub target: StateId,
+    /// Guard of the transition.
     pub condition: TransitionCondition,
 }
 
 impl StateTransition {
+    /// Creates a transition.
     pub fn new(target: StateId, condition: TransitionCondition) -> Self {
         Self { target, condition }
     }
@@ -113,13 +131,18 @@ impl StateTransition {
 /// Single node in the hierarchical tree.
 #[derive(Clone, Debug)]
 pub struct StateNode {
+    /// Unique id within the tree.
     pub id: StateId,
+    /// Display name.
     pub name: String,
+    /// Parent state, if nested.
     pub parent: Option<StateId>,
+    /// Outgoing transitions, evaluated in order.
     pub transitions: Vec<StateTransition>,
 }
 
 impl StateNode {
+    /// Creates a state without parent or transitions.
     pub fn new(id: StateId, name: impl Into<String>) -> Self {
         Self {
             id,
@@ -129,11 +152,13 @@ impl StateNode {
         }
     }
 
+    /// Nests the state under `parent`.
     pub fn with_parent(mut self, parent: StateId) -> Self {
         self.parent = Some(parent);
         self
     }
 
+    /// Adds an outgoing transition.
     pub fn with_transition(mut self, transition: StateTransition) -> Self {
         self.transitions.push(transition);
         self
@@ -143,9 +168,13 @@ impl StateNode {
 /// Result of one [`StateTree::tick`] / [`StateTree::evaluate`] pass.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct StateTickResult {
+    /// State that is active after the pass.
     pub active: StateId,
+    /// Whether the active state changed in this pass.
     pub transitioned: bool,
+    /// State that was left, when a transition happened.
     pub exited: Option<StateId>,
+    /// State that was entered, when a transition happened.
     pub entered: Option<StateId>,
 }
 
@@ -182,14 +211,17 @@ impl StateTree {
         }
     }
 
+    /// Id of the root state.
     pub fn root(&self) -> StateId {
         self.root
     }
 
+    /// Id of the currently active state.
     pub fn active_id(&self) -> StateId {
         self.active
     }
 
+    /// Name of the active state (`<invalid>` when its id is unknown).
     pub fn active_name(&self) -> &str {
         self.nodes
             .get(&self.active)
@@ -197,6 +229,7 @@ impl StateTree {
             .unwrap_or("<invalid>")
     }
 
+    /// Looks up a state by id.
     pub fn node(&self, id: StateId) -> Option<&StateNode> {
         self.nodes.get(&id)
     }
@@ -277,10 +310,12 @@ pub struct StateTreeBuilder {
 }
 
 impl StateTreeBuilder {
+    /// Creates an empty builder.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Adds a state and returns its id; the first state becomes the root.
     pub fn add_state(&mut self, name: impl Into<String>) -> StateId {
         let id = self.next_id;
         self.next_id += 1;
@@ -291,22 +326,26 @@ impl StateTreeBuilder {
         id
     }
 
+    /// Chooses the root state.
     pub fn set_root(&mut self, id: StateId) {
         self.root = Some(id);
     }
 
+    /// Nests `child` under `parent`.
     pub fn set_parent(&mut self, child: StateId, parent: StateId) {
         if let Some(node) = self.nodes.iter_mut().find(|n| n.id == child) {
             node.parent = Some(parent);
         }
     }
 
+    /// Adds a transition `from` -> `to` guarded by `condition`.
     pub fn add_transition(&mut self, from: StateId, to: StateId, condition: TransitionCondition) {
         if let Some(node) = self.nodes.iter_mut().find(|n| n.id == from) {
             node.transitions.push(StateTransition::new(to, condition));
         }
     }
 
+    /// Builds the tree. Panics when no state was added.
     pub fn build(self) -> StateTree {
         let root = self
             .root
@@ -352,11 +391,14 @@ pub fn sentinel_patrol_chase_ranges(chase_enter: f32, chase_exit: f32) -> StateT
 /// ECS component wrapping a tree + blackboard for AI agents / game phases.
 #[derive(Clone, Debug)]
 pub struct StateTreeComponent {
+    /// The state tree.
     pub tree: StateTree,
+    /// Blackboard the conditions read.
     pub ctx: StateTreeContext,
 }
 
 impl StateTreeComponent {
+    /// Wraps a tree with an empty blackboard.
     pub fn new(tree: StateTree) -> Self {
         Self {
             tree,
@@ -364,6 +406,7 @@ impl StateTreeComponent {
         }
     }
 
+    /// Component with the ready-made patrol/chase tree.
     pub fn patrol_chase() -> Self {
         Self::new(sentinel_patrol_chase())
     }

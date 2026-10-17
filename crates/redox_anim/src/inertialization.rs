@@ -2,18 +2,27 @@ use redox_math::{Quat, Vec3};
 
 use crate::skeleton::Pose;
 
+/// Pose difference of one bone at the moment of a transition.
 #[derive(Clone, Debug)]
 pub struct InertialBoneDiff {
+    /// Position offset between the old and the new pose.
     pub x0: Vec3,
+    /// Offset velocity.
     pub v0: Vec3,
+    /// Rotation offset (currently unused, identity).
     pub q0: Quat,
+    /// Angular velocity of the offset (currently unused, zero).
     pub w0: Vec3,
 }
 
+/// Blends away the pose pop after a clip switch.
 #[derive(Clone, Debug)]
 pub struct Inertializer {
+    /// Duration of the decay in seconds.
     pub duration: f32,
+    /// Time since the transition was recorded.
     pub elapsed: f32,
+    /// Per-bone differences recorded at the transition.
     pub diffs: Vec<InertialBoneDiff>,
 }
 
@@ -28,6 +37,7 @@ impl Default for Inertializer {
 }
 
 impl Inertializer {
+    /// Creates an inertializer that decays over `duration` seconds.
     pub fn new(duration: f32) -> Self {
         Self {
             duration,
@@ -36,6 +46,7 @@ impl Inertializer {
         }
     }
 
+    /// Records the per-bone position difference between the old and new pose and restarts the decay.
     pub fn record_transition(&mut self, old_pose: &Pose, new_pose: &Pose, dt: f32) {
         self.elapsed = 0.0;
         self.diffs.clear();
@@ -57,6 +68,7 @@ impl Inertializer {
         }
     }
 
+    /// Adds the decaying offset to the bone translations of `target_pose`.
     pub fn apply_damping(&self, target_pose: &mut Pose, dt: f32) {
         if self.elapsed >= self.duration || self.diffs.is_empty() {
             return;
@@ -75,10 +87,12 @@ impl Inertializer {
         }
     }
 
+    /// Advances the decay by `dt` seconds (clamped to the duration).
     pub fn tick(&mut self, dt: f32) {
         self.elapsed = (self.elapsed + dt).min(self.duration);
     }
 
+    /// Whether an offset is still being applied.
     pub fn is_active(&self) -> bool {
         self.elapsed < self.duration && !self.diffs.is_empty()
     }

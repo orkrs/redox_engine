@@ -3,6 +3,8 @@
 //! Uplift v2 Phase 8: attributes, abilities, timed effects, and hierarchical
 //! StateTree for sentinels / game phases.
 
+#![warn(missing_docs)]
+
 pub mod state_tree;
 
 use redox_ecs::{Query, World};
@@ -17,15 +19,19 @@ pub use state_tree::{
 /// Named scalar attribute (health, stamina, etc.).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Attribute {
+    /// Current value, kept within `0..=max` by [`Attribute::clamp`].
     pub current: f32,
+    /// Maximum value.
     pub max: f32,
 }
 
 impl Attribute {
+    /// Creates an attribute that starts full.
     pub fn new(max: f32) -> Self {
         Self { current: max, max }
     }
 
+    /// Clamps `current` into `0..=max`.
     pub fn clamp(&mut self) {
         self.current = self.current.clamp(0.0, self.max);
     }
@@ -34,11 +40,14 @@ impl Attribute {
 /// Component holding a set of gameplay attributes keyed by name.
 #[derive(Clone, Debug, Default)]
 pub struct AttributeSet {
+    /// Hit points.
     pub health: Attribute,
+    /// Stamina used by abilities.
     pub stamina: Attribute,
 }
 
 impl AttributeSet {
+    /// Health and stamina of 100 each.
     pub fn default_character() -> Self {
         Self {
             health: Attribute::new(100.0),
@@ -50,13 +59,18 @@ impl AttributeSet {
 /// Lightweight ability descriptor attached to an entity.
 #[derive(Clone, Debug)]
 pub struct Ability {
+    /// Application-defined ability id.
     pub id: u32,
+    /// Cooldown in seconds after use.
     pub cooldown: f32,
+    /// Seconds left until the ability is ready again.
     pub remaining_cooldown: f32,
+    /// Stamina spent on use.
     pub cost_stamina: f32,
 }
 
 impl Ability {
+    /// Creates a ready ability.
     pub fn new(id: u32, cooldown: f32, cost_stamina: f32) -> Self {
         Self {
             id,
@@ -66,6 +80,7 @@ impl Ability {
         }
     }
 
+    /// Whether the cooldown has elapsed.
     pub fn ready(&self) -> bool {
         self.remaining_cooldown <= 0.0
     }
@@ -74,13 +89,18 @@ impl Ability {
 /// Modifier applied over time (DOT, buff, debuff).
 #[derive(Clone, Debug)]
 pub struct GameplayEffect {
+    /// Total duration in seconds (0 means instant).
     pub duration: f32,
+    /// Seconds left.
     pub remaining: f32,
+    /// Health change per second (negative for damage).
     pub health_delta_per_sec: f32,
+    /// Stamina change per second.
     pub stamina_delta_per_sec: f32,
 }
 
 impl GameplayEffect {
+    /// An instant effect that adds `amount` health.
     pub fn instant_heal(amount: f32) -> Self {
         Self {
             duration: 0.0,
@@ -90,6 +110,7 @@ impl GameplayEffect {
         }
     }
 
+    /// Damage over time: `dps` health per second for `duration` seconds.
     pub fn dot(dps: f32, duration: f32) -> Self {
         Self {
             duration,
@@ -99,6 +120,7 @@ impl GameplayEffect {
         }
     }
 
+    /// Whether the effect still applies (time left, or an instant effect that is not yet removed).
     pub fn active(&self) -> bool {
         self.remaining > 0.0 || self.duration == 0.0
     }
@@ -107,6 +129,7 @@ impl GameplayEffect {
 /// Component listing active effects on an entity.
 #[derive(Clone, Debug, Default)]
 pub struct ActiveEffects {
+    /// Effects currently applied.
     pub effects: Vec<GameplayEffect>,
 }
 

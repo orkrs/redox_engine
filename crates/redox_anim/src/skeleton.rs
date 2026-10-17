@@ -8,9 +8,12 @@
 
 use redox_math::{Mat4, Quat, Vec3};
 
+/// One joint of a skeleton.
 #[derive(Clone, Debug)]
 pub struct Bone {
+    /// Name used to match animation tracks.
     pub name: String,
+    /// Index of the parent bone, `None` for a root.
     pub parent: Option<usize>,
     /// Local bind transform (relative to the parent bone).
     pub bind_pose: Mat4,
@@ -21,18 +24,23 @@ pub struct Bone {
 /// Translation / rotation / scale of one bone, relative to its parent.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BoneTransform {
+    /// Offset from the parent.
     pub translation: Vec3,
+    /// Orientation relative to the parent.
     pub rotation: Quat,
+    /// Scale relative to the parent.
     pub scale: Vec3,
 }
 
 impl BoneTransform {
+    /// No translation, no rotation, unit scale.
     pub const IDENTITY: Self = Self {
         translation: Vec3::ZERO,
         rotation: Quat::IDENTITY,
         scale: Vec3::ONE,
     };
 
+    /// Decomposes a matrix into translation, rotation and scale.
     pub fn from_mat4(m: Mat4) -> Self {
         let (scale, rotation, translation) = m.to_scale_rotation_translation();
         Self {
@@ -42,6 +50,7 @@ impl BoneTransform {
         }
     }
 
+    /// Recomposes the matrix.
     pub fn to_mat4(self) -> Mat4 {
         Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.translation)
     }
@@ -59,6 +68,7 @@ impl BoneTransform {
 /// Per-bone local transforms (what clips produce and blends operate on).
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocalPose {
+    /// One transform per bone, in skeleton order.
     pub bones: Vec<BoneTransform>,
 }
 
@@ -76,8 +86,10 @@ impl LocalPose {
     }
 }
 
+/// A bone hierarchy with bind poses.
 #[derive(Clone, Debug, Default)]
 pub struct Skeleton {
+    /// Bones in an order where indices are stable (parents are referenced by index).
     pub bones: Vec<Bone>,
 }
 
@@ -103,14 +115,17 @@ impl Skeleton {
         skeleton
     }
 
+    /// Number of bones.
     pub fn len(&self) -> usize {
         self.bones.len()
     }
 
+    /// Whether the skeleton has no bones.
     pub fn is_empty(&self) -> bool {
         self.bones.is_empty()
     }
 
+    /// Index of the bone with this name.
     pub fn bone_index(&self, name: &str) -> Option<usize> {
         self.bones.iter().position(|b| b.name == name)
     }
@@ -163,11 +178,16 @@ impl Skeleton {
     }
 }
 
+/// A bone transform at a point in time.
 #[derive(Clone, Debug)]
 pub struct Keyframe {
+    /// Time in seconds from the start of the clip.
     pub time: f32,
+    /// Translation at this time.
     pub translation: Vec3,
+    /// Rotation at this time.
     pub rotation: Quat,
+    /// Scale at this time.
     pub scale: Vec3,
 }
 
@@ -181,10 +201,14 @@ impl Keyframe {
     }
 }
 
+/// Keyframed animation of a skeleton.
 #[derive(Clone, Debug, Default)]
 pub struct AnimationClip {
+    /// Display name of the clip.
     pub name: String,
+    /// Length in seconds.
     pub duration: f32,
+    /// Keyframes per bone name, sorted by time.
     pub tracks: std::collections::HashMap<String, Vec<Keyframe>>,
 }
 
@@ -231,16 +255,19 @@ fn sample_keys(keys: &[Keyframe], t: f32) -> BoneTransform {
 /// Model-space bone matrices.
 #[derive(Clone, Debug)]
 pub struct Pose {
+    /// Model-space matrix of every bone, in skeleton order.
     pub bone_transforms: Vec<Mat4>,
 }
 
 impl Pose {
+    /// A pose where every bone matrix is the identity.
     pub fn identity(bone_count: usize) -> Self {
         Self {
             bone_transforms: vec![Mat4::IDENTITY; bone_count],
         }
     }
 
+    /// Computes model-space matrices from local transforms by walking the hierarchy.
     pub fn from_local(skeleton: &Skeleton, local: &LocalPose) -> Self {
         Self {
             bone_transforms: skeleton.global_matrices(local),
@@ -257,10 +284,14 @@ impl Pose {
     }
 }
 
+/// Component linking an entity to a skeleton and a clip by name.
 #[derive(Clone, Debug)]
 pub struct SkinnedMesh {
+    /// Index of the skeleton.
     pub skeleton: usize,
+    /// Name of the clip being played.
     pub clip: String,
+    /// Playback position in seconds.
     pub time: f32,
 }
 

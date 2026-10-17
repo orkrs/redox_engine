@@ -5,18 +5,26 @@ use crate::{AnimationClip, LocalPose, Skeleton, SkinnedGeometry};
 /// Everything needed to animate and draw one rigged model.
 #[derive(Clone, Debug, Default)]
 pub struct SkinnedModel {
+    /// Bone hierarchy and bind pose.
     pub skeleton: Skeleton,
+    /// Clips that can be played on the skeleton.
     pub clips: Vec<AnimationClip>,
+    /// Bind-pose mesh deformed by the skeleton.
     pub geometry: SkinnedGeometry,
 }
 
 /// Plays one clip of a [`SkinnedModel`].
 #[derive(Clone, Debug)]
 pub struct Animator {
+    /// Index of the playing clip in `SkinnedModel::clips`.
     pub clip: usize,
+    /// Playback position in seconds.
     pub time: f32,
+    /// Playback speed multiplier (1 = real time).
     pub speed: f32,
+    /// Whether time wraps at the end of the clip.
     pub looping: bool,
+    /// Whether time advances.
     pub playing: bool,
 }
 
