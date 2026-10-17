@@ -4,6 +4,8 @@
 
 pub mod animator;
 pub mod gltf_import;
+/// Parameters, state machines, blend trees, layers and root motion.
+pub mod graph;
 pub mod ik;
 /// Hides the visible jump when switching clips by decaying the pose difference.
 pub mod inertialization;
@@ -12,6 +14,10 @@ pub mod skeleton;
 pub mod skinning;
 
 pub use animator::{Animator, SkinnedModel};
+pub use graph::{
+    AnimGraph, Compare, Condition, GraphOutput, GraphPlayer, LayerDef, Motion, Params, RootMotion,
+    StateDef, TransitionDef,
+};
 pub use ik::{apply_two_bone_ik, solve_two_bone_ik};
 pub use inertialization::{InertialBoneDiff, Inertializer};
 pub use skeleton::{
