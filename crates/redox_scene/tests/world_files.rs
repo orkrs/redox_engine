@@ -1,5 +1,7 @@
 //! OFPA files, procedural generation and streaming against a real temp directory.
 
+#![allow(clippy::unwrap_used)]
+
 use std::path::PathBuf;
 
 use redox_ecs::World;

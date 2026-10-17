@@ -1,5 +1,7 @@
 //! Scene queries and body bookkeeping of the physics context.
 
+#![allow(clippy::unwrap_used)]
+
 use rapier3d::prelude::{ColliderBuilder, RigidBodyBuilder};
 use redox_ecs::World;
 use redox_math::{Quat, Vec3};
