@@ -11,6 +11,8 @@ pub mod contacts;
 pub mod context;
 /// Joints between rigid bodies.
 pub mod joints;
+/// Named collision layers and their collision matrix, loaded from RON.
+pub mod layer_config;
 /// Convenience re-exports of the physics modules.
 pub mod physics;
 /// Raycast requests and results.
@@ -26,6 +28,7 @@ pub use components::{CharacterController, Collider, Kinematic, RigidBody, Trigge
 pub use contacts::{ContactEnter, ContactEvent, ContactExit, PhysicsMaterial};
 pub use context::{PhysicsContext, PhysicsError};
 pub use joints::{JointBroken, JointDesc, JointId, JointKind};
+pub use layer_config::{LayerConfig, LayerConfigError};
 pub use raycast::{RaycastRequest, RaycastResult};
 pub use shapes::{ClosestPoint, CollisionLayers, QueryShape, ShapeHit};
 pub use sync::{step_physics, sync_from_physics, sync_to_physics, tick_physics};
