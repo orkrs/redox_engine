@@ -1,5 +1,7 @@
 //! A material that refers to a KTX2 texture really samples it when a frame is drawn.
 
+#![allow(clippy::unwrap_used)]
+
 mod common;
 
 use redox_asset::{AssetManager, Handle, Ktx2Texture, TextureFormat};
