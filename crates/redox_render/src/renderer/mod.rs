@@ -337,6 +337,8 @@ pub struct Renderer {
     pub hiz: HiZPyramid,
     /// When true, mesh uploads use 16-byte compressed vertices (default).
     pub use_compressed_vertices: bool,
+    /// Compute pipeline of GPU skinning, created on first use.
+    skin_pipeline: std::sync::OnceLock<crate::skinning_gpu::SkinPipeline>,
 
     // --- IBL ---
     /// Converts environment maps into IBL textures.

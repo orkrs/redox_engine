@@ -924,6 +924,7 @@ impl Renderer {
             blue_noise_sampler,
             hiz,
             use_compressed_vertices: true,
+            skin_pipeline: std::sync::OnceLock::new(),
             ibl_processor,
             ibl_resource,
             skybox_pass: None,

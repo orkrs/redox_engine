@@ -1,6 +1,7 @@
 //! Skinned animation demo: clip-driven rigs plus a two-bone IK arm that reaches for a moving
-//! target. Pose sampling, blending and skinning run on the CPU (`redox_anim`); the deformed
-//! vertices are streamed into ordinary mesh slots so shadows, GTAO and TAA all see them.
+//! target. Pose sampling and blending run on the CPU (`redox_anim`); skinning runs in a compute
+//! pass (CPU fallback); the deformed vertices are streamed into ordinary mesh slots so shadows,
+//! GTAO and TAA all see them.
 //!
 //! Keys (window title shows the state): V = sun shadows (VSM / off), P = point-light shadows (off by
 //!       default: they duplicate the sun shadows),
@@ -144,7 +145,7 @@ impl DemoScene {
                 rig.animator.evaluate(skeleton, &rig.model.clips)
             };
             let skin = Pose::from_local(skeleton, &local).skin_matrices(skeleton);
-            if !rig.binding.update(r, &skin) {
+            if !rig.binding.update_gpu(r, &skin) && !rig.binding.update(r, &skin) {
                 log::warn!("skinned mesh update rejected");
             }
             if rig.binding.last_overshoot() > 0.0 {

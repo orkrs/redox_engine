@@ -7,8 +7,12 @@ pub fn create_vertex_buffer(device: &wgpu::Device, label: &str, data: &[u8]) -> 
     device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some(label),
         contents: data,
-        // COPY_DST lets skinned / deforming meshes stream new vertices into the same buffer.
-        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        // COPY_DST lets skinned / deforming meshes stream new vertices into the same buffer;
+        // STORAGE + COPY_SRC let the GPU skinning pass write it and tools read it back.
+        usage: wgpu::BufferUsages::VERTEX
+            | wgpu::BufferUsages::COPY_DST
+            | wgpu::BufferUsages::COPY_SRC
+            | wgpu::BufferUsages::STORAGE,
     })
 }
 

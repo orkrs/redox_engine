@@ -47,6 +47,46 @@ impl Renderer {
         true
     }
 
+    /// Blocking readback of a mesh slot's vertex buffer (tests and tools). `None` for an unknown
+    /// slot or when the mapping fails.
+    pub fn read_mesh_vertex_bytes(&self, slot: usize) -> Option<Vec<u8>> {
+        let source = &self.registry.mesh_by_slot(slot)?.vertex_buffer;
+        let size = source.size();
+        let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("mesh_vertex_readback"),
+            size,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("mesh_vertex_readback"),
+            });
+        encoder.copy_buffer_to_buffer(source, 0, &staging, 0, size);
+        self.queue.submit(Some(encoder.finish()));
+        let (tx, rx) = std::sync::mpsc::channel();
+        staging.slice(..).map_async(wgpu::MapMode::Read, move |r| {
+            let _ = tx.send(r);
+        });
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+        rx.recv().ok()?.ok()?;
+        let bytes = staging.slice(..).get_mapped_range().ok()?.to_vec();
+        staging.unmap();
+        Some(bytes)
+    }
+
+    /// Vertex buffer of a mesh slot (target of the GPU skinning pass).
+    pub(crate) fn mesh_vertex_buffer(&self, slot: usize) -> Option<&wgpu::Buffer> {
+        self.registry.mesh_by_slot(slot).map(|m| &m.vertex_buffer)
+    }
+
+    /// The shared GPU skinning pipeline, created on first use.
+    pub(crate) fn skin_pipeline(&self) -> &crate::skinning_gpu::SkinPipeline {
+        self.skin_pipeline
+            .get_or_init(|| crate::skinning_gpu::SkinPipeline::new(&self.device))
+    }
+
     /// Stores a material, creates its GPU resources, and returns its index.
     pub fn add_material(&mut self, material: Material) -> usize {
         self.add_material_impl(material, false)

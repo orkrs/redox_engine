@@ -31,6 +31,7 @@ pub mod sdf;
 pub mod shader;
 pub mod shadow;
 pub mod skinning;
+mod skinning_gpu;
 pub mod surface;
 pub mod systems;
 pub mod virtual_geometry;

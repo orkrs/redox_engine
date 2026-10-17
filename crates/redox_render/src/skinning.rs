@@ -7,6 +7,7 @@ use redox_math::{Aabb, Mat4, Vec3};
 
 use crate::mesh::{Mesh, Vertex};
 use crate::renderer::Renderer;
+use crate::skinning_gpu::GpuSkin;
 
 /// Default tangent for skinned vertices (normal maps are not skinned yet).
 const DEFAULT_TANGENT: [f32; 3] = [1.0, 0.0, 0.0];
@@ -23,6 +24,10 @@ pub struct SkinnedMeshBinding {
     normals: Vec<[f32; 3]>,
     /// Bounds of the vertices before the most recent [`Self::update`].
     previous_bounds: Option<Aabb>,
+    /// GPU skinning resources; `None` when the renderer or geometry cannot skin on the GPU.
+    gpu: Option<GpuSkin>,
+    /// Set once [`Self::update_gpu`] ran: `deformed_bounds` is then the conservative `bounds`.
+    gpu_skinned: bool,
 }
 
 impl SkinnedMeshBinding {
@@ -43,6 +48,19 @@ impl SkinnedMeshBinding {
             aabb: bounds,
         };
         let mesh_slot = renderer.upload_mesh(&mesh);
+        let gpu = if renderer.use_compressed_vertices {
+            renderer.mesh_vertex_buffer(mesh_slot).and_then(|vb| {
+                GpuSkin::new(
+                    renderer.device(),
+                    renderer.skin_pipeline(),
+                    geometry,
+                    &bounds,
+                    vb,
+                )
+            })
+        } else {
+            None
+        };
         Self {
             geometry: geometry.clone(),
             mesh_slot,
@@ -51,12 +69,40 @@ impl SkinnedMeshBinding {
             positions: Vec::new(),
             normals: Vec::new(),
             previous_bounds: None,
+            gpu,
+            gpu_skinned: false,
         }
+    }
+
+    /// Skins on the GPU: uploads `skin_matrices`, runs a compute pass that blends the bind pose
+    /// and writes the quantised vertices straight into the mesh slot's vertex buffer.
+    ///
+    /// Returns `false` (leaving the mesh untouched) when `skin_matrices` has fewer matrices than
+    /// the highest joint index needs, or the renderer cannot skin on the GPU. Nothing is read
+    /// back, so afterwards [`Self::deformed_bounds`] and [`Self::swept_bounds`] return the
+    /// conservative quantisation [`Self::bounds`].
+    pub fn update_gpu(&mut self, renderer: &Renderer, skin_matrices: &[Mat4]) -> bool {
+        let Some(gpu) = &self.gpu else {
+            return false;
+        };
+        let ran = gpu.run(
+            renderer.device(),
+            renderer.queue(),
+            renderer.skin_pipeline(),
+            skin_matrices,
+        );
+        if ran {
+            self.gpu_skinned = true;
+            self.positions.clear();
+            self.previous_bounds = None;
+        }
+        ran
     }
 
     /// Deforms the mesh with `skin_matrices` (`Pose::skin_matrices`) and uploads the result.
     /// Returns `false` if the renderer rejected the update.
     pub fn update(&mut self, renderer: &Renderer, skin_matrices: &[Mat4]) -> bool {
+        self.gpu_skinned = false;
         self.previous_bounds = (!self.positions.is_empty()).then(|| self.deformed_bounds());
         self.geometry
             .deform_into(skin_matrices, &mut self.positions, &mut self.normals);
@@ -75,6 +121,9 @@ impl SkinnedMeshBinding {
     /// Tight local-space bounds of the vertices from the last [`Self::update`] (the bind-pose
     /// bounds before the first update).
     pub fn deformed_bounds(&self) -> Aabb {
+        if self.gpu_skinned {
+            return self.bounds;
+        }
         let points: &[[f32; 3]] = if self.positions.is_empty() {
             &self.geometry.positions
         } else {
