@@ -35,6 +35,33 @@ impl Permissions {
     }
 }
 
+/// Host API v1a functions a script may import (`get_f32`, `set_f32`, `emit_event`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ApiPermissions {
+    /// Allows importing `env.get_f32` and `env.set_f32`.
+    pub state: bool,
+    /// Allows importing `env.emit_event`.
+    pub events: bool,
+}
+
+impl ApiPermissions {
+    /// Every API function is permitted.
+    pub const fn all() -> Self {
+        Self {
+            state: true,
+            events: true,
+        }
+    }
+
+    /// No API function is permitted.
+    pub const fn none() -> Self {
+        Self {
+            state: false,
+            events: false,
+        }
+    }
+}
+
 /// Limits and permissions applied to every instance of a [`ScriptRuntime`](crate::ScriptRuntime).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ScriptConfig {
@@ -46,6 +73,8 @@ pub struct ScriptConfig {
     pub fuel_per_call: u64,
     /// Host functions the scripts may import.
     pub permissions: Permissions,
+    /// Host API v1a functions the scripts may import.
+    pub api: ApiPermissions,
 }
 
 impl Default for ScriptConfig {
@@ -55,6 +84,7 @@ impl Default for ScriptConfig {
             memory_limit_bytes: DEFAULT_MEMORY_LIMIT_BYTES,
             fuel_per_call: DEFAULT_FUEL_PER_CALL,
             permissions: Permissions::all(),
+            api: ApiPermissions::all(),
         }
     }
 }

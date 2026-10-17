@@ -24,6 +24,7 @@ wasmtime = ["dep:wasmtime"]
 [dependencies]
 thiserror = { workspace = true }
 log = { workspace = true }
+redox_asset = { path = "../redox_asset" }
 wasmi = "2.0.0"
 wasmtime = { version = "49", optional = true, default-features = false, features = ["runtime", "cranelift", "std"] }
 

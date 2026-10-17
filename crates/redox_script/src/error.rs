@@ -21,4 +21,7 @@ pub enum ScriptError {
     /// The instance was disabled by an earlier failure (or the id is unknown).
     #[error("script instance is disabled")]
     Disabled,
+    /// Reading the module from an asset source failed.
+    #[error("asset error: {0}")]
+    Asset(String),
 }

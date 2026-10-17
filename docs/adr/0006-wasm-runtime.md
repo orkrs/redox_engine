@@ -48,3 +48,20 @@ Single run on the developer machine; treat as order of magnitude.
 * Host API beyond `log` and `time_seconds` (entity/ECS access) is plan item B7.
 * No module hot-reload, no precompiled-module cache, no per-instance epoch interruption.
 * Numbers come from one machine and one run.
+
+## Host API v1a
+
+Three more host functions from module `"env"`, implemented once in `host.rs` (name validation, caps,
+state) and wired into both backends. Names are `(ptr: i32, len: i32)` UTF-8 slices of the exported `memory`.
+
+| Function | Permission | Effect |
+|---|---|---|
+| `get_f32(name_ptr, name_len) -> f32` | `api.state` | Input set by the host with `ScriptRuntime::set_input`; 0.0 if never set |
+| `set_f32(name_ptr, name_len, value)` | `api.state` | Output readable with `ScriptRuntime::read_output` |
+| `emit_event(name_ptr, name_len, value)` | `api.events` | Queues a `ScriptEvent`, drained by `take_events` (oldest first) |
+
+Limits: names are at most 64 bytes; at most 256 distinct outputs and 256 queued events per instance
+(extra ones are dropped). A name that is out of bounds, too long or not UTF-8 makes the call a no-op
+(`get_f32` returns 0.0), never a trap. Importing a function whose permission (`ScriptConfig::api`,
+`ApiPermissions`) is off is a `Link` error. `ScriptRuntime::instantiate_from_source` loads a module from a
+`redox_asset::AssetSource` (folder or `.pak`); read failures are `ScriptError::Asset`.

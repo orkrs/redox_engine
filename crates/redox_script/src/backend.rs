@@ -1,6 +1,6 @@
 //! The private engine abstraction: a backend compiles modules into instances.
 
-use crate::{ScriptError, config::ScriptConfig};
+use crate::{ScriptError, ScriptEvent, config::ScriptConfig};
 
 /// A WebAssembly engine able to turn module bytes into runnable instances.
 pub(crate) trait ScriptBackend {
@@ -24,4 +24,10 @@ pub(crate) trait BackendInstance {
     fn take_logs(&mut self) -> Vec<String>;
     /// Reads an exported `f32` global.
     fn read_global_f32(&self, name: &str) -> Option<f32>;
+    /// Sets a named input readable by the script.
+    fn set_input(&mut self, name: &str, value: f32);
+    /// Latest value the script stored under `name`.
+    fn read_output(&self, name: &str) -> Option<f32>;
+    /// Removes and returns the queued events.
+    fn take_events(&mut self) -> Vec<ScriptEvent>;
 }

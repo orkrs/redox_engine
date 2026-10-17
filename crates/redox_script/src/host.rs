@@ -1,11 +1,31 @@
 //! Backend independent host state: the game clock and the bounded log buffer.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
+
+use crate::ScriptEvent;
 
 /// Longest log message kept, in bytes; longer messages are truncated.
 pub(crate) const MAX_LOG_BYTES: usize = 4096;
 /// Most log messages buffered per instance; the oldest are dropped first.
 pub(crate) const MAX_BUFFERED_LOGS: usize = 1000;
+
+/// Longest accepted name for `get_f32` / `set_f32` / `emit_event`, in bytes.
+pub(crate) const MAX_NAME_BYTES: usize = 64;
+/// Most distinct outputs stored per instance; new names beyond it are dropped.
+pub(crate) const MAX_OUTPUTS: usize = 256;
+/// Most events queued per instance between two `take_events` calls.
+pub(crate) const MAX_EVENTS: usize = 256;
+
+/// Reads a script supplied name `(ptr, len)` out of guest memory.
+///
+/// Returns `None` for negative values, ranges outside `memory`, names longer than
+/// [`MAX_NAME_BYTES`] and invalid UTF-8.
+pub(crate) fn read_name(memory: &[u8], ptr: i32, len: i32) -> Option<&str> {
+    let start = usize::try_from(ptr).ok()?;
+    let len = usize::try_from(len).ok().filter(|l| *l <= MAX_NAME_BYTES)?;
+    let bytes = memory.get(start..start.checked_add(len)?)?;
+    std::str::from_utf8(bytes).ok()
+}
 
 /// Per-instance state shared between the host functions and the runtime.
 #[derive(Debug, Default)]
@@ -13,6 +33,9 @@ pub(crate) struct HostData {
     /// Accumulated game time in seconds.
     pub(crate) clock: f32,
     logs: VecDeque<String>,
+    inputs: HashMap<String, f32>,
+    outputs: HashMap<String, f32>,
+    events: Vec<ScriptEvent>,
 }
 
 impl HostData {
@@ -28,6 +51,50 @@ impl HostData {
             .push_back(String::from_utf8_lossy(capped).into_owned());
     }
 
+    /// Sets an input value readable by the script through `get_f32`.
+    pub(crate) fn set_input(&mut self, name: &str, value: f32) {
+        match self.inputs.get_mut(name) {
+            Some(slot) => *slot = value,
+            None => {
+                self.inputs.insert(name.to_owned(), value);
+            }
+        }
+    }
+
+    /// Current input value, 0.0 when it was never set.
+    pub(crate) fn input(&self, name: &str) -> f32 {
+        self.inputs.get(name).copied().unwrap_or(0.0)
+    }
+
+    /// Stores an output; a new name is dropped once [`MAX_OUTPUTS`] names exist.
+    pub(crate) fn set_output(&mut self, name: &str, value: f32) {
+        if let Some(slot) = self.outputs.get_mut(name) {
+            *slot = value;
+        } else if self.outputs.len() < MAX_OUTPUTS {
+            self.outputs.insert(name.to_owned(), value);
+        }
+    }
+
+    /// Latest output stored under `name`.
+    pub(crate) fn output(&self, name: &str) -> Option<f32> {
+        self.outputs.get(name).copied()
+    }
+
+    /// Queues an event; dropped once [`MAX_EVENTS`] are pending.
+    pub(crate) fn emit(&mut self, name: &str, value: f32) {
+        if self.events.len() < MAX_EVENTS {
+            self.events.push(ScriptEvent {
+                name: name.to_owned(),
+                value,
+            });
+        }
+    }
+
+    /// Removes and returns the queued events, oldest first.
+    pub(crate) fn take_events(&mut self) -> Vec<ScriptEvent> {
+        std::mem::take(&mut self.events)
+    }
+
     /// Removes and returns all buffered messages, oldest first.
     pub(crate) fn take_logs(&mut self) -> Vec<String> {
         self.logs.drain(..).collect()
@@ -37,6 +104,17 @@ impl HostData {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn names_are_validated() {
+        let mem = b"abc\xff";
+        assert_eq!(read_name(mem, 0, 3), Some("abc"));
+        assert_eq!(read_name(mem, 0, 4), None);
+        assert_eq!(read_name(mem, 3, 5), None);
+        assert_eq!(read_name(mem, -1, 1), None);
+        assert_eq!(read_name(&[b'a'; 100], 0, 65), None);
+        assert_eq!(read_name(mem, i32::MAX, i32::MAX), None);
+    }
 
     #[test]
     fn long_messages_are_truncated() {

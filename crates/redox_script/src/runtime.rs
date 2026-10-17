@@ -1,7 +1,7 @@
 //! The public runtime: owns instances, delegates execution to a backend.
 
 use crate::{
-    InstanceId, ScriptConfig, ScriptError,
+    InstanceId, ScriptConfig, ScriptError, ScriptEvent,
     backend::{BackendInstance, ScriptBackend},
     wasmi_backend::WasmiBackend,
 };
@@ -66,6 +66,45 @@ impl ScriptRuntime {
             disabled: false,
         });
         Ok(InstanceId(id))
+    }
+
+    /// Reads `path` from an asset source and instantiates it.
+    ///
+    /// # Errors
+    ///
+    /// [`ScriptError::Asset`] if the file cannot be read, otherwise as [`Self::instantiate`].
+    pub fn instantiate_from_source(
+        &mut self,
+        source: &dyn redox_asset::AssetSource,
+        path: &str,
+    ) -> Result<InstanceId, ScriptError> {
+        let bytes = source
+            .read(path)
+            .map_err(|e| ScriptError::Asset(format!("{path}: {e}")))?;
+        self.instantiate(&bytes)
+    }
+
+    /// Sets a named input value the script reads with `get_f32`; false for an unknown instance.
+    pub fn set_input(&mut self, id: InstanceId, name: &str, value: f32) -> bool {
+        match self.slot_mut(id) {
+            Some(slot) => {
+                slot.instance.set_input(name, value);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The latest value the script stored under `name` with `set_f32`.
+    pub fn read_output(&self, id: InstanceId, name: &str) -> Option<f32> {
+        self.slot(id)?.instance.read_output(name)
+    }
+
+    /// Takes the events queued with `emit_event` since the last call, oldest first.
+    pub fn take_events(&mut self, id: InstanceId) -> Vec<ScriptEvent> {
+        self.slot_mut(id)
+            .map(|slot| slot.instance.take_events())
+            .unwrap_or_default()
     }
 
     /// Adds `dt` to the instance clock, then calls `on_update(dt)` with a fresh fuel budget.

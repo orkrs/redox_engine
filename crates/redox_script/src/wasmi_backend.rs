@@ -6,10 +6,10 @@ use wasmi::{
 };
 
 use crate::{
-    ScriptError,
+    ScriptError, ScriptEvent,
     backend::{BackendInstance, ScriptBackend},
-    config::{Permissions, ScriptConfig},
-    host::HostData,
+    config::ScriptConfig,
+    host::{self, HostData},
 };
 
 /// Name of the entry point every script must export.
@@ -58,7 +58,7 @@ impl ScriptBackend for WasmiBackend {
     ) -> Result<Box<dyn BackendInstance>, ScriptError> {
         let module =
             Module::new(&self.engine, wasm).map_err(|e| ScriptError::Compile(e.to_string()))?;
-        let linker = build_linker(&self.engine, config.permissions)?;
+        let linker = build_linker(&self.engine, config)?;
 
         let state = State {
             host: HostData::default(),
@@ -90,8 +90,9 @@ impl ScriptBackend for WasmiBackend {
 }
 
 /// Defines only the host functions the permissions allow; everything else fails to link.
-fn build_linker(engine: &Engine, permissions: Permissions) -> Result<Linker<State>, ScriptError> {
+fn build_linker(engine: &Engine, config: &ScriptConfig) -> Result<Linker<State>, ScriptError> {
     let link_err = |e: wasmi::errors::LinkerError| ScriptError::Link(e.to_string());
+    let (permissions, api) = (config.permissions, config.api);
     let mut linker = Linker::new(engine);
     if permissions.log {
         linker.func_wrap("env", "log", host_log).map_err(link_err)?;
@@ -101,6 +102,19 @@ fn build_linker(engine: &Engine, permissions: Permissions) -> Result<Linker<Stat
             .func_wrap("env", "time_seconds", |caller: Caller<'_, State>| {
                 caller.data().host.clock
             })
+            .map_err(link_err)?;
+    }
+    if api.state {
+        linker
+            .func_wrap("env", "get_f32", host_get_f32)
+            .map_err(link_err)?;
+        linker
+            .func_wrap("env", "set_f32", host_set_f32)
+            .map_err(link_err)?;
+    }
+    if api.events {
+        linker
+            .func_wrap("env", "emit_event", host_emit_event)
             .map_err(link_err)?;
     }
     Ok(linker)
@@ -125,6 +139,36 @@ fn host_log(mut caller: Caller<'_, State>, ptr: i32, len: i32) {
     match bytes {
         Some(bytes) => caller.data_mut().host.push_log(&bytes),
         None => log::warn!("script passed an out-of-bounds range to log ({ptr}, {len})"),
+    }
+}
+
+/// Reads a script supplied name from the guest memory export; `None` when invalid.
+fn read_name(caller: &mut Caller<'_, State>, ptr: i32, len: i32) -> Option<String> {
+    let Some(Extern::Memory(memory)) = caller.get_export(MEMORY_EXPORT) else {
+        return None;
+    };
+    host::read_name(memory.data(&*caller), ptr, len).map(str::to_owned)
+}
+
+/// `env.get_f32(name_ptr, name_len) -> f32`: 0.0 for unknown or invalid names.
+fn host_get_f32(mut caller: Caller<'_, State>, ptr: i32, len: i32) -> f32 {
+    match read_name(&mut caller, ptr, len) {
+        Some(name) => caller.data().host.input(&name),
+        None => 0.0,
+    }
+}
+
+/// `env.set_f32(name_ptr, name_len, value)`: invalid names are ignored.
+fn host_set_f32(mut caller: Caller<'_, State>, ptr: i32, len: i32, value: f32) {
+    if let Some(name) = read_name(&mut caller, ptr, len) {
+        caller.data_mut().host.set_output(&name, value);
+    }
+}
+
+/// `env.emit_event(name_ptr, name_len, value)`: invalid names are ignored.
+fn host_emit_event(mut caller: Caller<'_, State>, ptr: i32, len: i32, value: f32) {
+    if let Some(name) = read_name(&mut caller, ptr, len) {
+        caller.data_mut().host.emit(&name, value);
     }
 }
 
@@ -164,6 +208,18 @@ impl BackendInstance for WasmiInstance {
 
     fn take_logs(&mut self) -> Vec<String> {
         self.store.data_mut().host.take_logs()
+    }
+
+    fn set_input(&mut self, name: &str, value: f32) {
+        self.store.data_mut().host.set_input(name, value);
+    }
+
+    fn read_output(&self, name: &str) -> Option<f32> {
+        self.store.data().host.output(name)
+    }
+
+    fn take_events(&mut self) -> Vec<ScriptEvent> {
+        self.store.data_mut().host.take_events()
     }
 
     fn read_global_f32(&self, name: &str) -> Option<f32> {
