@@ -21,6 +21,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - Large files split: editor `main.rs`, `viewport.rs`, `frame.rs`, VG `runtime.rs`, `vsm_clipmap.rs`, `prism_vault`.
 
 ### Added
+- Scene: `SaveManager` (crash-safe, versioned save slots with migrations and backups).
+- Input: runtime rebinding (`ActionMap::rebind`, conflicts, RON persistence, `Rebinder` capture).
+- Asset: `AssetGuid` + `.meta` sidecars + `AssetRegistry`; `.pak` archives (`PakWriter`/`PakReader`) and `AssetSource` (`DirSource`, `PakSource`); new `redox_cook` CLI (scan/pack/list/verify).
+- Render: `render_graph` compiler (ordering, culling, lifetimes, texture aliasing, DOT dump); not yet used by the renderer.
 - ECS: `Query::par_for_each_mut` (parallel mutable iteration), `World::with_commands`.
 - Core: system ordering (`SystemOrder` before/after labels, cycle detection) and `add_system_if` run conditions.
 - Reflect: `#[derive(Reflect)]` (`redox_reflect_derive`) and the `FieldValue` trait.

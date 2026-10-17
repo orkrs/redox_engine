@@ -22,18 +22,26 @@
 
 ## Статус выполнения (обновлено 2026-10-17)
 
-**Сделано и проверено** (fmt, clippy `-D warnings`, тесты, `cargo deny`, golden-кадры):
-- A3 (кроме `init.rs`, исключение в `scripts/check_file_sizes.py`), A4, A5, A7, A9.
-- A1, локальная часть: MSRV 1.95 (egui 0.36), CI-задачи msrv/miri/docs/размер файлов, dependabot, `cargo deny` с обоснованными исключениями, `cargo doc -D warnings`.
-- A6, часть: CONTRIBUTING, CHANGELOG, SECURITY, CODE_OF_CONDUCT, ADR 0001-0003, предупреждения об устаревании в PROJECT_MAP и ARCHITECTURE_REALITY.
-- 1.1 целиком, кроме двух сознательных исключений: wgpu 30, naga 30, winit 0.30, egui 0.36 (+dock 0.21, plot 0.37), rapier3d 0.36, kira 0.12, glam 0.33, thiserror 2, image 0.25, ron 0.12, notify 8, git2 0.21, rand 0.10, pollster 1, flume 0.12, hashbrown 0.17. Не обновлены: egui 0.37 (нет egui_dock/egui_plot под него), glam 0.34 (kira закреплён на 0.33).
-- 1.3, часть: `Commands` / `CommandQueue`.
+**Сделано и проверено** (fmt, clippy `-D warnings`, тесты, `cargo deny`, `cargo doc -D warnings`, golden-кадры):
+- Этап 0: A3 (кроме `init.rs`, исключение в `scripts/check_file_sizes.py`), A4, A5, A7, A8 (`unwrap_used` для библиотечного кода),
+  A9, A10 (интеграционные тесты, бенчмарки ECS в `docs/BENCHMARKS.md`), A11 (`missing_docs` в 13 крейтах), A12 (индекс примеров),
+  A6 частично (CONTRIBUTING, CHANGELOG, SECURITY, ADR 0001-0003, `docs/CRATES.md` с проверкой в CI), A1 локально (MSRV 1.95, задачи CI, dependabot).
+- 1.1: все зависимости на последних совместимых версиях (wgpu 30, egui 0.36, winit 0.30, rapier3d 0.36, kira 0.12, glam 0.33).
+  Исключения: egui 0.37 (нет `egui_dock`/`egui_plot` под него), glam 0.34 (`kira` на 0.33).
+- 1.2, часть: компилятор графа рендера `render_graph` (порядок, отсечение, времена жизни, алиасинг текстур, DOT) с тестами; к рендереру пока не подключён.
+- 1.3, часть: `Commands`/`CommandQueue`, `World::with_commands`, `par_for_each_mut`, порядок систем `before/after` и `run_if` в диспетчере, `#[derive(Reflect)]`.
+- 1.4, часть: `AssetGuid` + `.meta` + `AssetRegistry`, архивы `.pak`, `AssetSource` (папка/pak), CLI `redox_cook`.
+- 1.5, часть: `SaveManager` (слоты, миграции, бэкапы), переназначение клавиш (`ActionMap::rebind`, конфликты, RON, `Rebinder`).
 
 **Не сделано:**
-- Первый прогон CI на GitHub (нужен пуш), защита ветки `main`.
-- A2 golden в CI на software-адаптере; A6 остаток (PROJECT_MAP, ARCHITECTURE_REALITY, PROGRESS не переписаны); A8 `unwrap` -> ошибки; A10 покрытие и бенчмарки; A11 `missing_docs`; A12 разделение примеров.
+- Первый прогон CI на GitHub (нужен пуш, отложено по решению владельца), защита ветки `main`.
+- A2 golden в CI на software-адаптере; A6 остаток (`PROJECT_MAP`, `ARCHITECTURE_REALITY`, `PROGRESS` описывают старое состояние);
+  A10: бенчмарки анимации/мешлетов, покрытие; A11 для `redox_render` и редакторских крейтов.
 - Переход winit на `ApplicationHandler` (сейчас `#![allow(deprecated)]` в 8 файлах).
-- Этап 1: 1.2 граф рендера и шейдерные модули, 1.3 остаток (`par_iter_mut`, расписание, `derive(Reflect)`), 1.4 ассеты, 1.5 сохранения и ввод.
+- 1.2: подключение `render_graph` к рендереру (миграция проходов), модульные шейдеры, hot-reload пайплайнов, кэш пайплайнов.
+- 1.3: состояния приложения (`AppState`, OnEnter/OnExit), события и хуки OnAdd/OnRemove, интеграция `Commands` в диспетчер.
+- 1.4: зависимости между ассетами, счётчик ссылок и выгрузка, сжатые текстуры KTX2/BCn, сжатие в pak, стриминг, инкрементальный cook.
+- 1.5: сериализация мира в бинарный формат, геймпады (`gilrs`), текст/IME, контексты ввода.
 
 ---
 

@@ -19,6 +19,7 @@ pub mod pass;
 pub mod post;
 pub mod profiler;
 pub mod registry;
+pub mod render_graph;
 pub mod renderer;
 pub mod resource;
 pub mod sdf;

@@ -679,12 +679,14 @@ mod tests {
         let ctx = egui::Context::default();
         let mut shapes_with_preview = 0;
         for _ in 0..3 {
-            let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
                 egui::CentralPanel::default().show(ui, |ui| {
                     canvas.show(ui, None, None, None, None, 1.0 / 60.0);
                 });
             });
             shapes_with_preview = output.shapes.len();
+            // egui 0.36 panics when a frame's texture deltas are dropped unapplied.
+            output.textures_delta.clear();
         }
         let bones = canvas.rig.skeleton.len();
         assert!(
