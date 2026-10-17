@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 /// Identifies a mouse button.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum MouseButton {
     /// Primary (left) button.
     Left,

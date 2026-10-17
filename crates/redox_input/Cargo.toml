@@ -14,7 +14,9 @@ path = "src/lib.rs"
 [dependencies]
 redox_math = { path = "../redox_math" }
 redox_ecs = { path = "../redox_ecs" }
-winit = { workspace = true }
+winit = { workspace = true, features = ["serde"] }
+serde = { workspace = true }
+ron = { workspace = true }
 log = { workspace = true }
 
 [dev-dependencies]

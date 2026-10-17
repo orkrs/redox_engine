@@ -10,10 +10,12 @@ pub mod action;
 pub mod buffer;
 pub mod keyboard;
 pub mod mouse;
+pub mod rebind;
 pub mod state;
 
 pub use action::{ActionBinding, ActionKind, ActionMap, apply_deadzone_1d, apply_deadzone_2d};
 pub use buffer::{CoyoteTimer, InputBuffer};
 pub use keyboard::KeyboardState;
 pub use mouse::MouseState;
+pub use rebind::{RebindOutcome, Rebinder};
 pub use state::InputState;

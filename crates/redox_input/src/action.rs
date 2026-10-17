@@ -14,7 +14,7 @@ pub enum ActionKind {
 }
 
 /// A physical input binding for an action.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ActionBinding {
     /// A single key maps to a digital action.
     Key(KeyCode),
@@ -42,7 +42,7 @@ pub enum ActionBinding {
 /// ```
 #[derive(Debug, Clone)]
 pub struct ActionMap {
-    bindings: HashMap<String, Vec<ActionBinding>>,
+    pub(crate) bindings: HashMap<String, Vec<ActionBinding>>,
 }
 
 impl ActionMap {
