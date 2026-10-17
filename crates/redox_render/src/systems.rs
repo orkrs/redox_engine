@@ -182,6 +182,26 @@ pub fn sync_assets_to_render(
     }
 }
 
+/// Uploads ready KTX2 textures that are not in the render context yet. Call it together with
+/// [`sync_assets_to_render`], before the materials that use them.
+pub fn sync_ktx2_textures_to_render(
+    render_ctx: &mut crate::Renderer,
+    asset_manager: &redox_asset::AssetManager,
+    handles: &[Handle<redox_asset::Ktx2Texture>],
+) {
+    for &handle in handles {
+        if render_ctx
+            .get_texture_index(Handle::new(handle.id()))
+            .is_some()
+        {
+            continue;
+        }
+        if let Some(ktx) = asset_manager.get(handle) {
+            render_ctx.add_ktx2_texture_from_asset(handle, ktx, &format!("ktx2_{:?}", handle.id()));
+        }
+    }
+}
+
 /// Syncs `VirtualMesh` ECS entities and runs CPU/GPU culling for VG.
 ///
 /// Register on `redox_core::Stage::RenderPrep` before extracting render objects.

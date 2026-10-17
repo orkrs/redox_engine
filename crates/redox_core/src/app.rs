@@ -206,6 +206,8 @@ impl AppBuilder {
         let mut last_frame_time = Instant::now();
         let mut gamepad_backend = redox_input::GilrsBackend::new();
         let mut ime_allowed = false;
+        #[cfg(feature = "shader-hot-reload")]
+        let mut shader_hot_reload = redox_render::renderer::ShaderHotReload::new();
 
         event_loop
             .run_closure(move |event, elwt| {
@@ -241,6 +243,8 @@ impl AppBuilder {
                                     backend.poll(&mut input.gamepads);
                                 }
 
+                                #[cfg(feature = "shader-hot-reload")]
+                                let _ = shader_hot_reload.update(&mut render_context);
                                 self.dispatcher.run(&mut world, &mut render_context);
 
                                 // Text fields turn the platform IME on and off.

@@ -1,10 +1,9 @@
 //! The frame as a [`RenderGraph`]: which pass reads and writes which texture.
 //!
-//! The renderer still records passes by hand in `renderer/frame.rs`. This declaration is the
-//! reviewed description of that frame: it is compiled in tests (no cycles, nothing culled,
-//! sensible texture aliasing) and a drift test compares its pass names and order with the
-//! profiler marks in `frame.rs`, so the two cannot silently diverge. Use
-//! [`frame_graph`] + [`RenderGraph::compile`] + `to_dot` to print the frame for documentation.
+//! This declaration drives the renderer: [`frame_pass_order`] is the compiled order, and
+//! `renderer/frame.rs` runs one method per pass in exactly that order (a test checks that every
+//! declared pass has an implementation). Changing the order or adding a pass starts here.
+//! Use [`frame_graph`] + [`RenderGraph::compile`] + `to_dot` to print the frame.
 //!
 //! Dependencies are declared by hand at texture granularity; buffers (cluster lists, light
 //! grids) are folded into the textures of the passes that consume them.
@@ -93,39 +92,51 @@ pub fn frame_graph(width: u32, height: u32) -> RenderGraph {
     g
 }
 
+/// Names of the frame's passes in execution order, taken from the compiled [`frame_graph`].
+///
+/// The renderer runs exactly these passes in exactly this order, so editing the graph changes
+/// the frame. The order does not depend on the render size.
+pub fn frame_pass_order() -> &'static [&'static str] {
+    static ORDER: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    ORDER.get_or_init(|| {
+        let compiled = frame_graph(1, 1)
+            .compile()
+            .expect("the frame graph is valid (checked by tests)");
+        compiled
+            .order
+            .iter()
+            .map(|&pass| compiled.pass_name(pass))
+            .collect()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const FRAME_SOURCE: &str = include_str!("renderer/frame.rs");
 
-    /// Profiler marks recorded on the main encoder, in source order.
-    fn marks_in_frame_rs() -> Vec<&'static str> {
-        const NEEDLE: &str = ".mark(&mut encoder, \"";
-        let mut out = Vec::new();
-        let mut rest = FRAME_SOURCE;
-        while let Some(at) = rest.find(NEEDLE) {
-            rest = &rest[at + NEEDLE.len()..];
-            let end = rest.find('"').expect("closing quote");
-            out.push(&rest[..end]);
+    #[test]
+    fn every_declared_pass_has_an_implementation_in_the_renderer() {
+        for name in frame_pass_order() {
+            assert!(
+                FRAME_SOURCE.contains(&format!("\"{name}\" =>")),
+                "pass `{name}` is declared in frame_graph.rs but renderer/frame.rs does not run it"
+            );
         }
-        out
     }
 
     #[test]
-    fn declared_passes_match_the_hand_written_frame() {
-        let graph = frame_graph(1920, 1080);
-        let compiled = graph.compile().expect("frame graph compiles");
+    fn execution_order_is_the_compiled_graph_order() {
+        let compiled = frame_graph(1920, 1080).compile().unwrap();
         let declared: Vec<_> = compiled
             .order
             .iter()
             .map(|&p| compiled.pass_name(p))
             .collect();
-        assert_eq!(
-            declared,
-            marks_in_frame_rs(),
-            "update render_graph declarations in frame_graph.rs together with renderer/frame.rs"
-        );
+        assert_eq!(declared, frame_pass_order());
+        assert_eq!(declared.first(), Some(&"shadow_passes"));
+        assert_eq!(declared.last(), Some(&"frame_tail"));
     }
 
     #[test]
@@ -152,7 +163,7 @@ mod tests {
     fn dot_export_names_every_pass() {
         let graph = frame_graph(640, 360);
         let dot = graph.compile().unwrap().to_dot();
-        for name in marks_in_frame_rs() {
+        for name in frame_pass_order() {
             assert!(dot.contains(name), "{name} missing from the DOT output");
         }
     }

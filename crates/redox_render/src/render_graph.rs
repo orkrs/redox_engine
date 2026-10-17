@@ -2,11 +2,11 @@
 //! orders them, drops the ones nobody needs, computes how long each transient texture lives
 //! and assigns physical slots so textures with disjoint lifetimes share memory.
 //!
-//! This module is pure CPU logic (no GPU calls) and is not wired into
-//! [`Renderer`](crate::Renderer) yet: the frame is still recorded by hand in
-//! `renderer/frame.rs`. Migrating passes onto the graph is roadmap step 1.2.3. wgpu already
-//! inserts resource barriers, so the graph's value is explicit dependencies, culling,
-//! memory aliasing and uniform profiling labels - not barriers.
+//! This module is pure CPU logic (no GPU calls). The renderer takes the pass *order* from it
+//! (see [`crate::frame_graph`]); passes still own their textures, so the aliasing plan is
+//! informational. wgpu already inserts resource barriers, so the graph's value is explicit
+//! dependencies, culling, a single source of truth for the pass order and uniform profiling
+//! labels - not barriers.
 //!
 //! # Semantics
 //! * Passes are declared in a sensible sequential order. A pass that reads a texture depends

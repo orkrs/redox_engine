@@ -69,15 +69,67 @@ fn reloaded_passes_render_a_valid_frame() {
         "scatter_light",
         "bloom",
         "msaa_resolve",
+        "tone_mapping",
+        "vg_resolve",
         "taa",
         "velocity",
         "debug_lines",
         "not_a_shader",
     ]);
-    assert_eq!(rebuilt.len(), 11);
+    assert_eq!(rebuilt.len(), 13);
     renderer
         .render_frame_into(&[], &view)
         .expect("frame after reload");
     let error = pollster::block_on(scope.pop());
     assert!(error.is_none(), "validation error: {error:?}");
+}
+
+/// Restores a shader file when dropped, even if the test panics.
+#[cfg(feature = "shader-hot-reload")]
+struct Restore(std::path::PathBuf, String);
+
+#[cfg(feature = "shader-hot-reload")]
+impl Drop for Restore {
+    fn drop(&mut self) {
+        let _ = std::fs::write(&self.0, &self.1);
+    }
+}
+
+/// Edit a real shader file while the renderer runs: the watcher notices it, the pass is rebuilt
+/// from the edited file, and a broken edit is reported without touching the pass.
+#[cfg(feature = "shader-hot-reload")]
+#[test]
+fn editing_a_shader_file_rebuilds_its_pass() {
+    use redox_render::renderer::{ReloadablePass, ShaderHotReload};
+
+    let Some(mut renderer) = renderer() else {
+        eprintln!("no GPU adapter, skipping");
+        return;
+    };
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("shaders/velocity.wgsl");
+    let original = std::fs::read_to_string(&path).unwrap();
+    let _restore = Restore(path.clone(), original.clone());
+
+    let mut hot = ShaderHotReload::new();
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    assert!(hot.update(&mut renderer).is_empty(), "nothing changed yet");
+
+    // A harmless edit rebuilds the pass.
+    std::fs::write(&path, format!("{original}\n// edited at runtime\n")).unwrap();
+    let file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+    file.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(5))
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    assert_eq!(hot.update(&mut renderer), vec![ReloadablePass::Velocity]);
+
+    // A broken edit is reported by validation and the pass is left alone.
+    std::fs::write(&path, format!("{original}\nthis is not wgsl\n")).unwrap();
+    let file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+    file.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(10))
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    assert!(
+        hot.update(&mut renderer).is_empty(),
+        "broken shader must not be applied"
+    );
 }

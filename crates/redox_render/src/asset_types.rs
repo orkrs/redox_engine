@@ -124,6 +124,22 @@ impl MaterialData {
         self
     }
 
+    /// Sets the albedo texture from a KTX2 asset (see
+    /// [`Renderer::add_ktx2_texture_from_asset`](crate::Renderer::add_ktx2_texture_from_asset)).
+    pub fn with_albedo_ktx2(self, handle: Handle<redox_asset::Ktx2Texture>) -> Self {
+        self.with_albedo(Handle::new(handle.id()))
+    }
+
+    /// Sets the normal map from a KTX2 asset.
+    pub fn with_normal_ktx2(self, handle: Handle<redox_asset::Ktx2Texture>) -> Self {
+        self.with_normal(Handle::new(handle.id()))
+    }
+
+    /// Sets the metallic-roughness texture from a KTX2 asset.
+    pub fn with_mr_ktx2(self, handle: Handle<redox_asset::Ktx2Texture>) -> Self {
+        self.with_mr(Handle::new(handle.id()))
+    }
+
     /// Sets the normal map.
     pub fn with_normal(mut self, handle: Handle<TextureData>) -> Self {
         self.normal_handle = Some(handle);

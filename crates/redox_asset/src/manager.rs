@@ -194,22 +194,12 @@ impl AssetManager {
         let (complete_tx, complete_rx) = flume::unbounded();
         // Pre-register the built-in loaders so common formats load out of
         // the box; callers may replace any slot via `register_loader`.
-        let builtin: [(TypeId, Box<dyn LoaderErased>); 2] = [
-            (
-                TypeId::of::<image::DynamicImage>(),
-                Box::new(LoaderWrapper { inner: ImageLoader }) as Box<dyn LoaderErased>,
-            ),
-            (
-                TypeId::of::<GltfSceneData>(),
-                Box::new(LoaderWrapper { inner: GltfLoader }) as Box<dyn LoaderErased>,
-            ),
-        ];
-        let loaders: LoaderRegistry = Arc::new(RwLock::new(builtin.into_iter().collect()));
+        let loaders: LoaderRegistry = Arc::new(RwLock::new(HashMap::new()));
         let registry_clone = Arc::clone(&loaders);
         let complete_tx_worker = complete_tx.clone();
         std::thread::spawn(move || worker_loop(registry_clone, task_rx, complete_tx_worker));
 
-        Self {
+        let mut manager = Self {
             base_path: base_path.into(),
             storages: HashMap::new(),
             inserters: HashMap::new(),
@@ -227,7 +217,12 @@ impl AssetManager {
             statusers: HashMap::new(),
             source: None,
             completion_budget: usize::MAX,
-        }
+        };
+        // Built-in formats; callers may replace any of them with `register_loader`.
+        manager.register_loader::<image::DynamicImage, _>(ImageLoader);
+        manager.register_loader::<GltfSceneData, _>(GltfLoader);
+        manager.register_loader::<crate::loader::Ktx2Texture, _>(crate::loader::Ktx2Loader);
+        manager
     }
 
     /// Enables hot-reload by creating a file watcher. Call [`watch`](HotReloadWatcher::watch)

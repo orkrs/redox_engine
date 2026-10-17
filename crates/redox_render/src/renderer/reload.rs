@@ -7,6 +7,50 @@
 
 use super::*;
 
+/// Poll interval of [`ShaderHotReload`].
+const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Watches the shader sources and reloads the passes of shaders that were edited and still compile.
+///
+/// Call [`Self::update`] once per frame. Builds with the `shader-hot-reload` feature compile the
+/// edited files; without it the rebuilt passes use the embedded sources (nothing visibly changes).
+pub struct ShaderHotReload {
+    watcher: crate::shader::watch::ShaderWatcher,
+    last_poll: std::time::Instant,
+}
+
+impl ShaderHotReload {
+    /// Watches the crate's `shaders/` directory.
+    pub fn new() -> Self {
+        Self {
+            watcher: crate::shader::watch::ShaderWatcher::new(),
+            last_poll: std::time::Instant::now(),
+        }
+    }
+
+    /// At most twice a second: validates edited shaders and reloads the passes of those that
+    /// compile. Returns the rebuilt passes (empty most frames).
+    pub fn update(&mut self, renderer: &mut Renderer) -> Vec<ReloadablePass> {
+        if self.last_poll.elapsed() < POLL_INTERVAL {
+            return Vec::new();
+        }
+        self.last_poll = std::time::Instant::now();
+        let reports = self.watcher.poll(&renderer.device);
+        let good: Vec<&str> = reports
+            .iter()
+            .filter(|r| r.error.is_none())
+            .map(|r| r.name.as_str())
+            .collect();
+        renderer.reload_shaders(&good)
+    }
+}
+
+impl Default for ShaderHotReload {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Passes that [`Renderer::reload_shaders`] can rebuild.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ReloadablePass {
@@ -32,6 +76,10 @@ pub enum ReloadablePass {
     Velocity,
     /// Debug lines.
     DebugLines,
+    /// Tone mapping, the LDR variant and the sharpening present pipeline.
+    Tonemap,
+    /// Virtual geometry visibility, resolve and shadow raster passes.
+    VirtualGeometry,
 }
 
 impl ReloadablePass {
@@ -49,6 +97,8 @@ impl ReloadablePass {
             "taa" => Self::Taa,
             "velocity" => Self::Velocity,
             "debug_lines" => Self::DebugLines,
+            "tone_mapping" => Self::Tonemap,
+            "vg_vis" | "vg_resolve" | "vg_shadow" | "vertex_compressed" => Self::VirtualGeometry,
             _ => return None,
         })
     }
@@ -97,6 +147,28 @@ impl Renderer {
                 }
                 ReloadablePass::Taa => self.taa_pass = TaaPass::new(&self.device, &self.queue, hdr),
                 ReloadablePass::Velocity => self.velocity_pass = VelocityPass::new(&self.device),
+                ReloadablePass::Tonemap => {
+                    let surface = self.config.format;
+                    self.tone_mapping_pipeline =
+                        create_tone_mapping_pipeline(&self.device, surface);
+                    self.tone_mapping_ldr_pipeline =
+                        create_tone_mapping_pipeline(&self.device, wgpu::TextureFormat::Rgba8Unorm);
+                    self.rcas_present_pipeline =
+                        create_rcas_present_pipeline(&self.device, surface);
+                }
+                ReloadablePass::VirtualGeometry => {
+                    let depth = crate::pass::forward::DEPTH_FORMAT;
+                    self.vg_vis_pass =
+                        VgVisPass::new(&self.device, &self.pbr_pass.frame_bgl, depth);
+                    self.vg_resolve_pass = VgResolvePass::new(
+                        &self.device,
+                        hdr,
+                        &self.pbr_pass.frame_bgl,
+                        &self.pbr_pass.scene_bgl,
+                        msaa,
+                    );
+                    self.vg_shadow_pass = VgShadowPass::new(&self.device, SHADOW_FORMAT);
+                }
                 ReloadablePass::DebugLines => {
                     self.debug_lines_pass =
                         DebugLinesPass::new(&self.device, &self.shared_layouts.camera_bgl, msaa);
@@ -120,6 +192,14 @@ mod tests {
         assert_eq!(
             ReloadablePass::for_shader("gtao_blur"),
             Some(ReloadablePass::Ssao)
+        );
+        assert_eq!(
+            ReloadablePass::for_shader("tone_mapping"),
+            Some(ReloadablePass::Tonemap)
+        );
+        assert_eq!(
+            ReloadablePass::for_shader("vg_resolve"),
+            Some(ReloadablePass::VirtualGeometry)
         );
         assert_eq!(ReloadablePass::for_shader("vg_cull"), None);
     }

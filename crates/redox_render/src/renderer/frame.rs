@@ -5,6 +5,20 @@ use super::*;
 mod post;
 mod shadows;
 
+/// State shared by the passes of one frame.
+struct FrameState<'a> {
+    objects: &'a [RenderObject],
+    surface_view: &'a wgpu::TextureView,
+    ts_encoder: wgpu::CommandEncoder,
+    encoder: wgpu::CommandEncoder,
+    mt_cmd_buffers: Vec<wgpu::CommandBuffer>,
+    unjittered_vp: Mat4,
+    jittered_vp: Mat4,
+    cam_eye: Vec3,
+    vsm_dirty: Vec<crate::shadow::vsm_clipmap::DirtyPage>,
+    hdr_resolve_pass: HdrGeometryResolvePass,
+}
+
 impl Renderer {
     /// Returns the next available swap-chain texture so callers can render
     /// 3D + UI into the same surface before calling `present()` once.
@@ -15,16 +29,60 @@ impl Renderer {
                 .ok_or(crate::surface::SurfaceError::Lost)?,
         )
     }
-
     /// Renders all 3D passes into `surface_view`.
     ///
     /// Does **not** call `present()` — the caller must do that after adding
     /// any additional passes (e.g. UI) to the same surface texture.
+    ///
+    /// The passes run in the order of [`crate::frame_graph::frame_pass_order`], which is the
+    /// compiled frame graph; each pass is followed by a GPU profiler mark carrying its name.
     pub fn render_frame_into(
         &mut self,
         objects: &[RenderObject],
         surface_view: &wgpu::TextureView,
     ) -> Result<(), crate::surface::SurfaceError> {
+        let mut frame = self.begin_frame_state(objects, surface_view);
+        for &name in crate::frame_graph::frame_pass_order() {
+            self.run_frame_pass(name, &mut frame);
+            self.gpu_profiler.mark(&mut frame.encoder, name);
+        }
+        self.finish_frame(frame);
+        Ok(())
+    }
+
+    /// Runs the named pass of the frame graph.
+    fn run_frame_pass(&mut self, name: &str, f: &mut FrameState<'_>) {
+        match name {
+            "shadow_passes" => self.pass_shadows(f),
+            "ddgi_fill" => self.pass_ddgi_fill(f),
+            "cluster_vg_cull" => self.pass_cluster_vg_cull(f),
+            "normal_prepass_hiz" => self.pass_normal_prepass_hiz(f),
+            "gtao" => self.record_gtao_passes(&mut f.encoder),
+            "vsm_screen_shadow" => self.record_vsm_screen_shadow(&mut f.encoder),
+            "forward" => self.pass_forward(f),
+            "vg_visibility_resolve" => self.pass_vg_visibility_resolve(f),
+            "transparent" => self.pass_transparent(f),
+            "msaa_resolve_particles" => self.pass_msaa_resolve_particles(f),
+            "scatter_light" => self.record_scatter_light_pass(&mut f.encoder),
+            "taa_tonemap_bloom_smaa" => {
+                self.record_post_chain(
+                    &mut f.encoder,
+                    f.surface_view,
+                    f.jittered_vp,
+                    f.unjittered_vp,
+                );
+            }
+            "frame_tail" => self.pass_frame_tail(f),
+            other => unreachable!("frame graph pass `{other}` has no implementation"),
+        }
+    }
+
+    /// CPU-side preparation shared by all passes: buffers, TAA jitter, light uniform, visibility.
+    fn begin_frame_state<'a>(
+        &mut self,
+        objects: &'a [RenderObject],
+        surface_view: &'a wgpu::TextureView,
+    ) -> FrameState<'a> {
         self.ddgi_gpu.update(
             &self.queue,
             1.0 / 60.0,
@@ -52,33 +110,11 @@ impl Renderer {
             });
         self.gpu_profiler.mark(&mut ts_encoder, "frame_start");
 
-        let mut encoder = self
+        let encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("frame_encoder"),
             });
-        // Everything submitted before this encoder (shadow page / atlas passes) ends here.
-        self.gpu_profiler.mark(&mut encoder, "shadow_passes");
-
-        self.ddgi_gpu.record_gpu_fill(
-            &self.device,
-            &self.queue,
-            &mut encoder,
-            objects,
-            -Vec3::from_array([
-                self.light_uniform.dir_direction[0],
-                self.light_uniform.dir_direction[1],
-                self.light_uniform.dir_direction[2],
-            ]),
-            Vec3::from_array([
-                self.light_uniform.dir_color[0],
-                self.light_uniform.dir_color[1],
-                self.light_uniform.dir_color[2],
-            ]),
-            self.light_uniform.dir_color[3],
-        );
-
-        self.gpu_profiler.mark(&mut encoder, "ddgi_fill");
 
         // 0. Update Buffers
         self.update_model_buffer(objects);
@@ -122,50 +158,6 @@ impl Renderer {
             unjittered_vp
         };
 
-        // ── GPU cluster light cull (optional; CPU fallback in update_clusters) ─
-        if self.cluster_manager.gpu_cull {
-            self.cluster_manager
-                .record_gpu_cull(&self.device, &mut encoder, &self.queue);
-        }
-
-        if let Some(ps) = self.particle_system.as_mut()
-            && ps.gpu_sim_enabled
-            && ps.last_alive_count > 0
-        {
-            let mut uniforms = self.particle_sim_uniforms;
-            uniforms.capacity = ps.capacity;
-            uniforms.alive_count = ps.last_alive_count;
-            if uniforms.delta_time <= 0.0 {
-                uniforms.delta_time = 1.0 / 60.0;
-            }
-            ps.record_gpu_sim(&self.device, &mut encoder, &self.queue, &uniforms);
-        }
-
-        // ── VG GPU cull (optional; CPU cull done in prepare_vg_frame) ───────
-        if let Some(vg) = self.vg_system.as_mut() {
-            if vg.config.gpu_cull {
-                vg.poll_gpu_cull_count(&self.device);
-            }
-            if vg.config.gpu_cull && vg.active_instance_count() > 0 {
-                let cam_pos = Vec3::new(
-                    self.camera_uniform.camera_pos[0],
-                    self.camera_uniform.camera_pos[1],
-                    self.camera_uniform.camera_pos[2],
-                );
-                vg.record_gpu_cull(
-                    &self.device,
-                    &self.queue,
-                    &mut encoder,
-                    &self.camera_uniform.view_proj,
-                    cam_pos,
-                    &self.hiz,
-                );
-            } else {
-                vg.upload_meshlets_if_dirty(&self.queue);
-            }
-        }
-
-        self.gpu_profiler.mark(&mut encoder, "cluster_vg_cull");
         // 0. Update Light Uniform with Shadow Matrix
         let mut light_u = self.pbr_pass_light_uniform();
         if self.uses_scatter_light() {
@@ -197,21 +189,94 @@ impl Renderer {
             &mut self.main_vis_scratch,
         );
 
-        let mut mt_cmd_buffers: Vec<wgpu::CommandBuffer> = Vec::new();
-        if self.mt_command_recording {
-            let prepass_ctx = PrepassContext {
-                device: &self.device,
-                normal_pass: &self.normal_pass,
-                normal_bind_group: &self.normal_bind_group,
-                normal_view: &self.normal_view,
-                depth_view: &self.depth_view,
-                registry: &self.registry,
-            };
-            let vis = self.main_vis_scratch.clone();
-            let prepass_cmd = record_normal_prepass(&prepass_ctx, objects, &vis);
-            mt_cmd_buffers.push(prepass_cmd);
+        let hdr_resolve_pass = self.hdr_geometry_resolve_pass(objects, &self.main_vis_scratch);
+        FrameState {
+            objects,
+            surface_view,
+            ts_encoder,
+            encoder,
+            mt_cmd_buffers: Vec::new(),
+            unjittered_vp,
+            jittered_vp,
+            cam_eye,
+            vsm_dirty,
+            hdr_resolve_pass,
+        }
+    }
+
+    fn pass_ddgi_fill(&mut self, f: &mut FrameState<'_>) {
+        let objects = f.objects;
+        let encoder = &mut f.encoder;
+        self.ddgi_gpu.record_gpu_fill(
+            &self.device,
+            &self.queue,
+            encoder,
+            objects,
+            -Vec3::from_array([
+                self.light_uniform.dir_direction[0],
+                self.light_uniform.dir_direction[1],
+                self.light_uniform.dir_direction[2],
+            ]),
+            Vec3::from_array([
+                self.light_uniform.dir_color[0],
+                self.light_uniform.dir_color[1],
+                self.light_uniform.dir_color[2],
+            ]),
+            self.light_uniform.dir_color[3],
+        );
+    }
+
+    fn pass_cluster_vg_cull(&mut self, f: &mut FrameState<'_>) {
+        let encoder = &mut f.encoder;
+        // ── GPU cluster light cull (optional; CPU fallback in update_clusters) ─
+        if self.cluster_manager.gpu_cull {
+            self.cluster_manager
+                .record_gpu_cull(&self.device, encoder, &self.queue);
         }
 
+        if let Some(ps) = self.particle_system.as_mut()
+            && ps.gpu_sim_enabled
+            && ps.last_alive_count > 0
+        {
+            let mut uniforms = self.particle_sim_uniforms;
+            uniforms.capacity = ps.capacity;
+            uniforms.alive_count = ps.last_alive_count;
+            if uniforms.delta_time <= 0.0 {
+                uniforms.delta_time = 1.0 / 60.0;
+            }
+            ps.record_gpu_sim(&self.device, encoder, &self.queue, &uniforms);
+        }
+
+        // ── VG GPU cull (optional; CPU cull done in prepare_vg_frame) ───────
+        if let Some(vg) = self.vg_system.as_mut() {
+            if vg.config.gpu_cull {
+                vg.poll_gpu_cull_count(&self.device);
+            }
+            if vg.config.gpu_cull && vg.active_instance_count() > 0 {
+                let cam_pos = Vec3::new(
+                    self.camera_uniform.camera_pos[0],
+                    self.camera_uniform.camera_pos[1],
+                    self.camera_uniform.camera_pos[2],
+                );
+                vg.record_gpu_cull(
+                    &self.device,
+                    &self.queue,
+                    encoder,
+                    &self.camera_uniform.view_proj,
+                    cam_pos,
+                    &self.hiz,
+                );
+            } else {
+                vg.upload_meshlets_if_dirty(&self.queue);
+            }
+        }
+    }
+
+    /// Point-light atlas and virtual shadow map pages; recorded into separate command buffers
+    /// that are submitted before the frame encoder.
+    fn pass_shadows(&mut self, f: &mut FrameState<'_>) {
+        let objects = f.objects;
+        let cam_eye = f.cam_eye;
         let atlas_jobs = self.prepare_point_atlas_jobs(objects, cam_eye);
 
         let atlas_ctx = AtlasContext {
@@ -230,7 +295,7 @@ impl Renderer {
         // invalidation (light moved). Dynamic-object page tracking via
         // visibility-bits readback is a documented follow-up.
         if self.vsm_enabled {
-            let dirty = vsm_dirty;
+            let dirty = std::mem::take(&mut f.vsm_dirty);
 
             // Upload page tables AFTER allocation so PBR sees VALID bits
             // this frame (uploading first made moving-sun frames fall back
@@ -275,35 +340,54 @@ impl Renderer {
                     },
                     || record_vsm_pages(&vsm_ctx, &dirty, &page_vps, objects),
                 );
-                mt_cmd_buffers.push(atlas_cmd);
-                mt_cmd_buffers.push(vsm_cmd);
+                f.mt_cmd_buffers.push(atlas_cmd);
+                f.mt_cmd_buffers.push(vsm_cmd);
             } else {
-                mt_cmd_buffers.push(record_point_atlas_shadows(
+                f.mt_cmd_buffers.push(record_point_atlas_shadows(
                     &atlas_ctx,
                     &atlas_jobs,
                     objects,
                     self.vg_system.as_ref(),
                 ));
-                mt_cmd_buffers.push(record_vsm_pages(&vsm_ctx, &dirty, &page_vps, objects));
+                f.mt_cmd_buffers
+                    .push(record_vsm_pages(&vsm_ctx, &dirty, &page_vps, objects));
             }
             self.vsm_clipmap.mark_pages_cached(&dirty);
         } else {
-            mt_cmd_buffers.push(record_point_atlas_shadows(
+            f.mt_cmd_buffers.push(record_point_atlas_shadows(
                 &atlas_ctx,
                 &atlas_jobs,
                 objects,
                 self.vg_system.as_ref(),
             ));
         }
+    }
 
+    fn pass_normal_prepass_hiz(&mut self, f: &mut FrameState<'_>) {
+        let objects = f.objects;
+        let cam_eye = f.cam_eye;
+        let encoder = &mut f.encoder;
+        if self.mt_command_recording {
+            let prepass_ctx = PrepassContext {
+                device: &self.device,
+                normal_pass: &self.normal_pass,
+                normal_bind_group: &self.normal_bind_group,
+                normal_view: &self.normal_view,
+                depth_view: &self.depth_view,
+                registry: &self.registry,
+            };
+            let vis = self.main_vis_scratch.clone();
+            let prepass_cmd = record_normal_prepass(&prepass_ctx, objects, &vis);
+            f.mt_cmd_buffers.push(prepass_cmd);
+        }
         // 2. Normal pass (normals + linear depth for SSAO)
-        self.record_normal_pass(&mut encoder, objects);
+        self.record_normal_pass(encoder, objects);
         if self.vsm_enabled {
             let view_proj = Mat4::from_cols_array_2d(&self.camera_uniform.view_proj);
             self.vsm_page_request.record(
                 &self.device,
                 &self.queue,
-                &mut encoder,
+                encoder,
                 &self.depth_view,
                 &self.vsm_info_buffer,
                 view_proj,
@@ -316,7 +400,7 @@ impl Renderer {
         // Build Hi-Z pyramid from this frame's depth, then late-cull meshlets
         // that Hi-Z of the *previous* frame rejected (1-frame disocclusion).
         self.hiz
-            .build_from_depth(&self.device, &self.queue, &mut encoder, &self.depth_view);
+            .build_from_depth(&self.device, &self.queue, encoder, &self.depth_view);
         if let Some(vg) = self.vg_system.as_mut()
             && vg.config.gpu_cull
             && vg.active_instance_count() > 0
@@ -329,29 +413,18 @@ impl Renderer {
             vg.record_gpu_cull_phase2(
                 &self.device,
                 &self.queue,
-                &mut encoder,
+                encoder,
                 &self.camera_uniform.view_proj,
                 cam_pos,
                 &self.hiz,
             );
         }
+    }
 
-        self.gpu_profiler.mark(&mut encoder, "normal_prepass_hiz");
-        // 3–5. GTAO (optional — when disabled leave bent normal + AO at defaults)
-        self.record_gtao_passes(&mut encoder);
-
-        self.gpu_profiler.mark(&mut encoder, "gtao");
-        // 5b. VSM screen-space shadow (1 Vogel ray + temporal) — now default ON.
-        // PBR samples filtered R16Float instead of inline 16-ray SMRT.
-        // 5b. VSM screen-space shadow (1 Vogel ray + temporal) — now default ON.
-        // PBR samples filtered R16Float instead of inline 16-ray SMRT.
-        self.record_vsm_screen_shadow(&mut encoder);
-
-        self.gpu_profiler.mark(&mut encoder, "vsm_screen_shadow");
-        // 5. Forward pass into HDR. Always clear + draw regular meshes.
-        // VG vis/resolve composites on top; skipping this left HDR uninitialized
-        // (full-screen white) as soon as any VG instance existed.
-        let hdr_resolve_pass = self.hdr_geometry_resolve_pass(objects, &self.main_vis_scratch);
+    fn pass_forward(&mut self, f: &mut FrameState<'_>) {
+        let objects = f.objects;
+        let encoder = &mut f.encoder;
+        let hdr_resolve_pass = f.hdr_resolve_pass;
         let msaa_sample_count = self.msaa_sample_count;
         let debug_lines = std::mem::take(&mut self.current_debug_lines);
         if !debug_lines.is_empty() {
@@ -397,8 +470,12 @@ impl Renderer {
                     .draw(&self.camera_bind_group, &mut render_pass);
             }
         }
+    }
 
-        self.gpu_profiler.mark(&mut encoder, "forward");
+    fn pass_vg_visibility_resolve(&mut self, f: &mut FrameState<'_>) {
+        let encoder = &mut f.encoder;
+        let hdr_resolve_pass = f.hdr_resolve_pass;
+        let msaa_sample_count = self.msaa_sample_count;
         // ── 5a. VG visibility buffer + PBR resolve ───────────────────────────
         if self.vg_use_vis_path {
             let vg_has_content = self
@@ -519,12 +596,13 @@ impl Renderer {
                 vg.render(&mut render_pass);
             }
         }
-        self.gpu_profiler
-            .mark(&mut encoder, "vg_visibility_resolve");
-        // ── 5b. Transparent pass:
-        // Same HDR target and depth buffer as the forward pass, but with
-        // depth writes disabled (read-only depth) so transparent surfaces
-        // never occlude each other.
+    }
+
+    fn pass_transparent(&mut self, f: &mut FrameState<'_>) {
+        let objects = f.objects;
+        let encoder = &mut f.encoder;
+        let hdr_resolve_pass = f.hdr_resolve_pass;
+        let msaa_sample_count = self.msaa_sample_count;
         if self.has_alpha_objects(objects, &self.main_vis_scratch) {
             let mut transparent_render_pass =
                 encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -550,12 +628,13 @@ impl Renderer {
                 &self.main_vis_scratch,
             );
         }
+    }
 
-        self.gpu_profiler.mark(&mut encoder, "transparent");
-        // ── 5c. Smart Resolve (Sharp AA): luma-weighted MSAA resolve → hdr_view ─
+    fn pass_msaa_resolve_particles(&mut self, f: &mut FrameState<'_>) {
+        let encoder = &mut f.encoder;
         if self.aa_sharp && self.msaa_sample_count > 1 {
             self.msaa_resolve_pass
-                .record(&mut encoder, &self.msaa_resolve_bg, &self.hdr_view);
+                .record(encoder, &self.msaa_resolve_bg, &self.hdr_view);
         }
 
         // ── 5d. GPU particles (billboards + reactive mask) ─────────────────
@@ -584,20 +663,13 @@ impl Renderer {
         {
             let reactive = self.reactive_view.as_ref();
             let mut particle_pass =
-                ps.begin_draw_pass(&mut encoder, &self.hdr_view, &self.depth_view, reactive);
+                ps.begin_draw_pass(encoder, &self.hdr_view, &self.depth_view, reactive);
             ps.record_draw(&mut particle_pass, reactive);
         }
+    }
 
-        self.gpu_profiler
-            .mark(&mut encoder, "msaa_resolve_particles");
-        // ── ScatterLight (HDR, pre-TAA) ─────────────────────────────────────
-        self.record_scatter_light_pass(&mut encoder);
-
-        self.gpu_profiler.mark(&mut encoder, "scatter_light");
-        self.record_post_chain(&mut encoder, surface_view, jittered_vp, unjittered_vp);
-
-        self.gpu_profiler
-            .mark(&mut encoder, "taa_tonemap_bloom_smaa");
+    fn pass_frame_tail(&mut self, f: &mut FrameState<'_>) {
+        let encoder = &mut f.encoder;
         // Copy current depth → prev depth for next frame's TAA disocclusion test.
         if self.taa_enabled {
             encoder.copy_texture_to_texture(
@@ -624,7 +696,7 @@ impl Renderer {
         if let Some(vg) = self.vg_system.as_mut()
             && vg.config.gpu_cull
         {
-            vg.schedule_gpu_cull_readback(&mut encoder);
+            vg.schedule_gpu_cull_readback(encoder);
         }
 
         // Feed next frame's motion reprojection (VSM temporal, future TAA-adjacent passes).
@@ -632,8 +704,16 @@ impl Renderer {
         if self.vsm_enabled {
             self.vsm_shadow_frame_count = self.vsm_shadow_frame_count.saturating_add(1);
         }
+    }
 
-        self.gpu_profiler.mark(&mut encoder, "frame_tail");
+    /// Resolves the profiler, submits everything and recycles the staging ring.
+    fn finish_frame(&mut self, f: FrameState<'_>) {
+        let FrameState {
+            ts_encoder,
+            mut encoder,
+            mt_cmd_buffers,
+            ..
+        } = f;
         self.gpu_profiler.resolve(&mut encoder);
         self.queue.submit(
             std::iter::once(ts_encoder.finish())
@@ -648,7 +728,6 @@ impl Renderer {
             self.vsm_request_frames = self.vsm_request_frames.saturating_add(1);
         }
         self.staging_ring.end_frame();
-        Ok(())
     }
 
     /// Convenience wrapper: acquires a surface texture, renders into it, then

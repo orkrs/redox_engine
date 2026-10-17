@@ -137,16 +137,10 @@ pub struct RenderHost {
     /// Half-res pane RTTs for quad layout (Top/Front/Right/Persp).
     pane_views: Option<[EditorViewport; 4]>,
     object_scratch: Vec<RenderObject>,
-    /// Reports WGSL edits made while the editor runs (`shader-hot-reload` feature).
+    /// Rebuilds the passes of WGSL files edited while the editor runs (`shader-hot-reload`).
     #[cfg(feature = "shader-hot-reload")]
-    shader_watcher: redox_render::shader::ShaderWatcher,
-    #[cfg(feature = "shader-hot-reload")]
-    shader_poll_frames: u32,
+    shader_hot_reload: redox_render::renderer::ShaderHotReload,
 }
-
-/// Frames between shader-directory polls (about twice a second at 60 fps).
-#[cfg(feature = "shader-hot-reload")]
-const SHADER_POLL_INTERVAL_FRAMES: u32 = 30;
 
 impl RenderHost {
     pub fn new(
@@ -224,9 +218,7 @@ impl RenderHost {
             pane_views,
             object_scratch: Vec::new(),
             #[cfg(feature = "shader-hot-reload")]
-            shader_watcher: redox_render::shader::ShaderWatcher::new(),
-            #[cfg(feature = "shader-hot-reload")]
-            shader_poll_frames: 0,
+            shader_hot_reload: redox_render::renderer::ShaderHotReload::new(),
         }
     }
 
@@ -234,16 +226,11 @@ impl RenderHost {
     /// shaders loaded at startup: restart the editor to apply a passing edit.
     #[cfg(feature = "shader-hot-reload")]
     fn poll_shader_edits(&mut self) {
-        self.shader_poll_frames += 1;
-        if self.shader_poll_frames < SHADER_POLL_INTERVAL_FRAMES {
-            return;
-        }
-        self.shader_poll_frames = 0;
-        let Some(renderer) = self.renderer.as_ref() else {
+        let Some(renderer) = self.renderer.as_mut() else {
             return;
         };
-        // Reports are logged by the watcher itself.
-        let _ = self.shader_watcher.poll(&renderer.device);
+        // Validates edited shaders and rebuilds the passes of those that compile.
+        let _ = self.shader_hot_reload.update(renderer);
     }
 
     pub fn device(&self) -> &wgpu::Device {

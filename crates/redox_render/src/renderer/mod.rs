@@ -13,6 +13,7 @@ mod init;
 mod passes;
 mod post;
 pub mod reload;
+pub use reload::{ReloadablePass, ShaderHotReload};
 mod resize;
 mod scene_sync;
 mod settings;

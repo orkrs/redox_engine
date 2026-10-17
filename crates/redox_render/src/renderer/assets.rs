@@ -207,6 +207,33 @@ impl Renderer {
         Ok(Some(idx))
     }
 
+    /// Uploads a KTX2 texture asset (keeping its stored mips) and returns its slot.
+    ///
+    /// Materials refer to it through [`MaterialData::with_albedo_ktx2`] and friends. `None` when
+    /// the device cannot use the format (no BC support, or a size that is not a multiple of 4);
+    /// the material then falls back to its flat color.
+    pub fn add_ktx2_texture_from_asset(
+        &mut self,
+        handle: Handle<redox_asset::Ktx2Texture>,
+        ktx: &redox_asset::Ktx2Texture,
+        label: &str,
+    ) -> Option<usize> {
+        if self.registry.has_texture(handle.id()) {
+            return self.registry.texture_index_for(handle.id());
+        }
+        let tex = Texture::from_ktx2(&self.device, &self.queue, ktx, label)?;
+        let bg = self
+            .shared_layouts
+            .create_texture_bind_group(&self.device, &tex);
+        Some(self.registry.insert_texture(
+            handle.id(),
+            crate::registry::TextureSlot {
+                texture: tex,
+                bind_group: Some(bg),
+            },
+        ))
+    }
+
     /// Uploads a material asset and returns its slot.
     pub fn add_material_from_asset(
         &mut self,

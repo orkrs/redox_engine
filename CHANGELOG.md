@@ -28,6 +28,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - Large files split: editor `main.rs`, `viewport.rs`, `frame.rs`, VG `runtime.rs`, `vsm_clipmap.rs`, `prism_vault`.
 
 ### Added
+- Render: the frame now runs from the compiled frame graph (`frame_pass_order`): `render_frame_into` is split into one method per pass and executed in graph order (golden frames unchanged).
+- Render: `ShaderHotReload` (editor and `AppBuilder` with the `shader-hot-reload` feature) validates edited shaders and rebuilds 13 pass groups, now including tone mapping and the VG raster passes; verified by editing a real shader file under a running renderer.
+- Assets/Render: KTX2 textures flow through `AssetManager` (built-in loader, previously the built-in loaders had no storage inserters and never delivered results), `sync_ktx2_textures_to_render` and `MaterialData::with_*_ktx2`.
 - Render: `Renderer::reload_shaders` rebuilds the passes behind edited shaders without a restart (11 passes; tone mapping and VG passes excluded); `Texture::from_ktx2` uploads KTX2/BCn textures with their stored mips.
 - Core: application states (`State`, `NextState`, `AppBuilder::add_state/on_enter/on_exit`, `in_state`); `SharedCommands` flushed by the dispatcher between stages.
 - ECS: component hooks `World::on_add` / `World::on_remove` (spawn, add, remove, despawn).

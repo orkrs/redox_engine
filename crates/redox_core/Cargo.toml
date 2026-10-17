@@ -8,6 +8,10 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Rebuild shader-backed passes when a .wgsl file changes (dev builds).
+shader-hot-reload = ["redox_render/shader-hot-reload"]
+
 [dependencies]
 redox_math = { path = "../redox_math" }
 redox_ecs = { path = "../redox_ecs" }

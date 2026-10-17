@@ -271,3 +271,40 @@ fn damaged_compressed_entries_are_rejected_without_panics() {
     std::fs::write(&path, &bomb).unwrap();
     assert!(matches!(PakReader::open(&path), Err(PakError::Corrupt(_))));
 }
+
+/// Minimal KTX2 container: RGBA8, one 4x4 level, empty descriptor block.
+fn tiny_ktx2() -> Vec<u8> {
+    let level = vec![0x80u8; 4 * 4 * 4];
+    let mut out = vec![
+        0xAB, 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A,
+    ];
+    for v in [37u32, 1, 4, 4, 0, 0, 1, 1, 0] {
+        out.extend_from_slice(&v.to_le_bytes());
+    }
+    for v in [80u32 + 24, 4, 0, 0] {
+        out.extend_from_slice(&v.to_le_bytes());
+    }
+    out.extend_from_slice(&[0u8; 16]);
+    for v in [80u64 + 24 + 4, level.len() as u64, level.len() as u64] {
+        out.extend_from_slice(&v.to_le_bytes());
+    }
+    out.extend_from_slice(&4u32.to_le_bytes());
+    out.extend_from_slice(&level);
+    out
+}
+
+#[test]
+fn builtin_loaders_deliver_ktx2_textures_through_the_manager() {
+    let dir = TempDir::new("ktx2mgr");
+    std::fs::write(dir.0.join("t.ktx2"), tiny_ktx2()).unwrap();
+    let mut mgr = AssetManager::new(&dir.0);
+    let mut world = World::new();
+    let handle = mgr
+        .load_async::<redox_asset::Ktx2Texture>("t.ktx2")
+        .unwrap();
+    pump_until(&mut mgr, &mut world, |m| {
+        m.status(handle) == AssetStatus::Ready
+    });
+    let tex = mgr.get(handle).unwrap();
+    assert_eq!((tex.width, tex.height, tex.levels.len()), (4, 4, 1));
+}
