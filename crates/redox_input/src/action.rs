@@ -1,6 +1,8 @@
 //! Action mapping — abstract game actions bound to physical inputs.
 
-use crate::mouse::MouseButton;
+use crate::gamepad::{GamepadAxis, GamepadButton, GamepadsState};
+use crate::keyboard::KeyboardState;
+use crate::mouse::{MouseButton, MouseState};
 use std::collections::HashMap;
 use winit::keyboard::KeyCode;
 
@@ -27,6 +29,21 @@ pub enum ActionBinding {
     },
     /// A mouse button maps to a digital action.
     Mouse(MouseButton),
+    /// A gamepad button (on any pad) maps to a digital action.
+    PadButton(GamepadButton),
+    /// A gamepad stick or trigger maps to an analog action (largest value across pads).
+    PadAxis(GamepadAxis),
+}
+
+/// Borrowed view of all input devices an action can read.
+#[derive(Clone, Copy)]
+pub struct Devices<'a> {
+    /// Keyboard state.
+    pub keyboard: &'a KeyboardState,
+    /// Mouse state.
+    pub mouse: &'a MouseState,
+    /// Gamepads.
+    pub gamepads: &'a GamepadsState,
 }
 
 /// Maps named actions to physical bindings.
@@ -68,13 +85,26 @@ impl ActionMap {
         self.bindings.get(name).map(|v| v.as_slice()).unwrap_or(&[])
     }
 
-    /// Evaluates an action given the current keyboard and mouse state.
-    pub fn evaluate(
-        &self,
-        name: &str,
-        keyboard: &crate::keyboard::KeyboardState,
-        mouse: &crate::mouse::MouseState,
-    ) -> ActionKind {
+    /// Evaluates an action given the current keyboard and mouse state (no gamepads).
+    pub fn evaluate(&self, name: &str, keyboard: &KeyboardState, mouse: &MouseState) -> ActionKind {
+        let gamepads = GamepadsState::new();
+        self.evaluate_with(
+            name,
+            &Devices {
+                keyboard,
+                mouse,
+                gamepads: &gamepads,
+            },
+        )
+    }
+
+    /// Evaluates an action against every device.
+    pub fn evaluate_with(&self, name: &str, devices: &Devices<'_>) -> ActionKind {
+        let Devices {
+            keyboard,
+            mouse,
+            gamepads,
+        } = *devices;
         let bindings = self.bindings_for(name);
         if bindings.is_empty() {
             return ActionKind::Digital(false);
@@ -104,12 +134,23 @@ impl ActionMap {
                         return ActionKind::Digital(true);
                     }
                 }
+                ActionBinding::PadButton(button) => {
+                    if gamepads.any_pressed(*button) {
+                        return ActionKind::Digital(true);
+                    }
+                }
+                ActionBinding::PadAxis(axis) => {
+                    let value = gamepads.any_axis(*axis);
+                    if value != 0.0 {
+                        return ActionKind::Analog(value);
+                    }
+                }
             }
         }
 
         // No binding triggered — return default
         match &bindings[0] {
-            ActionBinding::Axis { .. } => ActionKind::Analog(0.0),
+            ActionBinding::Axis { .. } | ActionBinding::PadAxis(_) => ActionKind::Analog(0.0),
             _ => ActionKind::Digital(false),
         }
     }
@@ -198,6 +239,36 @@ mod tests {
             ActionKind::Analog(v) => assert!((v - 1.0).abs() < 0.001),
             _ => panic!("expected analog"),
         }
+    }
+
+    #[test]
+    fn gamepad_bindings_drive_actions() {
+        use crate::gamepad::GamepadId;
+
+        let mut map = ActionMap::new();
+        map.add("Jump", ActionBinding::Key(KeyCode::Space));
+        map.add("Jump", ActionBinding::PadButton(GamepadButton::South));
+        map.add("Move", ActionBinding::PadAxis(GamepadAxis::LeftStickX));
+        let (kb, mouse) = (KeyboardState::new(), MouseState::new());
+        let mut pads = GamepadsState::new();
+        pads.set_deadzone(0.0);
+        let eval = |pads: &GamepadsState, name| {
+            map.evaluate_with(
+                name,
+                &Devices {
+                    keyboard: &kb,
+                    mouse: &mouse,
+                    gamepads: pads,
+                },
+            )
+        };
+
+        assert!(matches!(eval(&pads, "Jump"), ActionKind::Digital(false)));
+        assert!(matches!(eval(&pads, "Move"), ActionKind::Analog(v) if v == 0.0));
+        pads.press(GamepadId(3), GamepadButton::South);
+        pads.set_axis(GamepadId(3), GamepadAxis::LeftStickX, -0.75);
+        assert!(matches!(eval(&pads, "Jump"), ActionKind::Digital(true)));
+        assert!(matches!(eval(&pads, "Move"), ActionKind::Analog(v) if (v + 0.75).abs() < 1e-5));
     }
 
     #[test]

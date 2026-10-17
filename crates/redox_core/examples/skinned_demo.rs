@@ -16,15 +16,13 @@
 
 // Demo code: panicking on setup failure is acceptable here.
 #![allow(clippy::unwrap_used)]
-// winit 0.30 deprecates the closure event loop; migrating to `ApplicationHandler` is tracked in the roadmap.
-#![allow(deprecated)]
-
 use std::path::PathBuf;
 use std::time::Instant;
 
 use redox_anim::procedural::{chain_model, demo_rig};
 use redox_anim::{Animator, Pose, SkinnedModel, apply_two_bone_ik};
 use redox_core::config::EngineConfig;
+use redox_core::window::RunClosure;
 use redox_core::window::create_window;
 use redox_input::InputState;
 use redox_math::{Aabb, Mat4, Quat, Vec3};
@@ -416,7 +414,7 @@ fn windowed() {
     let mut frame_count: u64 = 0;
 
     event_loop
-        .run(move |event, elwt| match event {
+        .run_closure(move |event, elwt| match event {
             winit::event::Event::NewEvents(_) => input.begin_frame(),
             winit::event::Event::WindowEvent { event, .. } => {
                 input.process_window_event(&event);

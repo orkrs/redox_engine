@@ -15,6 +15,7 @@ pub mod ofpa;
 pub mod partition;
 pub mod pcg;
 pub mod save;
+pub mod world_bin;
 
 pub use ofpa::{
     ActorRecord, CELLS_DIR, WORLD_FILE, WorldManifest, actor_path, cell_dir, cell_mtime,

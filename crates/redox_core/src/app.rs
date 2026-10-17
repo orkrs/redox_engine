@@ -1,8 +1,5 @@
 //! Engine runner and Application builder.
 
-// winit 0.30 deprecates the closure event loop; migrating to `ApplicationHandler` is tracked in the roadmap.
-#![allow(deprecated)]
-
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -17,7 +14,7 @@ use crate::config::EngineConfig;
 use crate::dispatcher::{Dispatcher, Stage};
 use crate::plugin::Plugin;
 use crate::time::Time;
-use crate::window;
+use crate::window::{self, RunClosure};
 
 type SetupHook = Box<dyn FnOnce(&mut World)>;
 type UiSetupHook = Box<dyn FnOnce(&mut World, &mut RenderContext, Arc<Window>)>;
@@ -207,9 +204,11 @@ impl AppBuilder {
 
         // 5. Event loop execution
         let mut last_frame_time = Instant::now();
+        let mut gamepad_backend = redox_input::GilrsBackend::new();
+        let mut ime_allowed = false;
 
         event_loop
-            .run(move |event, elwt| {
+            .run_closure(move |event, elwt| {
                 match event {
                     Event::NewEvents(_) => {}
                     Event::WindowEvent { event, .. } => {
@@ -235,7 +234,23 @@ impl AppBuilder {
                                     time.tick(delta);
                                 }
 
+                                if let (Some(backend), Some(input)) = (
+                                    gamepad_backend.as_mut(),
+                                    world.get_resource_mut::<InputState>(),
+                                ) {
+                                    backend.poll(&mut input.gamepads);
+                                }
+
                                 self.dispatcher.run(&mut world, &mut render_context);
+
+                                // Text fields turn the platform IME on and off.
+                                let wants_text = world
+                                    .get_resource::<InputState>()
+                                    .is_some_and(|i| i.text.wants_text());
+                                if wants_text != ime_allowed {
+                                    ime_allowed = wants_text;
+                                    window_arc.set_ime_allowed(wants_text);
+                                }
 
                                 // After systems consume `just_pressed`, so the next frame's
                                 // keyboard events aren't wiped by NewEvents-before-Redraw order.

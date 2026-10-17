@@ -1,8 +1,11 @@
 //! Combined input state — the primary ECS resource for input queries.
 
-use crate::action::{ActionKind, ActionMap};
+use crate::action::{ActionKind, ActionMap, Devices};
+use crate::context::InputContexts;
+use crate::gamepad::GamepadsState;
 use crate::keyboard::KeyboardState;
 use crate::mouse::MouseState;
+use crate::text::TextInput;
 
 /// ECS resource that aggregates all input state for the current frame.
 ///
@@ -13,8 +16,14 @@ pub struct InputState {
     pub keyboard: KeyboardState,
     /// Mouse state.
     pub mouse: MouseState,
-    /// Action bindings.
+    /// Gamepads (fed by [`crate::gamepad::GilrsBackend`] or by hand).
+    pub gamepads: GamepadsState,
+    /// Typed text and IME composition.
+    pub text: TextInput,
+    /// Base action bindings, consulted when no active context claims an action.
     pub actions: ActionMap,
+    /// Layered contexts that take precedence over [`Self::actions`].
+    pub contexts: InputContexts,
 }
 
 impl InputState {
@@ -23,7 +32,10 @@ impl InputState {
         Self {
             keyboard: KeyboardState::new(),
             mouse: MouseState::new(),
+            gamepads: GamepadsState::new(),
+            text: TextInput::new(),
             actions: ActionMap::new(),
+            contexts: InputContexts::new(),
         }
     }
 
@@ -31,11 +43,22 @@ impl InputState {
     pub fn begin_frame(&mut self) {
         self.keyboard.begin_frame();
         self.mouse.begin_frame();
+        self.gamepads.begin_frame();
+        self.text.begin_frame();
     }
 
     /// Evaluates a named action against the current input state.
+    ///
+    /// Active [contexts](InputContexts) are consulted first, then the base map.
     pub fn action(&self, name: &str) -> ActionKind {
-        self.actions.evaluate(name, &self.keyboard, &self.mouse)
+        let devices = Devices {
+            keyboard: &self.keyboard,
+            mouse: &self.mouse,
+            gamepads: &self.gamepads,
+        };
+        self.contexts
+            .evaluate(name, &devices)
+            .unwrap_or_else(|| self.actions.evaluate_with(name, &devices))
     }
 
     /// Convenience: returns `true` if a digital action is active.
@@ -63,6 +86,8 @@ impl InputState {
     /// Process a winit `WindowEvent` and update internal state accordingly.
     pub fn process_window_event(&mut self, event: &winit::event::WindowEvent) {
         use winit::event::{ElementState, WindowEvent};
+
+        self.text.process_window_event(event);
 
         match event {
             WindowEvent::KeyboardInput { event, .. } => {

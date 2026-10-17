@@ -5,12 +5,10 @@
 
 // Demo code: panicking on setup failure is acceptable here.
 #![allow(clippy::unwrap_used)]
-// winit 0.30 deprecates the closure event loop; migrating to `ApplicationHandler` is tracked in the roadmap.
-#![allow(deprecated)]
-
 use std::time::Instant;
 
 use redox_core::config::EngineConfig;
+use redox_core::window::RunClosure;
 use redox_core::window::create_window;
 use redox_ecs::World;
 use redox_input::InputState;
@@ -139,7 +137,7 @@ fn main() {
     let mut render_scale = config.render_scale;
 
     event_loop
-        .run(move |event, elwt| match event {
+        .run_closure(move |event, elwt| match event {
             winit::event::Event::NewEvents(_) => {
                 if let Some(input) = world.get_resource_mut::<InputState>() {
                     input.begin_frame();

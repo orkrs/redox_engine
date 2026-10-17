@@ -6,9 +6,7 @@
 
 // Demo code: panicking on setup failure is acceptable here.
 #![allow(clippy::unwrap_used)]
-// winit 0.30 deprecates the closure event loop; migrating to `ApplicationHandler` is tracked in the roadmap.
-#![allow(deprecated)]
-
+use redox_core::window::RunClosure;
 use std::sync::Arc;
 use std::time::Instant;
 use winit::{
@@ -200,8 +198,7 @@ async fn run() {
 
     let mut last_time = Instant::now();
 
-    #[allow(deprecated)]
-    let _ = event_loop.run(move |event, control_flow| {
+    let _ = event_loop.run_closure(move |event, control_flow| {
         if let Event::WindowEvent { event: ref we, .. } = event {
             if ui_ctx.handle_window_event(&window, we) {
                 return;

@@ -21,4 +21,5 @@ redox_math = { path = "../redox_math" }
 redox_reflect = { path = "../redox_reflect" }
 serde = { workspace = true }
 ron = { workspace = true }
+postcard = { version = "1", default-features = false, features = ["use-std"] }
 log = { workspace = true }

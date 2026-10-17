@@ -1,14 +1,12 @@
 //! RedOx Studio editor binary: CLI entry point; the window loop lives in [`app`].
 
-// winit 0.30 deprecates the closure event loop; migrating to `ApplicationHandler` is tracked in the roadmap.
-#![allow(deprecated)]
-
 mod app;
 mod cli;
 mod commands;
 mod render_host;
 
 use cli::{HELP_TEXT, parse_cli, run_bake};
+use redox_core::window::RunClosure;
 use std::sync::Arc;
 
 fn main() {
@@ -49,5 +47,5 @@ fn main() {
     );
 
     let mut app = app::EditorApp::new(window, &cli);
-    let _ = event_loop.run(move |event, elwt| app.handle_event(event, elwt));
+    let _ = event_loop.run_closure(move |event, elwt| app.handle_event(event, elwt));
 }

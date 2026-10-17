@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use winit::keyboard::KeyCode;
 
 use crate::action::{ActionBinding, ActionMap};
+use crate::gamepad::GamepadButton;
 use crate::mouse::MouseButton;
 
 #[derive(Serialize, Deserialize)]
@@ -18,11 +19,15 @@ fn shares_input(a: &ActionBinding, b: &ActionBinding) -> bool {
         match binding {
             ActionBinding::Key(k) => vec![*k],
             ActionBinding::Axis { positive, negative } => vec![*positive, *negative],
-            ActionBinding::Mouse(_) => Vec::new(),
+            ActionBinding::Mouse(_) | ActionBinding::PadButton(_) | ActionBinding::PadAxis(_) => {
+                Vec::new()
+            }
         }
     }
     match (a, b) {
         (ActionBinding::Mouse(x), ActionBinding::Mouse(y)) => x == y,
+        (ActionBinding::PadButton(x), ActionBinding::PadButton(y)) => x == y,
+        (ActionBinding::PadAxis(x), ActionBinding::PadAxis(y)) => x == y,
         _ => {
             let other = keys(b);
             keys(a).iter().any(|k| other.contains(k))
@@ -192,6 +197,28 @@ impl Rebinder {
             return None;
         }
         let new = ActionBinding::Mouse(button);
+        let conflicts = map.conflicts(&new, &action);
+        map.rebind(&action, index, new)
+            .then_some(RebindOutcome { action, conflicts })
+    }
+
+    /// Feeds a pressed gamepad button (from
+    /// [`GamepadsState::first_pressed`](crate::gamepad::GamepadsState::first_pressed)). Like a
+    /// mouse button, it cannot replace a keyboard axis, so an axis capture keeps waiting.
+    pub fn feed_pad_button(
+        &mut self,
+        map: &mut ActionMap,
+        button: GamepadButton,
+    ) -> Option<RebindOutcome> {
+        let (action, index) = self.target.take()?;
+        if matches!(
+            map.bindings_for(&action).get(index)?,
+            ActionBinding::Axis { .. }
+        ) {
+            self.target = Some((action, index));
+            return None;
+        }
+        let new = ActionBinding::PadButton(button);
         let conflicts = map.conflicts(&new, &action);
         map.rebind(&action, index, new)
             .then_some(RebindOutcome { action, conflicts })
