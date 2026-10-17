@@ -138,19 +138,18 @@ fn magnitude3(c: &[f32]) -> f32 {
     (c[0] * c[0] + c[1] * c[1] + c[2] * c[2]).sqrt()
 }
 
-/// Magnitude of the linear constraint impulse stored in a joint (components `0..3`).
-fn linear_impulse(joint: &ImpulseJoint) -> f32 {
-    magnitude3(&joint.impulses[0..3])
+/// True when `value` is above `limit`; a missing limit is never exceeded.
+fn above(value: f32, limit: Option<f32>) -> bool {
+    limit.is_some_and(|limit| value > limit)
 }
 
-/// Magnitude of the angular constraint impulse stored in a joint (components `3..6`).
-fn angular_impulse(joint: &ImpulseJoint) -> f32 {
-    magnitude3(&joint.impulses[3..6])
-}
-
-/// True when `impulse / dt` is above `limit`; a missing limit is never exceeded.
-fn exceeds(impulse: f32, dt: f32, limit: Option<f32>) -> bool {
-    limit.is_some_and(|limit| impulse / dt > limit)
+/// Force and torque a joint carried during the last step.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct JointLoad {
+    /// Magnitude of the linear constraint force (N).
+    force: f32,
+    /// Magnitude of the constraint torque about the joint anchor (N*m).
+    torque: f32,
 }
 
 impl PhysicsContext {
@@ -242,11 +241,45 @@ impl PhysicsContext {
 
     /// True when the joint's force exceeds `break_force` or its torque exceeds `break_torque`.
     fn exceeds_break_limits(&self, record: &JointRecord, dt: f32) -> bool {
-        self.impulse_joint_set
-            .get(record.handle)
-            .is_some_and(|joint| {
-                exceeds(linear_impulse(joint), dt, record.break_force)
-                    || exceeds(angular_impulse(joint), dt, record.break_torque)
-            })
+        let load = self.joint_load(record, dt);
+        above(load.force, record.break_force) || above(load.torque, record.break_torque)
+    }
+
+    /// Force and torque of a joint over the last step.
+    ///
+    /// rapier reports the impulse of the last solver substep, so force = impulse / (dt / substeps).
+    /// The torque is the larger of the reported angular impulse and the moment the linear
+    /// constraint force has about the joint anchor (rapier reports no angular impulse for a load
+    /// that hangs off a lever, but the moment is real and is what tears the joint).
+    fn joint_load(&self, record: &JointRecord, dt: f32) -> JointLoad {
+        let Some(joint) = self.impulse_joint_set.get(record.handle) else {
+            return JointLoad::default();
+        };
+        let substeps = self.integration_parameters.num_solver_iterations.max(1) as f32;
+        let to_rate = substeps / dt;
+        let impulse = Vec3::new(joint.impulses[0], joint.impulses[1], joint.impulses[2]);
+        let angular = magnitude3(&joint.impulses[3..6]) * to_rate;
+        let lever = self.lever_moment(joint, impulse) * to_rate;
+        JointLoad {
+            force: impulse.length() * to_rate,
+            torque: angular.max(lever),
+        }
+    }
+
+    /// Moment of the linear constraint impulse (given in the joint frame) about the bodies' centres
+    /// of mass; the larger of the two bodies' moments.
+    fn lever_moment(&self, joint: &ImpulseJoint, impulse: Vec3) -> f32 {
+        let (Some(body1), Some(body2)) = (
+            self.rigid_bodies.get(joint.body1()),
+            self.rigid_bodies.get(joint.body2()),
+        ) else {
+            return 0.0;
+        };
+        let frame1 = *body1.position() * joint.data.local_frame1;
+        let frame2 = *body2.position() * joint.data.local_frame2;
+        let force = frame1.rotation * impulse;
+        let anchor = frame2.translation;
+        let moment = |centre: Vec3| (centre - anchor).cross(force).length();
+        moment(body1.center_of_mass()).max(moment(body2.center_of_mass()))
     }
 }
