@@ -24,11 +24,17 @@ impl From<LightingMode> for redox_render::LightingMode {
 /// Presentation mode for the window surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PresentMode {
+    /// Vsync, letting the driver pick the best supported mode.
     AutoVsync,
+    /// No vsync, letting the driver pick the best supported mode.
     AutoNoVsync,
+    /// Classic vsync (always supported).
     Fifo,
+    /// Vsync that tears when a frame is late.
     FifoRelaxed,
+    /// No vsync; may tear.
     Immediate,
+    /// Low-latency vsync that drops stale frames.
     Mailbox,
 }
 

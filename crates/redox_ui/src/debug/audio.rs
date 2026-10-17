@@ -14,6 +14,7 @@ pub struct AudioDebugPanel {
 }
 
 impl AudioDebugPanel {
+    /// Creates the panel, initially open.
     pub fn new() -> Self {
         Self { open: true }
     }

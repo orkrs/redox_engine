@@ -110,6 +110,7 @@ unsafe impl<T: 'static> Send for WeakHandle<T> {}
 unsafe impl<T: 'static> Sync for WeakHandle<T> {}
 
 impl<T: 'static> WeakHandle<T> {
+    /// Creates a handle for an asset id.
     pub fn new(id: AssetId) -> Self {
         Self {
             id,
@@ -117,6 +118,7 @@ impl<T: 'static> WeakHandle<T> {
         }
     }
 
+    /// Id of the referenced asset.
     pub fn id(&self) -> AssetId {
         self.id
     }

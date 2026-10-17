@@ -10,6 +10,7 @@ use crate::time::Time;
 
 /// Installs systems and resources onto an [`AppBuilder`].
 pub trait Plugin {
+    /// Registers this plugin's systems and resources on the builder.
     fn build(&self, app: &mut AppBuilder);
 }
 
@@ -17,6 +18,7 @@ pub trait Plugin {
 pub struct App;
 
 impl App {
+    /// Starts building an app with the default engine configuration.
     pub fn new() -> AppBuilder {
         AppBuilder::new(EngineConfig::default())
     }
@@ -35,6 +37,7 @@ impl Plugin for CorePlugin {
 
 /// Rapier world, KCC, trigger events, raycast results.
 pub struct PhysicsPlugin {
+    /// Gravity vector applied to dynamic bodies.
     pub gravity: Vec3,
 }
 

@@ -5,6 +5,7 @@ use crate::query::{NullFilter, Query, QueryData, QueryFilter};
 use hashbrown::HashMap;
 use std::any::{Any, TypeId};
 
+/// Container of all entities, their components (grouped into archetypes) and singleton resources.
 pub struct World {
     entities: EntityAllocator,
     entity_locations: HashMap<Entity, (usize, usize)>,
@@ -24,6 +25,7 @@ pub struct World {
 }
 
 impl World {
+    /// Creates an empty world.
     pub fn new() -> Self {
         Self {
             entities: EntityAllocator::new(),
@@ -55,11 +57,13 @@ impl World {
         self.change_tick
     }
 
+    /// Reserves a new entity id. It owns no components until some are added.
     pub fn spawn(&mut self) -> Entity {
         self.entities.allocate()
     }
 
     // --- ДОСТУП К КОМПОНЕНТАМ ---
+    /// Returns the entity's component of type `T`, if it has one.
     pub fn get_component<T: Component>(&self, entity: Entity) -> Option<&T> {
         let (arch_idx, row) = *self.entity_locations.get(&entity)?;
         let type_id = TypeId::of::<T>();
@@ -80,6 +84,7 @@ impl World {
         }
     }
 
+    /// Returns the entity's component of type `T` mutably and stamps it as changed.
     pub fn get_component_mut<T: Component>(&mut self, entity: Entity) -> Option<&mut T> {
         let (arch_idx, row) = *self.entity_locations.get(&entity)?;
         let type_id = TypeId::of::<T>();
@@ -102,16 +107,19 @@ impl World {
     }
 
     // --- РЕСУРСЫ ---
+    /// Inserts a resource, replacing any previous value of the same type.
     pub fn insert_resource<R: 'static + Send + Sync>(&mut self, resource: R) {
         self.resources.insert(TypeId::of::<R>(), Box::new(resource));
     }
 
+    /// Returns the resource of type `R`, if present.
     pub fn get_resource<R: 'static + Send + Sync>(&self) -> Option<&R> {
         self.resources
             .get(&TypeId::of::<R>())
             .and_then(|boxed| boxed.downcast_ref::<R>())
     }
 
+    /// Returns the resource of type `R` mutably, if present.
     pub fn get_resource_mut<R: 'static + Send + Sync>(&mut self) -> Option<&mut R> {
         self.resources
             .get_mut(&TypeId::of::<R>())
@@ -172,6 +180,7 @@ impl World {
         self.entity_locations.insert(entity, (target, row));
     }
 
+    /// Adds a component to the entity, or overwrites the existing one (dropping the old value).
     pub fn add_component<T: Component>(&mut self, entity: Entity, component: T) {
         let component_info = ComponentInfo::of::<T>();
         let location = self.entity_locations.get(&entity).copied();
@@ -266,6 +275,7 @@ impl World {
             .insert(entity, (target_arch_idx, new_row));
     }
 
+    /// Removes (and drops) the entity's component of type `T`. Returns `false` when it had none.
     pub fn remove_component<T: Component>(&mut self, entity: Entity) -> bool {
         // Логика удаления
         let component_info = ComponentInfo::of::<T>();
@@ -337,6 +347,7 @@ impl World {
         true
     }
 
+    /// Despawns the entity, dropping all its components. Stale handles are ignored.
     pub fn despawn(&mut self, entity: Entity) {
         if let Some((arch_idx, row)) = self.entity_locations.remove(&entity) {
             // SAFETY: `(arch_idx, row)` was just removed from `entity_locations`, which
@@ -366,6 +377,7 @@ impl World {
         }
     }
 
+    /// Iterates over every entity that currently has components.
     pub fn all_entities(&self) -> impl Iterator<Item = Entity> + '_ {
         self.archetypes
             .iter()

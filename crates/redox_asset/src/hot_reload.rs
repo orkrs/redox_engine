@@ -12,6 +12,7 @@ use std::sync::mpsc;
 /// Message sent when a watched path has changed.
 #[derive(Debug, Clone)]
 pub struct ReloadRequest {
+    /// Path of the file that changed.
     pub path: std::path::PathBuf,
 }
 

@@ -17,15 +17,21 @@
 //! for (pos, vel) in q.iter_mut(&mut world) { ... }
 //! ```
 
+#![warn(missing_docs)]
 #![warn(clippy::undocumented_unsafe_blocks)]
 
+/// Archetype tables and typed column storage.
 pub mod archetype;
 pub mod commands;
+/// Component trait and runtime component metadata.
 pub mod component;
+/// Entity handles and their allocator.
 pub mod entity;
 pub mod event;
+/// Parent/child relations and transform propagation.
 pub mod hierarchy;
 pub mod query;
+/// The `World`: entities, components and resources.
 pub mod world;
 
 pub use commands::{CommandQueue, Commands};

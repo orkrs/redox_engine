@@ -8,6 +8,7 @@ pub struct CoyoteTimer {
 }
 
 impl CoyoteTimer {
+    /// Creates a timer with a grace period of `duration_seconds`.
     pub fn new(duration_seconds: f32) -> Self {
         Self {
             duration: duration_seconds,
@@ -51,6 +52,7 @@ pub struct InputBuffer {
 }
 
 impl InputBuffer {
+    /// Creates a buffer that remembers a press for `window_seconds`.
     pub fn new(window_seconds: f32) -> Self {
         Self {
             buffer_window: window_seconds,

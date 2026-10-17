@@ -39,27 +39,33 @@ pub enum Stage {
 /// Declared read/write resource access for parallel scheduling (MVP: type-id sets).
 #[derive(Clone, Debug, Default)]
 pub struct SystemMeta {
+    /// Resource types the system only reads.
     pub reads: Vec<TypeId>,
+    /// Resource types the system writes.
     pub writes: Vec<TypeId>,
     /// When true and access does not conflict, the system may run in parallel.
     pub parallel: bool,
 }
 
 impl SystemMeta {
+    /// Creates metadata with no declared access.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Declares resources the system reads.
     pub fn reads(mut self, ids: &[TypeId]) -> Self {
         self.reads.extend_from_slice(ids);
         self
     }
 
+    /// Declares resources the system writes.
     pub fn writes(mut self, ids: &[TypeId]) -> Self {
         self.writes.extend_from_slice(ids);
         self
     }
 
+    /// Allows (or forbids) running in parallel with non-conflicting systems.
     pub fn parallel(mut self, parallel: bool) -> Self {
         self.parallel = parallel;
         self
@@ -70,6 +76,7 @@ impl SystemMeta {
         Self::new().writes(&[TypeId::of::<T>()]).parallel(true)
     }
 
+    /// Read-only access to a single resource type.
     pub fn read_resource<T: 'static>() -> Self {
         Self::new().reads(&[TypeId::of::<T>()]).parallel(true)
     }

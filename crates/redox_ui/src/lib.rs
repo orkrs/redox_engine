@@ -6,6 +6,8 @@
 //! - [`StatsPanel`] — performance statistics with FPS graph
 //! - [`EntityInspector`] — ECS entity / archetype browser
 
+#![warn(missing_docs)]
+
 pub mod context;
 pub mod debug;
 

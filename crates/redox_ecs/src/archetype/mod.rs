@@ -1,4 +1,6 @@
+/// Dense, type-erased storage for one component type.
 pub mod column;
+/// A table of columns: one row per entity of an archetype.
 pub mod table;
 
 use crate::component::ComponentInfo;

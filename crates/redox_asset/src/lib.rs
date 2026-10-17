@@ -7,6 +7,8 @@
 //! - ECS events: [`AssetLoadedEvent`], [`AssetReloadedEvent`], [`AssetLoadFailedEvent`]
 //! - Optional hot-reload via [`HotReloadWatcher`]
 
+#![warn(missing_docs)]
+
 pub mod error;
 pub mod event;
 pub mod handle;

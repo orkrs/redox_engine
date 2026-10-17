@@ -5,9 +5,13 @@ use std::collections::HashSet;
 /// Identifies a mouse button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MouseButton {
+    /// Primary (left) button.
     Left,
+    /// Secondary (right) button.
     Right,
+    /// Middle button (wheel click).
     Middle,
+    /// Any other button, identified by its platform index.
     Other(u16),
 }
 
@@ -39,6 +43,7 @@ pub struct MouseState {
 }
 
 impl MouseState {
+    /// Creates a state with the cursor at the origin and no buttons pressed.
     pub fn new() -> Self {
         Self {
             position: [0.0; 2],

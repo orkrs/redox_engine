@@ -25,16 +25,23 @@ pub struct AssetLoadedEvent {
 /// Emitted when an asset was hot-reloaded (file changed on disk).
 #[derive(Debug, Clone)]
 pub struct AssetReloadedEvent {
+    /// Type of the asset that finished loading.
     pub type_id: TypeId,
+    /// Id of the loaded asset.
     pub id: AssetId,
+    /// Source path of the asset.
     pub path: PathBuf,
 }
 
 /// Emitted when an async load failed.
 #[derive(Debug, Clone)]
 pub struct AssetLoadFailedEvent {
+    /// Type of the asset that failed to load.
     pub type_id: TypeId,
+    /// Id of the failed asset.
     pub id: AssetId,
+    /// Source path of the asset.
     pub path: PathBuf,
+    /// Human-readable failure reason.
     pub message: String,
 }

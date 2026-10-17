@@ -28,8 +28,11 @@ unsafe fn drop_one<T>(ptr: *mut u8) {
 #[derive(Debug, Clone, Copy)]
 #[allow(unpredictable_function_pointer_comparisons)]
 pub struct ComponentInfo {
+    /// Identity of the component type.
     pub type_id: TypeId,
+    /// Size in bytes of one value.
     pub size: usize,
+    /// Alignment in bytes of one value.
     pub align: usize,
     /// Type-erased drop glue (`None` for `Copy` / drop-free types).
     ///

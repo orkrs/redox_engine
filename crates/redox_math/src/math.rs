@@ -5,10 +5,16 @@
 //! and frustum culling utilities. All types are designed for high-performance
 //! 3D graphics and physics simulations.
 
+#![warn(missing_docs)]
+
+/// Axis-aligned bounding boxes.
 pub mod bounds;
 pub mod frustum;
+/// Matrix helpers: view and projection constructors.
 pub mod matrix;
+/// Quaternion helpers.
 pub mod quat;
+/// `Transform` and `GlobalTransform` components.
 pub mod transform;
 pub mod vector;
 

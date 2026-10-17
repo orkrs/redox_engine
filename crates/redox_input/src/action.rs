@@ -20,7 +20,9 @@ pub enum ActionBinding {
     Key(KeyCode),
     /// Positive / Negative keys map to an analog action in range −1 → +1.
     Axis {
+        /// Key that drives the axis towards +1.
         positive: KeyCode,
+        /// Key that drives the axis towards -1.
         negative: KeyCode,
     },
     /// A mouse button maps to a digital action.
@@ -44,6 +46,7 @@ pub struct ActionMap {
 }
 
 impl ActionMap {
+    /// Creates an empty action map.
     pub fn new() -> Self {
         Self {
             bindings: HashMap::new(),

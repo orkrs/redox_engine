@@ -3,6 +3,7 @@ use crate::{Mat4, Quat, Vec3};
 /// World-space transform composed from the local [`Transform`] and ancestors.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GlobalTransform {
+    /// Local-to-world matrix.
     pub matrix: Mat4,
 }
 
@@ -15,14 +16,17 @@ impl Default for GlobalTransform {
 }
 
 impl GlobalTransform {
+    /// The identity world transform.
     pub const IDENTITY: Self = Self {
         matrix: Mat4::IDENTITY,
     };
 
+    /// Wraps an existing matrix.
     pub fn from_matrix(matrix: Mat4) -> Self {
         Self { matrix }
     }
 
+    /// Translation part of the world matrix.
     pub fn translation(&self) -> Vec3 {
         self.matrix.to_scale_rotation_translation().2
     }
@@ -31,8 +35,11 @@ impl GlobalTransform {
 /// Единый компонент трансформации для всего движка
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Transform {
+    /// Position relative to the parent (or the world when there is none).
     pub translation: Vec3,
+    /// Orientation relative to the parent.
     pub rotation: Quat,
+    /// Per-axis scale relative to the parent.
     pub scale: Vec3,
 }
 

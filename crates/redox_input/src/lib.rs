@@ -4,6 +4,8 @@
 //! `winit` events. The primary ECS resource is [`InputState`], which is updated
 //! once per frame during the `Input` stage.
 
+#![warn(missing_docs)]
+
 pub mod action;
 pub mod buffer;
 pub mod keyboard;

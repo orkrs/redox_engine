@@ -88,6 +88,7 @@ impl AppBuilder {
         self
     }
 
+    /// Registers a frame-end hook that advances the `Events<T>` queue (events expire after two frames).
     pub fn register_events<T>(&mut self)
     where
         T: 'static + Send + Sync,

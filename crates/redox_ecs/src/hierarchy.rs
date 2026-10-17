@@ -14,6 +14,7 @@ pub struct Parent(pub Entity);
 /// Component added to an entity to track its children.
 #[derive(Debug, Clone)]
 pub struct Children {
+    /// Child entities in insertion order.
     pub list: SmallVec<[Entity; 8]>,
 }
 

@@ -24,6 +24,7 @@ use redox_ecs::world::World;
 
 /// ECS resource that owns the egui rendering integration.
 pub struct UiContext {
+    /// The egui context; use it to build UI inside a frame.
     pub egui_ctx: egui::Context,
     egui_state: egui_winit::State,
     egui_renderer: egui_wgpu::Renderer,
