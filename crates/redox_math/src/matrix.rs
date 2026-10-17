@@ -96,3 +96,201 @@ pub fn perspective_infinite_reverse_z(fov_radians: f32, aspect_ratio: f32, near:
 pub fn orthographic(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32) -> Mat4 {
     glam::camera::rh::proj::directx::orthographic(left, right, bottom, top, near, far)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::from_axis_angle;
+    use std::f32::consts::FRAC_PI_2;
+
+    /// Absolute tolerance used for all float comparisons in this module.
+    const EPS: f32 = 1e-4;
+
+    fn approx_eq(a: f32, b: f32) -> bool {
+        (a - b).abs() <= EPS
+    }
+
+    fn assert_vec3_approx(actual: Vec3, expected: Vec3) {
+        assert!(
+            approx_eq(actual.x, expected.x)
+                && approx_eq(actual.y, expected.y)
+                && approx_eq(actual.z, expected.z),
+            "expected {expected:?}, got {actual:?}"
+        );
+    }
+
+    fn assert_mat4_approx(actual: Mat4, expected: Mat4) {
+        for (a, e) in actual
+            .to_cols_array()
+            .into_iter()
+            .zip(expected.to_cols_array())
+        {
+            assert!(approx_eq(a, e), "expected {expected:?}, got {actual:?}");
+        }
+    }
+
+    fn sample_rotation() -> Quat {
+        from_axis_angle(Vec3::new(1.0, 1.0, 0.0).normalize(), 0.7)
+    }
+
+    #[test]
+    fn transform_matrix_with_identity_parts_is_identity() {
+        let m = transform_matrix(Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
+        assert_mat4_approx(m, Mat4::IDENTITY);
+    }
+
+    #[test]
+    fn transform_matrix_moves_origin_to_translation() {
+        let t = Vec3::new(1.0, 2.0, 3.0);
+        let m = transform_matrix(t, sample_rotation(), Vec3::splat(2.0));
+        assert_vec3_approx(m.transform_point3(Vec3::ZERO), t);
+    }
+
+    #[test]
+    fn transform_matrix_applies_scale_then_rotation_then_translation() {
+        // (1,0,0) -> scale x2 on X -> (2,0,0) -> rotate 90 about Z -> (0,2,0) -> translate -> (10,2,0)
+        let m = transform_matrix(
+            Vec3::new(10.0, 0.0, 0.0),
+            from_axis_angle(Vec3::Z, FRAC_PI_2),
+            Vec3::new(2.0, 1.0, 1.0),
+        );
+        assert_vec3_approx(m.transform_point3(Vec3::X), Vec3::new(10.0, 2.0, 0.0));
+    }
+
+    #[test]
+    fn transform_matrix_round_trips_through_decomposition() {
+        let t = Vec3::new(1.0, -2.0, 3.0);
+        let r = sample_rotation();
+        let s = Vec3::new(1.0, 2.0, 3.0);
+
+        let (scale, rotation, translation) =
+            transform_matrix(t, r, s).to_scale_rotation_translation();
+
+        assert_vec3_approx(scale, s);
+        assert_vec3_approx(translation, t);
+        // q and -q describe the same rotation, so compare |dot|.
+        assert!(
+            approx_eq(rotation.dot(r).abs(), 1.0),
+            "rotation differs: {rotation:?}"
+        );
+    }
+
+    #[test]
+    fn transform_matrix_times_its_inverse_is_identity() {
+        let m = transform_matrix(
+            Vec3::new(4.0, -1.0, 2.0),
+            sample_rotation(),
+            Vec3::new(1.0, 2.0, 0.5),
+        );
+        assert_mat4_approx(m.inverse() * m, Mat4::IDENTITY);
+    }
+
+    #[test]
+    fn zero_scale_collapses_every_point_onto_translation() {
+        let t = Vec3::new(1.0, 2.0, 3.0);
+        let m = transform_matrix(t, sample_rotation(), Vec3::ZERO);
+
+        assert!(approx_eq(m.determinant(), 0.0));
+        assert_vec3_approx(m.transform_point3(Vec3::new(5.0, 6.0, 7.0)), t);
+    }
+
+    #[test]
+    fn look_at_maps_eye_to_view_origin() {
+        let eye = Vec3::new(0.0, 0.0, 5.0);
+        let view = look_at(eye, Vec3::ZERO, Vec3::Y);
+        assert_vec3_approx(view.transform_point3(eye), Vec3::ZERO);
+    }
+
+    #[test]
+    fn look_at_puts_target_on_negative_z_axis_in_right_handed_view_space() {
+        let view = look_at(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y);
+        assert_vec3_approx(view.transform_point3(Vec3::ZERO), Vec3::new(0.0, 0.0, -5.0));
+    }
+
+    #[test]
+    fn look_at_inverse_maps_view_origin_back_to_eye() {
+        let eye = Vec3::new(3.0, 4.0, 5.0);
+        let view = look_at(eye, Vec3::new(0.0, 1.0, 0.0), Vec3::Y);
+        assert_vec3_approx(view.inverse().transform_point3(Vec3::ZERO), eye);
+    }
+
+    #[test]
+    fn perspective_maps_near_plane_to_depth_zero_and_far_plane_to_one() {
+        let m = perspective(FRAC_PI_2, 1.0, 1.0, 100.0);
+        assert!(approx_eq(
+            m.project_point3(Vec3::new(0.0, 0.0, -1.0)).z,
+            0.0
+        ));
+        assert!(approx_eq(
+            m.project_point3(Vec3::new(0.0, 0.0, -100.0)).z,
+            1.0
+        ));
+    }
+
+    #[test]
+    fn perspective_centre_ray_maps_to_screen_centre() {
+        let m = perspective(FRAC_PI_2, 16.0 / 9.0, 0.1, 1000.0);
+        let ndc = m.project_point3(Vec3::new(0.0, 0.0, -10.0));
+        assert!(approx_eq(ndc.x, 0.0) && approx_eq(ndc.y, 0.0));
+    }
+
+    #[test]
+    fn perspective_fov_and_aspect_edges_map_to_ndc_edges() {
+        // 90 degree vertical fov gives focal length 1; aspect 2 means the
+        // half-width at depth 1 is 2, so (2, 1, -1) sits on the top-right corner.
+        let m = perspective(FRAC_PI_2, 2.0, 1.0, 100.0);
+        let ndc = m.project_point3(Vec3::new(2.0, 1.0, -1.0));
+        assert!(approx_eq(ndc.x, 1.0), "x: {}", ndc.x);
+        assert!(approx_eq(ndc.y, 1.0), "y: {}", ndc.y);
+    }
+
+    #[test]
+    fn reverse_z_perspective_maps_near_plane_to_one_and_far_plane_to_zero() {
+        let m = perspective_reverse_z(FRAC_PI_2, 1.0, 1.0, 100.0);
+        assert!(approx_eq(
+            m.project_point3(Vec3::new(0.0, 0.0, -1.0)).z,
+            1.0
+        ));
+        assert!(approx_eq(
+            m.project_point3(Vec3::new(0.0, 0.0, -100.0)).z,
+            0.0
+        ));
+    }
+
+    #[test]
+    fn infinite_reverse_z_maps_near_plane_to_one_and_depth_is_inverse_distance() {
+        let m = perspective_infinite_reverse_z(FRAC_PI_2, 1.0, 1.0);
+        assert!(approx_eq(
+            m.project_point3(Vec3::new(0.0, 0.0, -1.0)).z,
+            1.0
+        ));
+        // depth = near / distance, so twice the near distance gives one half.
+        assert!(approx_eq(
+            m.project_point3(Vec3::new(0.0, 0.0, -2.0)).z,
+            0.5
+        ));
+    }
+
+    #[test]
+    fn orthographic_maps_view_box_corners_to_ndc_corners() {
+        let m = orthographic(-2.0, 2.0, -1.0, 1.0, 1.0, 11.0);
+        assert_vec3_approx(
+            m.project_point3(Vec3::new(2.0, 1.0, -1.0)),
+            Vec3::new(1.0, 1.0, 0.0),
+        );
+        assert_vec3_approx(
+            m.project_point3(Vec3::new(-2.0, -1.0, -11.0)),
+            Vec3::new(-1.0, -1.0, 1.0),
+        );
+    }
+
+    #[test]
+    fn orthographic_depth_is_linear_between_near_and_far() {
+        let m = orthographic(-1.0, 1.0, -1.0, 1.0, 1.0, 11.0);
+        // Halfway between near (z=-1) and far (z=-11) is z=-6.
+        assert!(approx_eq(
+            m.project_point3(Vec3::new(0.0, 0.0, -6.0)).z,
+            0.5
+        ));
+    }
+}
