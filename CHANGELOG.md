@@ -31,6 +31,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - Large files split: editor `main.rs`, `viewport.rs`, `frame.rs`, VG `runtime.rs`, `vsm_clipmap.rs`, `prism_vault`.
 
 ### Added
+- Physics: `CollisionLayers` (membership and filter bit masks), `set_collider_layers`, `PhysicsContext::cast_shape` (sphere, capsule, box sweeps), `overlap_shape` and `overlap_any`, with entity exclusion and layer masks in the queries.
+- Tests: coverage of `redox_math` (`matrix`, `quat`, `transform` now 100 %) and `redox_input` (`state` 90 %, `mouse` 97 %, `gamepad` 93 %). A suspected input bug is recorded as an ignored test: winit `Back` and `Forward` mouse buttons both become `Other(0)`.
 - Animation graph (`redox_anim::graph`): parameters and triggers, state machines with timed cross-fades and exit times, 1D blend trees with phase sync, masked layers, root motion, state-enter events; serde-friendly data.
 - Game UI toolkit (`redox_ui::game`): widget tree with layout (column, row, stack, anchors, fill/fit), virtual 1920x1080 scale with safe area, localisation with fallback and plural forms (incl. Russian), focus navigation, screen stack, egui painter.
 - Example `courier`: third-person prototype using all of the above plus a pak-loaded level and streamed KTX2 textures.

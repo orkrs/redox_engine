@@ -73,8 +73,8 @@ calls; динамические объекты в TAA не оставляют х
 ### Этап B. Игровой слой (6 недель)
 | # | Задача | Минимум | Полное | Время |
 |---|---|---|---|---|
-| B1 | Слои коллизий + QueryFilter | 32 слоя, матрица из файла, фильтры в запросах | горячая смена, события по слоям | 3 дня |
-| B2 | Касты (sphere/capsule/box) и overlap | cast_shape, cast_all, overlap_shape/any/point | closest_point, convex hull | 3 дня |
+| B1 | Слои коллизий + QueryFilter | 32 слоя, матрица из файла, фильтры в запросах | горячая смена, события по слоям | 3 дня. **Минимум сделан 2026-10-17** (`CollisionLayers`, `set_collider_layers`, маска слоёв в запросах); осталось: файл конфигурации с именами слоёв и матрицей, автосинхронизация компонента ECS |
+| B2 | Касты (sphere/capsule/box) и overlap | cast_shape, cast_all, overlap_shape/any/point | closest_point, convex hull | 3 дня. **Минимум сделан 2026-10-17** (`cast_shape`, `overlap_shape`, `overlap_any`); осталось: `cast_shape_all`, `overlap_point`, `closest_point`, выпуклые формы |
 | B3 | События контактов + материалы физики | enter/stay/exit с импульсом, трение/упругость | пороги для звука, комбинирование | 3 дня |
 | B4 | Joints | fixed, hinge, slider, ball, spring, rope; разрыв по силе | motor-профили, generic | 5 дней |
 | B5 | Character controller 2.0 | склоны, ступени, платформы | прилипание, спец-режимы | 4 дня |
