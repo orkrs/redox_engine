@@ -6,14 +6,18 @@ use redox_ecs::Entity;
 /// A sensor overlap started between `sensor` and `other`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TriggerEnter {
+    /// The sensor entity.
     pub sensor: Entity,
+    /// The entity that entered the sensor.
     pub other: Entity,
 }
 
 /// A sensor overlap ended between `sensor` and `other`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TriggerExit {
+    /// The sensor entity.
     pub sensor: Entity,
+    /// The entity that left the sensor.
     pub other: Entity,
 }
 

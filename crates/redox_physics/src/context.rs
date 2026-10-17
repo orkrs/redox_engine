@@ -7,25 +7,39 @@ use std::collections::{HashMap, HashSet};
 
 use crate::raycast::{RaycastRequest, RaycastResult};
 
+/// Errors of the physics layer.
 #[derive(Debug, thiserror::Error)]
 pub enum PhysicsError {
+    /// The entity has no rigid body registered with the physics world.
     #[error("Entity not found in the physics mapping")]
     EntityNotFound,
 }
 
 /// The main physics context owning the rapier3d world and ECS mapping.
 pub struct PhysicsContext {
+    /// All rigid bodies.
     pub rigid_bodies: RigidBodySet,
+    /// All colliders.
     pub colliders: ColliderSet,
+    /// The rapier simulation pipeline.
     pub physics_pipeline: PhysicsPipeline,
+    /// Sleeping/awake island bookkeeping.
     pub island_manager: IslandManager,
+    /// Broad phase; also the source of scene queries.
     pub broad_phase: BroadPhaseBvh,
+    /// Narrow phase (contact generation).
     pub narrow_phase: NarrowPhase,
+    /// Impulse-based joints.
     pub impulse_joint_set: ImpulseJointSet,
+    /// Multibody (reduced-coordinate) joints.
     pub multibody_joint_set: MultibodyJointSet,
+    /// Continuous collision detection solver.
     pub ccd_solver: CCDSolver,
+    /// World gravity vector.
     pub gravity: Vec3,
+    /// Time step and solver parameters.
     pub integration_parameters: IntegrationParameters,
+    /// Soft bodies (unused by the engine, required by the rapier API).
     pub soft_bodies: SoftBodySet,
 
     // Mappings between ECS Entities and Rapier Handles
@@ -33,6 +47,7 @@ pub struct PhysicsContext {
     collider_to_entity: HashMap<ColliderHandle, Entity>,
 
     // Queues for systems
+    /// Raycasts queued by gameplay code, answered by the next physics tick.
     pub raycast_requests: SegQueue<RaycastRequest>,
     collision_events: std::sync::Mutex<Vec<CollisionEvent>>,
 }
@@ -229,6 +244,7 @@ impl PhysicsContext {
         self.entity_to_body.get(&entity).map(|(h, _)| *h)
     }
 
+    /// Teleports the body to the given pose and wakes it.
     pub fn set_rigid_body_transform(
         &mut self,
         handle: RigidBodyHandle,
@@ -240,6 +256,7 @@ impl PhysicsContext {
         }
     }
 
+    /// Sets the body's linear and angular velocity and wakes it.
     pub fn set_rigid_body_velocity(&mut self, handle: RigidBodyHandle, linvel: Vec3, angvel: Vec3) {
         if let Some(body) = self.rigid_bodies.get_mut(handle) {
             body.set_linvel(linvel, true);
@@ -247,6 +264,7 @@ impl PhysicsContext {
         }
     }
 
+    /// Returns the body's pose as translation and rotation.
     pub fn get_rigid_body_transform(&self, handle: RigidBodyHandle) -> Option<(Vec3, Quat)> {
         self.rigid_bodies.get(handle).map(|body| {
             let pos = body.position();
@@ -254,6 +272,7 @@ impl PhysicsContext {
         })
     }
 
+    /// Queues a raycast; its result arrives as a [`RaycastResult`] event.
     pub fn push_raycast_request(&self, request: RaycastRequest) {
         self.raycast_requests.push(request);
     }

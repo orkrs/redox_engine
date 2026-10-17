@@ -1,5 +1,7 @@
 //! Type reflection and RON snapshots for registered ECS components.
 
+#![warn(missing_docs)]
+
 use std::any::TypeId;
 use std::collections::HashMap;
 
@@ -13,31 +15,44 @@ pub use impls::register_engine_defaults;
 /// Serializable, type-erased value used by the inspector and scene save.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ReflectValue {
+    /// No value.
     Null,
+    /// Boolean.
     Bool(bool),
+    /// Signed integer (all integer widths are stored as `i64`).
     I64(i64),
+    /// Floating-point number (all float widths are stored as `f64`).
     F64(f64),
+    /// Text.
     String(String),
+    /// Ordered sequence of values (also used for vectors and quaternions).
     List(Vec<ReflectValue>),
+    /// Named record, e.g. a component.
     Struct {
+        /// Registered name of the reflected type.
         type_name: String,
+        /// Field names and values in declaration order.
         fields: Vec<(String, ReflectValue)>,
     },
 }
 
 impl ReflectValue {
+    /// Wraps an `f32` as a [`ReflectValue::F64`].
     pub fn f32(v: f32) -> Self {
         Self::F64(v as f64)
     }
 
+    /// Builds a three-element list `[x, y, z]`.
     pub fn vec3(x: f32, y: f32, z: f32) -> Self {
         Self::List(vec![Self::f32(x), Self::f32(y), Self::f32(z)])
     }
 
+    /// Builds a four-element list `[x, y, z, w]`.
     pub fn quat(x: f32, y: f32, z: f32, w: f32) -> Self {
         Self::List(vec![Self::f32(x), Self::f32(y), Self::f32(z), Self::f32(w)])
     }
 
+    /// Reads a number as `f32`.
     pub fn as_f32(&self) -> Option<f32> {
         match self {
             Self::F64(v) => Some(*v as f32),
@@ -46,6 +61,7 @@ impl ReflectValue {
         }
     }
 
+    /// Reads a three-element numeric list as `[x, y, z]`.
     pub fn as_vec3(&self) -> Option<[f32; 3]> {
         match self {
             Self::List(items) if items.len() == 3 => {
@@ -55,6 +71,7 @@ impl ReflectValue {
         }
     }
 
+    /// Reads a four-element numeric list as `[x, y, z, w]`.
     pub fn as_quat(&self) -> Option<[f32; 4]> {
         match self {
             Self::List(items) if items.len() == 4 => Some([
@@ -67,6 +84,7 @@ impl ReflectValue {
         }
     }
 
+    /// Reads a boolean.
     pub fn as_bool(&self) -> Option<bool> {
         if let Self::Bool(b) = self {
             Some(*b)
@@ -75,6 +93,7 @@ impl ReflectValue {
         }
     }
 
+    /// Reads an integer.
     pub fn as_i64(&self) -> Option<i64> {
         if let Self::I64(v) = self {
             Some(*v)
@@ -83,6 +102,7 @@ impl ReflectValue {
         }
     }
 
+    /// Reads an integer as `u32` (`None` when out of range).
     pub fn as_u32(&self) -> Option<u32> {
         match self {
             Self::I64(v) if *v >= 0 => Some(*v as u32),
@@ -91,6 +111,7 @@ impl ReflectValue {
         }
     }
 
+    /// Reads text.
     pub fn as_string(&self) -> Option<&str> {
         if let Self::String(s) = self {
             Some(s)
@@ -99,6 +120,7 @@ impl ReflectValue {
         }
     }
 
+    /// Builds an asset-handle value: a struct with one `path` field (`Null` when the handle is unset).
     pub fn handle(type_name: impl Into<String>, asset_path: Option<String>) -> Self {
         Self::Struct {
             type_name: type_name.into(),
@@ -109,6 +131,7 @@ impl ReflectValue {
         }
     }
 
+    /// For a handle value, returns `Some(path)` (`None` inside when unset); `None` when this is not a handle.
     pub fn as_handle_path(&self) -> Option<Option<String>> {
         match self {
             Self::Struct { fields, .. } => {
@@ -125,6 +148,7 @@ impl ReflectValue {
         }
     }
 
+    /// Looks up a field of a struct value by name.
     pub fn field(&self, name: &str) -> Option<&ReflectValue> {
         match self {
             Self::Struct { fields, .. } => fields.iter().find(|(n, _)| n == name).map(|(_, v)| v),
@@ -136,18 +160,25 @@ impl ReflectValue {
 /// Describes a reflectable type for the auto-inspector
 #[derive(Clone, Debug, Default)]
 pub struct ReflectSchema {
+    /// Registered name of the type.
     pub type_name: &'static str,
+    /// Fields in declaration order.
     pub fields: Vec<ReflectField>,
 }
 
+/// Description of one field of a [`ReflectSchema`].
 #[derive(Clone, Debug)]
 pub struct ReflectField {
+    /// Field name.
     pub name: &'static str,
+    /// Name of the field's type.
     pub type_name: &'static str,
 }
 
+/// Error from reading or writing reflected values.
 #[derive(Debug)]
 pub enum ReflectError {
+    /// Human-readable failure message.
     Message(String),
 }
 
@@ -162,6 +193,7 @@ impl std::fmt::Display for ReflectError {
 impl std::error::Error for ReflectError {}
 
 impl ReflectError {
+    /// Creates an error from a message.
     pub fn msg(m: impl Into<String>) -> Self {
         Self::Message(m.into())
     }
@@ -169,11 +201,15 @@ impl ReflectError {
 
 /// Component that can be inspected and written to RON via [`TypeRegistry`].
 pub trait Reflect: Send + Sync + 'static {
+    /// Stable registered name of the type.
     fn type_name() -> &'static str
     where
         Self: Sized;
+    /// Converts the value to its reflected form.
     fn to_value(&self) -> ReflectValue;
+    /// Overwrites the value from a reflected form.
     fn apply(&mut self, value: &ReflectValue) -> Result<(), ReflectError>;
+    /// Describes the type's fields for inspectors.
     fn reflect_schema() -> ReflectSchema
     where
         Self: Sized,
@@ -209,10 +245,12 @@ pub struct TypeRegistry {
 }
 
 impl TypeRegistry {
+    /// Creates an empty registry.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Registers a component type under its reflected name.
     pub fn register<T: Reflect + Default + redox_ecs::Component>(&mut self) {
         let reg = Registration {
             type_name: T::type_name(),
@@ -226,14 +264,17 @@ impl TypeRegistry {
         self.by_id.insert(TypeId::of::<T>(), reg);
     }
 
+    /// Returns the schema of a registered type.
     pub fn schema(&self, type_name: &str) -> Option<&ReflectSchema> {
         self.by_name.get(type_name).map(|r| &r.schema)
     }
 
+    /// Names of all registered types.
     pub fn type_names(&self) -> impl Iterator<Item = &'static str> + '_ {
         self.by_name.keys().copied()
     }
 
+    /// Creates (or overwrites) a component on `entity` from a struct value; the type must be registered.
     pub fn insert_component(
         &self,
         world: &mut World,
@@ -251,6 +292,7 @@ impl TypeRegistry {
         (reg.insert)(world, entity, value)
     }
 
+    /// Reads the entity's component of the given registered type, if it has one.
     pub fn read_component(
         &self,
         world: &World,
@@ -281,6 +323,7 @@ impl TypeRegistry {
         out
     }
 
+    /// Captures every entity that has at least one registered component.
     pub fn snapshot_world(&self, world: &World) -> WorldSnapshot {
         let mut entities = Vec::new();
         for entity in world.all_entities() {
@@ -292,6 +335,7 @@ impl TypeRegistry {
         WorldSnapshot { entities }
     }
 
+    /// Spawns a new entity for each snapshot entity and inserts its components.
     pub fn apply_snapshot(
         &self,
         world: &mut World,
@@ -306,6 +350,7 @@ impl TypeRegistry {
         Ok(())
     }
 
+    /// Serializes the world's registered components to pretty RON.
     pub fn to_ron(&self, world: &World) -> Result<String, ron::Error> {
         ron::ser::to_string_pretty(
             &self.snapshot_world(world),
@@ -313,6 +358,7 @@ impl TypeRegistry {
         )
     }
 
+    /// Parses RON produced by [`Self::to_ron`] and spawns the entities it describes.
     pub fn from_ron(&self, world: &mut World, ron_src: &str) -> Result<(), ReflectError> {
         let snap: WorldSnapshot =
             ron::from_str(ron_src).map_err(|e| ReflectError::msg(e.to_string()))?;
@@ -339,13 +385,17 @@ fn has_typed<T: Reflect>(world: &World, entity: Entity) -> bool {
     world.get_component::<T>(entity).is_some()
 }
 
+/// Reflected components of one entity.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EntitySnapshot {
+    /// One struct value per registered component.
     pub components: Vec<ReflectValue>,
 }
 
+/// Reflected state of a whole world.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
 pub struct WorldSnapshot {
+    /// Entities that have at least one registered component.
     pub entities: Vec<EntitySnapshot>,
 }
 

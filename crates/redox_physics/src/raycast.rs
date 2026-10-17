@@ -24,11 +24,17 @@ pub struct RaycastRequest {
 /// Event produced by the physics engine containing the result of a raycast.
 #[derive(Debug, Clone)]
 pub struct RaycastResult {
+    /// Id of the request this result answers.
     pub request_id: u64,
+    /// Whether the ray hit something within range.
     pub hit: bool,
+    /// Entity that was hit, if it is mapped to one.
     pub entity: Option<Entity>,
+    /// World-space hit point (the ray origin when nothing was hit).
     pub point: Vec3,
+    /// Surface normal facing the ray (zero when nothing was hit).
     pub normal: Vec3,
+    /// Distance travelled along the ray (the maximum distance when nothing was hit).
     pub distance: f32,
 }
 

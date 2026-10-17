@@ -5,19 +5,23 @@ use redox_math::Vec3;
 /// Component indicating that an entity has a rigid body in the physics world.
 #[derive(Debug, Clone)]
 pub struct RigidBody {
+    /// Handle of the rapier rigid body.
     pub handle: RigidBodyHandle,
 }
 
 /// Component indicating that an entity has a collider.
 #[derive(Debug, Clone)]
 pub struct Collider {
+    /// Handle of the rapier collider.
     pub handle: ColliderHandle,
 }
 
 /// Component to control or read the linear and angular velocity of a rigid body.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Velocity {
+    /// Linear velocity in world units per second.
     pub linvel: Vec3,
+    /// Angular velocity in radians per second.
     pub angvel: Vec3,
 }
 
@@ -34,7 +38,9 @@ pub struct Kinematic;
 pub struct CharacterController {
     /// Horizontal (and optional jump) wish this frame, **not** including gravity.
     pub desired_translation: Vec3,
+    /// Downward acceleration applied each step, in units per second squared.
     pub gravity: f32,
+    /// Whether the character stood on ground after the last move.
     pub grounded: bool,
 }
 

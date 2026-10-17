@@ -1,10 +1,17 @@
 //! Physics subsystem for the RedOx Engine based on rapier3d.
 
+#![warn(missing_docs)]
+
 pub mod character;
+/// ECS components of the physics integration.
 pub mod components;
+/// The `PhysicsContext` resource owning the rapier world.
 pub mod context;
+/// Convenience re-exports of the physics modules.
 pub mod physics;
+/// Raycast requests and results.
 pub mod raycast;
+/// ECS to rapier synchronisation and the fixed-step tick.
 pub mod sync;
 pub mod trigger;
 
