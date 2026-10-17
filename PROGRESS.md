@@ -57,6 +57,8 @@
 
 ## Технологический план (подробно)
 
+Порядок и правила «оптимально, не идеально» (тайм-боксы, критерии, что режем): [`docs/PLAN_EXECUTION.md`](docs/PLAN_EXECUTION.md).
+
 Подробные планы по областям с фазами, критериями «готово», тестами, рисками и оценками лежат в
 [`docs/PLAN_TECH_OVERVIEW.md`](docs/PLAN_TECH_OVERVIEW.md) (порядок, зависимости, словарь) и файлах рядом:
 `PLAN_SCRIPTING.md`, `PLAN_PHYSICS_NAV.md`, `PLAN_GEOMETRY.md`, `PLAN_LIGHTING.md`, `PLAN_MATERIALS.md`,
