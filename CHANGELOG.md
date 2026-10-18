@@ -28,6 +28,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - Render (A4): `texture_size_bytes`, `MemoryBudget::{over_budget_categories, report}`.
 - Examples: Foxfire (`cargo run --example foxrun -p redox_core --release`), an action game with a glTF fox, glowing gems and wisps; Courier settings model (`settings.rs`, not yet in the menu).
 
+- Render (A4): `Renderer::{memory_usage, memory_report, set_memory_limit}` computed from live resources; F5 memory overlay in Courier and Foxfire.
+- Physics (B2, B4): `ConvexHull` with `cast_convex`/`overlap_convex`; generic joints (`JointKind::Generic`, `JointAxes`).
+- Scripting (B7c): `raycast_many`, `emit_command` (`ScriptCommand`, `take_commands`), `ScriptRuntime::set_inputs`; Courier coin pickup runs as a WASM module.
+- Audio (B8): streaming music through kira (`register_music`, looped streaming voices on the Music bus, `KiraMusicVoice`, `MusicVoices`).
+- Courier (B9): settings screen (volume and effect switches, saved between runs).
+
 ### Removed
 - Old examples `showcase`, `prism_vault`, `ball_score`, `shadow_lab` (kept: `skinned_demo`, `dino_runner`, `dino_game`).
 - Cascaded shadow maps (CSM): `shadow/csm.rs`, cascade buffers/bindings and shader branches.
