@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::ScriptEvent;
+use crate::{ScriptEvent, WorldQueries};
 
 /// Longest log message kept, in bytes; longer messages are truncated.
 pub(crate) const MAX_LOG_BYTES: usize = 4096;
@@ -15,6 +15,25 @@ pub(crate) const MAX_NAME_BYTES: usize = 64;
 pub(crate) const MAX_OUTPUTS: usize = 256;
 /// Most events queued per instance between two `take_events` calls.
 pub(crate) const MAX_EVENTS: usize = 256;
+
+/// Most `raycast` queries answered per call into the script.
+pub(crate) const MAX_RAYS_PER_CALL: u32 = 64;
+/// Longest ray the host is asked to cast, in metres.
+pub(crate) const MAX_RAY_DISTANCE: f32 = 1000.0;
+
+/// The installed world, if any.
+#[derive(Default)]
+struct WorldSlot(Option<Box<dyn WorldQueries>>);
+
+impl std::fmt::Debug for WorldSlot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(if self.0.is_some() {
+            "WorldSlot(set)"
+        } else {
+            "WorldSlot(none)"
+        })
+    }
+}
 
 /// Reads a script supplied name `(ptr, len)` out of guest memory.
 ///
@@ -36,6 +55,8 @@ pub(crate) struct HostData {
     inputs: HashMap<String, f32>,
     outputs: HashMap<String, f32>,
     events: Vec<ScriptEvent>,
+    world: WorldSlot,
+    rays_left: u32,
 }
 
 impl HostData {
@@ -49,6 +70,39 @@ impl HostData {
         }
         self.logs
             .push_back(String::from_utf8_lossy(capped).into_owned());
+    }
+
+    /// Installs the world answering `raycast`.
+    pub(crate) fn set_world(&mut self, world: Box<dyn WorldQueries>) {
+        self.world = WorldSlot(Some(world));
+    }
+
+    /// Starts a call into the script: the ray allowance is renewed.
+    pub(crate) fn begin_call(&mut self) {
+        self.rays_left = MAX_RAYS_PER_CALL;
+    }
+
+    /// Answers `env.raycast`: the hit distance or -1.0 (no world, bad arguments, allowance used up,
+    /// or no hit). The direction is normalised and the distance capped before the host is asked.
+    pub(crate) fn raycast(&mut self, origin: [f32; 3], direction: [f32; 3], max: f32) -> f32 {
+        const MISS: f32 = -1.0;
+        let finite = origin.iter().chain(&direction).all(|v| v.is_finite());
+        let length = direction.iter().map(|v| v * v).sum::<f32>().sqrt();
+        if !finite || !max.is_finite() || max <= 0.0 || length <= 0.0 {
+            return MISS;
+        }
+        let Some(world) = self.world.0.as_mut() else {
+            return MISS;
+        };
+        if self.rays_left == 0 {
+            return MISS;
+        }
+        self.rays_left -= 1;
+        let unit = direction.map(|v| v / length);
+        world
+            .raycast(origin, unit, max.min(MAX_RAY_DISTANCE))
+            .filter(|d| d.is_finite())
+            .unwrap_or(MISS)
     }
 
     /// Sets an input value readable by the script through `get_f32`.
@@ -114,6 +168,33 @@ mod tests {
         assert_eq!(read_name(mem, -1, 1), None);
         assert_eq!(read_name(&[b'a'; 100], 0, 65), None);
         assert_eq!(read_name(mem, i32::MAX, i32::MAX), None);
+    }
+
+    struct Wall;
+    impl WorldQueries for Wall {
+        fn raycast(&mut self, _: [f32; 3], _: [f32; 3], _: f32) -> Option<f32> {
+            Some(3.0)
+        }
+    }
+
+    #[test]
+    fn rays_need_a_world_valid_arguments_and_allowance() {
+        let mut host = HostData::default();
+        host.begin_call();
+        let down = [0.0, -1.0, 0.0];
+        assert_eq!(host.raycast([0.0; 3], down, 5.0), -1.0, "no world");
+        host.set_world(Box::new(Wall));
+        assert_eq!(host.raycast([0.0; 3], down, 5.0), 3.0);
+        assert_eq!(host.raycast([f32::NAN, 0.0, 0.0], down, 5.0), -1.0);
+        assert_eq!(host.raycast([0.0; 3], [0.0; 3], 5.0), -1.0);
+        assert_eq!(host.raycast([0.0; 3], down, 0.0), -1.0);
+        assert_eq!(host.raycast([0.0; 3], down, f32::NAN), -1.0);
+        for _ in 0..MAX_RAYS_PER_CALL {
+            host.raycast([0.0; 3], down, 5.0);
+        }
+        assert_eq!(host.raycast([0.0; 3], down, 5.0), -1.0, "allowance used up");
+        host.begin_call();
+        assert_eq!(host.raycast([0.0; 3], down, 5.0), 3.0, "renewed");
     }
 
     #[test]

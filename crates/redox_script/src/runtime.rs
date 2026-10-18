@@ -1,7 +1,7 @@
 //! The public runtime: owns instances, delegates execution to a backend.
 
 use crate::{
-    InstanceId, ScriptConfig, ScriptError, ScriptEvent,
+    InstanceId, ScriptConfig, ScriptError, ScriptEvent, WorldQueries,
     backend::{BackendInstance, ScriptBackend},
     wasmi_backend::WasmiBackend,
 };
@@ -105,6 +105,18 @@ impl ScriptRuntime {
         self.slot_mut(id)
             .map(|slot| slot.instance.take_events())
             .unwrap_or_default()
+    }
+
+    /// Installs the world the script's `raycast` queries are answered from; false for an unknown
+    /// instance.
+    pub fn set_world_queries(&mut self, id: InstanceId, world: Box<dyn WorldQueries>) -> bool {
+        match self.slot_mut(id) {
+            Some(slot) => {
+                slot.instance.set_world_queries(world);
+                true
+            }
+            None => false,
+        }
     }
 
     /// Adds `dt` to the instance clock, then calls `on_update(dt)` with a fresh fuel budget.

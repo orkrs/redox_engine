@@ -209,6 +209,7 @@ fn the_new_imports_need_their_permissions() {
         api: ApiPermissions {
             state: false,
             events: true,
+            ..ApiPermissions::none()
         },
         ..ScriptConfig::default()
     });

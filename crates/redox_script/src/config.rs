@@ -35,13 +35,15 @@ impl Permissions {
     }
 }
 
-/// Host API v1a functions a script may import (`get_f32`, `set_f32`, `emit_event`).
+/// Host API functions a script may import (`get_f32`, `set_f32`, `emit_event`, `raycast`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ApiPermissions {
     /// Allows importing `env.get_f32` and `env.set_f32`.
     pub state: bool,
     /// Allows importing `env.emit_event`.
     pub events: bool,
+    /// Allows importing `env.raycast`.
+    pub world: bool,
 }
 
 impl ApiPermissions {
@@ -50,6 +52,7 @@ impl ApiPermissions {
         Self {
             state: true,
             events: true,
+            world: true,
         }
     }
 
@@ -58,6 +61,7 @@ impl ApiPermissions {
         Self {
             state: false,
             events: false,
+            world: false,
         }
     }
 }

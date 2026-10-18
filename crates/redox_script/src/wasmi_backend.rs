@@ -5,6 +5,7 @@ use wasmi::{
     StoreLimitsBuilder, TrapCode, TypedFunc, Val,
 };
 
+use crate::WorldQueries;
 use crate::{
     ScriptError, ScriptEvent,
     backend::{BackendInstance, ScriptBackend},
@@ -117,6 +118,11 @@ fn build_linker(engine: &Engine, config: &ScriptConfig) -> Result<Linker<State>,
             .func_wrap("env", "emit_event", host_emit_event)
             .map_err(link_err)?;
     }
+    if api.world {
+        linker
+            .func_wrap("env", "raycast", host_raycast)
+            .map_err(link_err)?;
+    }
     Ok(linker)
 }
 
@@ -172,6 +178,23 @@ fn host_emit_event(mut caller: Caller<'_, State>, ptr: i32, len: i32, value: f32
     }
 }
 
+/// `env.raycast(ox, oy, oz, dx, dy, dz, max_distance) -> f32`: the hit distance or -1.0.
+fn host_raycast(
+    mut caller: Caller<'_, State>,
+    ox: f32,
+    oy: f32,
+    oz: f32,
+    dx: f32,
+    dy: f32,
+    dz: f32,
+    max_distance: f32,
+) -> f32 {
+    caller
+        .data_mut()
+        .host
+        .raycast([ox, oy, oz], [dx, dy, dz], max_distance)
+}
+
 /// A live `wasmi` instance with its own store.
 struct WasmiInstance {
     store: Store<State>,
@@ -191,6 +214,7 @@ impl WasmiInstance {
 impl BackendInstance for WasmiInstance {
     fn update(&mut self, dt: f32) -> Result<(), ScriptError> {
         self.store.data_mut().host.clock += dt;
+        self.store.data_mut().host.begin_call();
         self.refuel()?;
         self.on_update
             .call(&mut self.store, dt)
@@ -202,6 +226,7 @@ impl BackendInstance for WasmiInstance {
             .instance
             .get_typed_func::<(), i32>(&self.store, name)
             .map_err(|_| ScriptError::MissingExport(name.to_string()))?;
+        self.store.data_mut().host.begin_call();
         self.refuel()?;
         func.call(&mut self.store, ()).map_err(map_call_error)
     }
@@ -220,6 +245,10 @@ impl BackendInstance for WasmiInstance {
 
     fn take_events(&mut self) -> Vec<ScriptEvent> {
         self.store.data_mut().host.take_events()
+    }
+
+    fn set_world_queries(&mut self, world: Box<dyn WorldQueries>) {
+        self.store.data_mut().host.set_world(world);
     }
 
     fn read_global_f32(&self, name: &str) -> Option<f32> {

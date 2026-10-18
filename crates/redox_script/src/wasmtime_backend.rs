@@ -9,6 +9,7 @@ use wasmtime::{
     StoreLimitsBuilder, Trap, TypedFunc, Val,
 };
 
+use crate::WorldQueries;
 use crate::{
     ScriptError, ScriptEvent,
     backend::{BackendInstance, ScriptBackend},
@@ -107,6 +108,11 @@ fn build_linker(engine: &Engine, config: &ScriptConfig) -> Result<Linker<State>,
             .func_wrap("env", "emit_event", host_emit_event)
             .map_err(link_err)?;
     }
+    if api.world {
+        linker
+            .func_wrap("env", "raycast", host_raycast)
+            .map_err(link_err)?;
+    }
     Ok(linker)
 }
 
@@ -162,6 +168,23 @@ fn host_emit_event(mut caller: Caller<'_, State>, ptr: i32, len: i32, value: f32
     }
 }
 
+/// `env.raycast(ox, oy, oz, dx, dy, dz, max_distance) -> f32`: the hit distance or -1.0.
+fn host_raycast(
+    mut caller: Caller<'_, State>,
+    ox: f32,
+    oy: f32,
+    oz: f32,
+    dx: f32,
+    dy: f32,
+    dz: f32,
+    max_distance: f32,
+) -> f32 {
+    caller
+        .data_mut()
+        .host
+        .raycast([ox, oy, oz], [dx, dy, dz], max_distance)
+}
+
 /// A live `wasmtime` instance with its own store.
 ///
 /// The store sits behind a mutex only because reading a global needs `&mut Store` in wasmtime
@@ -184,6 +207,7 @@ impl BackendInstance for WasmtimeInstance {
     fn update(&mut self, dt: f32) -> Result<(), ScriptError> {
         let store = store_mut(&mut self.store);
         store.data_mut().host.clock += dt;
+        store.data_mut().host.begin_call();
         store
             .set_fuel(self.fuel_per_call)
             .map_err(|e| ScriptError::Trap(format!("{e:#}")))?;
@@ -196,6 +220,7 @@ impl BackendInstance for WasmtimeInstance {
             .instance
             .get_typed_func::<(), i32>(&mut *store, name)
             .map_err(|_| ScriptError::MissingExport(name.to_string()))?;
+        store.data_mut().host.begin_call();
         store
             .set_fuel(self.fuel_per_call)
             .map_err(|e| ScriptError::Trap(format!("{e:#}")))?;
@@ -219,6 +244,10 @@ impl BackendInstance for WasmtimeInstance {
 
     fn take_events(&mut self) -> Vec<ScriptEvent> {
         store_mut(&mut self.store).data_mut().host.take_events()
+    }
+
+    fn set_world_queries(&mut self, world: Box<dyn WorldQueries>) {
+        store_mut(&mut self.store).data_mut().host.set_world(world);
     }
 
     fn read_global_f32(&self, name: &str) -> Option<f32> {
