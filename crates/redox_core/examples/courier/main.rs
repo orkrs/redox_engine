@@ -22,6 +22,7 @@ mod game;
 mod pad;
 mod progress;
 mod rig;
+mod settings;
 mod sounds;
 mod ui;
 mod world_assets;
