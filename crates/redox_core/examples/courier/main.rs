@@ -57,6 +57,9 @@ use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 use game::{Controls, World};
+use redox_scene::save::SaveManager;
+use settings::Settings;
+use settings_menu::{MenuAction, SettingsMenu};
 
 /// Everything the renderer needs to draw the scene.
 struct Scene {
@@ -287,6 +290,26 @@ fn controls(input: &InputState, wave: bool) -> Controls {
     }
 }
 
+/// Pushes the settings to the renderer and the mixer.
+fn apply_settings(settings: &Settings, ctx: &mut RenderContext, audio: &mut AudioContext) {
+    audio.set_master_volume(f64::from(settings.master_volume));
+    ctx.bloom_enabled = settings.bloom;
+    ctx.taa_enabled = settings.taa;
+    ctx.set_ssao_enabled(settings.ssao);
+    ctx.set_vsm_enabled(settings.shadows);
+}
+
+/// Applies the settings and writes them to disk.
+fn apply_and_save(
+    settings: &Settings,
+    saves: &SaveManager,
+    ctx: &mut RenderContext,
+    audio: &mut AudioContext,
+) {
+    apply_settings(settings, ctx, audio);
+    settings.save(saves);
+}
+
 /// A button was chosen; the game decides what that means.
 fn act(
     button: &str,
@@ -303,6 +326,7 @@ fn act(
             let next = if loc.language() == "en" { "ru" } else { "en" };
             loc.set_language(next);
         }
+        "settings" => screens.push("settings", true),
         "resume" => {
             screens.pop();
         }
@@ -359,6 +383,9 @@ fn main() {
     }
     let mut audio = AudioContext::new();
     sounds::register_all(&mut audio);
+    let mut settings = Settings::load(&saves);
+    apply_settings(&settings, &mut ctx, &mut audio);
+    let mut settings_menu = SettingsMenu::new();
     let cues = CueLibrary::parse(sounds::CUES).expect("valid cue table");
     let mut selector = CueSelector::new();
     let mut pads = GamepadsState::new();
@@ -409,6 +436,10 @@ fn main() {
                                 }
                                 KeyCode::ArrowDown | KeyCode::KeyS => nav = Some(Direction::Down),
                                 KeyCode::ArrowUp | KeyCode::KeyW => nav = Some(Direction::Up),
+                                KeyCode::ArrowLeft | KeyCode::KeyA => nav = Some(Direction::Left),
+                                KeyCode::ArrowRight | KeyCode::KeyD => {
+                                    nav = Some(Direction::Right);
+                                }
                                 KeyCode::Tab => nav = Some(Direction::Next),
                                 KeyCode::F1 | KeyCode::F2 | KeyCode::F3 | KeyCode::F4 => {
                                     // Debug switches for hunting rendering artefacts.
@@ -424,6 +455,12 @@ fn main() {
                                             ctx.set_vsm_enabled(on);
                                         }
                                     }
+                                    // The saved settings follow the switches, so the screen agrees.
+                                    settings.bloom = ctx.bloom_enabled;
+                                    settings.taa = ctx.taa_enabled;
+                                    settings.ssao = ctx.ssao_enabled;
+                                    settings.shadows = ctx.vsm_enabled;
+                                    settings.save(&saves);
                                     let flag = |on: bool| if on { "on" } else { "off" };
                                     window.set_title(&format!(
                                         "RedOx - Courier | F1 bloom {} | F2 TAA {} | F3 SSAO {} | F4 shadows {}",
@@ -457,7 +494,7 @@ fn main() {
                         if std::mem::take(&mut escape) {
                             match top.as_str() {
                                 "hud" => screens.push("pause", false),
-                                "pause" => {
+                                "pause" | "settings" => {
                                     screens.pop();
                                 }
                                 "win" => screens.reset("menu", true),
@@ -481,7 +518,7 @@ fn main() {
                         if want.wave {
                             audio.play_cue(&cues, &mut selector, "wave", time);
                         }
-                        if !matches!(top.as_str(), "pause" | "win") {
+                        if !matches!(top.as_str(), "pause" | "win" | "settings") {
                             let step = world.step(dt, want, &model.skeleton, &model.clips);
                             if step.picked > 0 {
                                 log::info!("picked up {} coin(s)", step.picked);
@@ -584,6 +621,11 @@ fn main() {
                         for name in visible {
                             let tree = match name.as_str() {
                                 "menu" => ui::main_menu(progress.best_seconds),
+                                "settings" => ui::settings_menu(
+                                    &settings_menu,
+                                    &settings,
+                                    loc.language() == "ru",
+                                ),
                                 "pause" => ui::pause_menu(),
                                 "win" => ui::win_screen(
                                     world.finished.unwrap_or(0.0),
@@ -594,7 +636,50 @@ fn main() {
                             };
                             let laid = layout_localized(&tree, root, &measure, &loc);
                             let is_top = screens.top().is_some_and(|t| t.name == name);
-                            if is_top && name != "hud" {
+                            if is_top && name == "settings" {
+                                if let Some(direction) = nav.take() {
+                                    match direction {
+                                        Direction::Up | Direction::Previous => {
+                                            settings_menu.move_selection(-1);
+                                        }
+                                        Direction::Down | Direction::Next => {
+                                            settings_menu.move_selection(1);
+                                        }
+                                        Direction::Left | Direction::Right => {
+                                            let step = if direction == Direction::Left { -1 } else { 1 };
+                                            if settings_menu.adjust(&mut settings, step) {
+                                                apply_and_save(
+                                                    &settings, &saves, &mut ctx, &mut audio,
+                                                );
+                                            }
+                                        }
+                                    }
+                                    audio.play_cue(&cues, &mut selector, "select", time);
+                                }
+                                let (vx, vy) = scale.to_virtual(
+                                    cursor.0 / window.scale_factor() as f32,
+                                    cursor.1 / window.scale_factor() as f32,
+                                );
+                                let hovered = laid.button_at(vx, vy).and_then(|id| ui::row_index(&id));
+                                if let Some(index) = hovered {
+                                    let delta = index as i32 - settings_menu.selected() as i32;
+                                    settings_menu.move_selection(delta);
+                                }
+                                let clicked = std::mem::take(&mut click) && hovered.is_some();
+                                if std::mem::take(&mut activate) || clicked {
+                                    match settings_menu.activate(&mut settings) {
+                                        MenuAction::Changed => {
+                                            apply_and_save(&settings, &saves, &mut ctx, &mut audio);
+                                        }
+                                        MenuAction::Back => {
+                                            screens.pop();
+                                        }
+                                        MenuAction::None => {}
+                                    }
+                                    audio.play_cue(&cues, &mut selector, "select", time);
+                                }
+                                focus.set(&ui::row_button_id(settings_menu.selected()));
+                            } else if is_top && name != "hud" {
                                 let buttons = laid.buttons();
                                 focus.ensure(&buttons);
                                 if let Some(direction) = nav.take() {
@@ -626,6 +711,9 @@ fn main() {
                                     if button == "language" {
                                         progress.language = Some(loc.language().to_string());
                                         progress.save(&saves);
+                                    }
+                                    if button == "settings" {
+                                        settings_menu = SettingsMenu::new();
                                     }
                                     if restart {
                                         world = World::new(level.clone(), &model.skeleton);

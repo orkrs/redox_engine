@@ -2,11 +2,16 @@
 
 use redox_ui::game::{Align, Color, Dim, Localization, Node};
 
+use crate::settings::Settings;
+use crate::settings_menu::{ROWS, SettingsMenu, caption};
+
 pub const EN: &str = "\
 title = COURIER
 menu.play = Play
 menu.language = Language: English
+menu.settings = Settings
 menu.quit = Quit
+settings.title = Settings
 pause.title = Paused
 pause.resume = Resume
 pause.menu = Main menu
@@ -29,7 +34,9 @@ pub const RU: &str = "\
 title = КУРЬЕР
 menu.play = Играть
 menu.language = Язык: русский
+menu.settings = Настройки
 menu.quit = Выход
+settings.title = Настройки
 pause.title = Пауза
 pause.resume = Продолжить
 pause.menu = Главное меню
@@ -85,8 +92,34 @@ pub fn main_menu(best: Option<f32>) -> Node {
         column
             .child(wide(Node::button_key("play", "menu.play")))
             .child(wide(Node::button_key("language", "menu.language")))
+            .child(wide(Node::button_key("settings", "menu.settings")))
             .child(wide(Node::button_key("quit", "menu.quit"))),
     )
+}
+
+/// Button id of a settings row (the row's index in [`ROWS`]).
+pub fn row_button_id(index: usize) -> String {
+    format!("row{index}")
+}
+
+/// Index of the settings row a button id names, if it is one.
+pub fn row_index(button: &str) -> Option<usize> {
+    button
+        .strip_prefix("row")?
+        .parse()
+        .ok()
+        .filter(|&i| i < ROWS.len())
+}
+
+/// The settings screen: one button per row. The selected row is marked by the caller through the
+/// focus (as on the other menus), so the tree itself does not depend on the selection.
+pub fn settings_menu(_menu: &SettingsMenu, settings: &Settings, russian: bool) -> Node {
+    let mut column = menu_column("settings.title");
+    for (index, row) in ROWS.iter().enumerate() {
+        let label = caption(*row, settings, russian);
+        column = column.child(wide(Node::button(&row_button_id(index), &label)));
+    }
+    centered(column)
 }
 
 pub fn pause_menu() -> Node {
@@ -203,21 +236,26 @@ mod tests {
             loc.set_language(language);
             for (w, h) in SIZES {
                 let main = fits(&main_menu(Some(12.3)), &loc, w, h);
-                assert_eq!(main.buttons().len(), 3);
+                assert_eq!(main.buttons().len(), 4);
                 let pause = fits(&pause_menu(), &loc, w, h);
                 assert_eq!(pause.buttons().len(), 2);
                 let win = fits(&win_screen(42.5, Some(40.0), false), &loc, w, h);
                 let record = fits(&win_screen(42.5, Some(42.5), true), &loc, w, h);
                 assert!(record.rect_of("play").is_some());
                 assert!(win.rect_of("play").is_some());
+                let settings = Settings::default();
+                let screen = fits(
+                    &settings_menu(&SettingsMenu::new(), &settings, language == "ru"),
+                    &loc,
+                    w,
+                    h,
+                );
+                assert_eq!(screen.buttons().len(), ROWS.len());
             }
         }
     }
 
-    #[test]
-    fn menu_buttons_do_not_overlap() {
-        let loc = localization();
-        let ui = fits(&main_menu(None), &loc, 1920.0, 1080.0);
+    fn assert_no_overlap(ui: &redox_ui::game::LaidUi) {
         let buttons = ui.buttons();
         for (i, (_, a)) in buttons.iter().enumerate() {
             for (_, b) in &buttons[i + 1..] {
@@ -226,6 +264,47 @@ mod tests {
                 assert!(!overlap, "{a:?} overlaps {b:?}");
             }
         }
+    }
+
+    #[test]
+    fn menu_buttons_do_not_overlap() {
+        let loc = localization();
+        assert_no_overlap(&fits(&main_menu(None), &loc, 1920.0, 1080.0));
+    }
+
+    #[test]
+    fn settings_buttons_do_not_overlap_and_show_values() {
+        let mut loc = localization();
+        let mut settings = Settings::default();
+        settings.bloom = false;
+        for language in ["en", "ru"] {
+            loc.set_language(language);
+            let ui = fits(
+                &settings_menu(&SettingsMenu::new(), &settings, language == "ru"),
+                &loc,
+                1920.0,
+                1080.0,
+            );
+            assert_no_overlap(&ui);
+            let expected = if language == "ru" {
+                "Блум: выкл"
+            } else {
+                "Bloom: off"
+            };
+            let captions: Vec<&str> = ui
+                .items
+                .iter()
+                .filter_map(|i| match &i.kind {
+                    redox_ui::game::Laid::Button { label, .. } => Some(label.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert!(captions.contains(&expected), "{captions:?}");
+        }
+        for index in 0..ROWS.len() {
+            assert_eq!(row_index(&row_button_id(index)), Some(index));
+        }
+        assert_eq!(row_index("play"), None);
     }
 
     fn labels(ui: &redox_ui::game::LaidUi) -> Vec<String> {

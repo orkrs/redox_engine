@@ -18,8 +18,6 @@
 //! - `label_en(Switch)` / `label_ru(Switch)` are the menu captions: "Bloom", "TAA", "SSAO", "Shadows"
 //!   and "Блум", "TAA", "SSAO", "Тени".
 
-#![allow(dead_code)]
-
 use redox_scene::save::SaveManager;
 
 const SLOT: &str = "settings";
@@ -35,6 +33,7 @@ pub enum Switch {
 
 impl Switch {
     /// All switches in menu order.
+    #[cfg(test)]
     pub const ALL: [Switch; 4] = [Switch::Bloom, Switch::Taa, Switch::Ssao, Switch::Shadows];
 }
 

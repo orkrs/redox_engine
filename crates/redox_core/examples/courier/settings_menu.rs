@@ -14,14 +14,13 @@
 //! - `activate(settings)` (Enter / A button): on a switch row flips it and returns `Changed`; on
 //!   Volume does nothing (`None`); on Back returns `Back`.
 //! - `caption(row, settings, russian)` is the text of a row:
-//!     Volume  -> "Volume: 80%"        / "Громкость: 80%"   (percent rounded to an integer)
-//!     switch  -> "Bloom: on"          / "Блум: вкл"   ("off" / "выкл" when off; names as `label_en` /
-//!                `label_ru` in `settings.rs`)
-//!     Back    -> "Back"               / "Назад"
+//!   ```text
+//!   Volume -> "Volume: 80%" / "Громкость: 80%" (percent rounded to an integer)
+//!   switch -> "Bloom: on" / "Блум: вкл" ("off" / "выкл" when off; names as `label_en` / `label_ru`)
+//!   Back   -> "Back" / "Назад"
+//!   ```
 
-#![allow(dead_code)]
-
-use crate::settings::{Settings, Switch};
+use crate::settings::{Settings, Switch, label_en, label_ru};
 
 /// One row of the settings screen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -66,37 +65,84 @@ impl SettingsMenu {
 
     /// Index of the selected row in [`ROWS`].
     pub fn selected(&self) -> usize {
-        todo!()
+        self.selected
     }
 
     /// The selected row.
     pub fn selected_row(&self) -> Row {
-        todo!()
+        ROWS[self.selected]
     }
 
     /// Moves the selection by `delta` rows with wrap-around (`delta` may be any integer).
     pub fn move_selection(&mut self, delta: i32) {
-        let _ = delta;
-        todo!()
+        let count = ROWS.len() as i64;
+        let next = (self.selected as i64 + i64::from(delta)).rem_euclid(count);
+        self.selected = next as usize;
     }
 
     /// Left / right on the selected row (see the module rules). True when `settings` changed.
     pub fn adjust(&self, settings: &mut Settings, direction: i32) -> bool {
-        let _ = (settings, direction);
-        todo!()
+        if direction == 0 {
+            return false;
+        }
+        match self.selected_row() {
+            Row::Volume => {
+                let before = settings.master_volume;
+                settings.step_volume(direction.signum() as f32 * VOLUME_STEP);
+                settings.master_volume != before
+            }
+            Row::Switch(switch) => {
+                settings.toggle(switch);
+                true
+            }
+            Row::Back => false,
+        }
     }
 
     /// Enter on the selected row (see the module rules).
     pub fn activate(&self, settings: &mut Settings) -> MenuAction {
-        let _ = settings;
-        todo!()
+        match self.selected_row() {
+            Row::Volume => MenuAction::None,
+            Row::Switch(switch) => {
+                settings.toggle(switch);
+                MenuAction::Changed
+            }
+            Row::Back => MenuAction::Back,
+        }
     }
 }
 
+/// Volume change per left / right press.
+const VOLUME_STEP: f32 = 0.1;
+
 /// The caption of `row` for the current settings.
 pub fn caption(row: Row, settings: &Settings, russian: bool) -> String {
-    let _ = (row, settings, russian);
-    todo!()
+    match row {
+        Row::Volume => {
+            let percent = (settings.master_volume * 100.0).round() as i32;
+            let name = if russian {
+                "Громкость"
+            } else {
+                "Volume"
+            };
+            format!("{name}: {percent}%")
+        }
+        Row::Switch(switch) => {
+            let name = if russian {
+                label_ru(switch)
+            } else {
+                label_en(switch)
+            };
+            let state = match (settings.get(switch), russian) {
+                (true, false) => "on",
+                (false, false) => "off",
+                (true, true) => "вкл",
+                (false, true) => "выкл",
+            };
+            format!("{name}: {state}")
+        }
+        Row::Back => (if russian { "Назад" } else { "Back" }).to_string(),
+    }
 }
 
 #[cfg(test)]
