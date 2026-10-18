@@ -1,6 +1,6 @@
 //! The private engine abstraction: a backend compiles modules into instances.
 
-use crate::{ScriptError, ScriptEvent, WorldQueries, config::ScriptConfig};
+use crate::{ScriptCommand, ScriptError, ScriptEvent, WorldQueries, config::ScriptConfig};
 
 /// A WebAssembly engine able to turn module bytes into runnable instances.
 pub(crate) trait ScriptBackend {
@@ -30,6 +30,8 @@ pub(crate) trait BackendInstance {
     fn read_output(&self, name: &str) -> Option<f32>;
     /// Removes and returns the queued events.
     fn take_events(&mut self) -> Vec<ScriptEvent>;
+    /// Removes and returns the queued commands.
+    fn take_commands(&mut self) -> Vec<ScriptCommand>;
     /// Installs the world answering `env.raycast`.
     fn set_world_queries(&mut self, world: Box<dyn WorldQueries>);
 }

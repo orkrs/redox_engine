@@ -7,7 +7,7 @@ use wasmi::{
 
 use crate::WorldQueries;
 use crate::{
-    ScriptError, ScriptEvent,
+    ScriptCommand, ScriptError, ScriptEvent,
     backend::{BackendInstance, ScriptBackend},
     config::ScriptConfig,
     host::{self, HostData},
@@ -117,6 +117,9 @@ fn build_linker(engine: &Engine, config: &ScriptConfig) -> Result<Linker<State>,
         linker
             .func_wrap("env", "emit_event", host_emit_event)
             .map_err(link_err)?;
+        linker
+            .func_wrap("env", "emit_command", host_emit_command)
+            .map_err(link_err)?;
     }
     if api.world {
         linker
@@ -178,6 +181,13 @@ fn host_set_f32(mut caller: Caller<'_, State>, ptr: i32, len: i32, value: f32) {
 fn host_emit_event(mut caller: Caller<'_, State>, ptr: i32, len: i32, value: f32) {
     if let Some(name) = read_name(&mut caller, ptr, len) {
         caller.data_mut().host.emit(&name, value);
+    }
+}
+
+/// `env.emit_command(name_ptr, name_len, a, b, c)`: invalid names are ignored.
+fn host_emit_command(mut caller: Caller<'_, State>, ptr: i32, len: i32, a: f32, b: f32, c: f32) {
+    if let Some(name) = read_name(&mut caller, ptr, len) {
+        caller.data_mut().host.emit_command(&name, [a, b, c]);
     }
 }
 
@@ -273,6 +283,10 @@ impl BackendInstance for WasmiInstance {
 
     fn take_events(&mut self) -> Vec<ScriptEvent> {
         self.store.data_mut().host.take_events()
+    }
+
+    fn take_commands(&mut self) -> Vec<ScriptCommand> {
+        self.store.data_mut().host.take_commands()
     }
 
     fn set_world_queries(&mut self, world: Box<dyn WorldQueries>) {

@@ -1,7 +1,7 @@
 //! WebAssembly scripting for the RedOx Engine (see `docs/PLAN_SCRIPTING.md`, ADR 0005/0006).
 //!
 //! A [`ScriptRuntime`] hosts sandboxed script instances. Every call gets a fuel budget, memory
-//! is capped, and host functions (`env.log`, `env.time_seconds`, `env.get_f32`, `env.set_f32`, `env.emit_event`, `env.raycast`, `env.raycast_many`) are only linked when permitted.
+//! is capped, and host functions (`env.log`, `env.time_seconds`, `env.get_f32`, `env.set_f32`, `env.emit_event`, `env.emit_command`, `env.raycast`, `env.raycast_many`) are only linked when permitted.
 //! A trap or fuel exhaustion disables just the offending instance.
 
 #![warn(missing_docs)]
@@ -31,6 +31,15 @@ pub struct ScriptEvent {
     pub name: String,
     /// Payload value.
     pub value: f32,
+}
+
+/// A command emitted by a script with `env.emit_command`: a name and three numbers.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScriptCommand {
+    /// Command name (at most 64 bytes of UTF-8).
+    pub name: String,
+    /// The three arguments, in the order the script passed them.
+    pub args: [f32; 3],
 }
 
 /// Handle of an instance created by [`ScriptRuntime::instantiate`].

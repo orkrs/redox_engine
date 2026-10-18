@@ -1,7 +1,7 @@
 //! The public runtime: owns instances, delegates execution to a backend.
 
 use crate::{
-    InstanceId, ScriptConfig, ScriptError, ScriptEvent, WorldQueries,
+    InstanceId, ScriptCommand, ScriptConfig, ScriptError, ScriptEvent, WorldQueries,
     backend::{BackendInstance, ScriptBackend},
     wasmi_backend::WasmiBackend,
 };
@@ -95,6 +95,22 @@ impl ScriptRuntime {
         }
     }
 
+    /// Sets many named inputs at once, as [`Self::set_input`] does for each pair; false for an
+    /// unknown instance (nothing is set).
+    pub fn set_inputs<'a>(
+        &mut self,
+        id: InstanceId,
+        values: impl IntoIterator<Item = (&'a str, f32)>,
+    ) -> bool {
+        if self.slot(id).is_none() {
+            return false;
+        }
+        for (name, value) in values {
+            self.set_input(id, name, value);
+        }
+        true
+    }
+
     /// The latest value the script stored under `name` with `set_f32`.
     pub fn read_output(&self, id: InstanceId, name: &str) -> Option<f32> {
         self.slot(id)?.instance.read_output(name)
@@ -104,6 +120,13 @@ impl ScriptRuntime {
     pub fn take_events(&mut self, id: InstanceId) -> Vec<ScriptEvent> {
         self.slot_mut(id)
             .map(|slot| slot.instance.take_events())
+            .unwrap_or_default()
+    }
+
+    /// Takes the commands queued with `emit_command` since the last call, oldest first.
+    pub fn take_commands(&mut self, id: InstanceId) -> Vec<ScriptCommand> {
+        self.slot_mut(id)
+            .map(|slot| slot.instance.take_commands())
             .unwrap_or_default()
     }
 

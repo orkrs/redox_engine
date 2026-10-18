@@ -3,7 +3,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::ops::Range;
 
-use crate::{ScriptEvent, WorldQueries};
+use crate::{ScriptCommand, ScriptEvent, WorldQueries};
 
 /// Longest log message kept, in bytes; longer messages are truncated.
 pub(crate) const MAX_LOG_BYTES: usize = 4096;
@@ -16,6 +16,8 @@ pub(crate) const MAX_NAME_BYTES: usize = 64;
 pub(crate) const MAX_OUTPUTS: usize = 256;
 /// Most events queued per instance between two `take_events` calls.
 pub(crate) const MAX_EVENTS: usize = 256;
+/// Most commands queued per instance between two `take_commands` calls.
+pub(crate) const MAX_COMMANDS: usize = 256;
 
 /// Most `raycast` queries answered per call into the script.
 pub(crate) const MAX_RAYS_PER_CALL: u32 = 64;
@@ -102,6 +104,7 @@ pub(crate) struct HostData {
     inputs: HashMap<String, f32>,
     outputs: HashMap<String, f32>,
     events: Vec<ScriptEvent>,
+    commands: Vec<ScriptCommand>,
     world: WorldSlot,
     rays_left: u32,
 }
@@ -218,6 +221,21 @@ impl HostData {
     /// Removes and returns the queued events, oldest first.
     pub(crate) fn take_events(&mut self) -> Vec<ScriptEvent> {
         std::mem::take(&mut self.events)
+    }
+
+    /// Queues a command; dropped once [`MAX_COMMANDS`] are pending.
+    pub(crate) fn emit_command(&mut self, name: &str, args: [f32; 3]) {
+        if self.commands.len() < MAX_COMMANDS {
+            self.commands.push(ScriptCommand {
+                name: name.to_owned(),
+                args,
+            });
+        }
+    }
+
+    /// Removes and returns the queued commands, oldest first.
+    pub(crate) fn take_commands(&mut self) -> Vec<ScriptCommand> {
+        std::mem::take(&mut self.commands)
     }
 
     /// Removes and returns all buffered messages, oldest first.
