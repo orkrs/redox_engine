@@ -10,6 +10,7 @@ use redox_math::{Quat, Vec3};
 use std::collections::HashSet;
 
 use crate::context::{PhysicsContext, PhysicsError};
+use crate::convex::ConvexHull;
 
 /// Directions shorter than this are treated as "no direction".
 const MIN_DIRECTION_LENGTH: f32 = 1e-6;
@@ -158,7 +159,32 @@ impl PhysicsContext {
         let direction = unit_direction(direction)?;
         let excluded = self.excluded_colliders(exclude);
         let pose = Pose::from_parts(position, rotation);
-        self.cast_skipping(shape, &pose, direction, max_distance, &excluded, layers)
+        let shared = shape.to_shared();
+        self.cast_skipping(&shared, &pose, direction, max_distance, &excluded, layers)
+    }
+
+    /// As [`PhysicsContext::cast_shape`], sweeping a convex hull instead of a [`QueryShape`].
+    pub fn cast_convex(
+        &self,
+        hull: &ConvexHull,
+        position: Vec3,
+        rotation: Quat,
+        direction: Vec3,
+        max_distance: f32,
+        exclude: &[Entity],
+        layers: u32,
+    ) -> Option<ShapeHit> {
+        let direction = unit_direction(direction)?;
+        let excluded = self.excluded_colliders(exclude);
+        let pose = Pose::from_parts(position, rotation);
+        self.cast_skipping(
+            hull.shared(),
+            &pose,
+            direction,
+            max_distance,
+            &excluded,
+            layers,
+        )
     }
 
     /// Sweeps `shape` and returns the first hit on every entity along the way, nearest first.
@@ -180,9 +206,10 @@ impl PhysicsContext {
         };
         let mut skipped = self.excluded_colliders(exclude);
         let pose = Pose::from_parts(position, rotation);
+        let shared = shape.to_shared();
         let mut hits = Vec::new();
         while let Some(hit) =
-            self.cast_skipping(shape, &pose, direction, max_distance, &skipped, layers)
+            self.cast_skipping(&shared, &pose, direction, max_distance, &skipped, layers)
         {
             match hit.entity.and_then(|e| self.collider_handles(e)) {
                 Some(handles) => skipped.extend(handles.iter().copied()),
@@ -250,7 +277,7 @@ impl PhysicsContext {
     /// Casts a shape, ignoring the `skipped` colliders and those outside `layers`.
     fn cast_skipping(
         &self,
-        shape: QueryShape,
+        shape: &SharedShape,
         pose: &Pose,
         direction: Vec3,
         max_distance: f32,
@@ -261,11 +288,10 @@ impl PhysicsContext {
             !skipped.contains(&handle) && layer_matches(collider, layers)
         };
         let filter = QueryFilter::default().predicate(&predicate);
-        let shared = shape.to_shared();
         let options = ShapeCastOptions::with_max_time_of_impact(max_distance);
         let (handle, hit) = self
             .query_pipeline(filter)
-            .cast_shape(pose, direction, &*shared, options)?;
+            .cast_shape(pose, direction, &**shape, options)?;
 
         // The hit collider is the composite side of the cast: its witness and normal (1) are
         // in world space, while (2) belongs to the caster's local frame.
@@ -294,7 +320,26 @@ impl PhysicsContext {
         exclude: &[Entity],
         layers: u32,
     ) -> Vec<Entity> {
-        self.overlapping_entities(shape, position, rotation, exclude, layers, false)
+        self.overlapping_entities(
+            &shape.to_shared(),
+            position,
+            rotation,
+            exclude,
+            layers,
+            false,
+        )
+    }
+
+    /// As [`PhysicsContext::overlap_shape`], with a convex hull instead of a [`QueryShape`].
+    pub fn overlap_convex(
+        &self,
+        hull: &ConvexHull,
+        position: Vec3,
+        rotation: Quat,
+        exclude: &[Entity],
+        layers: u32,
+    ) -> Vec<Entity> {
+        self.overlapping_entities(hull.shared(), position, rotation, exclude, layers, false)
     }
 
     /// Returns true when at least one collider overlaps `shape` placed at `position`.
@@ -307,7 +352,14 @@ impl PhysicsContext {
         layers: u32,
     ) -> bool {
         !self
-            .overlapping_entities(shape, position, rotation, exclude, layers, true)
+            .overlapping_entities(
+                &shape.to_shared(),
+                position,
+                rotation,
+                exclude,
+                layers,
+                true,
+            )
             .is_empty()
     }
 
@@ -335,7 +387,7 @@ impl PhysicsContext {
     /// Shared overlap implementation; stops at the first hit when `first_only` is set.
     fn overlapping_entities(
         &self,
-        shape: QueryShape,
+        shape: &SharedShape,
         position: Vec3,
         rotation: Quat,
         exclude: &[Entity],
@@ -347,11 +399,10 @@ impl PhysicsContext {
             !excluded.contains(&handle) && layer_matches(collider, layers)
         };
         let filter = QueryFilter::default().predicate(&predicate);
-        let shared = shape.to_shared();
         let pipeline = self.query_pipeline(filter);
 
         let mut entities: Vec<Entity> = Vec::new();
-        for (handle, _) in pipeline.intersect_shape(Pose::from_parts(position, rotation), &*shared)
+        for (handle, _) in pipeline.intersect_shape(Pose::from_parts(position, rotation), &**shape)
         {
             let Some(entity) = self.entity_of_collider(handle) else {
                 continue;
