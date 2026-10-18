@@ -22,6 +22,7 @@ pub mod debug;
 pub mod loader;
 pub mod mixer;
 pub mod music;
+mod music_apply;
 mod music_play;
 pub mod spatial;
 pub mod systems;
@@ -40,6 +41,7 @@ pub use mixer::{
     linear_to_db,
 };
 pub use music::{MusicDirector, MusicFrame};
+pub use music_apply::{MusicVoice, MusicVoices};
 pub use systems::{
     OcclusionResult, check_occlusion, compute_active_reverb, occlusion_raycast_system,
     reverb_listener_system,
