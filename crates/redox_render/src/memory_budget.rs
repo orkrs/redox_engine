@@ -6,6 +6,36 @@
 
 const MIB: u64 = 1024 * 1024;
 
+/// Bytes of a texture of any layout: `mip_levels` levels (each dimension halves, minimum 1), the
+/// image split into blocks of `block_width` x `block_height` texels of `block_bytes` bytes (1 x 1 for
+/// uncompressed formats), `depth_or_layers` slices per level (the depth halves per level only for 3D
+/// textures, `halve_depth`), times `samples`. Zero block sizes count as 1. Saturating.
+pub fn texture_bytes_blocks(
+    (width, height, depth_or_layers): (u32, u32, u32),
+    mip_levels: u32,
+    (block_width, block_height, block_bytes): (u32, u32, u32),
+    samples: u32,
+    halve_depth: bool,
+) -> u64 {
+    let (bw, bh) = (block_width.max(1), block_height.max(1));
+    (0..mip_levels.max(1)).fold(0u64, |total, level| {
+        let w = (width >> level.min(31)).max(1);
+        let h = (height >> level.min(31)).max(1);
+        let d = if halve_depth {
+            (depth_or_layers >> level.min(31)).max(1)
+        } else {
+            depth_or_layers.max(1)
+        };
+        let blocks = u64::from(w.div_ceil(bw)) * u64::from(h.div_ceil(bh));
+        total.saturating_add(
+            blocks
+                .saturating_mul(u64::from(block_bytes))
+                .saturating_mul(u64::from(d))
+                .saturating_mul(u64::from(samples.max(1))),
+        )
+    })
+}
+
 /// Bytes of a 2D texture: sum over `mip_levels` levels of max(w >> level, 1) * max(h >> level, 1)
 /// * bytes_per_pixel. `mip_levels` 0 counts as 1. Saturating, never panics.
 pub fn texture_size_bytes(width: u32, height: u32, bytes_per_pixel: u32, mip_levels: u32) -> u64 {
@@ -312,6 +342,36 @@ mod tests {
     fn texture_size_handles_zero_levels_and_zero_dimensions() {
         assert_eq!(texture_size_bytes(0, 0, 4, 0), 4);
         assert_eq!(texture_size_bytes(1, 1, 4, 40), 40 * 4);
+    }
+
+    #[test]
+    fn block_layouts_volumes_and_samples_are_counted() {
+        // 8x8 BC1 (4x4 blocks of 8 bytes), 2 levels: 4 blocks + 1 block.
+        assert_eq!(
+            texture_bytes_blocks((8, 8, 1), 2, (4, 4, 8), 1, false),
+            5 * 8
+        );
+        // 4x4x4 RGBA8 volume, 3 levels: 64 + 8 + 1 texels.
+        assert_eq!(
+            texture_bytes_blocks((4, 4, 4), 3, (1, 1, 4), 1, true),
+            (64 + 8 + 1) * 4
+        );
+        // Array layers do not halve; MSAA multiplies.
+        assert_eq!(
+            texture_bytes_blocks((2, 2, 3), 2, (1, 1, 4), 4, false),
+            (4 + 1) * 4 * 3 * 4
+        );
+        assert_eq!(texture_bytes_blocks((2, 2, 1), 0, (0, 0, 4), 0, false), 16);
+        assert_eq!(
+            texture_bytes_blocks(
+                (u32::MAX, u32::MAX, u32::MAX),
+                32,
+                (1, 1, u32::MAX),
+                32,
+                false
+            ),
+            u64::MAX
+        );
     }
 
     #[test]

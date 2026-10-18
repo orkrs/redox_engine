@@ -11,6 +11,7 @@ mod draw;
 mod frame;
 mod helpers;
 mod init;
+mod memory;
 pub mod motion;
 mod passes;
 mod post;
@@ -381,6 +382,8 @@ pub struct Renderer {
     frame_object_ids: Option<Vec<u64>>,
     /// Draw calls recorded by the opaque forward pass in the last frame.
     forward_draw_calls: std::sync::atomic::AtomicU32,
+    /// Byte limits per memory category (usage is computed on demand, see `memory_usage`).
+    memory_limits: crate::memory_budget::MemoryBudget,
     /// Ping-pong history texture 0.
     pub taa_history_tex: [wgpu::Texture; 2],
     /// Views into the ping-pong history textures.

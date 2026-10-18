@@ -91,6 +91,10 @@ impl<T> Pool<T> {
     fn len(&self) -> usize {
         self.slots.len() - self.free.len()
     }
+
+    fn iter(&self) -> impl Iterator<Item = &T> {
+        self.slots.iter().flatten()
+    }
 }
 
 impl<T> Default for Pool<T> {
@@ -255,6 +259,22 @@ impl GpuRegistry {
     /// All legacy material bind groups.
     pub fn legacy_material_bind_groups(&self) -> &[wgpu::BindGroup] {
         &self.legacy_material_bind_groups
+    }
+
+    /// Bytes of every live mesh buffer (vertices and indices).
+    pub fn mesh_bytes(&self) -> u64 {
+        self.meshes
+            .iter()
+            .map(|m| m.vertex_buffer.size() + m.index_buffer.size())
+            .sum()
+    }
+
+    /// Every live texture: the handle-based pool and the legacy list.
+    pub fn textures(&self) -> impl Iterator<Item = &wgpu::Texture> {
+        self.textures
+            .iter()
+            .map(|slot| &slot.texture.texture)
+            .chain(self.legacy_textures.iter().map(|t| &t.texture))
     }
 
     /// Number of live mesh slots (for stats/debug UI).

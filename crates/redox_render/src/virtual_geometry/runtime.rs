@@ -113,6 +113,14 @@ pub struct VGSystem {
 }
 
 impl VGSystem {
+    /// Bytes held by the large geometry, instance and meshlet buffers.
+    pub fn gpu_bytes(&self) -> u64 {
+        self.vertex_buffer.size()
+            + self.index_buffer.size()
+            + self.instance_buffer.size()
+            + self.meshlet_gpu_buffer.size()
+    }
+
     /// Create a new VGSystem.
     ///
     /// `camera_buffer` is the same buffer used by the main PBR pass.
