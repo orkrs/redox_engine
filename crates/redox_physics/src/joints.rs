@@ -1,4 +1,5 @@
-//! Joints between rigid bodies, with optional break force and break torque.
+//! Joints between rigid bodies, with optional break force and break torque, and optional
+//! `limits` on hinge rotation and slider travel.
 
 use std::collections::HashMap;
 
@@ -62,6 +63,11 @@ pub struct JointDesc {
     /// each step. Either `break_force` or `break_torque` breaking the joint removes it.
     /// `None` (the default) means torque never breaks the joint.
     pub break_torque: Option<f32>,
+    /// `(min, max)` limits: radians for `Hinge`, metres for `Slider`, measured from the pose in
+    /// which the joint was created. Ignored for other kinds.
+    ///
+    /// `None` (the default) means no limits. `min > max` or a NaN bound also means no limits.
+    pub limits: Option<(f32, f32)>,
 }
 
 impl JointDesc {
@@ -73,15 +79,37 @@ impl JointDesc {
             anchor_b: Vec3::ZERO,
             break_force: None,
             break_torque: None,
+            limits: None,
         }
+    }
+
+    /// The configured limits as rapier wants them, or `None` when absent, reversed or NaN.
+    fn valid_limits(&self) -> Option<[f32; 2]> {
+        let (min, max) = self.limits?;
+        if min.is_nan() || max.is_nan() || min > max {
+            return None;
+        }
+        Some([min, max])
     }
 
     /// Builds the rapier joint; jointed bodies never collide with each other.
     fn to_generic(self) -> GenericJoint {
         let mut joint: GenericJoint = match self.kind {
             JointKind::Fixed => FixedJointBuilder::new().build().into(),
-            JointKind::Hinge { axis } => RevoluteJointBuilder::new(axis).build().into(),
-            JointKind::Slider { axis } => PrismaticJointBuilder::new(axis).build().into(),
+            JointKind::Hinge { axis } => {
+                let mut builder = RevoluteJointBuilder::new(axis);
+                if let Some(limits) = self.valid_limits() {
+                    builder = builder.limits(limits);
+                }
+                builder.build().into()
+            }
+            JointKind::Slider { axis } => {
+                let mut builder = PrismaticJointBuilder::new(axis);
+                if let Some(limits) = self.valid_limits() {
+                    builder = builder.limits(limits);
+                }
+                builder.build().into()
+            }
             JointKind::Ball => SphericalJointBuilder::new().build().into(),
             JointKind::Spring {
                 rest_length,
