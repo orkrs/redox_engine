@@ -189,14 +189,13 @@ impl GpuSkin {
         })
     }
 
-    /// Uploads `matrices` and submits the skinning dispatch. `false` if there are too few matrices.
-    pub(crate) fn run(
-        &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        pipeline: &SkinPipeline,
-        matrices: &[Mat4],
-    ) -> bool {
+    /// Number of skin matrices the dispatch reads.
+    pub(crate) fn required_matrices(&self) -> usize {
+        self.required_matrices
+    }
+
+    /// Uploads `matrices` for the next dispatch. `false` if there are too few matrices.
+    pub(crate) fn upload(&self, queue: &wgpu::Queue, matrices: &[Mat4]) -> bool {
         if matrices.len() < self.required_matrices {
             return false;
         }
@@ -207,19 +206,57 @@ impl GpuSkin {
                 .collect();
             queue.write_buffer(&self.skin_buffer, 0, bytemuck::cast_slice(&data));
         }
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("skin_compute_encoder"),
-        });
-        {
-            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("skin_compute"),
-                timestamp_writes: None,
-            });
-            pass.set_pipeline(&pipeline.pipeline);
-            pass.set_bind_group(0, &self.bind_group, &[]);
-            pass.dispatch_workgroups(self.workgroups, 1, 1);
-        }
-        queue.submit(Some(encoder.finish()));
         true
     }
+
+    /// Records this mesh's skinning dispatch into `pass` (the matrices must be uploaded).
+    pub(crate) fn dispatch(&self, pass: &mut wgpu::ComputePass<'_>, pipeline: &SkinPipeline) {
+        pass.set_pipeline(&pipeline.pipeline);
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.dispatch_workgroups(self.workgroups, 1, 1);
+    }
+
+    /// Uploads `matrices` and submits one skinning dispatch. `false` if there are too few matrices.
+    pub(crate) fn run(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        pipeline: &SkinPipeline,
+        matrices: &[Mat4],
+    ) -> bool {
+        run_batch(device, queue, pipeline, &[(self, matrices)]) == 1
+    }
+}
+
+/// Uploads every entry's matrices, then records all dispatches into one compute pass of one
+/// command buffer and submits it once. Entries with too few matrices are skipped; returns how
+/// many were skinned.
+pub(crate) fn run_batch(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    pipeline: &SkinPipeline,
+    items: &[(&GpuSkin, &[Mat4])],
+) -> usize {
+    let ready: Vec<&GpuSkin> = items
+        .iter()
+        .filter(|(skin, matrices)| skin.upload(queue, matrices))
+        .map(|(skin, _)| *skin)
+        .collect();
+    if ready.is_empty() {
+        return 0;
+    }
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("skin_compute_encoder"),
+    });
+    {
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("skin_compute"),
+            timestamp_writes: None,
+        });
+        for skin in &ready {
+            skin.dispatch(&mut pass, pipeline);
+        }
+    }
+    queue.submit(Some(encoder.finish()));
+    ready.len()
 }

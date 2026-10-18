@@ -7,7 +7,7 @@ use redox_math::{Aabb, Mat4, Vec3};
 
 use crate::mesh::{Mesh, Vertex};
 use crate::renderer::Renderer;
-use crate::skinning_gpu::GpuSkin;
+use crate::skinning_gpu::{GpuSkin, run_batch};
 
 /// Default tangent for skinned vertices (normal maps are not skinned yet).
 const DEFAULT_TANGENT: [f32; 3] = [1.0, 0.0, 0.0];
@@ -97,6 +97,47 @@ impl SkinnedMeshBinding {
             self.previous_bounds = None;
         }
         ran
+    }
+
+    /// Skins many bindings in one command buffer and one queue submit (the per-binding
+    /// [`Self::update_gpu`] submits every time, which dominates for small meshes).
+    ///
+    /// Entries that cannot be skinned on the GPU, or have too few matrices, are skipped and left
+    /// untouched. Returns how many were skinned; those behave as after [`Self::update_gpu`].
+    pub fn update_gpu_batch(
+        renderer: &Renderer,
+        items: &mut [(&mut SkinnedMeshBinding, &[Mat4])],
+    ) -> usize {
+        let accepted: Vec<bool> = items
+            .iter()
+            .map(|(binding, matrices)| {
+                binding
+                    .gpu
+                    .as_ref()
+                    .is_some_and(|gpu| matrices.len() >= gpu.required_matrices())
+            })
+            .collect();
+        let jobs: Vec<(&GpuSkin, &[Mat4])> = items
+            .iter()
+            .zip(&accepted)
+            .filter(|(_, ok)| **ok)
+            .filter_map(|((binding, matrices), _)| binding.gpu.as_ref().map(|gpu| (gpu, *matrices)))
+            .collect();
+        let skinned = run_batch(
+            renderer.device(),
+            renderer.queue(),
+            renderer.skin_pipeline(),
+            &jobs,
+        );
+        drop(jobs);
+        for ((binding, _), ok) in items.iter_mut().zip(accepted) {
+            if ok {
+                binding.gpu_skinned = true;
+                binding.positions.clear();
+                binding.previous_bounds = None;
+            }
+        }
+        skinned
     }
 
     /// Deforms the mesh with `skin_matrices` (`Pose::skin_matrices`) and uploads the result.

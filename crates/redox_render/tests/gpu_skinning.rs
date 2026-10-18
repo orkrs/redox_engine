@@ -147,6 +147,66 @@ fn many_instances_can_be_skinned_in_one_frame() {
     assert_ne!(a, other);
 }
 
+/// Batch API: `SkinnedMeshBinding::update_gpu_batch(renderer, &mut [(&mut binding, &matrices)]) -> usize`
+/// skins every entry in ONE command buffer and ONE submit; it returns how many entries were skinned
+/// (entries with too few matrices, or without GPU skinning, are skipped and their meshes untouched).
+#[test]
+fn a_batch_gives_the_same_vertices_as_single_updates() {
+    let Some(mut r) = renderer() else { return };
+    let model = demo_rig();
+    let all = poses(4);
+    let mut single: Vec<_> = (0..12)
+        .map(|_| SkinnedMeshBinding::new(&mut r, &model.geometry, 2.0))
+        .collect();
+    let mut batched: Vec<_> = (0..12)
+        .map(|_| SkinnedMeshBinding::new(&mut r, &model.geometry, 2.0))
+        .collect();
+    for (i, b) in single.iter_mut().enumerate() {
+        assert!(b.update_gpu(&r, &all[i % all.len()]));
+    }
+    let mut items: Vec<(&mut SkinnedMeshBinding, &[Mat4])> = batched
+        .iter_mut()
+        .enumerate()
+        .map(|(i, b)| (b, all[i % all.len()].as_slice()))
+        .collect();
+    assert_eq!(SkinnedMeshBinding::update_gpu_batch(&r, &mut items), 12);
+    drop(items);
+    for (s, b) in single.iter().zip(&batched) {
+        assert_eq!(vertices(&r, s.mesh_slot), vertices(&r, b.mesh_slot));
+        assert_eq!(
+            b.deformed_bounds(),
+            b.bounds,
+            "conservative bounds after a batch"
+        );
+    }
+}
+
+#[test]
+fn a_batch_skips_unsuitable_entries_and_reports_the_count() {
+    let Some(mut r) = renderer() else { return };
+    let model = demo_rig();
+    let all = poses(2);
+    let mut a = SkinnedMeshBinding::new(&mut r, &model.geometry, 2.0);
+    let mut b = SkinnedMeshBinding::new(&mut r, &model.geometry, 2.0);
+    let before = vertices(&r, b.mesh_slot);
+    let mut items: Vec<(&mut SkinnedMeshBinding, &[Mat4])> =
+        vec![(&mut a, all[0].as_slice()), (&mut b, &[])];
+    assert_eq!(SkinnedMeshBinding::update_gpu_batch(&r, &mut items), 1);
+    drop(items);
+    assert_eq!(
+        vertices(&r, b.mesh_slot),
+        before,
+        "rejected entry untouched"
+    );
+    assert_ne!(vertices(&r, a.mesh_slot), before);
+}
+
+#[test]
+fn an_empty_batch_does_nothing() {
+    let Some(r) = renderer() else { return };
+    assert_eq!(SkinnedMeshBinding::update_gpu_batch(&r, &mut []), 0);
+}
+
 /// Timing for the report (run with `cargo test --release -p redox_render --test gpu_skinning -- --ignored --nocapture`).
 #[test]
 #[ignore = "timing report, not a correctness test"]
@@ -157,17 +217,28 @@ fn timing_100_characters_cpu_vs_gpu() {
         .map(|_| SkinnedMeshBinding::new(&mut r, &model.geometry, 2.0))
         .collect();
     let all = poses(8);
-    for gpu in [false, true] {
+    for mode in 0..3 {
+        let (gpu, batch) = (mode > 0, mode == 2);
         let frames = 60;
         let start = std::time::Instant::now();
         for f in 0..frames {
             for (i, b) in bindings.iter_mut().enumerate() {
                 let skin = &all[(i + f) % all.len()];
-                if gpu {
+                if batch {
+                    continue;
+                } else if gpu {
                     b.update_gpu(&r, skin);
                 } else {
                     b.update(&r, skin);
                 }
+            }
+            if batch {
+                let mut items: Vec<(&mut SkinnedMeshBinding, &[Mat4])> = bindings
+                    .iter_mut()
+                    .enumerate()
+                    .map(|(i, b)| (b, all[(i + f) % all.len()].as_slice()))
+                    .collect();
+                SkinnedMeshBinding::update_gpu_batch(&r, &mut items);
             }
         }
         // Wait for the GPU so the CPU-side submission time is not all that is measured.
@@ -175,7 +246,7 @@ fn timing_100_characters_cpu_vs_gpu() {
         let ms = start.elapsed().as_secs_f64() * 1000.0 / frames as f64;
         println!(
             "{}: {ms:.3} ms per frame for 100 characters",
-            if gpu { "GPU" } else { "CPU" }
+            ["CPU", "GPU single submits", "GPU one batch"][mode]
         );
     }
 }
