@@ -62,6 +62,10 @@ pub struct PhysicsContext {
     pub(crate) contact_stay_entities: HashSet<Entity>,
     /// `stay` contact reports waiting for `drain_contact_stays`.
     pub(crate) contact_stays: Vec<ContactStay>,
+    /// Minimum impulse for a contact `Enter` to be reported (0.0 reports all).
+    pub(crate) contact_impulse_min: f32,
+    /// Normalised pairs whose `Enter` was dropped by the impulse threshold; their `Exit` is dropped too.
+    pub(crate) contact_suppressed_pairs: HashSet<(Entity, Entity)>,
     /// Joint id bookkeeping and broken-joint events.
     pub(crate) joints: crate::joints::JointBook,
 }
@@ -91,6 +95,8 @@ impl PhysicsContext {
             contact_events: Vec::new(),
             contact_stay_entities: HashSet::new(),
             contact_stays: Vec::new(),
+            contact_impulse_min: 0.0,
+            contact_suppressed_pairs: HashSet::new(),
             joints: Default::default(),
         }
     }
@@ -242,6 +248,8 @@ impl PhysicsContext {
         if let Some((body_handle, col_handles)) = self.entity_to_body.remove(&entity) {
             self.forget_joints_of(entity);
             self.contact_stay_entities.remove(&entity);
+            self.contact_suppressed_pairs
+                .retain(|&(a, b)| a != entity && b != entity);
             self.applied_layers.remove(&entity);
             for col in col_handles {
                 self.collider_to_entity.remove(&col);

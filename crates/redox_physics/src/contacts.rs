@@ -76,6 +76,11 @@ impl Default for PhysicsMaterial {
 /// Normal used when a started pair has no manifold to read it from.
 const FALLBACK_NORMAL: Vec3 = Vec3::Y;
 
+/// Order-independent key of an entity pair.
+fn pair_key(a: Entity, b: Entity) -> (Entity, Entity) {
+    if a <= b { (a, b) } else { (b, a) }
+}
+
 impl PhysicsContext {
     /// Opts the colliders of `entity` in or out of contact events.
     ///
@@ -184,6 +189,21 @@ impl PhysicsContext {
         Ok(())
     }
 
+    /// Sets the minimum impulse a contact `Enter` needs to be reported. Negative and NaN values
+    /// count as 0.0. Applies to events produced after the call; `Stay` reports are unaffected.
+    pub fn set_contact_impulse_threshold(&mut self, min_impulse: f32) {
+        self.contact_impulse_min = if min_impulse.is_nan() || min_impulse < 0.0 {
+            0.0
+        } else {
+            min_impulse
+        };
+    }
+
+    /// The current contact impulse threshold (0.0 by default).
+    pub fn contact_impulse_threshold(&self) -> f32 {
+        self.contact_impulse_min
+    }
+
     /// Converts the solid-collider events recorded during the last step into contact events.
     ///
     /// Must run after the pipeline step: the impulses of a started pair are only known once the
@@ -203,15 +223,23 @@ impl PhysicsContext {
     }
 
     /// Maps one raw collision event to an entity-level contact event, if both colliders are known.
-    fn map_contact_event(&self, event: CollisionEvent) -> Option<ContactEvent> {
+    ///
+    /// An `Enter` below the impulse threshold is dropped and its pair remembered, so that the
+    /// matching `Exit` is dropped as well.
+    fn map_contact_event(&mut self, event: CollisionEvent) -> Option<ContactEvent> {
         let (c1, c2) = match event {
             CollisionEvent::Started(c1, c2, _) | CollisionEvent::Stopped(c1, c2, _) => (c1, c2),
         };
         let a = self.entity_of_collider(c1)?;
         let b = self.entity_of_collider(c2)?;
+        let key = pair_key(a, b);
         match event {
             CollisionEvent::Started(..) => {
                 let (point, normal, impulse) = self.contact_summary(c1, c2);
+                if impulse < self.contact_impulse_min {
+                    self.contact_suppressed_pairs.insert(key);
+                    return None;
+                }
                 Some(ContactEvent::Enter(ContactEnter {
                     a,
                     b,
@@ -220,7 +248,12 @@ impl PhysicsContext {
                     impulse,
                 }))
             }
-            CollisionEvent::Stopped(..) => Some(ContactEvent::Exit(ContactExit { a, b })),
+            CollisionEvent::Stopped(..) => {
+                if self.contact_suppressed_pairs.remove(&key) {
+                    return None;
+                }
+                Some(ContactEvent::Exit(ContactExit { a, b }))
+            }
         }
     }
 
