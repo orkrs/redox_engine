@@ -17,7 +17,9 @@ use std::io::Cursor;
 use kira::effect::filter::{FilterBuilder, FilterHandle, FilterMode};
 use kira::effect::reverb::{ReverbBuilder, ReverbHandle};
 use kira::listener::ListenerHandle;
+use kira::sound::FromFileError;
 use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle, StaticSoundSettings};
+use kira::sound::streaming::{StreamingSoundData, StreamingSoundHandle};
 use kira::track::{MainTrackBuilder, SpatialTrackBuilder, TrackBuilder, TrackHandle};
 use kira::{AudioManager, AudioManagerSettings, Decibels, DefaultBackend, Mix, Tween};
 use redox_asset::{AssetId, Handle};
@@ -27,7 +29,9 @@ use crate::asset_types::AudioData;
 use crate::components::ReverbPreset;
 use crate::mixer::{MixerBusId, MixerGraph, PlayMode, PlayRequest};
 use crate::music::MusicDirector;
+use crate::music_apply::MusicVoices;
 use crate::music_play::DEFAULT_MUSIC_CROSSFADE_SECONDS;
+use crate::music_play::KiraMusicVoice;
 use crate::voices::{VoiceBudget, VoiceDecision};
 
 /// Default number of cue voices that may sound at once.
@@ -63,6 +67,10 @@ pub struct AudioContext {
     cue_voice_now: f32,
     /// Id given to the next cue voice request; increases monotonically.
     next_voice_id: u64,
+    /// Encoded music files by track name (streamed from memory when played).
+    pub(crate) music_sources: HashMap<String, std::sync::Arc<[u8]>>,
+    /// The streaming voices of the tracks that are playing or fading.
+    pub(crate) music_voices: MusicVoices<KiraMusicVoice>,
     /// Music crossfade state (see `play_music`).
     pub(crate) music: MusicDirector,
 }
@@ -130,6 +138,8 @@ impl AudioContext {
             cue_voice_seconds: DEFAULT_CUE_VOICE_SECONDS,
             cue_voice_now: 0.0,
             next_voice_id: 0,
+            music_sources: HashMap::new(),
+            music_voices: MusicVoices::new(),
             music: MusicDirector::new(DEFAULT_MUSIC_CROSSFADE_SECONDS),
         }
     }
@@ -300,6 +310,19 @@ impl AudioContext {
             return track.play(data).ok();
         }
         self.play_sound(data)
+    }
+
+    /// Starts a looping, silent streaming sound on the Music bus (or the main track when the
+    /// bus is missing). `None` without a device or when kira refuses the sound.
+    pub(crate) fn start_music_stream(
+        &mut self,
+        data: StreamingSoundData<FromFileError>,
+    ) -> Option<StreamingSoundHandle<FromFileError>> {
+        let data = data.loop_region(0.0..).volume(Decibels::SILENCE);
+        if let Some(track) = self.bus_tracks.get_mut(&MixerBusId::Music) {
+            return track.play(data).ok();
+        }
+        self.manager.as_mut().and_then(|m| m.play(data).ok())
     }
 
     /// Plays a static sound and returns a handle to the playing sound.
@@ -516,7 +539,7 @@ impl Default for AudioContext {
 }
 
 /// Linear gain (0..=1+) -> kira decibels; silence maps to [`Decibels::SILENCE`].
-fn gain_to_db(gain: f32) -> Decibels {
+pub(crate) fn gain_to_db(gain: f32) -> Decibels {
     if gain <= 0.001 {
         Decibels::SILENCE
     } else {
