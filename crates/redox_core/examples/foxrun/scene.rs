@@ -16,7 +16,11 @@ pub const TRUNK: f32 = 0.28;
 /// Crown radius per unit of tree size, in metres.
 pub const CROWN: f32 = 1.25;
 /// Gems lit by point lights at the same time.
-const GEM_LIGHTS: usize = 6;
+const GEM_LIGHTS: usize = 8;
+/// Gem lights are at full strength within this distance of the fox and fade out by `GEM_LIGHT_FADE_END`,
+/// so a light never pops in when it joins the nearest few.
+const GEM_LIGHT_FADE_START: f32 = 10.0;
+const GEM_LIGHT_FADE_END: f32 = 22.0;
 /// Decorative trees on the rim of the glade.
 const RIM_TREES: usize = 90;
 
@@ -332,11 +336,16 @@ impl Scene {
             lit.push((d, center + Vec3::Y * 0.4, glow));
         }
         lit.sort_by(|a, b| a.0.total_cmp(&b.0));
-        for (_, position, color) in lit.into_iter().take(GEM_LIGHTS) {
-            frame
-                .lights
-                .points
-                .push(PointLight::new(position, color, 38.0, 6.0));
+        for (distance, position, color) in lit.into_iter().take(GEM_LIGHTS) {
+            let fade = ((GEM_LIGHT_FADE_END - distance)
+                / (GEM_LIGHT_FADE_END - GEM_LIGHT_FADE_START))
+                .clamp(0.0, 1.0);
+            if fade > 0.0 {
+                frame
+                    .lights
+                    .points
+                    .push(PointLight::new(position, color, 38.0 * fade, 6.0));
+            }
         }
 
         // Wisps.

@@ -126,7 +126,9 @@ impl ClusterManager {
         self.bounds_cache_height = 0;
     }
 
-    fn ensure_cluster_bounds(&mut self, camera: &crate::camera::Camera) {
+    /// Rebuilds the depth-slice bounds when the camera's near or far plane changed. Returns true
+    /// when it did.
+    fn ensure_cluster_bounds(&mut self, camera: &crate::camera::Camera) -> bool {
         let w = self.cluster_info.screen_width;
         let h = self.cluster_info.screen_height;
         if self.cached_cluster_bounds.is_empty()
@@ -140,7 +142,9 @@ impl ClusterManager {
             self.bounds_cache_far = camera.far;
             self.bounds_cache_width = w;
             self.bounds_cache_height = h;
+            return true;
         }
+        false
     }
 
     /// Rebuilds cluster buffers for a new screen resolution without requiring
@@ -273,7 +277,16 @@ impl ClusterManager {
             queue.write_buffer(&self.point_lights_buffer, 0, lights_bytes);
         }
 
-        self.ensure_cluster_bounds(camera);
+        if self.ensure_cluster_bounds(camera) {
+            // The fragment shader finds its depth slice from `near`, `far` and `depth_scale` of this
+            // uniform. It must change together with the bounds, or lights land in the wrong slices.
+            let (w, h) = (
+                self.cluster_info.screen_width,
+                self.cluster_info.screen_height,
+            );
+            self.cluster_info = clustering::ClusterInfo::new(w, h, camera);
+            queue.write_buffer(&self.info_buffer, 0, bytemuck::bytes_of(&self.cluster_info));
+        }
 
         let bounds_bytes =
             bytemuck::cast_slice::<clustering::ClusterBounds, u8>(&self.cached_cluster_bounds);

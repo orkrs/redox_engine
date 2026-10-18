@@ -28,6 +28,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
   Directional shadows are VSM-only. The `shadow_probe` example (a CSM probe) was deleted.
 
 ### Fixed
+- Render: point-light glow was cut by flat planes that moved with the camera and far lights did not show. The cluster `cluster_info` uniform (near, far, depth_scale) used by the fragment shader was written only at start-up and on resize, while the light-culling slice bounds followed the camera's near and far, so lights landed in the wrong depth slices. The uniform now follows the camera (`cluster_depth_info` test).
 - Input: mouse Back and Forward buttons are separate `MouseButton` variants (they both collapsed into `Other(0)`).
 - Physics: joint `break_force` was understated by the number of solver substeps (4x); it is now a real force in newtons.
 - Render: after a window resize the tone-mapping bind groups (plain and TAA paths) kept sampling the bloom texture of the old size, so the last bloom stayed on screen forever; they are rebuilt against the new bloom chain (`resize_bloom` test).

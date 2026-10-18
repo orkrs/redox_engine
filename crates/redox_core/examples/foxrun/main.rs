@@ -266,14 +266,18 @@ fn main() {
     if let Some(i) = args.iter().position(|a| a == "--shot") {
         let out = args.get(i + 1).map_or("foxrun.png", String::as_str);
         let seconds = args.get(i + 2).and_then(|s| s.parse().ok()).unwrap_or(14.0);
-        screenshot(out, seconds);
+        let gem_dist = args
+            .iter()
+            .position(|a| a == "--gem-dist")
+            .and_then(|i| args.get(i + 1)?.parse().ok());
+        screenshot(out, seconds, gem_dist);
         return;
     }
     play();
 }
 
 /// Renders a few seconds of the autopilot to a PNG without opening a window.
-fn screenshot(path: &str, seconds: f32) {
+fn screenshot(path: &str, seconds: f32, gem_dist: Option<f32>) {
     const W: u32 = 1280;
     const H: u32 = 720;
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -307,6 +311,19 @@ fn screenshot(path: &str, seconds: f32) {
     let mut scene = Scene::new(&mut r, &fox).expect("scene");
     let mut game = Game::new(2024, &fox);
     let mut pilot = Autopilot::new();
+    if let Some(distance) = gem_dist {
+        // Lighting check: stand `distance` metres in front of the first gem (south of it), facing it.
+        let gem = game.world.gems[0];
+        game.world.pos = (gem.x, gem.z - distance);
+        game.world.yaw = 0.0;
+        game.world.wisps.clear();
+        game.world
+            .obstacles
+            .retain(|o| (o.x - gem.x).hypot(o.z - gem.z) > 12.0);
+        let (eye, target) = scene::camera_target(&game.world, 0.0);
+        game.cam_pos = eye;
+        game.cam_target = target;
+    }
     let target = r.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("shot"),
         size: wgpu::Extent3d {
@@ -326,7 +343,7 @@ fn screenshot(path: &str, seconds: f32) {
     let dt = 1.0 / 60.0;
     let frames = (seconds / dt) as u32;
     for frame_index in 0..frames + 20 {
-        let controls = if frame_index < frames {
+        let controls = if frame_index < frames && gem_dist.is_none() {
             pilot.drive(&game.world, dt)
         } else {
             Controls::default()
