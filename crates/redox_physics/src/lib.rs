@@ -29,8 +29,12 @@ pub use character::move_character_controllers;
 pub use components::{CharacterController, Collider, Kinematic, RigidBody, Trigger, Velocity};
 pub use contacts::{ContactEnter, ContactEvent, ContactExit, ContactStay, PhysicsMaterial};
 pub use context::{PhysicsContext, PhysicsError};
+<<<<<<< HEAD
 pub use convex::ConvexHull;
 pub use joints::{JointBroken, JointDesc, JointId, JointKind, JointMotor};
+=======
+pub use joints::{JointAxes, JointBroken, JointDesc, JointId, JointKind, JointMotor};
+>>>>>>> f647b63 (feat(physics): generic joints with per-axis locks)
 pub use layer_config::{LayerConfig, LayerConfigError};
 pub use raycast::{RaycastRequest, RaycastResult};
 pub use shapes::{ClosestPoint, CollisionLayers, QueryShape, ShapeHit};

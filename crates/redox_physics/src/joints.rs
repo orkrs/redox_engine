@@ -1,18 +1,86 @@
 //! Joints between rigid bodies, with optional break force and break torque, optional `limits` on
 //! hinge rotation and slider travel, and optional `motor` drives that move hinges and sliders
-//! towards a target velocity.
+//! towards a target velocity. `JointKind::Generic` locks any chosen subset of the six degrees of
+//! freedom (`JointAxes`), covering the presets as special cases.
 
 use std::collections::HashMap;
 
 use rapier3d::dynamics::ImpulseJoint;
 use rapier3d::prelude::{
-    FixedJointBuilder, GenericJoint, ImpulseJointHandle, MotorModel, PrismaticJointBuilder,
-    RevoluteJointBuilder, RopeJointBuilder, SphericalJointBuilder, SpringJointBuilder,
+    FixedJointBuilder, GenericJoint, GenericJointBuilder, ImpulseJointHandle, JointAxesMask,
+    MotorModel, PrismaticJointBuilder, RevoluteJointBuilder, RopeJointBuilder,
+    SphericalJointBuilder, SpringJointBuilder,
 };
 use redox_ecs::Entity;
 use redox_math::Vec3;
 
 use crate::context::{PhysicsContext, PhysicsError};
+
+/// Which of the six relative degrees of freedom a generic joint LOCKS.
+///
+/// The linear axes are X, Y, Z and the angular axes are X, Y, Z, all in the local frame of body A.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct JointAxes {
+    /// Locks translation along X.
+    pub lin_x: bool,
+    /// Locks translation along Y.
+    pub lin_y: bool,
+    /// Locks translation along Z.
+    pub lin_z: bool,
+    /// Locks rotation about X.
+    pub ang_x: bool,
+    /// Locks rotation about Y.
+    pub ang_y: bool,
+    /// Locks rotation about Z.
+    pub ang_z: bool,
+}
+
+impl JointAxes {
+    /// Nothing locked: the bodies move freely relative to each other.
+    pub const NONE: JointAxes = JointAxes {
+        lin_x: false,
+        lin_y: false,
+        lin_z: false,
+        ang_x: false,
+        ang_y: false,
+        ang_z: false,
+    };
+
+    /// Everything locked; behaves like `JointKind::Fixed`.
+    pub const ALL: JointAxes = JointAxes {
+        lin_x: true,
+        lin_y: true,
+        lin_z: true,
+        ang_x: true,
+        ang_y: true,
+        ang_z: true,
+    };
+
+    /// The three linear axes locked and rotation free; behaves like `JointKind::Ball`.
+    pub const LINEAR: JointAxes = JointAxes {
+        lin_x: true,
+        lin_y: true,
+        lin_z: true,
+        ang_x: false,
+        ang_y: false,
+        ang_z: false,
+    };
+
+    /// The rapier mask holding the locked degrees of freedom.
+    fn mask(self) -> JointAxesMask {
+        [
+            (self.lin_x, JointAxesMask::LIN_X),
+            (self.lin_y, JointAxesMask::LIN_Y),
+            (self.lin_z, JointAxesMask::LIN_Z),
+            (self.ang_x, JointAxesMask::ANG_X),
+            (self.ang_y, JointAxesMask::ANG_Y),
+            (self.ang_z, JointAxesMask::ANG_Z),
+        ]
+        .into_iter()
+        .filter(|(locked, _)| *locked)
+        .fold(JointAxesMask::empty(), |mask, (_, bit)| mask | bit)
+    }
+}
 
 /// The constraint a joint imposes on its two bodies.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -44,6 +112,12 @@ pub enum JointKind {
     Rope {
         /// Maximum anchor distance in metres.
         max_length: f32,
+    },
+    /// Locks the chosen degrees of freedom (axes in the local frame of body A). `limits` and
+    /// `motor` are ignored.
+    Generic {
+        /// The locked degrees of freedom.
+        locked: JointAxes,
     },
 }
 
@@ -160,6 +234,7 @@ impl JointDesc {
                 .build()
                 .into(),
             JointKind::Rope { max_length } => RopeJointBuilder::new(max_length).build().into(),
+            JointKind::Generic { locked } => GenericJointBuilder::new(locked.mask()).build(),
         };
         joint
             .set_local_anchor1(self.anchor_a)

@@ -22,7 +22,7 @@
 //! built from `JointAxesMask::LIN_X | ...`; then set the anchors as `to_generic` already does.
 //! `JointKind` is matched in `to_generic` only; keep every existing test passing.
 
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, clippy::assertions_on_constants)]
 
 use rapier3d::prelude::{ColliderBuilder, RigidBodyBuilder};
 use redox_ecs::{Entity, World};
