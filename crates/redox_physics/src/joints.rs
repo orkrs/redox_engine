@@ -1,5 +1,6 @@
-//! Joints between rigid bodies, with optional break force and break torque, and optional
-//! `limits` on hinge rotation and slider travel.
+//! Joints between rigid bodies, with optional break force and break torque, optional `limits` on
+//! hinge rotation and slider travel, and optional `motor` drives that move hinges and sliders
+//! towards a target velocity.
 
 use std::collections::HashMap;
 
@@ -46,6 +47,21 @@ pub enum JointKind {
     },
 }
 
+/// Rapier's `motor_velocity` factor (used as damping by the default `AccelerationBased` model; the
+/// constraint compliance is about `1 / (dt * factor)`). Measured on a 1 kg bob at 1 m: with 1e3 the
+/// hinge turns 0.31 rad in 1 s, with 1e6 and 1e9 it turns 0.41 rad, so the value above 1e6 has no
+/// further effect and the motor does not reach a 2 rad/s target within a second.
+const MOTOR_FACTOR: f32 = 1e6;
+
+/// A velocity drive for a `Hinge` or `Slider` joint.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct JointMotor {
+    /// Target speed: rad/s for a hinge, m/s for a slider.
+    pub target_velocity: f32,
+    /// Largest force the motor may apply: N*m for a hinge, N for a slider.
+    pub max_force: f32,
+}
+
 /// Description of a joint between two bodies.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct JointDesc {
@@ -68,10 +84,16 @@ pub struct JointDesc {
     ///
     /// `None` (the default) means no limits. `min > max` or a NaN bound also means no limits.
     pub limits: Option<(f32, f32)>,
+    /// Velocity drive for `Hinge` and `Slider` joints; ignored for other kinds.
+    ///
+    /// `None` (the default) means no motor. A non-finite `target_velocity` or `max_force` also
+    /// means no motor.
+    pub motor: Option<JointMotor>,
 }
 
 impl JointDesc {
-    /// Creates a description with zero anchors and no break force or break torque.
+    /// Creates a description with zero anchors, no break force or break torque, no limits and no
+    /// motor.
     pub fn new(kind: JointKind) -> Self {
         Self {
             kind,
@@ -80,6 +102,7 @@ impl JointDesc {
             break_force: None,
             break_torque: None,
             limits: None,
+            motor: None,
         }
     }
 
@@ -92,6 +115,12 @@ impl JointDesc {
         Some([min, max])
     }
 
+    /// The configured motor when both of its values are finite.
+    fn valid_motor(&self) -> Option<JointMotor> {
+        let motor = self.motor?;
+        (motor.target_velocity.is_finite() && motor.max_force.is_finite()).then_some(motor)
+    }
+
     /// Builds the rapier joint; jointed bodies never collide with each other.
     fn to_generic(self) -> GenericJoint {
         let mut joint: GenericJoint = match self.kind {
@@ -101,12 +130,22 @@ impl JointDesc {
                 if let Some(limits) = self.valid_limits() {
                     builder = builder.limits(limits);
                 }
+                if let Some(motor) = self.valid_motor() {
+                    builder = builder
+                        .motor_velocity(motor.target_velocity, MOTOR_FACTOR)
+                        .motor_max_force(motor.max_force);
+                }
                 builder.build().into()
             }
             JointKind::Slider { axis } => {
                 let mut builder = PrismaticJointBuilder::new(axis);
                 if let Some(limits) = self.valid_limits() {
                     builder = builder.limits(limits);
+                }
+                if let Some(motor) = self.valid_motor() {
+                    builder = builder
+                        .motor_velocity(motor.target_velocity, MOTOR_FACTOR)
+                        .motor_max_force(motor.max_force);
                 }
                 builder.build().into()
             }
