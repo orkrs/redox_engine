@@ -20,8 +20,6 @@
 
 #![allow(dead_code)]
 
-use std::path::PathBuf;
-
 use redox_scene::save::SaveManager;
 
 const SLOT: &str = "settings";
@@ -65,56 +63,120 @@ impl Default for Settings {
 impl Settings {
     /// Reads the payload text (see the module rules).
     pub fn parse(payload: &str) -> Self {
-        let _ = payload;
-        todo!()
+        let mut settings = Self::default();
+        for line in payload.lines() {
+            let Some((key, value)) = line.split_once('=') else {
+                continue;
+            };
+            let key = key.trim().to_ascii_lowercase();
+            let value = value.trim();
+            match key.as_str() {
+                "volume" => {
+                    if let Some(volume) = value.parse::<f32>().ok().filter(|v| !v.is_nan()) {
+                        settings.master_volume = volume.clamp(0.0, 1.0);
+                    }
+                }
+                "bloom" => settings.bloom = parse_flag(value).unwrap_or(settings.bloom),
+                "taa" => settings.taa = parse_flag(value).unwrap_or(settings.taa),
+                "ssao" => settings.ssao = parse_flag(value).unwrap_or(settings.ssao),
+                "shadows" => settings.shadows = parse_flag(value).unwrap_or(settings.shadows),
+                _ => {}
+            }
+        }
+        settings
     }
 
     /// The payload text for [`Self::parse`].
     pub fn to_payload(&self) -> String {
-        todo!()
+        format!(
+            "volume={:.2}\nbloom={}\ntaa={}\nssao={}\nshadows={}\n",
+            self.master_volume,
+            flag_text(self.bloom),
+            flag_text(self.taa),
+            flag_text(self.ssao),
+            flag_text(self.shadows),
+        )
     }
 
     /// Changes the volume by `delta`, clamped to `[0, 1]` and rounded to two decimals.
     pub fn step_volume(&mut self, delta: f32) {
-        let _ = delta;
-        todo!()
+        let stepped = (self.master_volume + delta).clamp(0.0, 1.0);
+        self.master_volume = (stepped * 100.0).round() / 100.0;
     }
 
     /// Current value of a switch.
     pub fn get(&self, switch: Switch) -> bool {
-        let _ = switch;
-        todo!()
+        match switch {
+            Switch::Bloom => self.bloom,
+            Switch::Taa => self.taa,
+            Switch::Ssao => self.ssao,
+            Switch::Shadows => self.shadows,
+        }
     }
 
     /// Flips a switch.
     pub fn toggle(&mut self, switch: Switch) {
-        let _ = switch;
-        todo!()
+        let value = !self.get(switch);
+        match switch {
+            Switch::Bloom => self.bloom = value,
+            Switch::Taa => self.taa = value,
+            Switch::Ssao => self.ssao = value,
+            Switch::Shadows => self.shadows = value,
+        }
     }
 
     /// Loads the settings; a missing or damaged file gives the defaults.
     pub fn load(saves: &SaveManager) -> Self {
-        let _ = saves;
-        todo!()
+        match saves.load(SLOT) {
+            Ok(loaded) => Self::parse(&loaded.payload),
+            Err(e) => {
+                log::info!("no usable settings file yet: {e}");
+                Self::default()
+            }
+        }
     }
 
     /// Saves the settings; failures are logged, the game goes on.
     pub fn save(&self, saves: &SaveManager) {
-        let _ = saves;
-        todo!()
+        if let Err(e) = saves.save(SLOT, "Courier settings", &self.to_payload()) {
+            log::warn!("could not save settings: {e}");
+        }
     }
+}
+
+/// Reads `1`/`true` and `0`/`false` (case-insensitive); anything else is `None`.
+fn parse_flag(value: &str) -> Option<bool> {
+    if value == "1" || value.eq_ignore_ascii_case("true") {
+        Some(true)
+    } else if value == "0" || value.eq_ignore_ascii_case("false") {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+fn flag_text(value: bool) -> &'static str {
+    if value { "1" } else { "0" }
 }
 
 /// English menu caption of a switch.
 pub fn label_en(switch: Switch) -> &'static str {
-    let _ = switch;
-    todo!()
+    match switch {
+        Switch::Bloom => "Bloom",
+        Switch::Taa => "TAA",
+        Switch::Ssao => "SSAO",
+        Switch::Shadows => "Shadows",
+    }
 }
 
 /// Russian menu caption of a switch.
 pub fn label_ru(switch: Switch) -> &'static str {
-    let _ = switch;
-    todo!()
+    match switch {
+        Switch::Bloom => "Блум",
+        Switch::Taa => "TAA",
+        Switch::Ssao => "SSAO",
+        Switch::Shadows => "Тени",
+    }
 }
 
 #[cfg(test)]
