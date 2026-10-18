@@ -241,6 +241,7 @@ impl PhysicsContext {
     pub fn remove_rigid_body(&mut self, entity: Entity) -> Result<(), PhysicsError> {
         if let Some((body_handle, col_handles)) = self.entity_to_body.remove(&entity) {
             self.forget_joints_of(entity);
+            self.contact_stay_entities.remove(&entity);
             self.applied_layers.remove(&entity);
             for col in col_handles {
                 self.collider_to_entity.remove(&col);
