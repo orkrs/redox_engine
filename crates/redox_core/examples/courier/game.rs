@@ -6,6 +6,7 @@ use redox_anim::{AnimationClip, Skeleton};
 use redox_math::{Quat, Vec3};
 
 use crate::rig;
+use crate::scripted_coins::ScriptedCoins;
 
 const TURN_RATE: f32 = 12.0;
 const BODY_RADIUS: f32 = 0.3;
@@ -96,6 +97,8 @@ pub struct World {
     pub finished: Option<f32>,
     graph: GraphPlayer,
     wave_weight: f32,
+    /// Coin pickup as a WASM module; `None` when it could not be started (the distance loop is used).
+    coins: Option<ScriptedCoins>,
 }
 
 /// Result of one [`World::step`].
@@ -107,8 +110,16 @@ pub struct Step {
 impl World {
     pub fn new(level: Level, skeleton: &Skeleton) -> Self {
         let pos = Vec3::new(level.spawn.0, 0.0, level.spawn.1);
+        let coins = match ScriptedCoins::new(&level.coins, PICKUP_RADIUS) {
+            Ok(coins) => Some(coins),
+            Err(e) => {
+                log::warn!("coin pickup module unavailable, using the distance loop: {e}");
+                None
+            }
+        };
         Self {
             taken: vec![false; level.coins.len()],
+            coins,
             level,
             pos,
             yaw: 0.0,
@@ -204,6 +215,18 @@ impl World {
     }
 
     fn pick_up_coins(&mut self) -> usize {
+        if let Some(coins) = self.coins.as_mut().filter(|c| c.is_live()) {
+            let picked = coins.step(self.pos.x, self.pos.z);
+            for &i in &picked {
+                self.taken[i] = true;
+            }
+            debug_assert_eq!(
+                coins.taken(),
+                self.taken.iter().filter(|t| **t).count(),
+                "the module and the world disagree about taken coins"
+            );
+            return picked.len();
+        }
         let mut picked = 0;
         for (taken, (x, z)) in self.taken.iter_mut().zip(&self.level.coins) {
             if !*taken && (self.pos.x - x).hypot(self.pos.z - z) < PICKUP_RADIUS {

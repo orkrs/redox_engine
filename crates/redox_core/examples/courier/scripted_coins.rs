@@ -1,9 +1,7 @@
 //! Coin pickup written as a WebAssembly gameplay module.
 //!
-//! SPECIFICATION FILE (tests first). Bodies marked `todo!()` are to be implemented so that the tests at
-//! the bottom pass; do not change the tests or the signatures. The module text is generated for a given
-//! number of coins and run by `redox_script`; `game.rs` then uses [`ScriptedCoins`] instead of its own
-//! distance loop (task brief, part 2).
+//! The module text is generated for a given number of coins and run by `redox_script`; `game.rs` uses
+//! [`ScriptedCoins`] instead of its own distance loop, falling back to that loop if the module fails.
 //!
 //! Contract of the generated module (host API of `redox_script`, `env` imports `get_f32`, `emit_event`):
 //! - Inputs set by the host before every update: `px`, `pz` (player position on the ground plane),
@@ -16,17 +14,69 @@
 //! - At most [`MAX_COINS`] coins. More is an error.
 //! - The module keeps its taken flags in an `i32` bit mask global (32 coins fit one mask).
 
-#![allow(dead_code)]
-
 use redox_script::{InstanceId, ScriptConfig, ScriptRuntime};
 
 /// Most coins one module can track (one bit each in a 32 bit mask).
 pub const MAX_COINS: usize = 32;
 
+/// Fixed-length step of the game loop; the module's clock only matters to the host, not to pickups.
+const UPDATE_DT: f32 = 1.0 / 60.0;
+
+/// Byte offsets of the names in the module's data segment.
+const EVENT_NAME_AT: u32 = 0;
+const PLAYER_X_AT: u32 = 8;
+const PLAYER_Z_AT: u32 = 16;
+const RADIUS_AT: u32 = 24;
+/// Coin names start here; coin `i` owns 8 bytes: `cNNx` then `cNNz`.
+const COIN_NAMES_AT: u32 = 64;
+
 /// The text (WAT) of the pickup module for `count` coins. Returns an error text for `count > MAX_COINS`.
 pub fn coin_module_wat(count: usize) -> Result<String, String> {
-    let _ = count;
-    todo!()
+    if count > MAX_COINS {
+        return Err(format!("{count} coins, at most {MAX_COINS} are supported"));
+    }
+    let names: String = (0..count).map(|i| format!("c{i:02}xc{i:02}z")).collect();
+    let checks: String = (0..count).map(coin_check).collect();
+    Ok(format!(
+        r#"(module
+  (import "env" "get_f32" (func $get (param i32 i32) (result f32)))
+  (import "env" "emit_event" (func $emit (param i32 i32 f32)))
+  (memory (export "memory") 1)
+  (data (i32.const {EVENT_NAME_AT}) "coin")
+  (data (i32.const {PLAYER_X_AT}) "px")
+  (data (i32.const {PLAYER_Z_AT}) "pz")
+  (data (i32.const {RADIUS_AT}) "radius")
+  (data (i32.const {COIN_NAMES_AT}) "{names}")
+  (global $mask (mut i32) (i32.const 0))
+  (func (export "on_update") (param f32)
+    (local $px f32) (local $pz f32) (local $radius f32) (local $dx f32) (local $dz f32)
+    (local.set $px (call $get (i32.const {PLAYER_X_AT}) (i32.const 2)))
+    (local.set $pz (call $get (i32.const {PLAYER_Z_AT}) (i32.const 2)))
+    (local.set $radius (call $get (i32.const {RADIUS_AT}) (i32.const 6)))
+{checks}  ))
+"#
+    ))
+}
+
+/// The WAT that tests coin `i` once: a taken coin is skipped, a coin inside the radius is taken and
+/// its event emitted. The distance is compared as `f32.lt` against `radius`.
+fn coin_check(i: usize) -> String {
+    let bit = 1u32 << i;
+    let x_at = COIN_NAMES_AT + 8 * i as u32;
+    let z_at = x_at + 4;
+    format!(
+        r#"    (if (i32.eqz (i32.and (global.get $mask) (i32.const {bit}))) (then
+      (local.set $dx (f32.sub (local.get $px) (call $get (i32.const {x_at}) (i32.const 4))))
+      (local.set $dz (f32.sub (local.get $pz) (call $get (i32.const {z_at}) (i32.const 4))))
+      (if (f32.lt
+            (f32.sqrt (f32.add (f32.mul (local.get $dx) (local.get $dx))
+                               (f32.mul (local.get $dz) (local.get $dz))))
+            (local.get $radius))
+        (then
+          (global.set $mask (i32.or (global.get $mask) (i32.const {bit})))
+          (call $emit (i32.const {EVENT_NAME_AT}) (i32.const 4) (f32.const {i}))))))
+"#
+    )
 }
 
 /// A running pickup module for one level.
@@ -35,26 +85,58 @@ pub struct ScriptedCoins {
     id: InstanceId,
     positions: Vec<(f32, f32)>,
     radius: f32,
+    taken: usize,
 }
 
 impl ScriptedCoins {
     /// Compiles and starts the module for `coins` (x, z positions) with the given pickup `radius`.
     /// Errors (as text) when there are too many coins or the module fails to start.
     pub fn new(coins: &[(f32, f32)], radius: f32) -> Result<Self, String> {
-        let _ = (coins, radius);
-        todo!()
+        let text = coin_module_wat(coins.len())?;
+        let bytes = wat::parse_str(&text).map_err(|e| e.to_string())?;
+        let mut runtime = ScriptRuntime::new(ScriptConfig::default());
+        let id = runtime.instantiate(&bytes).map_err(|e| e.to_string())?;
+        Ok(Self {
+            runtime,
+            id,
+            positions: coins.to_vec(),
+            radius,
+            taken: 0,
+        })
     }
 
     /// Moves the player to (`x`, `z`), runs the module once and returns the indices of the coins picked
     /// up by this call (ascending). A failing or disabled module returns an empty list.
     pub fn step(&mut self, x: f32, z: f32) -> Vec<usize> {
-        let _ = (x, z);
-        todo!()
+        self.runtime.set_input(self.id, "px", x);
+        self.runtime.set_input(self.id, "pz", z);
+        self.runtime.set_input(self.id, "radius", self.radius);
+        for (i, (cx, cz)) in self.positions.iter().enumerate() {
+            self.runtime.set_input(self.id, &format!("c{i:02}x"), *cx);
+            self.runtime.set_input(self.id, &format!("c{i:02}z"), *cz);
+        }
+        if self.runtime.update(self.id, UPDATE_DT).is_err() {
+            return Vec::new();
+        }
+        let picked: Vec<usize> = self
+            .runtime
+            .take_events(self.id)
+            .into_iter()
+            .filter(|e| e.name == "coin")
+            .map(|e| e.value as usize)
+            .collect();
+        self.taken += picked.len();
+        picked
     }
 
     /// How many coins the module has handed out so far.
     pub fn taken(&self) -> usize {
-        todo!()
+        self.taken
+    }
+
+    /// False once the module trapped or ran out of fuel; it then never picks up coins again.
+    pub fn is_live(&self) -> bool {
+        !self.runtime.is_disabled(self.id)
     }
 }
 
