@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use rapier3d::dynamics::ImpulseJoint;
 use rapier3d::prelude::{
-    FixedJointBuilder, GenericJoint, ImpulseJointHandle, PrismaticJointBuilder,
+    FixedJointBuilder, GenericJoint, ImpulseJointHandle, MotorModel, PrismaticJointBuilder,
     RevoluteJointBuilder, RopeJointBuilder, SphericalJointBuilder, SpringJointBuilder,
 };
 use redox_ecs::Entity;
@@ -47,11 +47,11 @@ pub enum JointKind {
     },
 }
 
-/// Rapier's `motor_velocity` factor (used as damping by the default `AccelerationBased` model; the
-/// constraint compliance is about `1 / (dt * factor)`). Measured on a 1 kg bob at 1 m: with 1e3 the
-/// hinge turns 0.31 rad in 1 s, with 1e6 and 1e9 it turns 0.41 rad, so the value above 1e6 has no
-/// further effect and the motor does not reach a 2 rad/s target within a second.
-const MOTOR_FACTOR: f32 = 1e6;
+/// Damping of the velocity drive in N*s/m (N*m*s/rad): with the `ForceBased` model the motor applies
+/// `MOTOR_FACTOR * (target - velocity)`, capped by `max_force`, so the target is reached within a
+/// few hundredths of a second for ordinary loads. (The default `AccelerationBased` model turned a
+/// 1 kg bob only 0.4 rad in 1 s towards a 2 rad/s target, whatever the factor.)
+const MOTOR_FACTOR: f32 = 100.0;
 
 /// A velocity drive for a `Hinge` or `Slider` joint.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -132,6 +132,7 @@ impl JointDesc {
                 }
                 if let Some(motor) = self.valid_motor() {
                     builder = builder
+                        .motor_model(MotorModel::ForceBased)
                         .motor_velocity(motor.target_velocity, MOTOR_FACTOR)
                         .motor_max_force(motor.max_force);
                 }
@@ -144,6 +145,7 @@ impl JointDesc {
                 }
                 if let Some(motor) = self.valid_motor() {
                     builder = builder
+                        .motor_model(MotorModel::ForceBased)
                         .motor_velocity(motor.target_velocity, MOTOR_FACTOR)
                         .motor_max_force(motor.max_force);
                 }

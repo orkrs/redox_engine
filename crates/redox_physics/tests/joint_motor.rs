@@ -48,7 +48,9 @@ fn turned(motor: Option<JointMotor>) -> f32 {
     ctx.add_rigid_body(
         bob,
         RigidBodyBuilder::dynamic().translation(Vec3::new(1.0, 0.0, 0.0)),
-        vec![ColliderBuilder::ball(0.05).mass(1.0)],
+        // A point-like bob (radius 0.05) has almost no inertia of its own; the solver then resolves the
+        // lever badly and the motor only reaches ~0.4 rad in 1 s. A body of ordinary size works.
+        vec![ColliderBuilder::ball(0.3).mass(1.0)],
     )
     .unwrap();
     let mut desc = JointDesc::new(JointKind::Hinge { axis: Vec3::Z });
