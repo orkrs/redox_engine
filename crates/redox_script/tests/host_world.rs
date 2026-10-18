@@ -41,6 +41,7 @@ fn wasm(text: &str) -> Vec<u8> {
 }
 
 fn backends() -> Vec<BackendKind> {
+    #[cfg_attr(not(feature = "wasmtime"), allow(unused_mut))]
     let mut kinds = vec![BackendKind::Wasmi];
     #[cfg(feature = "wasmtime")]
     kinds.push(BackendKind::Wasmtime);
