@@ -26,6 +26,9 @@ mod world;
 #[path = "../courier/pad.rs"]
 mod pad;
 
+#[path = "../courier/mem_overlay.rs"]
+mod mem_overlay;
+
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use redox_anim::graph::GraphPlayer;
@@ -418,6 +421,7 @@ fn play() {
     let mut end: Option<ui::EndData> = None;
     let mut hit_flash = 0.0f32;
     let mut was_exhausted = false;
+    let mut memory_overlay = mem_overlay::MemoryOverlay::new();
 
     event_loop
         .run_closure(move |event, elwt| match event {
@@ -448,6 +452,7 @@ fn play() {
                                 KeyCode::ArrowDown | KeyCode::KeyS => nav = Some(Direction::Down),
                                 KeyCode::ArrowUp | KeyCode::KeyW => nav = Some(Direction::Up),
                                 KeyCode::Tab => nav = Some(Direction::Next),
+                                KeyCode::F5 => memory_overlay.toggle(),
                                 _ => {}
                             }
                         }
@@ -664,6 +669,8 @@ fn play() {
                         nav = None;
                         activate = false;
                         click = false;
+                        memory_overlay.update(dt, || ctx.memory_report());
+                        mem_overlay::draw(&memory_overlay, &painter, points);
                         drop(measure);
                         ui_ctx.end_frame_and_render(
                             ctx.device(),

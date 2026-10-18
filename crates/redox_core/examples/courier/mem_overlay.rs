@@ -2,8 +2,8 @@
 //!
 //! SPECIFICATION FILE (tests first). Bodies marked `todo!()` are to be implemented so that the tests at
 //! the bottom pass; do not change the tests or the signatures. The report text comes from
-//! `Renderer::memory_report()`; drawing it on screen is done in `main.rs` of Courier and Foxfire (the
-//! Foxfire example includes this very file with `#[path = "../courier/mem_overlay.rs"] mod mem_overlay;`).
+//! `Renderer::memory_report()`; [`draw`] paints it on screen and is called from `main.rs` of Courier and
+//! Foxfire (the Foxfire example includes this very file with `#[path = "../courier/mem_overlay.rs"] mod mem_overlay;`).
 //!
 //! Rules:
 //! - The overlay starts hidden with an empty text.
@@ -35,24 +35,64 @@ impl MemoryOverlay {
 
     /// Whether the overlay is shown.
     pub fn visible(&self) -> bool {
-        todo!()
+        self.visible
     }
 
     /// Shows or hides the overlay.
     pub fn toggle(&mut self) {
-        todo!()
+        self.visible = !self.visible;
+        self.fetched = false;
+        self.since_fetch = 0.0;
+        if !self.visible {
+            self.text.clear();
+        }
     }
 
     /// Advances the refresh timer and fetches a new report when due (see the rules above).
     pub fn update(&mut self, dt: f32, report: impl FnOnce() -> String) {
-        let _ = (dt, report);
-        todo!()
+        if !self.visible {
+            return;
+        }
+        let step = if dt.is_finite() && dt > 0.0 { dt } else { 0.0 };
+        self.since_fetch += step;
+        if !self.fetched || self.since_fetch >= REFRESH_SECONDS {
+            self.text = report();
+            self.fetched = true;
+            self.since_fetch = 0.0;
+        }
     }
 
     /// The text to draw (empty while hidden or before the first fetch).
     pub fn text(&self) -> &str {
-        todo!()
+        &self.text
     }
+}
+
+/// Gap between the overlay box and the window edges, and inside the box, in egui points.
+const MARGIN: f32 = 12.0;
+const PADDING: f32 = 6.0;
+const FONT_SIZE: f32 = 13.0;
+
+/// Draws the overlay text in the bottom-left corner of `screen` on a translucent box.
+/// Draws nothing while the overlay is hidden or the text has not been fetched yet.
+pub fn draw(overlay: &MemoryOverlay, painter: &egui::Painter, screen: egui::Rect) {
+    if !overlay.visible() || overlay.text().is_empty() {
+        return;
+    }
+    let galley = painter.layout_no_wrap(
+        overlay.text().to_string(),
+        egui::FontId::monospace(FONT_SIZE),
+        egui::Color32::from_gray(235),
+    );
+    let boxed = galley.size() + egui::vec2(PADDING, PADDING) * 2.0;
+    let min = egui::pos2(screen.left() + MARGIN, screen.bottom() - MARGIN - boxed.y);
+    let rect = egui::Rect::from_min_size(min, boxed);
+    painter.rect_filled(rect, 4.0, egui::Color32::from_black_alpha(160));
+    painter.galley(
+        min + egui::vec2(PADDING, PADDING),
+        galley,
+        egui::Color32::from_gray(235),
+    );
 }
 
 #[cfg(test)]

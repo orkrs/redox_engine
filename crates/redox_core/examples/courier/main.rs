@@ -405,6 +405,7 @@ fn main() {
     let mut last = Instant::now();
     let start = Instant::now();
     let mut orbit = 0.0f32;
+    let mut memory_overlay = mem_overlay::MemoryOverlay::new();
 
     event_loop
         .run_closure(move |event, elwt| match event {
@@ -443,6 +444,7 @@ fn main() {
                                     nav = Some(Direction::Right);
                                 }
                                 KeyCode::Tab => nav = Some(Direction::Next),
+                                KeyCode::F5 => memory_overlay.toggle(),
                                 KeyCode::F1 | KeyCode::F2 | KeyCode::F3 | KeyCode::F4 => {
                                     // Debug switches for hunting rendering artefacts.
                                     match code {
@@ -732,6 +734,8 @@ fn main() {
                         nav = None;
                         activate = false;
                         click = false;
+                        memory_overlay.update(dt, || ctx.memory_report());
+                        mem_overlay::draw(&memory_overlay, &painter, points);
                         drop(measure);
                         ui_ctx.end_frame_and_render(
                             ctx.device(),
