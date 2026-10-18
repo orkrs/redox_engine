@@ -19,9 +19,11 @@
 #![allow(clippy::unwrap_used)]
 
 mod game;
+mod mem_overlay;
 mod pad;
 mod progress;
 mod rig;
+mod scripted_coins;
 mod settings;
 mod settings_menu;
 mod sounds;

@@ -9,7 +9,7 @@ use crate::rig;
 
 const TURN_RATE: f32 = 12.0;
 const BODY_RADIUS: f32 = 0.3;
-const PICKUP_RADIUS: f32 = 0.7;
+pub const PICKUP_RADIUS: f32 = 0.7;
 /// How fast the upper-body layer fades in and out (per second).
 const LAYER_FADE: f32 = 10.0;
 

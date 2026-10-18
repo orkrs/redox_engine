@@ -45,6 +45,9 @@ redox_gameplay = { path = "../redox_gameplay" }
 redox_vfx = { path = "../redox_vfx" }
 redox_scene = { path = "../redox_scene" }
 rapier3d = { workspace = true }
+# Scripted gameplay in the Courier example (coins as a WASM module).
+redox_script = { path = "../redox_script" }
+wat = "1.262.0"
 pollster = "1"
 egui-wgpu = { workspace = true }
 egui = { workspace = true }
