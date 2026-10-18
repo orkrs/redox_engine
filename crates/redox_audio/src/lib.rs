@@ -22,6 +22,7 @@ pub mod debug;
 pub mod loader;
 pub mod mixer;
 pub mod music;
+mod music_play;
 pub mod spatial;
 pub mod systems;
 pub mod voices;

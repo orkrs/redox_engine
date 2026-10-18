@@ -26,6 +26,8 @@ use redox_ecs::{Entity, World};
 use crate::asset_types::AudioData;
 use crate::components::ReverbPreset;
 use crate::mixer::{MixerBusId, MixerGraph, PlayMode, PlayRequest};
+use crate::music::MusicDirector;
+use crate::music_play::DEFAULT_MUSIC_CROSSFADE_SECONDS;
 use crate::voices::{VoiceBudget, VoiceDecision};
 
 /// Default number of cue voices that may sound at once.
@@ -61,6 +63,8 @@ pub struct AudioContext {
     cue_voice_now: f32,
     /// Id given to the next cue voice request; increases monotonically.
     next_voice_id: u64,
+    /// Music crossfade state (see `play_music`).
+    pub(crate) music: MusicDirector,
 }
 
 impl AudioContext {
@@ -126,6 +130,7 @@ impl AudioContext {
             cue_voice_seconds: DEFAULT_CUE_VOICE_SECONDS,
             cue_voice_now: 0.0,
             next_voice_id: 0,
+            music: MusicDirector::new(DEFAULT_MUSIC_CROSSFADE_SECONDS),
         }
     }
 
