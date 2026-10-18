@@ -21,6 +21,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - Physics (B4): joints break by torque too (`JointDesc::break_torque`).
 - Courier (B9): best time and language saved, gamepad control, synthesised sound cues.
 - Tests: host API v1a runs on the `wasmtime` backend as well.
+- Render (A3): `SkinnedMeshBinding::update_gpu_batch` - many meshes skinned in one command buffer and one submit (100 characters: 11.1 -> 1.6 ms in the dev profile).
+- Scripting (B7b): host function `raycast` through the `WorldQueries` trait (`ScriptRuntime::set_world_queries`, permission `api.world`, 64 queries per call); a coin collector written in WASM as a test.
+- Physics (B4): joint limits (`JointDesc::limits`) and velocity motors (`JointMotor`); (B3) `set_contact_impulse_threshold` drops soft `Enter` events and their `Exit`; the `stay` opt-in is forgotten when a body is removed.
+- Audio (B8): `AudioContext::{play_music, stop_music, update_music, set_music_crossfade}`; `VoiceBudget::{release, ids, set_max_voices}`; stolen cue voices are stopped.
+- Render (A4): `texture_size_bytes`, `MemoryBudget::{over_budget_categories, report}`.
+- Examples: Foxfire (`cargo run --example foxrun -p redox_core --release`), an action game with a glTF fox, glowing gems and wisps; Courier settings model (`settings.rs`, not yet in the menu).
 
 ### Removed
 - Old examples `showcase`, `prism_vault`, `ball_score`, `shadow_lab` (kept: `skinned_demo`, `dino_runner`, `dino_game`).
