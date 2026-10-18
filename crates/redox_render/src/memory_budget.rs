@@ -4,6 +4,29 @@
 //! records how many bytes each [`MemoryCategory`] uses and, optionally, a
 //! byte limit per category. It is not wired into the renderer yet.
 
+const MIB: u64 = 1024 * 1024;
+
+/// Bytes of a 2D texture: sum over `mip_levels` levels of max(w >> level, 1) * max(h >> level, 1)
+/// * bytes_per_pixel. `mip_levels` 0 counts as 1. Saturating, never panics.
+pub fn texture_size_bytes(width: u32, height: u32, bytes_per_pixel: u32, mip_levels: u32) -> u64 {
+    let levels = mip_levels.max(1);
+    let bpp = u64::from(bytes_per_pixel);
+    let (mut w, mut h) = (u64::from(width.max(1)), u64::from(height.max(1)));
+    let mut total = 0u64;
+    for level in 0..levels {
+        let bytes = w.saturating_mul(h).saturating_mul(bpp);
+        total = total.saturating_add(bytes);
+        if w == 1 && h == 1 {
+            // Every remaining level is a 1x1 level of the same size.
+            let remaining = u64::from(levels - level - 1);
+            return total.saturating_add(bytes.saturating_mul(remaining));
+        }
+        w = (w / 2).max(1);
+        h = (h / 2).max(1);
+    }
+    total
+}
+
 /// A category of GPU memory tracked by [`MemoryBudget`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum MemoryCategory {
@@ -160,6 +183,59 @@ impl MemoryBudget {
             })
             .collect()
     }
+
+    /// The categories whose usage exceeds their limit, in [`MemoryCategory::ALL`] order.
+    pub fn over_budget_categories(&self) -> Vec<MemoryCategory> {
+        MemoryCategory::ALL
+            .into_iter()
+            .filter(|&category| self.is_over_budget(category))
+            .collect()
+    }
+
+    /// Text for a debug overlay, one line per category that has usage or a limit, in
+    /// [`MemoryCategory::ALL`] order, then a `total:` line. Sizes are MiB with one decimal.
+    /// Lines have no trailing newline.
+    pub fn report(&self) -> String {
+        let mut lines: Vec<String> = self
+            .snapshot()
+            .into_iter()
+            .filter(|usage| usage.used > 0 || usage.limit.is_some())
+            .map(|usage| report_line(&usage))
+            .collect();
+        lines.push(format!("total: {}", format_mib(self.total_used())));
+        lines.join("\n")
+    }
+}
+
+/// Formats one category line of [`MemoryBudget::report`].
+fn report_line(usage: &CategoryUsage) -> String {
+    let name = usage.category.name();
+    let used = format_mib(usage.used);
+    let over = if usage.limit.is_some_and(|limit| usage.used > limit) {
+        " OVER"
+    } else {
+        ""
+    };
+    match usage.limit {
+        None => format!("{name}: {used}"),
+        Some(0) => format!("{name}: {used} / {}{over}", format_mib(0)),
+        Some(limit) => format!(
+            "{name}: {used} / {} ({}%){over}",
+            format_mib(limit),
+            percent_rounded(usage.used, limit)
+        ),
+    }
+}
+
+/// `bytes` as MiB with one decimal place, e.g. `"3.5 MiB"`.
+fn format_mib(bytes: u64) -> String {
+    format!("{:.1} MiB", bytes as f64 / MIB as f64)
+}
+
+/// `used / limit` as a whole percentage, rounded half up. `limit` must be non-zero.
+fn percent_rounded(used: u64, limit: u64) -> u128 {
+    let (used, limit) = (u128::from(used), u128::from(limit));
+    (used * 100 + limit / 2) / limit
 }
 
 #[cfg(test)]
@@ -202,6 +278,40 @@ mod tests {
         let usage = b.snapshot();
         let meshes = usage.iter().find(|u| u.category == MemoryCategory::Meshes);
         assert_eq!(meshes.and_then(|u| u.fraction), Some(1.5));
+    }
+
+    #[test]
+    fn report_rounds_small_sizes_and_percentages() {
+        let mut b = MemoryBudget::new();
+        // 1 byte rounds down to 0.0 MiB; 18.75% rounds half up to 19%.
+        b.set_limit(MemoryCategory::Textures, Some(64 * MIB));
+        b.add(MemoryCategory::Textures, 12 * MIB);
+        b.add(MemoryCategory::Other, 1);
+        assert_eq!(
+            b.report(),
+            "textures: 12.0 MiB / 64.0 MiB (19%)\nother: 0.0 MiB\ntotal: 12.0 MiB"
+        );
+    }
+
+    #[test]
+    fn report_limit_without_usage_is_listed_as_zero_percent() {
+        let mut b = MemoryBudget::new();
+        b.set_limit(MemoryCategory::Meshes, Some(MIB));
+        assert_eq!(b.report(), "meshes: 0.0 MiB / 1.0 MiB (0%)\ntotal: 0.0 MiB");
+    }
+
+    #[test]
+    fn over_budget_categories_is_empty_when_all_within_limits() {
+        let mut b = MemoryBudget::new();
+        b.set_limit(MemoryCategory::Textures, Some(10));
+        b.add(MemoryCategory::Textures, 10);
+        assert!(b.over_budget_categories().is_empty());
+    }
+
+    #[test]
+    fn texture_size_handles_zero_levels_and_zero_dimensions() {
+        assert_eq!(texture_size_bytes(0, 0, 4, 0), 4);
+        assert_eq!(texture_size_bytes(1, 1, 4, 40), 40 * 4);
     }
 
     #[test]

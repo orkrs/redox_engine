@@ -48,7 +48,7 @@ pub use light::{
     DirectionalLight, LightScene, LightUniform, LightingMode, PointLight, PointLightGpu, SpotLight,
 };
 pub use material::Material;
-pub use memory_budget::{CategoryUsage, MemoryBudget, MemoryCategory};
+pub use memory_budget::{CategoryUsage, MemoryBudget, MemoryCategory, texture_size_bytes};
 pub use mesh::{Mesh, Vertex};
 pub use profiler::{GpuProfiler, GpuTiming, PROFILER_FEATURES};
 pub use renderer::{Renderer, pick_hdr_msaa_sample_count};
