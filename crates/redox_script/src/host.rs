@@ -1,6 +1,7 @@
 //! Backend independent host state: the game clock and the bounded log buffer.
 
 use std::collections::{HashMap, VecDeque};
+use std::ops::Range;
 
 use crate::{ScriptEvent, WorldQueries};
 
@@ -20,6 +21,12 @@ pub(crate) const MAX_EVENTS: usize = 256;
 pub(crate) const MAX_RAYS_PER_CALL: u32 = 64;
 /// Longest ray the host is asked to cast, in metres.
 pub(crate) const MAX_RAY_DISTANCE: f32 = 1000.0;
+/// Most rays accepted by one `raycast_many` call.
+pub(crate) const MAX_BATCH_RAYS: usize = 1024;
+/// Bytes per ray record: seven little-endian `f32` (`ox, oy, oz, dx, dy, dz, max_distance`).
+pub(crate) const RAY_RECORD_BYTES: usize = 28;
+/// Bytes per answer: one little-endian `f32`.
+const ANSWER_BYTES: usize = 4;
 
 /// The installed world, if any.
 #[derive(Default)]
@@ -44,6 +51,46 @@ pub(crate) fn read_name(memory: &[u8], ptr: i32, len: i32) -> Option<&str> {
     let len = usize::try_from(len).ok().filter(|l| *l <= MAX_NAME_BYTES)?;
     let bytes = memory.get(start..start.checked_add(len)?)?;
     std::str::from_utf8(bytes).ok()
+}
+
+/// Validates a `raycast_many` call and returns the guest byte ranges `(records, answers)`.
+///
+/// `None` when `count` is outside `1..=MAX_BATCH_RAYS`, a pointer is negative, or either range
+/// does not fit inside `memory_len`.
+pub(crate) fn batch_ranges(
+    memory_len: usize,
+    rays_ptr: i32,
+    count: i32,
+    out_ptr: i32,
+) -> Option<(Range<usize>, Range<usize>)> {
+    let count = usize::try_from(count)
+        .ok()
+        .filter(|n| (1..=MAX_BATCH_RAYS).contains(n))?;
+    let rays = guest_range(memory_len, rays_ptr, count * RAY_RECORD_BYTES)?;
+    let out = guest_range(memory_len, out_ptr, count * ANSWER_BYTES)?;
+    Some((rays, out))
+}
+
+/// `len` bytes starting at guest pointer `ptr`, when that range lies inside `memory_len`.
+fn guest_range(memory_len: usize, ptr: i32, len: usize) -> Option<Range<usize>> {
+    let start = usize::try_from(ptr).ok()?;
+    let end = start.checked_add(len)?;
+    (end <= memory_len).then_some(start..end)
+}
+
+/// Decodes one ray record; a short slice reads as zeros (callers pass whole records).
+fn decode_ray(record: &[u8]) -> [f32; 7] {
+    let mut ray = [0.0_f32; 7];
+    for (value, bytes) in ray.iter_mut().zip(record.chunks_exact(4)) {
+        let bytes: [u8; 4] = bytes.try_into().unwrap_or([0; 4]);
+        *value = f32::from_le_bytes(bytes);
+    }
+    ray
+}
+
+/// Encodes answers as little-endian `f32` bytes, ready to be written to guest memory.
+pub(crate) fn answer_bytes(answers: &[f32]) -> Vec<u8> {
+    answers.iter().flat_map(|v| v.to_le_bytes()).collect()
 }
 
 /// Per-instance state shared between the host functions and the runtime.
@@ -103,6 +150,30 @@ impl HostData {
             .raycast(origin, unit, max.min(MAX_RAY_DISTANCE))
             .filter(|d| d.is_finite())
             .unwrap_or(MISS)
+    }
+
+    /// Answers `env.raycast_many` for the raw record bytes read from guest memory.
+    ///
+    /// Each record goes through [`HostData::raycast`], so the allowance and all checks apply per
+    /// ray. `None` when the length is not a whole number of records or the count is outside
+    /// `1..=MAX_BATCH_RAYS`.
+    pub(crate) fn raycast_batch(&mut self, records: &[u8]) -> Option<Vec<f32>> {
+        let chunks = records.chunks_exact(RAY_RECORD_BYTES);
+        if !chunks.remainder().is_empty() {
+            return None;
+        }
+        let count = chunks.len();
+        if count == 0 || count > MAX_BATCH_RAYS {
+            return None;
+        }
+        Some(
+            chunks
+                .map(|record| {
+                    let [ox, oy, oz, dx, dy, dz, max] = decode_ray(record);
+                    self.raycast([ox, oy, oz], [dx, dy, dz], max)
+                })
+                .collect(),
+        )
     }
 
     /// Sets an input value readable by the script through `get_f32`.
@@ -195,6 +266,98 @@ mod tests {
         assert_eq!(host.raycast([0.0; 3], down, 5.0), -1.0, "allowance used up");
         host.begin_call();
         assert_eq!(host.raycast([0.0; 3], down, 5.0), 3.0, "renewed");
+    }
+
+    #[test]
+    fn batch_ranges_check_count_and_bounds() {
+        assert_eq!(batch_ranges(65_536, 64, 1, 512), Some((64..92, 512..516)));
+        assert_eq!(
+            batch_ranges(65_536, 0, 1024, 0).map(|(r, _)| r.len()),
+            Some(28_672)
+        );
+        assert_eq!(batch_ranges(65_536, 0, 0, 0), None, "count 0");
+        assert_eq!(batch_ranges(65_536, 0, -1, 0), None, "negative count");
+        assert_eq!(
+            batch_ranges(65_536, 0, 1025, 0),
+            None,
+            "count above the cap"
+        );
+        assert_eq!(
+            batch_ranges(65_536, 65_530, 3, 0),
+            None,
+            "records leave memory"
+        );
+        assert_eq!(
+            batch_ranges(65_536, 0, 3, 65_530),
+            None,
+            "answers leave memory"
+        );
+        assert_eq!(
+            batch_ranges(65_536, -4, 3, 0),
+            None,
+            "negative records pointer"
+        );
+        assert_eq!(
+            batch_ranges(65_536, 0, 3, -4),
+            None,
+            "negative answers pointer"
+        );
+        assert_eq!(batch_ranges(65_536, 0, 3, i32::MAX), None, "far outside");
+    }
+
+    #[test]
+    fn batch_answers_follow_single_rays() {
+        let mut host = HostData::default();
+        host.begin_call();
+        host.set_world(Box::new(Wall));
+        let records = [
+            ray_bytes([0.0, 2.0, 0.0, 0.0, -1.0, 0.0, 10.0]),
+            ray_bytes([0.0; 7]),
+        ];
+        let answers = host.raycast_batch(&records.concat());
+        assert_eq!(answers, Some(vec![3.0, -1.0]), "a zero direction misses");
+    }
+
+    #[test]
+    fn batch_rejects_partial_records_and_bad_counts() {
+        let mut host = HostData::default();
+        host.begin_call();
+        assert_eq!(host.raycast_batch(&[]), None, "no records");
+        assert_eq!(host.raycast_batch(&[0; 27]), None, "short record");
+        assert_eq!(host.raycast_batch(&[0; 29]), None, "trailing bytes");
+        assert_eq!(
+            host.raycast_batch(&vec![0; 28 * (MAX_BATCH_RAYS + 1)]),
+            None,
+            "too many"
+        );
+        assert!(
+            host.raycast_batch(&vec![0; 28 * MAX_BATCH_RAYS]).is_some(),
+            "the cap itself"
+        );
+    }
+
+    #[test]
+    fn batch_uses_the_per_call_allowance() {
+        let mut host = HostData::default();
+        host.begin_call();
+        host.set_world(Box::new(Wall));
+        let record = ray_bytes([0.0, 2.0, 0.0, 0.0, -1.0, 0.0, 10.0]);
+        let records = record.repeat(MAX_RAYS_PER_CALL as usize + 1);
+        let answers = host.raycast_batch(&records).unwrap_or_default();
+        assert_eq!(answers.len(), MAX_RAYS_PER_CALL as usize + 1);
+        assert_eq!(answers.last().copied(), Some(-1.0), "past the allowance");
+    }
+
+    #[test]
+    fn answers_are_little_endian() {
+        assert_eq!(
+            answer_bytes(&[1.0, -1.0]),
+            [1.0f32.to_le_bytes(), (-1.0f32).to_le_bytes()].concat()
+        );
+    }
+
+    fn ray_bytes(ray: [f32; 7]) -> Vec<u8> {
+        ray.iter().flat_map(|v| v.to_le_bytes()).collect()
     }
 
     #[test]

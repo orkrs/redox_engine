@@ -1,7 +1,7 @@
 //! WebAssembly scripting for the RedOx Engine (see `docs/PLAN_SCRIPTING.md`, ADR 0005/0006).
 //!
 //! A [`ScriptRuntime`] hosts sandboxed script instances. Every call gets a fuel budget, memory
-//! is capped, and host functions (`env.log`, `env.time_seconds`, `env.get_f32`, `env.set_f32`, `env.emit_event`, `env.raycast`) are only linked when permitted.
+//! is capped, and host functions (`env.log`, `env.time_seconds`, `env.get_f32`, `env.set_f32`, `env.emit_event`, `env.raycast`, `env.raycast_many`) are only linked when permitted.
 //! A trap or fuel exhaustion disables just the offending instance.
 
 #![warn(missing_docs)]

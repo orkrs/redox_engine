@@ -122,6 +122,9 @@ fn build_linker(engine: &Engine, config: &ScriptConfig) -> Result<Linker<State>,
         linker
             .func_wrap("env", "raycast", host_raycast)
             .map_err(link_err)?;
+        linker
+            .func_wrap("env", "raycast_many", host_raycast_many)
+            .map_err(link_err)?;
     }
     Ok(linker)
 }
@@ -193,6 +196,31 @@ fn host_raycast(
         .data_mut()
         .host
         .raycast([ox, oy, oz], [dx, dy, dz], max_distance)
+}
+
+/// `env.raycast_many(rays_ptr, count, out_ptr) -> i32`: answers a batch of ray records.
+///
+/// Returns `count` when the batch was processed and 0 (writing nothing) on any invalid range.
+fn host_raycast_many(
+    mut caller: Caller<'_, State>,
+    rays_ptr: i32,
+    count: i32,
+    out_ptr: i32,
+) -> i32 {
+    let Some(Extern::Memory(memory)) = caller.get_export(MEMORY_EXPORT) else {
+        return 0;
+    };
+    let Some((rays, out)) =
+        host::batch_ranges(memory.data(&caller).len(), rays_ptr, count, out_ptr)
+    else {
+        return 0;
+    };
+    let records = memory.data(&caller)[rays].to_vec();
+    let Some(answers) = caller.data_mut().host.raycast_batch(&records) else {
+        return 0;
+    };
+    memory.data_mut(&mut caller)[out].copy_from_slice(&host::answer_bytes(&answers));
+    count
 }
 
 /// A live `wasmi` instance with its own store.
