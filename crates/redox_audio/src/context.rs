@@ -53,8 +53,12 @@ pub struct AudioContext {
     occlusion_by_emitter: HashMap<Entity, f32>,
     /// Priority-based limit on simultaneous cue voices (see `set_cue_voice_limit`).
     cue_voices: VoiceBudget,
+    /// Playing sound handle of each cue voice that is still held by the budget, by voice id.
+    pub(crate) cue_handles: HashMap<u64, StaticSoundHandle>,
     /// Assumed length in seconds of a started cue voice (see `set_cue_voice_seconds`).
     cue_voice_seconds: f32,
+    /// Time of the latest cue voice request; used by `set_cue_voice_limit` to expire voices.
+    cue_voice_now: f32,
     /// Id given to the next cue voice request; increases monotonically.
     next_voice_id: u64,
 }
@@ -118,15 +122,22 @@ impl AudioContext {
             sound_cache: HashMap::new(),
             occlusion_by_emitter: HashMap::new(),
             cue_voices: VoiceBudget::new(DEFAULT_CUE_VOICES),
+            cue_handles: HashMap::new(),
             cue_voice_seconds: DEFAULT_CUE_VOICE_SECONDS,
+            cue_voice_now: 0.0,
             next_voice_id: 0,
         }
     }
 
-    /// Sets how many cue voices may sound at once. Default 16. Starts a fresh budget, so
-    /// voices already counted are forgotten.
+    /// Sets how many cue voices may sound at once. Default 16. Voices above the new limit are
+    /// stopped, weakest first. The clock is the time of the latest cue request.
     pub fn set_cue_voice_limit(&mut self, max_voices: usize) {
-        self.cue_voices = VoiceBudget::new(max_voices);
+        let evicted = self
+            .cue_voices
+            .set_max_voices(max_voices, self.cue_voice_now);
+        for id in evicted {
+            self.stop_cue_voice(id);
+        }
     }
 
     /// Sets how long, in seconds, a started cue occupies its voice. Default 1.0. Non-finite
@@ -139,12 +150,29 @@ impl AudioContext {
 
     /// Asks the cue voice budget for a slot for a cue of `priority` starting at `now`.
     ///
-    /// Assigns the next voice id from the context's counter, so every request gets a fresh id.
-    pub(crate) fn request_cue_voice(&mut self, priority: u8, now: f32) -> VoiceDecision {
+    /// Assigns the next voice id from the context's counter, so every request gets a fresh id,
+    /// and returns it with the decision. When the decision steals a slot, the stolen voice's
+    /// sound is stopped. Handles of voices that have ended are dropped first.
+    pub(crate) fn request_cue_voice(&mut self, priority: u8, now: f32) -> (u64, VoiceDecision) {
+        self.cue_voice_now = now;
+        let live = self.cue_voices.ids(now);
+        self.cue_handles.retain(|id, _| live.contains(id));
         let voice_id = self.next_voice_id;
         self.next_voice_id = self.next_voice_id.wrapping_add(1);
-        self.cue_voices
-            .request(voice_id, priority, now, self.cue_voice_seconds)
+        let decision = self
+            .cue_voices
+            .request(voice_id, priority, now, self.cue_voice_seconds);
+        if let VoiceDecision::Steal(victim) = decision {
+            self.stop_cue_voice(victim);
+        }
+        (voice_id, decision)
+    }
+
+    /// Stops the sound of cue voice `id` (if it has a handle) and forgets the handle.
+    fn stop_cue_voice(&mut self, id: u64) {
+        if let Some(mut handle) = self.cue_handles.remove(&id) {
+            handle.stop(Tween::default());
+        }
     }
 
     /// Returns `true` if the audio backend is available.

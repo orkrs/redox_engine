@@ -73,13 +73,49 @@ impl VoiceBudget {
             return VoiceDecision::Reject;
         }
         let stolen = slot.id;
-        *slot = Voice::new(id, priority, now, duration);
+        self.voices.remove(weakest);
+        self.voices.push(Voice::new(id, priority, now, duration));
         VoiceDecision::Steal(stolen)
     }
 
     /// Number of voices still playing at time `now`.
     pub fn active(&self, now: f32) -> usize {
         self.voices.iter().filter(|voice| voice.end > now).count()
+    }
+
+    /// Frees the slot of voice `id` before its time is up. False when no such voice is held.
+    pub fn release(&mut self, id: u64) -> bool {
+        match self.voices.iter().position(|voice| voice.id == id) {
+            Some(index) => {
+                self.voices.remove(index);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Ids of the voices still playing at `now`, oldest first (by start time; ties by insertion
+    /// order).
+    pub fn ids(&self, now: f32) -> Vec<u64> {
+        let mut live: Vec<&Voice> = self.voices.iter().filter(|v| v.end > now).collect();
+        live.sort_by(|a, b| a.start.total_cmp(&b.start));
+        live.into_iter().map(|voice| voice.id).collect()
+    }
+
+    /// Sets the limit to `max_voices` and returns the ids evicted to fit it, lowest priority first
+    /// and the oldest first among equals. Voices that already ended by `now` are dropped silently
+    /// and not reported.
+    pub fn set_max_voices(&mut self, max_voices: usize, now: f32) -> Vec<u64> {
+        self.expire(now);
+        self.max_voices = max_voices;
+        let mut evicted = Vec::new();
+        while self.voices.len() > self.max_voices {
+            let Some(weakest) = self.weakest() else {
+                break;
+            };
+            evicted.push(self.voices.remove(weakest).id);
+        }
+        evicted
     }
 
     /// Drops voices that have ended by `now`.

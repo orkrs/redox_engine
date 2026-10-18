@@ -311,13 +311,15 @@ impl AudioContext {
     ) -> Option<CuePlay> {
         let cue = library.get(name)?;
         let play = selector.select_own_rng(cue, now)?;
-        // A stolen voice's audio is not stopped: the context keeps no handle for cue voices.
-        if self.request_cue_voice(cue.priority, now) == VoiceDecision::Reject {
+        let (voice_id, decision) = self.request_cue_voice(cue.priority, now);
+        if decision == VoiceDecision::Reject {
             return None;
         }
         if let Some(sound) = cue.variants.get(play.variant) {
             let request = PlayRequest::one_shot(cue.bus, play.volume);
-            self.play_named_pitched(sound, request, f64::from(play.pitch));
+            if let Some(handle) = self.play_named_pitched(sound, request, f64::from(play.pitch)) {
+                self.cue_handles.insert(voice_id, handle);
+            }
         }
         Some(play)
     }
