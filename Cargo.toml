@@ -72,6 +72,6 @@ thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 ron = "0.12"
 notify = "8"
-meshopt = "0.6"
+meshopt = "0.7"
 flume = "0.12"
 git2 = "0.21"
