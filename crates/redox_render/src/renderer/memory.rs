@@ -32,7 +32,8 @@ impl Renderer {
     /// always reflected), with the configured limits attached.
     ///
     /// Textures and meshes come from the registry, shadows from the local atlas and the VSM
-    /// textures, virtual geometry from its big buffers, and `Other` from the render targets.
+    /// textures, virtual geometry from its big buffers, `Other` from the render targets, and
+    /// `Buffers` from the renderer's persistent uniform and storage buffers.
     pub fn memory_usage(&self) -> MemoryBudget {
         let mut budget = self.memory_limits.clone();
         budget.add(MemoryCategory::Meshes, self.registry.mesh_bytes());
@@ -69,6 +70,25 @@ impl Renderer {
         ];
         for texture in targets {
             budget.add(MemoryCategory::Other, gpu_texture_bytes(texture));
+        }
+        // Not counted here: `face_matrix_buffers` (a Vec, not in the list below), and buffers owned
+        // by subsystems: cluster_manager (point lights, metadata, light indices, bounds, info),
+        // registry material uniforms, skinning_gpu skin buffer, the taa and velocity uniforms, and
+        // the per-pass buffers under pass/, post/, gi/, sdf/, shadow/ and virtual_geometry/.
+        let buffers = [
+            &self.camera_buffer,
+            &self.light_buffer,
+            &self.shader_debug_buffer,
+            &self.tonemap_uniform_buffer,
+            &self.model_buffer,
+            &self.tonemap_rcas_uniform_buffer,
+            &self.prev_model_buffer,
+            &self.vsm_pageinfo_buffer,
+            &self.vsm_info_buffer,
+            &self.vg_material_buffer,
+        ];
+        for buffer in buffers {
+            budget.add(MemoryCategory::Buffers, buffer.size());
         }
         budget
     }
