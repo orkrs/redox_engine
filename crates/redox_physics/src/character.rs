@@ -27,6 +27,7 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
                 e,
                 c.desired_translation,
                 c.gravity,
+                c.vertical_velocity,
                 *t,
                 rb.handle,
                 col.handle,
@@ -35,13 +36,15 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
         .collect();
 
     let mut results = Vec::with_capacity(entities.len());
-    for (entity, desired, gravity, transform, body_handle, collider_handle) in entities {
+    for (entity, desired, gravity, vertical, transform, body_handle, collider_handle) in entities {
         let Some(collider) = physics.colliders.get(collider_handle) else {
             continue;
         };
         let shape = collider.shape();
+        // Semi-implicit Euler: accelerate first, then move with the new speed.
+        let mut vy = vertical - gravity * dt;
         let mut wish = desired;
-        wish.y -= gravity * dt;
+        wish.y += vy * dt;
 
         let iso = Pose::from_parts(transform.translation, transform.rotation);
         let filter = QueryFilter::default().exclude_rigid_body(body_handle);
@@ -49,18 +52,25 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
         let queries = physics.query_pipeline(filter);
         let movement = kcc.move_shape(dt, &queries, shape, &iso, wish, |_| {});
         let delta = movement.translation;
-        results.push((entity, delta, movement.grounded, body_handle));
+        let grounded = movement.grounded;
+        // Landing stops the fall; hitting a ceiling stops the rise.
+        let hit_ceiling = vy > 0.0 && delta.y < wish.y - 1e-4;
+        if (grounded && vy < 0.0) || hit_ceiling {
+            vy = 0.0;
+        }
+        results.push((entity, delta, grounded, vy, body_handle));
     }
 
     world.insert_resource(physics);
 
-    for (entity, delta, grounded, body_handle) in results {
+    for (entity, delta, grounded, vy, body_handle) in results {
         if let Some(t) = world.get_component_mut::<Transform>(entity) {
             t.translation += delta;
         }
         if let Some(cc) = world.get_component_mut::<CharacterController>(entity) {
             cc.grounded = grounded;
             cc.desired_translation = Vec3::ZERO;
+            cc.vertical_velocity = vy;
         }
         let translation = world
             .get_component::<Transform>(entity)
@@ -124,6 +134,7 @@ mod kcc_tests {
                 desired_translation: Vec3::ZERO,
                 gravity: 20.0,
                 grounded: false,
+                ..Default::default()
             },
         );
 

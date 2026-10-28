@@ -53,7 +53,6 @@ fn position(world: &World, e: Entity) -> Vec3 {
 /// about `20 / 2 = 10` units (semi-implicit Euler gives 10.17). Today every step adds the same
 /// `gravity * dt` drop, so the fall is linear and the character drops 20 units in the same second.
 #[test]
-#[ignore = "TODO: PHY-01"]
 fn free_fall_accelerates_like_real_gravity() {
     let mut world = World::new();
     world.insert_resource(PhysicsContext::new(Vec3::ZERO));
@@ -109,4 +108,91 @@ fn walking_into_a_low_step_climbs_it() {
         "should stand on the step (capsule centre about 0.9), y = {}",
         p.y
     );
+}
+
+#[test]
+fn jump_rises_then_lands_back_on_the_floor() {
+    let mut world = World::new();
+    world.insert_resource(PhysicsContext::new(Vec3::ZERO));
+    spawn_body(
+        &mut world,
+        Vec3::new(0.0, -0.5, 0.0),
+        RigidBodyBuilder::fixed(),
+        ColliderBuilder::cuboid(10.0, 0.5, 10.0),
+    );
+    let player = spawn_player(&mut world, Vec3::new(0.0, 0.75, 0.0));
+    for _ in 0..30 {
+        tick_physics(&mut world, DT);
+    } // settle
+    assert!(
+        world
+            .get_component::<CharacterController>(player)
+            .unwrap()
+            .grounded
+    );
+    let rest = position(&world, player).y;
+    assert!(
+        world
+            .get_component_mut::<CharacterController>(player)
+            .unwrap()
+            .jump()
+    );
+    let mut peak = rest;
+    for _ in 0..30 {
+        tick_physics(&mut world, DT);
+        peak = peak.max(position(&world, player).y);
+    }
+    // v^2 / 2g = 49 / 40 = 1.225
+    assert!((peak - rest - 1.2).abs() < 0.2, "peak rise {}", peak - rest);
+    for _ in 0..120 {
+        tick_physics(&mut world, DT);
+    }
+    assert!((position(&world, player).y - rest).abs() < 0.05);
+    assert!(
+        world
+            .get_component::<CharacterController>(player)
+            .unwrap()
+            .grounded
+    );
+}
+
+#[test]
+fn jump_in_the_air_is_refused() {
+    let mut cc = CharacterController::default();
+    assert!(!cc.jump(), "not grounded yet");
+    cc.grounded = true;
+    assert!(cc.jump());
+    assert!(!cc.jump(), "already left the ground");
+}
+
+#[test]
+fn a_low_ceiling_stops_the_rise() {
+    let mut world = World::new();
+    world.insert_resource(PhysicsContext::new(Vec3::ZERO));
+    spawn_body(
+        &mut world,
+        Vec3::new(0.0, -0.5, 0.0),
+        RigidBodyBuilder::fixed(),
+        ColliderBuilder::cuboid(10.0, 0.5, 10.0),
+    );
+    // underside of the ceiling at y = 1.6
+    spawn_body(
+        &mut world,
+        Vec3::new(0.0, 2.1, 0.0),
+        RigidBodyBuilder::fixed(),
+        ColliderBuilder::cuboid(10.0, 0.5, 10.0),
+    );
+    let player = spawn_player(&mut world, Vec3::new(0.0, 0.75, 0.0));
+    for _ in 0..30 {
+        tick_physics(&mut world, DT);
+    }
+    world
+        .get_component_mut::<CharacterController>(player)
+        .unwrap()
+        .jump();
+    for _ in 0..20 {
+        tick_physics(&mut world, DT);
+    }
+    let top = position(&world, player).y + 0.7; // capsule half height
+    assert!(top <= 1.65, "head went through the ceiling: {top}");
 }

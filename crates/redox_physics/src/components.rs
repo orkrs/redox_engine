@@ -42,6 +42,22 @@ pub struct CharacterController {
     pub gravity: f32,
     /// Whether the character stood on ground after the last move.
     pub grounded: bool,
+    /// Vertical speed in units per second, positive is up. Owned by the controller.
+    pub vertical_velocity: f32,
+    /// Speed of a jump set by `jump`, units per second.
+    pub jump_speed: f32,
+}
+
+impl CharacterController {
+    /// Starts a jump if the character stood on the ground after the last move. Returns whether it started.
+    pub fn jump(&mut self) -> bool {
+        if !self.grounded {
+            return false;
+        }
+        self.vertical_velocity = self.jump_speed;
+        self.grounded = false;
+        true
+    }
 }
 
 impl Default for CharacterController {
@@ -50,6 +66,8 @@ impl Default for CharacterController {
             desired_translation: Vec3::ZERO,
             gravity: 20.0,
             grounded: false,
+            vertical_velocity: 0.0,
+            jump_speed: 7.0,
         }
     }
 }
