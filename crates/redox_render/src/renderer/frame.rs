@@ -5,6 +5,28 @@ use super::*;
 mod post;
 mod shadows;
 
+/// CPU time spent in the last `render_frame_into`, in milliseconds (wall clock, not GPU time).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct FrameCpuTimings {
+    /// Visibility, batching and sorting of the object list.
+    pub prepare_ms: f32,
+    /// Recording every pass into command buffers.
+    pub record_ms: f32,
+    /// `queue.submit` and everything after it inside the call.
+    pub submit_ms: f32,
+}
+
+impl FrameCpuTimings {
+    /// Sum of the three phases.
+    pub fn total_ms(&self) -> f32 {
+        self.prepare_ms + self.record_ms + self.submit_ms
+    }
+}
+
+fn ms_between(from: std::time::Instant, to: std::time::Instant) -> f32 {
+    to.duration_since(from).as_secs_f32() * 1000.0
+}
+
 /// State shared by the passes of one frame.
 struct FrameState<'a> {
     objects: &'a [RenderObject],
@@ -41,6 +63,7 @@ impl Renderer {
         objects: &[RenderObject],
         surface_view: &wgpu::TextureView,
     ) -> Result<(), crate::surface::SurfaceError> {
+        let t0 = std::time::Instant::now();
         // Group objects with the same mesh and material so the draw loops can instance them.
         let mut visible = Vec::new();
         compute_main_visibility(&self.camera_uniform.view_proj, objects, &mut visible);
@@ -57,12 +80,19 @@ impl Renderer {
             }
             None => objects,
         };
+        let t1 = std::time::Instant::now();
         let mut frame = self.begin_frame_state(objects, surface_view);
         for &name in crate::frame_graph::frame_pass_order() {
             self.run_frame_pass(name, &mut frame);
             self.gpu_profiler.mark(&mut frame.encoder, name);
         }
-        self.finish_frame(frame);
+        let t2 = self.finish_frame(frame);
+        let t3 = std::time::Instant::now();
+        self.last_cpu_timings = FrameCpuTimings {
+            prepare_ms: ms_between(t0, t1),
+            record_ms: ms_between(t1, t2),
+            submit_ms: ms_between(t2, t3),
+        };
         Ok(())
     }
 
@@ -724,7 +754,8 @@ impl Renderer {
     }
 
     /// Resolves the profiler, submits everything and recycles the staging ring.
-    fn finish_frame(&mut self, f: FrameState<'_>) {
+    /// Returns the instant just before `queue.submit`, for the CPU timing split.
+    fn finish_frame(&mut self, f: FrameState<'_>) -> std::time::Instant {
         let FrameState {
             ts_encoder,
             mut encoder,
@@ -732,6 +763,7 @@ impl Renderer {
             ..
         } = f;
         self.gpu_profiler.resolve(&mut encoder);
+        let submit_start = std::time::Instant::now();
         self.queue.submit(
             std::iter::once(ts_encoder.finish())
                 .chain(mt_cmd_buffers)
@@ -745,6 +777,7 @@ impl Renderer {
             self.vsm_request_frames = self.vsm_request_frames.saturating_add(1);
         }
         self.staging_ring.end_frame();
+        submit_start
     }
 
     /// Convenience wrapper: acquires a surface texture, renders into it, then

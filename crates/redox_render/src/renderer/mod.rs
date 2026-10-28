@@ -9,6 +9,7 @@ mod contexts;
 mod debug_draw;
 mod draw;
 mod frame;
+pub use frame::FrameCpuTimings;
 mod helpers;
 mod init;
 mod memory;
@@ -382,6 +383,8 @@ pub struct Renderer {
     frame_object_ids: Option<Vec<u64>>,
     /// Draw calls recorded by the opaque forward pass in the last frame.
     forward_draw_calls: std::sync::atomic::AtomicU32,
+    /// CPU time of the last `render_frame_into` call, split into prepare, record and submit.
+    last_cpu_timings: FrameCpuTimings,
     /// Byte limits per memory category (usage is computed on demand, see `memory_usage`).
     memory_limits: crate::memory_budget::MemoryBudget,
     /// Ping-pong history texture 0.

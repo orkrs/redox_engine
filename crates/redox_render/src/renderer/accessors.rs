@@ -10,6 +10,11 @@ impl Renderer {
             .load(std::sync::atomic::Ordering::Relaxed)
     }
 
+    /// CPU time of the last `render_frame_into` call (wall clock, not GPU time).
+    pub fn last_frame_cpu_timings(&self) -> FrameCpuTimings {
+        self.last_cpu_timings
+    }
+
     /// Enable or disable multi-threaded command recording (prepass).
     pub fn set_mt_command_recording(&mut self, enabled: bool) {
         self.mt_command_recording = enabled;
