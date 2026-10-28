@@ -129,12 +129,28 @@ impl Renderer {
                 taa_pass.draw(0..3, 0..1);
             }
 
-            // --- 6e. Bloom from stabilized TAA output, then tone map ---
+            // --- 6e. Optional post effects (motion blur, DoF) on the TAA output, then bloom
+            // and tone map. The history stays sharp: effects write their own targets. ---
             let taa_out_view = &self.taa_history_view[history_write_idx];
-            self.record_bloom_chain(encoder, taa_out_view);
+            let fx_out = self.post_fx.run_chain(
+                encoder,
+                &self.queue,
+                history_write_idx,
+                [self.config.width as f32, self.config.height as f32],
+                [self.camera_near, self.camera_far],
+                &self.post_fx_settings,
+            );
+            let bloom_src = match fx_out {
+                Some(i) => &self.post_fx.views[i],
+                None => taa_out_view,
+            };
+            self.record_bloom_chain(encoder, bloom_src);
 
-            // Prebuilt bind group over the freshly written history slot.
-            let taa_tone_bg = &self.taa_tone_bgs[history_write_idx];
+            // Prebuilt bind group over the freshly written history slot (or the effect target).
+            let taa_tone_bg = match fx_out {
+                Some(i) => &self.post_fx.tone_bgs[i],
+                None => &self.taa_tone_bgs[history_write_idx],
+            };
             {
                 let mut post_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("tone_mapping_pass"),

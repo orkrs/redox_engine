@@ -597,6 +597,22 @@ impl Renderer {
             make_tone_bg(&taa_history_view1),
         ];
 
+        // --- Post effects (motion blur, DoF): targets and bind groups over TAA history ---
+        let post_fx = PostFx::new(
+            &device,
+            config.width,
+            config.height,
+            &PostFxInputs {
+                history_views: [&taa_history_view0, &taa_history_view1],
+                velocity_view: &taa_velocity_view,
+                depth_view: &depth_view,
+                bloom_view: &bloom_mip_views[0],
+                tone_pipeline: &tone_mapping_pipeline,
+                tone_uniform: &tonemap_uniform_buffer,
+                sampler: &hdr_sampler,
+            },
+        );
+
         // --- IBL ---
         let ibl_processor = IBLProcessor::new(&device);
         let ibl_resource = IBLResource::dummy(&device, &queue);
@@ -976,6 +992,8 @@ impl Renderer {
             velocity_bg,
             taa_history_bgs,
             taa_tone_bgs,
+            post_fx,
+            post_fx_settings: PostFxSettings::default(),
             taa_velocity_tex,
             taa_velocity_view,
             taa_history_read_idx: 0,

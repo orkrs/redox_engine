@@ -121,6 +121,27 @@ impl Renderer {
         self.ssao_enabled = enabled;
     }
 
+    /// Enables motion blur (`None` turns it off). It runs only with TAA on, because the velocity
+    /// buffer exists only in the TAA branch; the sharp-AA and standard paths do not blur.
+    pub fn set_motion_blur(&mut self, settings: Option<MotionBlurSettings>) {
+        self.post_fx_settings.motion_blur = settings;
+    }
+
+    /// Current motion blur settings, or `None` when it is off.
+    pub fn motion_blur(&self) -> Option<MotionBlurSettings> {
+        self.post_fx_settings.motion_blur
+    }
+
+    /// Enables depth of field (`None` turns it off). Like motion blur it runs only with TAA on.
+    pub fn set_depth_of_field(&mut self, settings: Option<DofSettings>) {
+        self.post_fx_settings.dof = settings;
+    }
+
+    /// Current depth-of-field settings, or `None` when it is off.
+    pub fn depth_of_field(&self) -> Option<DofSettings> {
+        self.post_fx_settings.dof
+    }
+
     /// Sets the exposure used by tone mapping.
     pub fn set_exposure(&mut self, exposure: f32) {
         self.exposure = exposure.max(0.0);

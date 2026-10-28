@@ -333,6 +333,20 @@ impl Renderer {
             make_tone(&self.taa_history_view[0]),
             make_tone(&self.taa_history_view[1]),
         ];
+        self.post_fx.rebuild(
+            &self.device,
+            new_width,
+            new_height,
+            &PostFxInputs {
+                history_views: [&self.taa_history_view[0], &self.taa_history_view[1]],
+                velocity_view: &self.taa_velocity_view,
+                depth_view: &self.depth_view,
+                bloom_view: &self.bloom_mip_views[0],
+                tone_pipeline: &self.tone_mapping_pipeline,
+                tone_uniform: &self.tonemap_uniform_buffer,
+                sampler: &self.hdr_sampler,
+            },
+        );
         self.rebuild_sharp_bind_groups();
 
         log::info!("Resized to {}×{}", new_width, new_height);

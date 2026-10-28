@@ -86,6 +86,7 @@ use crate::pass::vg_resolve::{
     create_vg_vis_targets,
 };
 use crate::post::bloom::BloomPass;
+use crate::post::post_fx::{DofSettings, MotionBlurSettings, PostFx, PostFxInputs, PostFxSettings};
 use crate::post::ssao::{SSAOPass, VsmPassUniform, VsmShadowPass, VsmTemporalUniform};
 use crate::post::tone_mapping::{
     TonemapUniform, create_rcas_present_pipeline, create_tone_mapping_pipeline,
@@ -410,6 +411,10 @@ pub struct Renderer {
     /// Prebuilt tone-mapping bind groups over each history slot, indexed by
     /// the history write idx of the current frame.
     pub taa_tone_bgs: [wgpu::BindGroup; 2],
+    /// Enabled post effects (motion blur, depth of field); TAA branch only.
+    pub post_fx_settings: PostFxSettings,
+    /// Targets and passes of the post effects.
+    post_fx: PostFx,
     // --- Skybox (background env pass; None until set_skybox(true)) ---
     /// Skybox pass; present once a real environment is set.
     pub skybox_pass: Option<SkyboxPass>,
