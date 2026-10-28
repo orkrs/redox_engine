@@ -13,13 +13,13 @@ use crate::context::PhysicsContext;
 /// Builds Rapier's controller from the character's settings. While the character rises
 /// (`vertical > 0`) snapping to the ground is off, so a jump is not pulled back down at once.
 fn build_kcc(settings: &CharacterSettings, vertical: f32) -> RapierKcc {
-    let autostep = (settings.step_height > 0.0).then(|| CharacterAutostep {
+    let autostep = (settings.step_height > 0.0).then_some(CharacterAutostep {
         max_height: CharacterLength::Absolute(settings.step_height),
         min_width: CharacterLength::Absolute(settings.step_min_width),
         include_dynamic_bodies: false,
     });
     let snap_to_ground = (vertical <= 0.0 && settings.snap_to_ground > 0.0)
-        .then(|| CharacterLength::Absolute(settings.snap_to_ground));
+        .then_some(CharacterLength::Absolute(settings.snap_to_ground));
     RapierKcc {
         max_slope_climb_angle: settings.max_slope_angle,
         autostep,
