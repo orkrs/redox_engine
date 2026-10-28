@@ -84,6 +84,33 @@ impl ScriptRuntime {
         self.instantiate(&bytes)
     }
 
+    /// Replaces the module of `id` with `wasm`, keeping the id.
+    ///
+    /// The inputs set so far are kept. Outputs, queued events and commands, logs, globals and the
+    /// clock start over. The world installed with [`Self::set_world_queries`] is not carried over:
+    /// call it again after a reload. If the new module does not compile, link or export
+    /// `on_update`, the old module keeps running and the error is returned. A disabled (trapped)
+    /// instance is enabled again on success.
+    ///
+    /// # Errors
+    ///
+    /// [`ScriptError::Disabled`] for an unknown id; otherwise the errors of [`Self::instantiate`].
+    pub fn reload(&mut self, id: InstanceId, wasm: &[u8]) -> Result<(), ScriptError> {
+        let inputs = self
+            .slot(id)
+            .ok_or(ScriptError::Disabled)?
+            .instance
+            .inputs();
+        let mut instance = self.backend.instantiate(wasm, &self.config)?;
+        for (name, value) in &inputs {
+            instance.set_input(name, *value);
+        }
+        let slot = self.slot_mut(id).ok_or(ScriptError::Disabled)?;
+        slot.instance = instance;
+        slot.disabled = false;
+        Ok(())
+    }
+
     /// Sets a named input value the script reads with `get_f32`; false for an unknown instance.
     pub fn set_input(&mut self, id: InstanceId, name: &str, value: f32) -> bool {
         match self.slot_mut(id) {

@@ -26,6 +26,8 @@ pub(crate) trait BackendInstance {
     fn read_global_f32(&self, name: &str) -> Option<f32>;
     /// Sets a named input readable by the script.
     fn set_input(&mut self, name: &str, value: f32);
+    /// Copies every input set so far (used when the module is reloaded).
+    fn inputs(&self) -> Vec<(String, f32)>;
     /// Latest value the script stored under `name`.
     fn read_output(&self, name: &str) -> Option<f32>;
     /// Removes and returns the queued events.

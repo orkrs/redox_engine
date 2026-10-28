@@ -280,6 +280,15 @@ impl BackendInstance for WasmtimeInstance {
         self.store.lock().ok()?.data().host.output(name)
     }
 
+    fn inputs(&self) -> Vec<(String, f32)> {
+        self.store
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .data()
+            .host
+            .inputs_snapshot()
+    }
+
     fn take_events(&mut self) -> Vec<ScriptEvent> {
         store_mut(&mut self.store).data_mut().host.take_events()
     }

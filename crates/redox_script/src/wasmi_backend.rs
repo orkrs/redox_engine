@@ -277,6 +277,10 @@ impl BackendInstance for WasmiInstance {
         self.store.data_mut().host.set_input(name, value);
     }
 
+    fn inputs(&self) -> Vec<(String, f32)> {
+        self.store.data().host.inputs_snapshot()
+    }
+
     fn read_output(&self, name: &str) -> Option<f32> {
         self.store.data().host.output(name)
     }

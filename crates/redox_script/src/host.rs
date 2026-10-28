@@ -194,6 +194,14 @@ impl HostData {
         self.inputs.get(name).copied().unwrap_or(0.0)
     }
 
+    /// Copies every input set so far, so a replacement module can receive them.
+    pub(crate) fn inputs_snapshot(&self) -> Vec<(String, f32)> {
+        self.inputs
+            .iter()
+            .map(|(name, value)| (name.clone(), *value))
+            .collect()
+    }
+
     /// Stores an output; a new name is dropped once [`MAX_OUTPUTS`] names exist.
     pub(crate) fn set_output(&mut self, name: &str, value: f32) {
         if let Some(slot) = self.outputs.get_mut(name) {
