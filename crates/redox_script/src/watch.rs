@@ -62,7 +62,7 @@ impl ScriptWatcher {
         self.last = Some(stamp);
         match runtime.reload(self.id, &bytes) {
             Ok(()) => WatchEvent::Reloaded,
-            Err(error) => WatchEvent::Failed(format!("{error:?}")),
+            Err(error) => WatchEvent::Failed(format!("{error}")),
         }
     }
 }
