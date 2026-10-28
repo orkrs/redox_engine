@@ -46,8 +46,40 @@ pub fn check_occlusion(listener_pos: Vec3, emitter_pos: Vec3, _world: &World) ->
     }
 }
 
-/// Occlusion coefficient applied when a raycast hits an obstacle (one or more walls).
-const OCCLUSION_COEFFICIENT_PER_HIT: f32 = 0.8;
+/// Maximum number of solid hits counted between listener and emitter (one ray per hit).
+const MAX_OCCLUSION_HITS: usize = 3;
+
+/// Occlusion from the number of solid hits between listener and emitter:
+/// 0 hits -> 0.0, 1 -> 0.8, 2 -> 0.92, 3 or more -> 0.97.
+pub fn occlusion_from_hits(hits: usize) -> f32 {
+    match hits {
+        0 => 0.0,
+        1 => 0.8,
+        2 => 0.92,
+        _ => 0.97,
+    }
+}
+
+/// Counts solid hits on the segment `listener_pos -> emitter_pos`, casting at most
+/// [`MAX_OCCLUSION_HITS`] rays. Each hit entity is added to `exclude` before the next ray.
+fn count_occluder_hits(
+    physics: &redox_physics::PhysicsContext,
+    listener_pos: Vec3,
+    emitter_pos: Vec3,
+    exclude: &mut Vec<redox_ecs::Entity>,
+) -> usize {
+    let mut hits = 0;
+    for _ in 0..MAX_OCCLUSION_HITS {
+        let Some((_toi, hit_entity)) =
+            physics.cast_ray_excluding(listener_pos, emitter_pos, exclude.as_slice())
+        else {
+            break;
+        };
+        hits += 1;
+        exclude.push(hit_entity);
+    }
+    hits
+}
 
 /// System that tracks listener position relative to reverb zones.
 ///
@@ -115,9 +147,13 @@ pub fn zone_weight(distance: f32, blend_distance: f32) -> f32 {
 ///
 /// When [`redox_physics::PhysicsContext`] is present, performs real rapier3d raycasts from
 /// listener to each emitter (excluding listener and emitter from the ray). Otherwise
-/// falls back to [`check_occlusion`] (no occlusion). Also writes per-emitter occlusion
-/// into [`crate::context::AudioContext`] via `AudioContext::set_emitter_occlusion` for
-/// volume/low-pass application.
+/// falls back to [`check_occlusion`] (no occlusion). Sensors (triggers) do not occlude.
+/// Up to three solid hits are counted per emitter, mapped by [`occlusion_from_hits`].
+///
+/// Per-emitter occlusion is written into [`crate::context::AudioContext`] via
+/// `AudioContext::set_emitter_occlusion` and applied to that emitter's volume through
+/// `AudioContext::emitter_volume`. This system does NOT touch the main-track lowpass:
+/// a per-source lowpass needs its own kira track per emitter, which is out of scope here.
 pub fn occlusion_raycast_system(world: &mut World) {
     let listener_entity = world
         .all_entities()
@@ -153,12 +189,9 @@ pub fn occlusion_raycast_system(world: &mut World) {
             if let Some(le) = listener_entity {
                 exclude.push(le);
             }
-            let (occlusion, obstruction) =
-                match physics.cast_ray_excluding(listener_pos, *emitter_pos, &exclude) {
-                    Some((_toi, _hit_entity)) => (OCCLUSION_COEFFICIENT_PER_HIT, 0.0),
-                    None => (0.0, 0.0),
-                };
-            results.push((*entity, *emitter_pos, occlusion, obstruction));
+            let hits = count_occluder_hits(physics, listener_pos, *emitter_pos, &mut exclude);
+            let occlusion = occlusion_from_hits(hits);
+            results.push((*entity, *emitter_pos, occlusion, 0.0));
         }
     } else {
         for (entity, emitter_pos) in &emitters {
@@ -185,12 +218,9 @@ pub fn occlusion_raycast_system(world: &mut World) {
         }
     }
     if let Some(audio_ctx) = world.get_resource_mut::<crate::context::AudioContext>() {
-        let mut max_occ = 0.0_f32;
         for (entity, _pos, occlusion, _) in &results {
             audio_ctx.set_emitter_occlusion(*entity, *occlusion);
-            max_occ = max_occ.max(*occlusion);
         }
-        audio_ctx.apply_occlusion_lowpass(max_occ);
     }
 }
 

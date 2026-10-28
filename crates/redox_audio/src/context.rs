@@ -428,6 +428,12 @@ impl AudioContext {
         20000.0 * (1.0 - occlusion).max(0.0) + 400.0 * occlusion
     }
 
+    /// Emitter volume with its own occlusion applied: `base` scaled by the occlusion multiplier.
+    /// Affects only this emitter; the main track is not filtered.
+    pub fn emitter_volume(&self, entity: Entity, base: f32) -> f32 {
+        base * Self::volume_multiplier_from_occlusion(self.get_emitter_occlusion(entity))
+    }
+
     /// Updates spatial parameters for an emitter (volume, pan) based on listener position.
     pub fn update_spatial_parameters(
         &self,

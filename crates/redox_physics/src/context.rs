@@ -449,7 +449,10 @@ impl PhysicsContext {
         let excluded = self.excluded_colliders(exclude_entities);
 
         let predicate = |handle: ColliderHandle, _: &Collider| !excluded.contains(&handle);
-        let filter = QueryFilter::default().predicate(&predicate);
+        // Sensors (triggers) must not occlude: audio line-of-sight ignores them.
+        let filter = QueryFilter::default()
+            .exclude_sensors()
+            .predicate(&predicate);
 
         if let Some((handle, toi)) = self.query_pipeline(filter).cast_ray(&ray, distance, true) {
             self.collider_to_entity
