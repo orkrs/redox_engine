@@ -44,7 +44,7 @@ pub use music::{MusicDirector, MusicFrame};
 pub use music_apply::{MusicVoice, MusicVoices};
 pub use music_play::{KiraMusicVoice, MusicError};
 pub use systems::{
-    OcclusionResult, check_occlusion, compute_active_reverb, occlusion_raycast_system,
-    reverb_listener_system,
+    OcclusionResult, check_occlusion, compute_active_reverb, occlusion_from_hits,
+    occlusion_raycast_system, reverb_listener_system,
 };
 pub use voices::{VoiceBudget, VoiceDecision};
