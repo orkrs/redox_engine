@@ -11,6 +11,8 @@ pub mod contacts;
 pub mod context;
 /// Convex hulls built from points, for shape casts and overlaps.
 pub mod convex;
+/// ECS `Joint` components reconciled with the physics world.
+pub mod joint_component;
 /// Joints between rigid bodies.
 pub mod joints;
 /// Named collision layers and their collision matrix, loaded from RON.
@@ -30,6 +32,7 @@ pub use components::{CharacterController, Collider, Kinematic, RigidBody, Trigge
 pub use contacts::{ContactEnter, ContactEvent, ContactExit, ContactStay, PhysicsMaterial};
 pub use context::{PhysicsContext, PhysicsError};
 pub use convex::ConvexHull;
+pub use joint_component::{Joint, JointLink, sync_joints};
 pub use joints::{JointAxes, JointBroken, JointDesc, JointId, JointKind, JointMotor};
 pub use layer_config::{LayerConfig, LayerConfigError};
 pub use raycast::{RaycastRequest, RaycastResult};

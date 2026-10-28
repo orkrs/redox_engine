@@ -166,6 +166,7 @@ fn send_contact_stays(world: &mut World, stays: Vec<crate::contacts::ContactStay
 
 /// One physics frame: KCC, Rapier step, trigger + raycast ECS events (no resource removal).
 pub fn tick_physics(world: &mut World, dt: f32) {
+    crate::joint_component::sync_joints(world);
     crate::character::move_character_controllers(world, dt);
     step_physics(world, dt);
 
