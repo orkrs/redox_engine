@@ -7,6 +7,7 @@
 //! works as pure logic: no voice is started and the frames are returned as before.
 
 use std::io::Cursor;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use kira::Tween;
@@ -27,6 +28,17 @@ pub enum MusicError {
     /// The bytes are not a supported audio file.
     #[error("music file could not be decoded: {0}")]
     Decode(String),
+    /// The file could not be read from disk.
+    #[error("music file could not be read: {0}")]
+    Io(String),
+}
+
+/// Where the encoded bytes of a music track come from.
+pub(crate) enum MusicSource {
+    /// The whole file, in memory.
+    Memory(Arc<[u8]>),
+    /// A file read from disk while the track plays.
+    File(PathBuf),
 }
 
 /// A streaming kira sound used as a music voice.
@@ -60,7 +72,25 @@ impl AudioContext {
     ) -> Result<(), MusicError> {
         let bytes: Arc<[u8]> = bytes.into();
         open_stream(&bytes).map_err(|e| MusicError::Decode(e.to_string()))?;
-        self.music_sources.insert(name.into(), bytes);
+        self.music_sources
+            .insert(name.into(), MusicSource::Memory(bytes));
+        Ok(())
+    }
+
+    /// Registers a music file by path (Ogg, MP3, FLAC, WAV). The header is checked now; the file
+    /// is streamed from disk when the track plays.
+    pub fn register_music_file(
+        &mut self,
+        name: impl Into<String>,
+        path: impl Into<PathBuf>,
+    ) -> Result<(), MusicError> {
+        let path: PathBuf = path.into();
+        StreamingSoundData::from_file(&path).map_err(|e| match e {
+            FromFileError::IoError(io) => MusicError::Io(io.to_string()),
+            other => MusicError::Decode(other.to_string()),
+        })?;
+        self.music_sources
+            .insert(name.into(), MusicSource::File(path));
         Ok(())
     }
 
@@ -118,10 +148,12 @@ impl AudioContext {
         if !self.is_available() || self.music_voices.contains(track) {
             return;
         }
-        let Some(bytes) = self.music_sources.get(track).cloned() else {
-            return;
+        let opened = match self.music_sources.get(track) {
+            Some(MusicSource::Memory(bytes)) => open_stream(bytes),
+            Some(MusicSource::File(path)) => StreamingSoundData::from_file(path),
+            None => return,
         };
-        let data = match open_stream(&bytes) {
+        let data = match opened {
             Ok(data) => data,
             Err(e) => {
                 log::warn!("music track `{track}` could not be opened: {e}");

@@ -31,7 +31,7 @@ use crate::mixer::{MixerBusId, MixerGraph, PlayMode, PlayRequest};
 use crate::music::MusicDirector;
 use crate::music_apply::MusicVoices;
 use crate::music_play::DEFAULT_MUSIC_CROSSFADE_SECONDS;
-use crate::music_play::KiraMusicVoice;
+use crate::music_play::{KiraMusicVoice, MusicSource};
 use crate::voices::{VoiceBudget, VoiceDecision};
 
 /// Default number of cue voices that may sound at once.
@@ -67,8 +67,8 @@ pub struct AudioContext {
     cue_voice_now: f32,
     /// Id given to the next cue voice request; increases monotonically.
     next_voice_id: u64,
-    /// Encoded music files by track name (streamed from memory when played).
-    pub(crate) music_sources: HashMap<String, std::sync::Arc<[u8]>>,
+    /// Music tracks by name: encoded bytes in memory, or a file streamed from disk when played.
+    pub(crate) music_sources: HashMap<String, MusicSource>,
     /// The streaming voices of the tracks that are playing or fading.
     pub(crate) music_voices: MusicVoices<KiraMusicVoice>,
     /// Music crossfade state (see `play_music`).
