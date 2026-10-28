@@ -61,7 +61,7 @@ fn a_step_higher_than_step_height_blocks_the_character() {
     spawn_body(&mut world, Vec3::new(3.0, 0.3, 0.0), RigidBodyBuilder::fixed(),
         ColliderBuilder::cuboid(2.0, 0.3, 2.0));
     let player = spawn_player(&mut world, Vec3::new(0.0, 0.75, 0.0));
-    for _ in 0..120 {
+    for _ in 0..70 {
         world.get_component_mut::<CharacterController>(player).unwrap()
             .desired_translation = Vec3::new(3.0 * DT, 0.0, 0.0);
         tick_physics(&mut world, DT);

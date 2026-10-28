@@ -42,7 +42,6 @@ fn a_solid_object_between_listener_and_emitter_blocks_the_ray() {
 }
 
 #[test]
-#[ignore = "TODO: AUD-03"]
 fn a_trigger_volume_does_not_block_the_ray() {
     let ctx = context_with(true);
     let hit = ctx.cast_ray_excluding(Vec3::ZERO, Vec3::new(0.0, 0.0, -10.0), &[]);

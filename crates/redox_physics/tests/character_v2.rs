@@ -74,9 +74,9 @@ fn free_fall_accelerates_like_real_gravity() {
 }
 
 /// A 0.2 high step must be climbed: the capsule keeps walking and ends up standing on top of it.
-/// Without autostep (today's default) the capsule stops in front of the step face.
+/// Without autostep (today's default) the capsule stops in front of the step face. 70 frames at 3 units/s
+/// end at x about 3.5, still on top of the step (it spans x from 1 to 5).
 #[test]
-#[ignore = "TODO: PHY-02"]
 fn walking_into_a_low_step_climbs_it() {
     let mut world = World::new();
     world.insert_resource(PhysicsContext::new(Vec3::ZERO));
@@ -94,7 +94,7 @@ fn walking_into_a_low_step_climbs_it() {
         ColliderBuilder::cuboid(2.0, 0.1, 2.0),
     );
     let player = spawn_player(&mut world, Vec3::new(0.0, 0.75, 0.0));
-    for _ in 0..120 {
+    for _ in 0..70 {
         world
             .get_component_mut::<CharacterController>(player)
             .unwrap()
@@ -195,4 +195,68 @@ fn a_low_ceiling_stops_the_rise() {
     }
     let top = position(&world, player).y + 0.7; // capsule half height
     assert!(top <= 1.65, "head went through the ceiling: {top}");
+}
+
+/// A step higher than the default `step_height` (0.3) must block the character.
+#[test]
+fn a_step_higher_than_step_height_blocks_the_character() {
+    let mut world = World::new();
+    world.insert_resource(PhysicsContext::new(Vec3::ZERO));
+    spawn_body(
+        &mut world,
+        Vec3::new(0.0, -0.5, 0.0),
+        RigidBodyBuilder::fixed(),
+        ColliderBuilder::cuboid(20.0, 0.5, 5.0),
+    );
+    // Step top at 0.6, higher than the default 0.3.
+    spawn_body(
+        &mut world,
+        Vec3::new(3.0, 0.3, 0.0),
+        RigidBodyBuilder::fixed(),
+        ColliderBuilder::cuboid(2.0, 0.3, 2.0),
+    );
+    let player = spawn_player(&mut world, Vec3::new(0.0, 0.75, 0.0));
+    for _ in 0..120 {
+        world
+            .get_component_mut::<CharacterController>(player)
+            .unwrap()
+            .desired_translation = Vec3::new(3.0 * DT, 0.0, 0.0);
+        tick_physics(&mut world, DT);
+    }
+    let x = position(&world, player).x;
+    assert!(x < 1.0, "walked up a 0.6 step, x = {x}");
+}
+
+/// With `step_height = 0` autostep is off and even the low step blocks.
+#[test]
+fn zero_step_height_disables_autostep() {
+    let mut world = World::new();
+    world.insert_resource(PhysicsContext::new(Vec3::ZERO));
+    spawn_body(
+        &mut world,
+        Vec3::new(0.0, -0.5, 0.0),
+        RigidBodyBuilder::fixed(),
+        ColliderBuilder::cuboid(20.0, 0.5, 5.0),
+    );
+    spawn_body(
+        &mut world,
+        Vec3::new(3.0, 0.1, 0.0),
+        RigidBodyBuilder::fixed(),
+        ColliderBuilder::cuboid(2.0, 0.1, 2.0),
+    );
+    let player = spawn_player(&mut world, Vec3::new(0.0, 0.75, 0.0));
+    world
+        .get_component_mut::<CharacterController>(player)
+        .unwrap()
+        .settings
+        .step_height = 0.0;
+    for _ in 0..70 {
+        world
+            .get_component_mut::<CharacterController>(player)
+            .unwrap()
+            .desired_translation = Vec3::new(3.0 * DT, 0.0, 0.0);
+        tick_physics(&mut world, DT);
+    }
+    let x = position(&world, player).x;
+    assert!(x < 1.0, "stepped up without autostep, x = {x}");
 }

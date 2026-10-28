@@ -38,9 +38,9 @@ fn platform_carry(colliders: &ColliderSet, ground_pose: Option<(ColliderHandle, 
     let Some((handle, previous)) = ground_pose else {
         return Vec3::ZERO;
     };
-    colliders
-        .get(handle)
-        .map_or(Vec3::ZERO, |collider| collider.position().translation - previous)
+    colliders.get(handle).map_or(Vec3::ZERO, |collider| {
+        collider.position().translation - previous
+    })
 }
 
 /// Moves every [`CharacterController`] this step: gravity, wall slide, autostep, moving platforms.
@@ -73,6 +73,7 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
         .collect();
 
     let mut results = Vec::with_capacity(entities.len());
+    let no_bodies = RigidBodySet::new();
     for (
         entity,
         desired,
@@ -97,7 +98,15 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
         let iso = Pose::from_parts(transform.translation, transform.rotation);
         let filter = QueryFilter::default().exclude_rigid_body(body_handle);
         let kcc = build_kcc(&settings, vertical);
-        let queries = physics.query_pipeline(filter);
+        // Rapier's controller replaces part of the motion of a character touching a *kinematic* body by that body's
+        // velocity. For position-driven platforms this froze the character (it could not walk on them at all), so the
+        // query sees no bodies and treats every collider as plain geometry; `platform_carry` moves the character instead.
+        let queries = physics.broad_phase.as_query_pipeline(
+            physics.narrow_phase.query_dispatcher(),
+            &no_bodies,
+            &physics.colliders,
+            filter,
+        );
         // The last upward-facing hit within the slope limit is the floor the character stands on.
         let mut floor = None;
         let movement = kcc.move_shape(dt, &queries, shape, &iso, wish, |collision| {
