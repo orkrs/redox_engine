@@ -9,7 +9,8 @@ use crate::mesh::{Mesh, Vertex};
 use crate::renderer::Renderer;
 use crate::skinning_gpu::{GpuSkin, run_batch};
 
-/// Default tangent for skinned vertices (normal maps are not skinned yet).
+/// Tangent used for vertices of geometry that carries no tangents (`SkinnedGeometry::tangents`
+/// empty). Such geometry gets a fixed direction, which normal maps cannot use meaningfully.
 const DEFAULT_TANGENT: [f32; 3] = [1.0, 0.0, 0.0];
 
 /// A skinned mesh uploaded to the renderer plus the scratch buffers to refresh it each frame.
@@ -22,6 +23,8 @@ pub struct SkinnedMeshBinding {
     vertices: Vec<Vertex>,
     positions: Vec<[f32; 3]>,
     normals: Vec<[f32; 3]>,
+    /// Deformed tangents; stays empty when the geometry has no tangents.
+    tangents: Vec<[f32; 3]>,
     /// Bounds of the vertices before the most recent [`Self::update`].
     previous_bounds: Option<Aabb>,
     /// GPU skinning resources; `None` when the renderer or geometry cannot skin on the GPU.
@@ -68,6 +71,7 @@ impl SkinnedMeshBinding {
             vertices,
             positions: Vec::new(),
             normals: Vec::new(),
+            tangents: Vec::new(),
             previous_bounds: None,
             gpu,
             gpu_skinned: false,
@@ -76,6 +80,9 @@ impl SkinnedMeshBinding {
 
     /// Skins on the GPU: uploads `skin_matrices`, runs a compute pass that blends the bind pose
     /// and writes the quantised vertices straight into the mesh slot's vertex buffer.
+    ///
+    /// The GPU path does not deform tangents yet: vertices keep the fixed bind-pose tangent
+    /// until the compute shader is extended (RND-02). CPU [`Self::update`] deforms them.
     ///
     /// Returns `false` (leaving the mesh untouched) when `skin_matrices` has fewer matrices than
     /// the highest joint index needs, or the renderer cannot skin on the GPU. Nothing is read
@@ -141,20 +148,27 @@ impl SkinnedMeshBinding {
     }
 
     /// Deforms the mesh with `skin_matrices` (`Pose::skin_matrices`) and uploads the result.
-    /// Returns `false` if the renderer rejected the update.
+    /// Tangents are deformed too when the geometry has them; otherwise the bind-pose tangent
+    /// is kept. Returns `false` if the renderer rejected the update.
     pub fn update(&mut self, renderer: &Renderer, skin_matrices: &[Mat4]) -> bool {
         self.gpu_skinned = false;
         self.previous_bounds = (!self.positions.is_empty()).then(|| self.deformed_bounds());
         self.geometry
             .deform_into(skin_matrices, &mut self.positions, &mut self.normals);
-        for ((vertex, position), normal) in self
+        self.geometry
+            .deform_tangents_into(skin_matrices, &mut self.tangents);
+        for (index, ((vertex, position), normal)) in self
             .vertices
             .iter_mut()
             .zip(&self.positions)
             .zip(&self.normals)
+            .enumerate()
         {
             vertex.position = *position;
             vertex.normal = *normal;
+            if let Some(tangent) = self.tangents.get(index) {
+                vertex.tangent = *tangent;
+            }
         }
         renderer.update_mesh_vertices(self.mesh_slot, &self.vertices)
     }
@@ -217,7 +231,7 @@ fn bind_vertices(geometry: &SkinnedGeometry) -> Vec<Vertex> {
             position: geometry.positions[i],
             normal: geometry.normals[i],
             uv: geometry.uvs[i],
-            tangent: DEFAULT_TANGENT,
+            tangent: geometry.tangents.get(i).copied().unwrap_or(DEFAULT_TANGENT),
         })
         .collect()
 }
