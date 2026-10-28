@@ -67,8 +67,8 @@ pub fn motion_blur_offsets(
 ) -> Vec<[f32; 2]> {
     let mut v = [velocity_uv[0] * s.shutter, velocity_uv[1] * s.shutter];
     let len_px = ((v[0] * screen[0]).powi(2) + (v[1] * screen[1]).powi(2)).sqrt();
-    // Written as `!(>=)` so that NaN also leaves the pixel sharp.
-    if !(len_px >= MIN_BLUR_PIXELS) {
+    // NaN also leaves the pixel sharp.
+    if len_px.is_nan() || len_px < MIN_BLUR_PIXELS {
         return Vec::new();
     }
     if len_px > s.max_pixels {
@@ -499,11 +499,8 @@ impl PostFx {
         if let Some(mb) = settings.motion_blur {
             self.motion_blur
                 .write(queue, &motion_blur_uniform(&mb, screen));
-            self.motion_blur.record(
-                encoder,
-                &self.motion_blur_bgs[history_slot],
-                &self.views[0],
-            );
+            self.motion_blur
+                .record(encoder, &self.motion_blur_bgs[history_slot], &self.views[0]);
             dof_source = &self.dof_bgs[2];
         }
         if let Some(dof) = settings.dof {
