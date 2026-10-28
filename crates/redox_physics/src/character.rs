@@ -28,7 +28,22 @@ fn build_kcc(settings: &CharacterSettings, vertical: f32) -> RapierKcc {
     }
 }
 
-/// Moves every [`CharacterController`] this step: gravity, wall slide, autostep.
+/// Translation the ground under a character moved by since the last step; zero when it stood on
+/// nothing or its collider is gone.
+///
+/// Call order in `tick_physics`: `move_character_controllers` runs before the Rapier step, so the
+/// collider positions read here are those of the previous step. The carry is the difference of two
+/// consecutive positions, so the error does not accumulate; it lags by one frame.
+fn platform_carry(colliders: &ColliderSet, ground_pose: Option<(ColliderHandle, Vec3)>) -> Vec3 {
+    let Some((handle, previous)) = ground_pose else {
+        return Vec3::ZERO;
+    };
+    colliders
+        .get(handle)
+        .map_or(Vec3::ZERO, |collider| collider.position().translation - previous)
+}
+
+/// Moves every [`CharacterController`] this step: gravity, wall slide, autostep, moving platforms.
 pub fn move_character_controllers(world: &mut World, dt: f32) {
     let Some(physics) = world.remove_resource::<PhysicsContext>() else {
         return;
@@ -49,6 +64,7 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
                 c.gravity,
                 c.vertical_velocity,
                 c.settings,
+                c.ground_pose,
                 *t,
                 rb.handle,
                 col.handle,
@@ -57,8 +73,17 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
         .collect();
 
     let mut results = Vec::with_capacity(entities.len());
-    for (entity, desired, gravity, vertical, settings, transform, body_handle, collider_handle) in
-        entities
+    for (
+        entity,
+        desired,
+        gravity,
+        vertical,
+        settings,
+        ground_pose,
+        transform,
+        body_handle,
+        collider_handle,
+    ) in entities
     {
         let Some(collider) = physics.colliders.get(collider_handle) else {
             continue;
@@ -66,27 +91,48 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
         let shape = collider.shape();
         // Semi-implicit Euler: accelerate first, then move with the new speed.
         let mut vy = vertical - gravity * dt;
-        let mut wish = desired;
+        let mut wish = desired + platform_carry(&physics.colliders, ground_pose);
         wish.y += vy * dt;
 
         let iso = Pose::from_parts(transform.translation, transform.rotation);
         let filter = QueryFilter::default().exclude_rigid_body(body_handle);
         let kcc = build_kcc(&settings, vertical);
         let queries = physics.query_pipeline(filter);
-        let movement = kcc.move_shape(dt, &queries, shape, &iso, wish, |_| {});
+        // The last upward-facing hit within the slope limit is the floor the character stands on.
+        let mut floor = None;
+        let movement = kcc.move_shape(dt, &queries, shape, &iso, wish, |collision| {
+            if kcc.up.angle_between(collision.hit.normal1) <= kcc.max_slope_climb_angle {
+                floor = Some(collision.handle);
+            }
+        });
         let delta = movement.translation;
         let grounded = movement.grounded;
+        let ground_collider = if grounded { floor } else { None };
+        let next_ground_pose = ground_collider.and_then(|handle| {
+            physics
+                .colliders
+                .get(handle)
+                .map(|collider| (handle, collider.position().translation))
+        });
         // Landing stops the fall; hitting a ceiling stops the rise.
         let hit_ceiling = vy > 0.0 && delta.y < wish.y - 1e-4;
         if (grounded && vy < 0.0) || hit_ceiling {
             vy = 0.0;
         }
-        results.push((entity, delta, grounded, vy, body_handle));
+        results.push((
+            entity,
+            delta,
+            grounded,
+            vy,
+            body_handle,
+            ground_collider,
+            next_ground_pose,
+        ));
     }
 
     world.insert_resource(physics);
 
-    for (entity, delta, grounded, vy, body_handle) in results {
+    for (entity, delta, grounded, vy, body_handle, ground_collider, ground_pose) in results {
         if let Some(t) = world.get_component_mut::<Transform>(entity) {
             t.translation += delta;
         }
@@ -94,6 +140,8 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
             cc.grounded = grounded;
             cc.desired_translation = Vec3::ZERO;
             cc.vertical_velocity = vy;
+            cc.ground_collider = ground_collider;
+            cc.ground_pose = ground_pose;
         }
         let translation = world
             .get_component::<Transform>(entity)

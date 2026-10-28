@@ -72,6 +72,11 @@ pub struct CharacterController {
     pub jump_speed: f32,
     /// Movement tuning: steps, slopes and snapping to the ground.
     pub settings: CharacterSettings,
+    /// Collider the character stood on after the last move (the one `grounded` refers to). Controller state.
+    pub ground_collider: Option<ColliderHandle>,
+    /// Ground collider and its position at the last step, used to carry the character with a moving
+    /// platform. Controller state.
+    pub ground_pose: Option<(ColliderHandle, Vec3)>,
 }
 
 impl CharacterController {
@@ -95,6 +100,8 @@ impl Default for CharacterController {
             vertical_velocity: 0.0,
             jump_speed: 7.0,
             settings: CharacterSettings::default(),
+            ground_collider: None,
+            ground_pose: None,
         }
     }
 }
