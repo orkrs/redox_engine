@@ -33,6 +33,30 @@ pub struct PreviousTransform(pub redox_math::Transform);
 #[derive(Debug, Clone, Default)]
 pub struct Kinematic;
 
+/// Movement tuning of a [`CharacterController`]; lengths in world units, angles in radians.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CharacterSettings {
+    /// Highest obstacle climbed without jumping; 0.0 disables autostep.
+    pub step_height: f32,
+    /// Free room in front of the character needed to start a step (rapier `min_width`).
+    pub step_min_width: f32,
+    /// Steepest slope that can be walked up.
+    pub max_slope_angle: f32,
+    /// Distance below the feet at which the character is pulled back to the ground; 0.0 disables.
+    pub snap_to_ground: f32,
+}
+
+impl Default for CharacterSettings {
+    fn default() -> Self {
+        Self {
+            step_height: 0.3,
+            step_min_width: 0.1,
+            max_slope_angle: std::f32::consts::FRAC_PI_4,
+            snap_to_ground: 0.2,
+        }
+    }
+}
+
 /// Rapier kinematic character: wall slide, autostep, slope limit, gravity.
 #[derive(Debug, Clone)]
 pub struct CharacterController {
@@ -46,6 +70,8 @@ pub struct CharacterController {
     pub vertical_velocity: f32,
     /// Speed of a jump set by `jump`, units per second.
     pub jump_speed: f32,
+    /// Movement tuning: steps, slopes and snapping to the ground.
+    pub settings: CharacterSettings,
 }
 
 impl CharacterController {
@@ -68,6 +94,7 @@ impl Default for CharacterController {
             grounded: false,
             vertical_velocity: 0.0,
             jump_speed: 7.0,
+            settings: CharacterSettings::default(),
         }
     }
 }

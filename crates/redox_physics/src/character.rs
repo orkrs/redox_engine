@@ -1,12 +1,32 @@
 //! Kinematic character controller wrapping Rapier's `KinematicCharacterController`.
 
-use rapier3d::control::KinematicCharacterController as RapierKcc;
+use rapier3d::control::{
+    CharacterAutostep, CharacterLength, KinematicCharacterController as RapierKcc,
+};
 use rapier3d::prelude::*;
 use redox_ecs::World;
 use redox_math::{Transform, Vec3};
 
-use crate::components::{CharacterController, Collider, RigidBody};
+use crate::components::{CharacterController, CharacterSettings, Collider, RigidBody};
 use crate::context::PhysicsContext;
+
+/// Builds Rapier's controller from the character's settings. While the character rises
+/// (`vertical > 0`) snapping to the ground is off, so a jump is not pulled back down at once.
+fn build_kcc(settings: &CharacterSettings, vertical: f32) -> RapierKcc {
+    let autostep = (settings.step_height > 0.0).then(|| CharacterAutostep {
+        max_height: CharacterLength::Absolute(settings.step_height),
+        min_width: CharacterLength::Absolute(settings.step_min_width),
+        include_dynamic_bodies: false,
+    });
+    let snap_to_ground = (vertical <= 0.0 && settings.snap_to_ground > 0.0)
+        .then(|| CharacterLength::Absolute(settings.snap_to_ground));
+    RapierKcc {
+        max_slope_climb_angle: settings.max_slope_angle,
+        autostep,
+        snap_to_ground,
+        ..RapierKcc::default()
+    }
+}
 
 /// Moves every [`CharacterController`] this step: gravity, wall slide, autostep.
 pub fn move_character_controllers(world: &mut World, dt: f32) {
@@ -28,6 +48,7 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
                 c.desired_translation,
                 c.gravity,
                 c.vertical_velocity,
+                c.settings,
                 *t,
                 rb.handle,
                 col.handle,
@@ -36,7 +57,9 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
         .collect();
 
     let mut results = Vec::with_capacity(entities.len());
-    for (entity, desired, gravity, vertical, transform, body_handle, collider_handle) in entities {
+    for (entity, desired, gravity, vertical, settings, transform, body_handle, collider_handle) in
+        entities
+    {
         let Some(collider) = physics.colliders.get(collider_handle) else {
             continue;
         };
@@ -48,7 +71,7 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
 
         let iso = Pose::from_parts(transform.translation, transform.rotation);
         let filter = QueryFilter::default().exclude_rigid_body(body_handle);
-        let kcc = RapierKcc::default();
+        let kcc = build_kcc(&settings, vertical);
         let queries = physics.query_pipeline(filter);
         let movement = kcc.move_shape(dt, &queries, shape, &iso, wish, |_| {});
         let delta = movement.translation;
