@@ -17,11 +17,13 @@ mod runtime;
 mod wasmi_backend;
 #[cfg(feature = "wasmtime")]
 mod wasmtime_backend;
+mod watch;
 mod world;
 
 pub use config::{ApiPermissions, Permissions, ScriptConfig};
 pub use error::ScriptError;
 pub use runtime::{BackendKind, ScriptRuntime};
+pub use watch::{ScriptWatcher, WatchEvent};
 pub use world::WorldQueries;
 
 /// A named event emitted by a script with `env.emit_event`.
