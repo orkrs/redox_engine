@@ -8,14 +8,17 @@
 | [audit/REVISION_REPORT.md](audit/REVISION_REPORT.md) | Состояние кода, сопоставление планов с кодом, найденные проблемы, проверенные «ложные тревоги» |
 | [audit/CANCELLED.md](audit/CANCELLED.md) | Реестр закрытых, исключённых и отложенных задач с причинами |
 | [BACKLOG.md](BACKLOG.md) | Задачи с ID, размерами, зависимостями, группами для параллельной работы; раздел 4 — перенос всех открытых пунктов `PLAN_EXECUTION.md` (спеки пишутся перед запуском); вопросы к владельцу |
-| `specs/` | По одному файлу на задачу (13 штук) |
+| `specs/` | По одному файлу на задачу (19 штук) |
 | `../PLAN_EXECUTION.md` | Единственный источник статуса этапов A–H (общий план) |
-| `../../crates/redox_physics/tests/character_v2.rs` | Готовые тесты с `#[ignore]` для PHY-01/PHY-02 |
+| `../../crates/redox_physics/tests/character_v2.rs`, `ray_sensors.rs` | Готовые тесты с `#[ignore]` для PHY-01/PHY-02 и AUD-03 |
 
 ## Спецификации
 Физика: [PHY-01](specs/PHY-01.md) → [PHY-02](specs/PHY-02.md) → [PHY-03](specs/PHY-03.md); [PHY-04](specs/PHY-04.md).
 Анимация и рендер: [ANM-01](specs/ANM-01.md) → [RND-01](specs/RND-01.md) → [RND-02](specs/RND-02.md); [RND-03](specs/RND-03.md); [RND-04](specs/RND-04.md); [RND-05](specs/RND-05.md).
-Скрипты и аудио: [SCR-01](specs/SCR-01.md) → [SCR-02](specs/SCR-02.md) (заблокировано); [AUD-01](specs/AUD-01.md).
+Физика (продолжение): [PHY-05](specs/PHY-05.md); [AUD-03](specs/AUD-03.md) (физика + звук).
+Пост-эффекты: [PST-01](specs/PST-01.md) → [PST-02](specs/PST-02.md).
+Скрипты и аудио: [SCR-01](specs/SCR-01.md) → [SCR-03](specs/SCR-03.md); [SCR-02](specs/SCR-02.md) (заблокировано); [AUD-01](specs/AUD-01.md).
+Владельцу: [QA-01](specs/QA-01.md) (чек-лист живой проверки).
 
 ## Как взять задачу (инструкция исполнителю)
 1. Прочитай **только** свою спецификацию и файлы из её раздела «Читать». Остальной репозиторий не изучай.
