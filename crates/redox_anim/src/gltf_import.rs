@@ -100,6 +100,10 @@ fn build_geometry(
     mesh: &gltf::Mesh,
 ) -> Result<SkinnedGeometry, String> {
     let mut g = SkinnedGeometry::default();
+    // Tangents are all-or-nothing: if any primitive has them, the others get a placeholder.
+    let any_tangents = mesh
+        .primitives()
+        .any(|p| p.get(&gltf::Semantic::Tangents).is_some());
     for primitive in mesh.primitives() {
         let reader = primitive.reader(|b| Some(&buffers[b.index()]));
         let positions: Vec<[f32; 3]> = reader
@@ -125,6 +129,9 @@ fn build_geometry(
         let uvs: Vec<[f32; 2]> = reader
             .read_tex_coords(0)
             .map_or_else(|| vec![[0.0; 2]; count], |t| t.into_f32().collect());
+        let tangents: Option<Vec<[f32; 3]>> = reader
+            .read_tangents()
+            .map(|t| t.map(|v| [v[0], v[1], v[2]]).collect());
         let indices: Vec<u32> = reader
             .read_indices()
             .map_or_else(|| (0..count as u32).collect(), |i| i.into_u32().collect());
@@ -132,8 +139,13 @@ fn build_geometry(
         if [joints.len(), weights.len(), normals.len(), uvs.len()]
             .iter()
             .any(|&n| n != count)
+            || tangents.as_ref().is_some_and(|t| t.len() != count)
         {
             return Err("primitive attribute counts differ".to_string());
+        }
+        if any_tangents {
+            g.tangents
+                .extend(tangents.unwrap_or_else(|| vec![[1.0, 0.0, 0.0]; count]));
         }
         g.positions.extend(positions);
         g.normals.extend(normals);
@@ -276,6 +288,11 @@ mod tests {
 
     /// One triangle skinned to two joints (root, tip) with a 90 degree tip rotation clip.
     fn sample_glb() -> Vec<u8> {
+        sample_glb_with(false)
+    }
+
+    /// Same asset; `tangents` adds a TANGENT vec4 accessor (xyz is the tangent, w the handedness).
+    fn sample_glb_with(tangents: bool) -> Vec<u8> {
         let mut bin = Vec::new();
         bin.extend(bytes_f32(&[0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.2, 0.5, 0.0])); // positions @0
         bin.extend(bytes_f32(&[0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0])); // normals @36
@@ -293,8 +310,13 @@ mod tests {
         let h = std::f32::consts::FRAC_1_SQRT_2;
         bin.extend(bytes_f32(&[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, h, h])); // rotations @276
         assert_eq!(bin.len(), 308);
-
-        let json = r#"{
+        if tangents {
+            // Vertex tangents @308: (1,0,0,1), (0,0,1,-1), (1,0,0,1).
+            bin.extend(bytes_f32(&[
+                1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, -1.0, 1.0, 0.0, 0.0, 1.0,
+            ]));
+        }
+        let template = r#"{
           "asset": {"version": "2.0"},
           "scene": 0,
           "scenes": [{"nodes": [0, 1]}],
@@ -304,12 +326,12 @@ mod tests {
             {"name": "tip", "translation": [0, 1, 0]}
           ],
           "meshes": [{"primitives": [{"attributes":
-            {"POSITION": 0, "NORMAL": 1, "JOINTS_0": 2, "WEIGHTS_0": 3}, "indices": 4}]}],
+            {"POSITION": 0, "NORMAL": 1, "JOINTS_0": 2, "WEIGHTS_0": 3__TANGENT_ATTR__}, "indices": 4}]}],
           "skins": [{"joints": [1, 2], "inverseBindMatrices": 5}],
           "animations": [{"name": "bend",
             "samplers": [{"input": 6, "output": 7, "interpolation": "LINEAR"}],
             "channels": [{"sampler": 0, "target": {"node": 2, "path": "rotation"}}]}],
-          "buffers": [{"byteLength": 308}],
+          "buffers": [{"byteLength": __BIN_LEN__}],
           "bufferViews": [
             {"buffer": 0, "byteOffset": 0, "byteLength": 36},
             {"buffer": 0, "byteOffset": 36, "byteLength": 36},
@@ -318,7 +340,7 @@ mod tests {
             {"buffer": 0, "byteOffset": 132, "byteLength": 6},
             {"buffer": 0, "byteOffset": 140, "byteLength": 128},
             {"buffer": 0, "byteOffset": 268, "byteLength": 8},
-            {"buffer": 0, "byteOffset": 276, "byteLength": 32}
+            {"buffer": 0, "byteOffset": 276, "byteLength": 32}__TANGENT_VIEW__
           ],
           "accessors": [
             {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3",
@@ -329,10 +351,32 @@ mod tests {
             {"bufferView": 4, "componentType": 5123, "count": 3, "type": "SCALAR"},
             {"bufferView": 5, "componentType": 5126, "count": 2, "type": "MAT4"},
             {"bufferView": 6, "componentType": 5126, "count": 2, "type": "SCALAR", "min": [0], "max": [1]},
-            {"bufferView": 7, "componentType": 5126, "count": 2, "type": "VEC4"}
+            {"bufferView": 7, "componentType": 5126, "count": 2, "type": "VEC4"}__TANGENT_ACC__
           ]
         }"#;
-        glb(json, &bin)
+        let json = template
+            .replace("__BIN_LEN__", &bin.len().to_string())
+            .replace(
+                "__TANGENT_ATTR__",
+                if tangents { r#", "TANGENT": 8"# } else { "" },
+            )
+            .replace(
+                "__TANGENT_VIEW__",
+                if tangents {
+                    r#", {"buffer": 0, "byteOffset": 308, "byteLength": 48}"#
+                } else {
+                    ""
+                },
+            )
+            .replace(
+                "__TANGENT_ACC__",
+                if tangents {
+                    r#", {"bufferView": 8, "componentType": 5126, "count": 3, "type": "VEC4"}"#
+                } else {
+                    ""
+                },
+            );
+        glb(&json, &bin)
     }
 
     fn glb(json: &str, bin: &[u8]) -> Vec<u8> {
@@ -405,5 +449,23 @@ mod tests {
     #[test]
     fn garbage_input_is_an_error() {
         assert!(load_glb(b"not a glb").is_err());
+    }
+
+    #[test]
+    fn the_gltf_import_reads_tangents() {
+        let model = load_glb(&sample_glb_with(true))
+            .expect("valid GLB")
+            .remove(0);
+        let geometry = &model.geometry;
+        assert!(geometry.has_tangents());
+        assert_eq!(geometry.tangents.len(), 3);
+        assert_eq!(geometry.tangents[0], [1.0, 0.0, 0.0]);
+        assert_eq!(geometry.tangents[1], [0.0, 0.0, 1.0]);
+    }
+
+    #[test]
+    fn the_gltf_import_without_a_tangent_accessor_has_none() {
+        let model = load_glb(&sample_glb()).expect("valid GLB").remove(0);
+        assert!(!model.geometry.has_tangents());
     }
 }

@@ -9,6 +9,8 @@ pub struct SkinnedGeometry {
     pub positions: Vec<[f32; 3]>,
     /// Bind-pose vertex normals.
     pub normals: Vec<[f32; 3]>,
+    /// Bind-pose vertex tangents (xyz). Empty means the geometry has no tangents.
+    pub tangents: Vec<[f32; 3]>,
     /// Texture coordinates.
     pub uvs: Vec<[f32; 2]>,
     /// Bone indices per vertex.
@@ -37,6 +39,12 @@ impl SkinnedGeometry {
                 "per-vertex arrays differ in length (positions: {n})"
             ));
         }
+        if !self.tangents.is_empty() && self.tangents.len() != n {
+            return Err(format!(
+                "tangents has {} entries, expected 0 or {n}",
+                self.tangents.len()
+            ));
+        }
         if let Some(bad) = self.indices.iter().find(|&&i| i as usize >= n) {
             return Err(format!("index {bad} out of range for {n} vertices"));
         }
@@ -50,6 +58,27 @@ impl SkinnedGeometry {
             }
         }
         Ok(())
+    }
+
+    /// Whether the geometry carries tangents (an empty array means none).
+    pub fn has_tangents(&self) -> bool {
+        !self.tangents.is_empty()
+    }
+
+    /// Deforms the tangents by the same blended matrices as `deform_into`.
+    /// Output is cleared and refilled; without tangents it stays empty.
+    pub fn deform_tangents_into(&self, skin: &[Mat4], out: &mut Vec<[f32; 3]>) {
+        out.clear();
+        if !self.has_tangents() {
+            return;
+        }
+        for (v, tangent) in self.tangents.iter().enumerate() {
+            let blended = blend_matrix(skin, &self.joints[v], &self.weights[v]);
+            let t = blended
+                .transform_vector3(Vec3::from(*tangent))
+                .normalize_or_zero();
+            out.push(t.to_array());
+        }
     }
 
     /// Deforms the bind pose by `skin_matrices` (see `Pose::skin_matrices`).
@@ -105,11 +134,84 @@ mod tests {
         SkinnedGeometry {
             positions: vec![[0.0, 0.0, 0.0], [0.0, 2.0, 0.0]],
             normals: vec![[0.0, 0.0, 1.0]; 2],
+            tangents: Vec::new(),
             uvs: vec![[0.0; 2]; 2],
             joints: vec![[0, 0, 0, 0], [0, 1, 0, 0]],
             weights: vec![[1.0, 0.0, 0.0, 0.0], [0.5, 0.5, 0.0, 0.0]],
             indices: vec![0, 1, 0],
         }
+    }
+
+    /// Unit quad in the XY plane, all vertices on bone 0, normals +Z, no tangents.
+    fn quad_geometry() -> SkinnedGeometry {
+        SkinnedGeometry {
+            positions: vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
+            normals: vec![[0.0, 0.0, 1.0]; 4],
+            tangents: Vec::new(),
+            uvs: vec![[0.0; 2]; 4],
+            joints: vec![[0, 0, 0, 0]; 4],
+            weights: vec![[1.0, 0.0, 0.0, 0.0]; 4],
+            indices: vec![0, 1, 2, 0, 2, 3],
+        }
+    }
+
+    #[test]
+    fn validate_rejects_a_tangent_array_of_the_wrong_length() {
+        let mut g = quad_geometry();
+        assert!(g.validate(1).is_ok(), "empty tangents are fine");
+        g.tangents = vec![[1.0, 0.0, 0.0]; 3];
+        assert!(g.validate(1).is_err());
+        g.tangents = vec![[1.0, 0.0, 0.0]; 4];
+        assert!(g.validate(1).is_ok());
+    }
+
+    #[test]
+    fn has_tangents_reflects_the_array() {
+        let mut g = quad_geometry();
+        assert!(!g.has_tangents());
+        g.tangents = vec![[1.0, 0.0, 0.0]; 4];
+        assert!(g.has_tangents());
+    }
+
+    #[test]
+    fn tangents_rotate_with_the_bone_and_stay_unit_length() {
+        let mut g = quad_geometry();
+        g.tangents = vec![[1.0, 0.0, 0.0]; 4];
+        let skin = [Mat4::from_rotation_z(std::f32::consts::FRAC_PI_2)];
+        let mut out = Vec::new();
+        g.deform_tangents_into(&skin, &mut out);
+        assert_eq!(out.len(), 4);
+        for t in &out {
+            assert!((Vec3::from(*t) - Vec3::Y).length() < 1.0e-5);
+            assert!((Vec3::from(*t).length() - 1.0).abs() < 1.0e-5);
+        }
+    }
+
+    #[test]
+    fn a_geometry_without_tangents_produces_none() {
+        let g = quad_geometry();
+        let mut out = vec![[9.0; 3]];
+        g.deform_tangents_into(&[Mat4::IDENTITY], &mut out);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn a_bone_index_out_of_range_is_ignored_like_in_deform_into() {
+        let mut g = quad_geometry();
+        g.joints[0] = [5, 0, 0, 0];
+        g.weights[0] = [0.5, 0.5, 0.0, 0.0];
+        g.tangents = vec![[1.0, 0.0, 0.0]; 4];
+        let skin = [Mat4::from_rotation_z(std::f32::consts::FRAC_PI_2)];
+        let mut out = Vec::new();
+        g.deform_tangents_into(&skin, &mut out);
+        assert_eq!(out.len(), 4);
+        // Bone 5 does not exist: only bone 0 remains and its weight is renormalised to 1.
+        assert!((Vec3::from(out[0]) - Vec3::Y).length() < 1.0e-5);
     }
 
     #[test]
