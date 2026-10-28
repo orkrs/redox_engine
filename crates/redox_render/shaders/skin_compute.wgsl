@@ -94,7 +94,8 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     let t = (p - params.bounds_min.xyz) / params.bounds_extent.xyz;
     let q = t * 2.0 - vec3<f32>(1.0);
-    let handed = select(-1.0, 1.0, n.z >= 0.0);
+    // Same rule as `compress_one`: sign of (n x t).y. For the fixed tangent (1, 0, 0) this is the sign of n.z.
+    var handed = select(-1.0, 1.0, n.z >= 0.0);
     let o = oct_encode(n);
 
     var tangent_word = FIXED_TANGENT_BITS;
@@ -106,6 +107,7 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         } else {
             t = vec3<f32>(0.0);
         }
+        handed = select(-1.0, 1.0, dot(cross(n, t), vec3<f32>(0.0, 1.0, 0.0)) >= 0.0);
         let ot = oct_encode(t);
         tangent_word = snorm8(ot.x) | (snorm8(ot.y) << 8u);
     }

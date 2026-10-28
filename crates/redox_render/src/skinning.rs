@@ -281,3 +281,29 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod tangent_tests {
+    use super::*;
+
+    #[test]
+    fn bind_vertices_use_geometry_tangents_when_present() {
+        let mut g = redox_anim::procedural::chain_model(2, 0.5, 0.1, 6).geometry;
+        g.tangents = (0..g.vertex_count())
+            .map(|i| [0.0, 0.0, 1.0 + i as f32])
+            .collect();
+        let v = bind_vertices(&g);
+        assert_eq!(v[3].tangent, [0.0, 0.0, 4.0]);
+    }
+
+    #[test]
+    fn bind_vertices_fall_back_to_the_default_tangent() {
+        let g = redox_anim::procedural::chain_model(2, 0.5, 0.1, 6).geometry;
+        assert!(!g.has_tangents());
+        assert!(
+            bind_vertices(&g)
+                .iter()
+                .all(|v| v.tangent == DEFAULT_TANGENT)
+        );
+    }
+}

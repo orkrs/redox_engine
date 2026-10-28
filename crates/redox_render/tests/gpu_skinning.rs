@@ -250,3 +250,86 @@ fn timing_100_characters_cpu_vs_gpu() {
         );
     }
 }
+
+/// The demo rig with a tangent per vertex: a unit vector perpendicular to the normal.
+fn rig_with_tangents() -> redox_anim::SkinnedModel {
+    let mut model = demo_rig();
+    let tangents: Vec<[f32; 3]> = model
+        .geometry
+        .normals
+        .iter()
+        .map(|n| {
+            let n = redox_math::Vec3::from(*n);
+            let axis = if n.y.abs() < 0.9 {
+                redox_math::Vec3::Y
+            } else {
+                redox_math::Vec3::X
+            };
+            n.cross(axis).normalize_or_zero().to_array()
+        })
+        .collect();
+    model.geometry.tangents = tangents;
+    model
+}
+
+#[test]
+fn gpu_tangents_match_the_cpu_within_quantisation() {
+    let Some(mut r) = renderer() else { return };
+    let model = rig_with_tangents();
+    let mut cpu = SkinnedMeshBinding::new(&mut r, &model.geometry, 2.0);
+    let mut gpu = SkinnedMeshBinding::new(&mut r, &model.geometry, 2.0);
+    let mut non_default = 0;
+    for (i, skin) in poses(6).iter().enumerate() {
+        assert!(cpu.update(&r, skin));
+        assert!(gpu.update_gpu(&r, skin));
+        let expected = vertices(&r, cpu.mesh_slot);
+        let actual = vertices(&r, gpu.mesh_slot);
+        for (v, (e, a)) in expected.iter().zip(&actual).enumerate() {
+            for k in 0..2 {
+                assert!(
+                    (e.tangent_oct[k] as i32 - a.tangent_oct[k] as i32).abs() <= 3,
+                    "pose {i} vertex {v}: tangent {:?} vs {:?}",
+                    e.tangent_oct,
+                    a.tangent_oct
+                );
+            }
+            if e.tangent_oct != [127, 0] {
+                non_default += 1;
+            }
+        }
+    }
+    assert!(non_default > 0, "the tangents must differ from the default");
+}
+
+#[test]
+fn geometry_without_tangents_keeps_the_fixed_tangent_on_the_gpu() {
+    let Some(mut r) = renderer() else { return };
+    let model = demo_rig();
+    assert!(!model.geometry.has_tangents());
+    let mut gpu = SkinnedMeshBinding::new(&mut r, &model.geometry, 2.0);
+    assert!(gpu.update_gpu(&r, &poses(1)[0]));
+    assert!(
+        vertices(&r, gpu.mesh_slot)
+            .iter()
+            .all(|v| v.tangent_oct == [127, 0])
+    );
+}
+
+#[test]
+fn the_handedness_sign_matches_between_cpu_and_gpu_with_real_tangents() {
+    let Some(mut r) = renderer() else { return };
+    let model = rig_with_tangents();
+    let mut cpu = SkinnedMeshBinding::new(&mut r, &model.geometry, 2.0);
+    let mut gpu = SkinnedMeshBinding::new(&mut r, &model.geometry, 2.0);
+    let skin = &poses(3)[1];
+    assert!(cpu.update(&r, skin));
+    assert!(gpu.update_gpu(&r, skin));
+    let expected = vertices(&r, cpu.mesh_slot);
+    let actual = vertices(&r, gpu.mesh_slot);
+    let differing = expected
+        .iter()
+        .zip(&actual)
+        .filter(|(e, a)| e.position[3] != a.position[3])
+        .count();
+    assert_eq!(differing, 0, "{differing} vertices disagree on handedness");
+}

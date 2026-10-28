@@ -82,3 +82,28 @@ fn limits_are_carried_into_the_usage_and_the_report() {
     r.set_memory_limit(MemoryCategory::Textures, None);
     assert!(!r.memory_report().contains("OVER"));
 }
+
+#[test]
+fn a_fresh_renderer_accounts_its_persistent_buffers() {
+    let Some(r) = renderer() else { return };
+    let usage = r.memory_usage();
+    assert!(
+        usage.used(MemoryCategory::Buffers) >= 1024,
+        "camera, light and model buffers"
+    );
+    assert_eq!(
+        usage.used(MemoryCategory::Buffers),
+        r.memory_usage().used(MemoryCategory::Buffers),
+        "stable between calls"
+    );
+}
+
+#[test]
+fn the_report_names_the_buffers_line() {
+    let Some(r) = renderer() else { return };
+    assert!(
+        r.memory_report().contains("buffers:"),
+        "{}",
+        r.memory_report()
+    );
+}

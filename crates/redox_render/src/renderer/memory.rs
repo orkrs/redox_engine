@@ -71,8 +71,7 @@ impl Renderer {
         for texture in targets {
             budget.add(MemoryCategory::Other, gpu_texture_bytes(texture));
         }
-        // Not counted here: `face_matrix_buffers` (a Vec, not in the list below), and buffers owned
-        // by subsystems: cluster_manager (point lights, metadata, light indices, bounds, info),
+        // Not counted here: buffers owned by subsystems: cluster_manager (point lights, metadata, light indices, bounds, info),
         // registry material uniforms, skinning_gpu skin buffer, the taa and velocity uniforms, and
         // the per-pass buffers under pass/, post/, gi/, sdf/, shadow/ and virtual_geometry/.
         let buffers = [
@@ -87,7 +86,7 @@ impl Renderer {
             &self.vsm_info_buffer,
             &self.vg_material_buffer,
         ];
-        for buffer in buffers {
+        for buffer in buffers.into_iter().chain(&self.face_matrix_buffers) {
             budget.add(MemoryCategory::Buffers, buffer.size());
         }
         budget
