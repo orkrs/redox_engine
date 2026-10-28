@@ -263,6 +263,7 @@ fn init_scene(world: &mut World, ctx: &mut RenderContext, game: &mut DinoGame) {
             desired_translation: Vec3::ZERO,
             gravity: 0.0,
             grounded: false,
+            ..Default::default()
         },
     );
 
