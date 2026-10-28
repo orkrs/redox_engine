@@ -8,6 +8,7 @@ mod batching;
 mod contexts;
 mod debug_draw;
 mod draw;
+mod error;
 mod frame;
 pub use frame::FrameCpuTimings;
 mod helpers;
@@ -22,6 +23,7 @@ mod resize;
 mod scene_sync;
 mod settings;
 
+pub use error::RendererError;
 pub use helpers::pick_hdr_msaa_sample_count;
 use helpers::*;
 

@@ -1,14 +1,33 @@
 //! Renderer construction (device, passes, textures, bind groups).
 
+use super::error::RendererError;
 use super::*;
 
 impl Renderer {
     /// Initialises the entire rendering context.
     ///
+    /// Panics with the error text if the renderer cannot be created; use
+    /// [`Self::try_new`] to handle the failure instead.
+    ///
     /// This is an `async` function because `wgpu` adapter and device requests
     /// are asynchronous. Wrap with `pollster::block_on` when calling from
     /// synchronous code.
     pub async fn new(window: Arc<Window>, present_mode: wgpu::PresentMode) -> Self {
+        Self::try_new(window, present_mode)
+            .await
+            .unwrap_or_else(|e| panic!("renderer creation failed: {e}"))
+    }
+
+    /// Initialises the entire rendering context, returning [`RendererError`]
+    /// when the surface, GPU adapter or device cannot be created.
+    ///
+    /// This is an `async` function because `wgpu` adapter and device requests
+    /// are asynchronous. Wrap with `pollster::block_on` when calling from
+    /// synchronous code.
+    pub async fn try_new(
+        window: Arc<Window>,
+        present_mode: wgpu::PresentMode,
+    ) -> Result<Self, RendererError> {
         let size = window.inner_size();
 
         // --- Instance ---
@@ -19,7 +38,7 @@ impl Renderer {
         // --- Surface ---
         let surface = instance
             .create_surface(window)
-            .expect("Failed to create surface");
+            .map_err(|e| RendererError::Surface(e.to_string()))?;
 
         // --- Adapter ---
         let adapter = instance
@@ -30,7 +49,7 @@ impl Renderer {
                 apply_limit_buckets: false,
             })
             .await
-            .expect("Failed to find a suitable GPU adapter");
+            .map_err(|_| RendererError::NoAdapter)?;
 
         log::info!("Using adapter: {:?}", adapter.get_info().name);
 
@@ -59,7 +78,7 @@ impl Renderer {
                 ..Default::default()
             })
             .await
-            .expect("Failed to create device");
+            .map_err(|e| RendererError::Device(e.to_string()))?;
 
         // --- Surface configuration ---
         let surface_caps = surface.get_capabilities(&adapter);
@@ -82,7 +101,13 @@ impl Renderer {
             color_space: Default::default(),
         };
 
-        Self::from_shared_device(device, queue, &adapter, Some(surface), config)
+        Ok(Self::from_shared_device(
+            device,
+            queue,
+            &adapter,
+            Some(surface),
+            config,
+        ))
     }
 
     /// Build a full engine [`Renderer`] on an existing device/queue (editor SharedGpu).
