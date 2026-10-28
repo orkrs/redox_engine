@@ -29,7 +29,9 @@ pub mod trigger;
 
 pub use character::move_character_controllers;
 pub use components::{CharacterController, Collider, Kinematic, RigidBody, Trigger, Velocity};
-pub use contacts::{ContactEnter, ContactEvent, ContactExit, ContactStay, PhysicsMaterial};
+pub use contacts::{
+    CombineRule, ContactEnter, ContactEvent, ContactExit, ContactStay, PhysicsMaterial,
+};
 pub use context::{PhysicsContext, PhysicsError};
 pub use convex::ConvexHull;
 pub use joint_component::{Joint, JointLink, sync_joints};

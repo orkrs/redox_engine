@@ -4,7 +4,7 @@
 //! overlaps are not contacts; they keep flowing through the trigger path.
 
 use rapier3d::geometry::{Collider, ColliderHandle, CollisionEvent, ContactManifold, ContactPair};
-use rapier3d::prelude::ActiveEvents;
+use rapier3d::prelude::{ActiveEvents, CoefficientCombineRule};
 use redox_ecs::Entity;
 use redox_math::Vec3;
 
@@ -58,7 +58,8 @@ pub struct ContactStay {
 /// Surface properties applied to every collider of an entity.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PhysicsMaterial {
-    /// Coulomb friction coefficient (combined with the other surface by averaging).
+    /// Coulomb friction coefficient. Combined with the other surface by averaging unless a
+    /// [`CombineRule`] says otherwise.
     pub friction: f32,
     /// Bounciness: 0 absorbs the impact, 1 bounces back at the same speed.
     pub restitution: f32,
@@ -69,6 +70,35 @@ impl Default for PhysicsMaterial {
         Self {
             friction: 0.5,
             restitution: 0.0,
+        }
+    }
+}
+
+/// How the friction or restitution of two touching colliders become one value.
+///
+/// When the two colliders ask for different rules, the rule listed later wins
+/// (`Average` < `Min` < `Multiply` < `Max`), as in Rapier.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CombineRule {
+    /// The mean of the two values. The default.
+    #[default]
+    Average,
+    /// The smaller value: a soft or slippery surface wins.
+    Min,
+    /// The product of the two values.
+    Multiply,
+    /// The larger value: a bouncy or sticky surface wins.
+    Max,
+}
+
+impl CombineRule {
+    /// The matching Rapier rule.
+    fn to_rapier(self) -> CoefficientCombineRule {
+        match self {
+            CombineRule::Average => CoefficientCombineRule::Average,
+            CombineRule::Min => CoefficientCombineRule::Min,
+            CombineRule::Multiply => CoefficientCombineRule::Multiply,
+            CombineRule::Max => CoefficientCombineRule::Max,
         }
     }
 }
@@ -168,6 +198,20 @@ impl PhysicsContext {
         self.for_each_collider_of(entity, |collider| {
             collider.set_friction(material.friction);
             collider.set_restitution(material.restitution);
+        })
+    }
+
+    /// Sets how the friction and restitution of `entity`'s colliders are combined with the other
+    /// collider of a contact. Every collider starts with [`CombineRule::Average`].
+    pub fn set_combine_rules(
+        &mut self,
+        entity: Entity,
+        friction: CombineRule,
+        restitution: CombineRule,
+    ) -> Result<(), PhysicsError> {
+        self.for_each_collider_of(entity, |collider| {
+            collider.set_friction_combine_rule(friction.to_rapier());
+            collider.set_restitution_combine_rule(restitution.to_rapier());
         })
     }
 
