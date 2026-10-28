@@ -81,8 +81,6 @@ impl SkinnedMeshBinding {
     /// Skins on the GPU: uploads `skin_matrices`, runs a compute pass that blends the bind pose
     /// and writes the quantised vertices straight into the mesh slot's vertex buffer.
     ///
-    /// The GPU path does not deform tangents yet: vertices keep the fixed bind-pose tangent
-    /// until the compute shader is extended (RND-02). CPU [`Self::update`] deforms them.
     ///
     /// Returns `false` (leaving the mesh untouched) when `skin_matrices` has fewer matrices than
     /// the highest joint index needs, or the renderer cannot skin on the GPU. Nothing is read

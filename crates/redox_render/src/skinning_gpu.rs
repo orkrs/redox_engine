@@ -13,7 +13,7 @@ const WORKGROUP_SIZE: u32 = 64;
 const MAX_WORKGROUPS: u32 = 65_535;
 const MATRIX_BYTES: u64 = 64;
 
-/// Bind-pose vertex as the shader reads it (64 bytes).
+/// Bind-pose vertex as the shader reads it (`SkinVertex` in `skin_compute.wgsl`, 80 bytes).
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct GpuSkinVertex {
@@ -23,7 +23,13 @@ struct GpuSkinVertex {
     pad: u32,
     joints: [u32; 4],
     weights: [f32; 4],
+    tangent: [f32; 3],
+    /// Non-zero when `tangent` holds a real tangent; zero keeps the shader's fixed tangent.
+    has_tangent: u32,
 }
+
+const _: () = assert!(std::mem::size_of::<GpuSkinVertex>() == 80);
+const _: () = assert!(std::mem::offset_of!(GpuSkinVertex, tangent) == 64);
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -124,6 +130,7 @@ impl GpuSkin {
             .max()
             .unwrap_or(0);
 
+        let has_tangents = geometry.has_tangents();
         let vertices: Vec<GpuSkinVertex> = (0..count)
             .map(|i| GpuSkinVertex {
                 position: geometry.positions[i],
@@ -133,6 +140,12 @@ impl GpuSkin {
                 pad: 0,
                 joints: geometry.joints[i].map(u32::from),
                 weights: geometry.weights[i],
+                tangent: if has_tangents {
+                    geometry.tangents[i]
+                } else {
+                    [0.0; 3]
+                },
+                has_tangent: u32::from(has_tangents),
             })
             .collect();
         let (bounds_min, bounds_extent) = bounds_vectors(bounds);

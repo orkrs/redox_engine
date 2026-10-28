@@ -1,5 +1,6 @@
-// GPU linear-blend skinning. Reproduces `SkinnedGeometry::deform_into` followed by the
-// 16-byte `CompressedVertex` quantisation of `mesh/compress.rs` (tangent fixed to (1, 0, 0)).
+// GPU linear-blend skinning. Reproduces `SkinnedGeometry::deform_into` /
+// `deform_tangents_into` followed by the 16-byte `CompressedVertex` quantisation of
+// `mesh/compress.rs`. Vertices without tangents keep the fixed tangent (1, 0, 0).
 
 struct SkinVertex {
     position: vec3<f32>,
@@ -8,6 +9,8 @@ struct SkinVertex {
     _pad: u32,
     joints: vec4<u32>,
     weights: vec4<f32>,
+    tangent: vec3<f32>,
+    has_tangent: u32,
 }
 
 struct Params {
@@ -24,8 +27,8 @@ struct Params {
 @group(0) @binding(2) var<storage, read> skin: array<mat4x4<f32>>;
 @group(0) @binding(3) var<storage, read_write> out_vertices: array<vec4<u32>>;
 
-// Tangent (1, 0, 0) octahedral-encoded as snorm8: x = 127, y = 0.
-const TANGENT_WORD: u32 = 0x007F0000u;
+// Tangent (1, 0, 0) octahedral-encoded as snorm8 pair: x = 127 (low byte), y = 0 (high byte).
+const FIXED_TANGENT_BITS: u32 = 0x007Fu;
 
 fn round_half_away(x: f32) -> f32 {
     return sign(x) * floor(abs(x) + 0.5);
@@ -94,8 +97,22 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let handed = select(-1.0, 1.0, n.z >= 0.0);
     let o = oct_encode(n);
 
+    var tangent_word = FIXED_TANGENT_BITS;
+    if (v.has_tangent != 0u) {
+        var t = (m * vec4<f32>(v.tangent, 0.0)).xyz;
+        let tlen = length(t);
+        if (tlen > 0.0) {
+            t = t / tlen;
+        } else {
+            t = vec3<f32>(0.0);
+        }
+        let ot = oct_encode(t);
+        tangent_word = snorm8(ot.x) | (snorm8(ot.y) << 8u);
+    }
+
     let w0 = snorm16(q.x) | (snorm16(q.y) << 16u);
     let w1 = snorm16(q.z) | (snorm16(handed) << 16u);
-    let w2 = snorm8(o.x) | (snorm8(o.y) << 8u) | TANGENT_WORD;
+    // Bytes 8..12 of CompressedVertex: normal oct x, y, tangent oct x, y (little endian).
+    let w2 = snorm8(o.x) | (snorm8(o.y) << 8u) | (tangent_word << 16u);
     out_vertices[i] = vec4<u32>(w0, w1, w2, v.uv_packed);
 }
