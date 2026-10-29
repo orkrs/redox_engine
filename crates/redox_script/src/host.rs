@@ -3,7 +3,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::ops::Range;
 
-use crate::{ScriptCommand, ScriptEvent, WorldQueries};
+use crate::{ScriptCommand, ScriptEntityId, ScriptEvent, WorldQueries};
 
 /// Longest log message kept, in bytes; longer messages are truncated.
 pub(crate) const MAX_LOG_BYTES: usize = 4096;
@@ -19,8 +19,11 @@ pub(crate) const MAX_EVENTS: usize = 256;
 /// Most commands queued per instance between two `take_commands` calls.
 pub(crate) const MAX_COMMANDS: usize = 256;
 
-/// Most `raycast` queries answered per call into the script.
-pub(crate) const MAX_RAYS_PER_CALL: u32 = 64;
+/// Most world queries answered per call into the script. `raycast`, `raycast_entity`, the v2
+/// lookups and overlaps all draw from this one allowance; further queries return their miss value.
+pub(crate) const MAX_QUERIES_PER_CALL: u32 = 64;
+/// Most entities returned by one overlap or tag search.
+pub(crate) const MAX_OVERLAP_RESULTS: usize = 64;
 /// Longest ray the host is asked to cast, in metres.
 pub(crate) const MAX_RAY_DISTANCE: f32 = 1000.0;
 /// Most rays accepted by one `raycast_many` call.
@@ -90,6 +93,28 @@ fn decode_ray(record: &[u8]) -> [f32; 7] {
     ray
 }
 
+/// Checks a ray and normalises it: origin and direction must be finite, the direction non-zero
+/// and `max` positive and finite. Returns the origin, the unit direction and the capped distance.
+fn validate_ray(
+    origin: [f32; 3],
+    direction: [f32; 3],
+    max: f32,
+) -> Option<([f32; 3], [f32; 3], f32)> {
+    let length = direction.iter().map(|v| v * v).sum::<f32>().sqrt();
+    if !is_finite3(origin) || !is_finite3(direction) || !max.is_finite() || max <= 0.0 {
+        return None;
+    }
+    if length <= 0.0 {
+        return None;
+    }
+    Some((origin, direction.map(|v| v / length), max.min(MAX_RAY_DISTANCE)))
+}
+
+/// True when all three components are finite numbers.
+fn is_finite3(v: [f32; 3]) -> bool {
+    v.iter().all(|c| c.is_finite())
+}
+
 /// Encodes answers as little-endian `f32` bytes, ready to be written to guest memory.
 pub(crate) fn answer_bytes(answers: &[f32]) -> Vec<u8> {
     answers.iter().flat_map(|v| v.to_le_bytes()).collect()
@@ -106,7 +131,7 @@ pub(crate) struct HostData {
     events: Vec<ScriptEvent>,
     commands: Vec<ScriptCommand>,
     world: WorldSlot,
-    rays_left: u32,
+    queries_left: u32,
 }
 
 impl HostData {
@@ -127,32 +152,90 @@ impl HostData {
         self.world = WorldSlot(Some(world));
     }
 
-    /// Starts a call into the script: the ray allowance is renewed.
+    /// Starts a call into the script: the query allowance is renewed.
     pub(crate) fn begin_call(&mut self) {
-        self.rays_left = MAX_RAYS_PER_CALL;
+        self.queries_left = MAX_QUERIES_PER_CALL;
+    }
+
+    /// Runs one world query against the installed world, if there is one and the allowance of
+    /// the current call is not used up. `None` means the query was not answered.
+    fn query<T>(&mut self, ask: impl FnOnce(&mut dyn WorldQueries) -> T) -> Option<T> {
+        if self.queries_left == 0 {
+            return None;
+        }
+        let world = self.world.0.as_mut()?;
+        self.queries_left -= 1;
+        Some(ask(world.as_mut()))
     }
 
     /// Answers `env.raycast`: the hit distance or -1.0 (no world, bad arguments, allowance used up,
     /// or no hit). The direction is normalised and the distance capped before the host is asked.
     pub(crate) fn raycast(&mut self, origin: [f32; 3], direction: [f32; 3], max: f32) -> f32 {
         const MISS: f32 = -1.0;
-        let finite = origin.iter().chain(&direction).all(|v| v.is_finite());
-        let length = direction.iter().map(|v| v * v).sum::<f32>().sqrt();
-        if !finite || !max.is_finite() || max <= 0.0 || length <= 0.0 {
-            return MISS;
-        }
-        let Some(world) = self.world.0.as_mut() else {
+        let Some((origin, unit, max)) = validate_ray(origin, direction, max) else {
             return MISS;
         };
-        if self.rays_left == 0 {
-            return MISS;
-        }
-        self.rays_left -= 1;
-        let unit = direction.map(|v| v / length);
-        world
-            .raycast(origin, unit, max.min(MAX_RAY_DISTANCE))
+        self.query(|world| world.raycast(origin, unit, max))
+            .flatten()
             .filter(|d| d.is_finite())
             .unwrap_or(MISS)
+    }
+
+    /// Answers the `raycast_entity` query: the first entity hit and the distance, or `None`.
+    pub(crate) fn raycast_entity(
+        &mut self,
+        origin: [f32; 3],
+        direction: [f32; 3],
+        max: f32,
+    ) -> Option<(u32, f32)> {
+        let (origin, unit, max) = validate_ray(origin, direction, max)?;
+        self.query(|world| world.raycast_entity(origin, unit, max))
+            .flatten()
+            .filter(|(_, distance)| distance.is_finite())
+            .map(|(id, distance)| (id.0, distance))
+    }
+
+    /// Entities whose volume overlaps the sphere, at most `limit` (and [`MAX_OVERLAP_RESULTS`]).
+    /// Empty for a non finite centre, a negative or non finite radius, or when no query is left.
+    pub(crate) fn overlap_sphere(&mut self, center: [f32; 3], radius: f32, limit: usize) -> Vec<u32> {
+        if !is_finite3(center) || !radius.is_finite() || radius < 0.0 {
+            return Vec::new();
+        }
+        self.collect_ids(limit, |world, out, cap| {
+            world.overlap_sphere(center, radius, out, cap);
+        })
+    }
+
+    /// Entities whose volume overlaps the box, at most `limit` (and [`MAX_OVERLAP_RESULTS`]).
+    /// Empty for non finite or negative extents, or when no query is left.
+    pub(crate) fn overlap_box(
+        &mut self,
+        center: [f32; 3],
+        half_extent: [f32; 3],
+        limit: usize,
+    ) -> Vec<u32> {
+        if !is_finite3(center) || !is_finite3(half_extent) || half_extent.iter().any(|h| *h < 0.0) {
+            return Vec::new();
+        }
+        self.collect_ids(limit, |world, out, cap| {
+            world.overlap_box(center, half_extent, out, cap);
+        })
+    }
+
+    /// Runs an id producing query and returns at most `limit` ids (never more than
+    /// [`MAX_OVERLAP_RESULTS`]), even when the world returns more.
+    fn collect_ids(
+        &mut self,
+        limit: usize,
+        ask: impl FnOnce(&mut dyn WorldQueries, &mut Vec<ScriptEntityId>, usize),
+    ) -> Vec<u32> {
+        let cap = limit.min(MAX_OVERLAP_RESULTS);
+        let mut found = Vec::new();
+        if self.query(|world| ask(world, &mut found, cap)).is_none() {
+            return Vec::new();
+        }
+        found.truncate(cap);
+        found.into_iter().map(|id| id.0).collect()
     }
 
     /// Answers `env.raycast_many` for the raw record bytes read from guest memory.
@@ -286,12 +369,53 @@ mod tests {
         assert_eq!(host.raycast([0.0; 3], [0.0; 3], 5.0), -1.0);
         assert_eq!(host.raycast([0.0; 3], down, 0.0), -1.0);
         assert_eq!(host.raycast([0.0; 3], down, f32::NAN), -1.0);
-        for _ in 0..MAX_RAYS_PER_CALL {
+        for _ in 0..MAX_QUERIES_PER_CALL {
             host.raycast([0.0; 3], down, 5.0);
         }
         assert_eq!(host.raycast([0.0; 3], down, 5.0), -1.0, "allowance used up");
         host.begin_call();
         assert_eq!(host.raycast([0.0; 3], down, 5.0), 3.0, "renewed");
+    }
+
+    /// A world that returns far more entities than any query may hand back.
+    struct Crowd;
+    impl WorldQueries for Crowd {
+        fn raycast(&mut self, _: [f32; 3], _: [f32; 3], _: f32) -> Option<f32> {
+            Some(1.0)
+        }
+
+        fn overlap_sphere(
+            &mut self,
+            _: [f32; 3],
+            _: f32,
+            out: &mut Vec<ScriptEntityId>,
+            _: usize,
+        ) {
+            out.extend((0..100).map(ScriptEntityId));
+        }
+    }
+
+    #[test]
+    fn the_overlap_limit_truncates_results() {
+        let mut host = HostData::default();
+        host.begin_call();
+        host.set_world(Box::new(Crowd));
+        assert_eq!(host.overlap_sphere([0.0; 3], 1.0, 1000).len(), MAX_OVERLAP_RESULTS);
+        assert_eq!(host.overlap_sphere([0.0; 3], 1.0, 3), vec![0, 1, 2]);
+        assert!(host.overlap_sphere([0.0; 3], -1.0, 3).is_empty(), "negative radius");
+        assert!(host.overlap_sphere([f32::NAN, 0.0, 0.0], 1.0, 3).is_empty());
+    }
+
+    #[test]
+    fn world_queries_share_one_allowance_per_call() {
+        let mut host = HostData::default();
+        host.begin_call();
+        host.set_world(Box::new(Crowd));
+        for _ in 0..MAX_QUERIES_PER_CALL {
+            host.overlap_sphere([0.0; 3], 1.0, 1);
+        }
+        assert!(host.overlap_sphere([0.0; 3], 1.0, 1).is_empty(), "used up");
+        assert_eq!(host.raycast([0.0; 3], [0.0, -1.0, 0.0], 5.0), -1.0, "shared");
     }
 
     #[test]
@@ -368,9 +492,9 @@ mod tests {
         host.begin_call();
         host.set_world(Box::new(Wall));
         let record = ray_bytes([0.0, 2.0, 0.0, 0.0, -1.0, 0.0, 10.0]);
-        let records = record.repeat(MAX_RAYS_PER_CALL as usize + 1);
+        let records = record.repeat(MAX_QUERIES_PER_CALL as usize + 1);
         let answers = host.raycast_batch(&records).unwrap_or_default();
-        assert_eq!(answers.len(), MAX_RAYS_PER_CALL as usize + 1);
+        assert_eq!(answers.len(), MAX_QUERIES_PER_CALL as usize + 1);
         assert_eq!(answers.last().copied(), Some(-1.0), "past the allowance");
     }
 

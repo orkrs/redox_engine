@@ -42,8 +42,15 @@ pub struct ApiPermissions {
     pub state: bool,
     /// Allows importing `env.emit_event`.
     pub events: bool,
-    /// Allows importing `env.raycast`.
+    /// Allows importing `env.raycast` and `env.raycast_many`, and `env.raycast_entity`.
     pub world: bool,
+    /// Allows importing the entity lookup and position queries: `env.find_by_name`,
+    /// `env.find_by_tag`, `env.position_of`, `env.overlap_sphere` and `env.overlap_box`.
+    pub query: bool,
+    /// Allows importing `env.get_value_of`, which reads a named value of another entity.
+    pub entity_values: bool,
+    /// Allows importing `env.nav_path`.
+    pub nav: bool,
 }
 
 impl ApiPermissions {
@@ -53,6 +60,9 @@ impl ApiPermissions {
             state: true,
             events: true,
             world: true,
+            query: true,
+            entity_values: true,
+            nav: true,
         }
     }
 
@@ -62,7 +72,24 @@ impl ApiPermissions {
             state: false,
             events: false,
             world: false,
+            query: false,
+            entity_values: false,
+            nav: false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn permissions_default_to_off() {
+        let none = ApiPermissions::none();
+        assert!(!none.query && !none.entity_values && !none.nav);
+        assert!(!none.world);
+        let all = ApiPermissions::all();
+        assert!(all.query && all.entity_values && all.nav && all.world);
     }
 }
 
