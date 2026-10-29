@@ -1,4 +1,5 @@
-// GPU linear-blend skinning. Reproduces `SkinnedGeometry::deform_into` /
+// GPU linear-blend skinning. Reproduces `SkinnedGeometry::deform_morphed_into` (morph offsets
+// are added to the bind position and normal before the blend; tangents are not morphed) /
 // `deform_tangents_into` followed by the 16-byte `CompressedVertex` quantisation of
 // `mesh/compress.rs`. Vertices without tangents keep the fixed tangent (1, 0, 0).
 
@@ -18,14 +19,19 @@ struct Params {
     bounds_extent: vec4<f32>,
     vertex_count: u32,
     matrix_count: u32,
+    morph_count: u32,
     _pad0: u32,
-    _pad1: u32,
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> bind_vertices: array<SkinVertex>;
 @group(0) @binding(2) var<storage, read> skin: array<mat4x4<f32>>;
 @group(0) @binding(3) var<storage, read_write> out_vertices: array<vec4<u32>>;
+// Morph offsets, index [target * vertex_count + vertex]; xyz is the offset, w is unused.
+@group(0) @binding(4) var<storage, read> morph_deltas: array<vec4<f32>>;
+@group(0) @binding(5) var<storage, read> morph_normals: array<vec4<f32>>;
+// One weight per target. Non-finite weights are sanitised on the CPU before upload.
+@group(0) @binding(6) var<storage, read> morph_weights: array<f32>;
 
 // Tangent (1, 0, 0) octahedral-encoded as snorm8 pair: x = 127 (low byte), y = 0 (high byte).
 const FIXED_TANGENT_BITS: u32 = 0x007Fu;
@@ -83,8 +89,19 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
     let v = bind_vertices[i];
     let m = blend_matrix(v.joints, v.weights);
-    let p = (m * vec4<f32>(v.position, 1.0)).xyz;
-    var n = (m * vec4<f32>(v.normal, 0.0)).xyz;
+    // Morph first: weighted offsets are added to the bind pose before the blend.
+    var bind_p = v.position;
+    var bind_n = v.normal;
+    for (var t = 0u; t < params.morph_count; t++) {
+        let w = morph_weights[t];
+        if (w != 0.0) {
+            let k = t * params.vertex_count + i;
+            bind_p += w * morph_deltas[k].xyz;
+            bind_n += w * morph_normals[k].xyz;
+        }
+    }
+    let p = (m * vec4<f32>(bind_p, 1.0)).xyz;
+    var n = (m * vec4<f32>(bind_n, 0.0)).xyz;
     let len = length(n);
     if (len > 0.0) {
         n = n / len;
