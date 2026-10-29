@@ -55,6 +55,10 @@ impl ShaderWatcher {
                 out.push(*stem);
             }
         }
+        // `pbr` includes the material surface prelude, so its edits also re-check `pbr`.
+        if out.contains(&"material_surface") && !out.contains(&"pbr") {
+            out.push("pbr");
+        }
         out
     }
 
@@ -85,11 +89,21 @@ impl ShaderWatcher {
     }
 
     fn read(&self, stem: &str) -> Result<String, String> {
+        if stem == "pbr" {
+            // `pbr` is the material surface prelude followed by the pass shader.
+            let prelude = self.read_file("material_surface.wgsl")?;
+            let body = self.read_file("pbr.wgsl")?;
+            return Ok(format!("{prelude}\n{body}"));
+        }
         let rel = EMBEDDED
             .iter()
             .find(|(s, _, _)| *s == stem)
             .map(|(_, rel, _)| *rel)
             .ok_or_else(|| format!("unknown shader '{stem}'"))?;
+        self.read_file(rel)
+    }
+
+    fn read_file(&self, rel: &str) -> Result<String, String> {
         std::fs::read_to_string(self.dir.join(rel)).map_err(|e| format!("cannot read {rel}: {e}"))
     }
 }
