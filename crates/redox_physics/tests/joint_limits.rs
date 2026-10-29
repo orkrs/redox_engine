@@ -104,3 +104,130 @@ fn a_slider_limit_stops_the_fall() {
     let y = position(&ctx, car).y;
     assert!((-0.56..-0.44).contains(&y), "rests on the lower stop: {y}");
 }
+
+/// One degree in radians.
+const DEG: f32 = std::f32::consts::PI / 180.0;
+
+/// Result of a ball-joint run: the joint id and the largest angle between the rod and straight down.
+struct BallRun {
+    ctx: PhysicsContext,
+    joint: redox_physics::JointId,
+    max_angle: f32,
+}
+
+/// A 1 kg bob 1 m below a fixed pivot at the origin, joined by `kind` under `gravity`.
+fn run_ball_pendulum(
+    kind: JointKind,
+    gravity: Vec3,
+    break_force: Option<f32>,
+    seconds: f32,
+) -> BallRun {
+    let mut world = World::new();
+    let pivot = world.spawn();
+    let bob = world.spawn();
+    let mut ctx = PhysicsContext::new(gravity);
+    ctx.add_rigid_body(
+        pivot,
+        RigidBodyBuilder::fixed(),
+        vec![ColliderBuilder::ball(0.05)],
+    )
+    .unwrap();
+    ctx.add_rigid_body(
+        bob,
+        RigidBodyBuilder::dynamic().translation(Vec3::new(0.0, -1.0, 0.0)),
+        vec![ColliderBuilder::ball(0.05).mass(1.0)],
+    )
+    .unwrap();
+    let mut desc = JointDesc::new(kind);
+    desc.anchor_b = Vec3::new(0.0, 1.0, 0.0);
+    desc.break_force = break_force;
+    let joint = ctx.add_joint(pivot, bob, desc).unwrap();
+    let steps = (seconds / DT).round() as usize;
+    let mut max_angle = 0.0_f32;
+    for _ in 0..steps {
+        ctx.step(DT);
+        let p = position(&ctx, bob);
+        max_angle = max_angle.max((-p.y / p.length()).clamp(-1.0, 1.0).acos());
+    }
+    BallRun {
+        ctx,
+        joint,
+        max_angle,
+    }
+}
+
+#[test]
+fn a_limited_ball_cannot_swing_beyond_its_cone() {
+    let kind = JointKind::BallLimited {
+        swing_limit: 45.0 * DEG,
+        twist_min: -std::f32::consts::FRAC_PI_2,
+        twist_max: std::f32::consts::FRAC_PI_2,
+    };
+    // Sideways gravity pushes the bob against the 45 degree stop.
+    let run = run_ball_pendulum(kind, Vec3::new(9.81, 0.0, 0.0), None, 3.0);
+    assert!(
+        run.max_angle <= 47.0 * DEG,
+        "swing {} deg exceeds the cone",
+        run.max_angle / DEG
+    );
+    assert!(run.max_angle > 40.0 * DEG, "did reach the cone edge");
+}
+
+#[test]
+fn the_twist_is_limited() {
+    let mut world = World::new();
+    let pivot = world.spawn();
+    let bob = world.spawn();
+    let mut ctx = PhysicsContext::new(Vec3::ZERO);
+    ctx.add_rigid_body(
+        pivot,
+        RigidBodyBuilder::fixed(),
+        vec![ColliderBuilder::ball(0.05)],
+    )
+    .unwrap();
+    ctx.add_rigid_body(
+        bob,
+        RigidBodyBuilder::dynamic(),
+        vec![ColliderBuilder::ball(0.05).mass(1.0)],
+    )
+    .unwrap();
+    let kind = JointKind::BallLimited {
+        swing_limit: std::f32::consts::FRAC_PI_2,
+        twist_min: -0.3,
+        twist_max: 0.3,
+    };
+    ctx.add_joint(pivot, bob, JointDesc::new(kind)).unwrap();
+    let handle = ctx.get_body_handle(bob).unwrap();
+    // A push about the joint's X axis (the twist axis) through the shared centre.
+    ctx.set_rigid_body_velocity(handle, Vec3::ZERO, Vec3::new(5.0, 0.0, 0.0));
+    let (mut lowest, mut highest) = (f32::MAX, f32::MIN);
+    for _ in 0..60 {
+        ctx.step(DT);
+        let (axis, angle) = ctx.get_rigid_body_transform(handle).unwrap().1.to_axis_angle();
+        let twist = angle * axis.x;
+        lowest = lowest.min(twist);
+        highest = highest.max(twist);
+    }
+    assert!(highest > 0.25, "the twist limit was reached: {highest}");
+    assert!(highest <= 0.3 + 2.0 * DEG, "twist above max: {highest}");
+    assert!(lowest >= -0.3 - 2.0 * DEG, "twist below min: {lowest}");
+}
+
+#[test]
+fn an_unlimited_ball_still_swings_freely() {
+    let run = run_ball_pendulum(JointKind::Ball, Vec3::new(9.81, 0.0, 0.0), None, 3.0);
+    assert!(run.max_angle > 90.0 * DEG, "free swing: {} deg", run.max_angle / DEG);
+}
+
+#[test]
+fn the_limits_hold_while_the_joint_is_stressed_but_not_broken() {
+    let kind = JointKind::BallLimited {
+        swing_limit: 45.0 * DEG,
+        twist_min: -std::f32::consts::FRAC_PI_2,
+        twist_max: std::f32::consts::FRAC_PI_2,
+    };
+    // Ten times gravity, with a break force far above the load.
+    let run = run_ball_pendulum(kind, Vec3::new(98.1, 0.0, 0.0), Some(1.0e6), 3.0);
+    assert!(run.ctx.joint_exists(run.joint), "the joint is not broken");
+    assert!(run.max_angle <= 47.0 * DEG, "limit still holds: {} deg", run.max_angle / DEG);
+}

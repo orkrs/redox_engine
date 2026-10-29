@@ -25,6 +25,7 @@ redox_physics = { path = "../redox_physics" }
 # Scripts see the world through `script_world` (WorldQueries, sys. commands).
 redox_script = { path = "../redox_script" }
 redox_scene = { path = "../redox_scene" }
+redox_anim = { path = "../redox_anim" }
 
 serde = { workspace = true }
 ron = { workspace = true }

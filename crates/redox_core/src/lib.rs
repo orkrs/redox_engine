@@ -38,6 +38,7 @@ pub mod config;
 pub mod dispatcher;
 pub mod plugin;
 pub mod script_world;
+pub mod ragdoll_system;
 pub mod state;
 pub mod time;
 pub mod window;
