@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 ## [Unreleased]
 
 ### Added
+- Virtual geometry (VG-02): GPU traversal of cluster DAGs (`dag_gpu::DagTraversal`, `shaders/vg_dag_traverse.wgsl`) with the CPU `cut` as reference, Hi-Z rejects retested after the pyramid is rebuilt, and `VGSystem::{register_dag_asset, spawn_dag_instance, record_dag_traverse, record_dag_phase2, draw_dag_vis_indirect}`. The renderer does not call the DAG path yet; instance culling and seeding stay on the CPU.
 - Audio: `SpatialAudioEmitter` is played through one kira spatial track per entity with occlusion-scaled volume (`emitter_playback_system`); adaptive music layers driven by one control value (`AdaptiveMusic`, `play_adaptive_music`, `set_music_control`).
 - Animation/Render: morph targets - glTF import, weights in clips, CPU (`deform_morphed_into`) and GPU skinning, `SkinnedMeshBinding::set_morph_weights`.
 - Render: SSR (`set_ssr`, material roughness through a second output of the normal prepass), height fog with sun in-scatter (`set_fog`), additive blend mode, clear coat and anisotropy (`Material::coat`, `::anisotropy`), wrap lighting for SSS (`Material::subsurface`), `material_surface` shader function (`MaterialInstance`), `ShadowClass` and reliable moved-caster detection for virtual shadow pages.
