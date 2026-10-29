@@ -1,7 +1,7 @@
 //! Game rules: level data, the character controller driven by root motion, coins and crates.
 //! Nothing here touches the GPU, so it is covered by unit tests.
 
-use redox_anim::graph::{GraphOutput, GraphPlayer};
+use redox_anim::graph::{AnimGraph, GraphOutput, GraphPlayer};
 use redox_anim::{AnimationClip, Skeleton};
 use redox_math::{Quat, Vec3};
 
@@ -96,6 +96,8 @@ pub struct World {
     /// Time at which the last coin was taken.
     pub finished: Option<f32>,
     graph: GraphPlayer,
+    /// Whether the graph moves the character itself (root motion); otherwise the stick does.
+    root_motion: bool,
     wave_weight: f32,
     /// Coin pickup as a WASM module; `None` when it could not be started (the distance loop is used).
     coins: Option<ScriptedCoins>,
@@ -107,8 +109,20 @@ pub struct Step {
     pub picked: usize,
 }
 
+/// Forward movement for a graph without root motion: the walk-to-run speed for the stick strength,
+/// the same mix the blend tree plays. Along +Z, the way the character faces.
+fn gameplay_motion(strength: f32, dt: f32) -> Vec3 {
+    if strength <= 0.05 {
+        return Vec3::ZERO;
+    }
+    let speed = rig::WALK_SPEED + (rig::RUN_SPEED - rig::WALK_SPEED) * strength;
+    Vec3::new(0.0, 0.0, speed * dt)
+}
+
 impl World {
-    pub fn new(level: Level, skeleton: &Skeleton) -> Self {
+    /// A world for `level` whose character plays `graph` over `skeleton`.
+    pub fn new(level: Level, skeleton: &Skeleton, graph: AnimGraph) -> Self {
+        let root_motion = graph.root_bone.is_some();
         let pos = Vec3::new(level.spawn.0, 0.0, level.spawn.1);
         let coins = match ScriptedCoins::new(&level.coins, PICKUP_RADIUS) {
             Ok(coins) => Some(coins),
@@ -126,7 +140,8 @@ impl World {
             camera_yaw: 0.0,
             elapsed: 0.0,
             finished: None,
-            graph: GraphPlayer::new(rig::graph(), skeleton),
+            graph: GraphPlayer::new(graph, skeleton),
+            root_motion,
             wave_weight: 0.0,
         }
     }
@@ -186,7 +201,12 @@ impl World {
         self.wave_weight += (target - self.wave_weight) * step;
         self.graph.set_layer_weight(1, self.wave_weight);
 
-        let world_delta = Quat::from_rotation_y(self.yaw) * output.root_motion.translation;
+        let local = if self.root_motion {
+            output.root_motion.translation
+        } else {
+            gameplay_motion(strength, dt)
+        };
+        let world_delta = Quat::from_rotation_y(self.yaw) * local;
         self.pos = self.collide(self.pos + world_delta);
         let picked = self.pick_up_coins();
         if self.finished.is_none() && self.coins_taken() == self.taken.len() {
@@ -245,9 +265,33 @@ mod tests {
     const LEVEL: &str = "# test\narena 10\nspawn 0 0\ncoin 0 3\ncoin 5 5\ncrate 0 1.5 0.5\n";
 
     fn new_world() -> (World, redox_anim::SkinnedModel) {
-        let model = rig::humanoid();
+        let character = rig::procedural_rig();
         let level = parse_level(LEVEL).unwrap();
-        (World::new(level, &model.skeleton), model)
+        (
+            World::new(level, &character.model.skeleton, character.graph),
+            character.model,
+        )
+    }
+
+    #[test]
+    fn without_root_motion_the_stick_moves_the_character() {
+        let fox = crate::fox_rig::load().expect("the fox loads from the repository");
+        let mut world = World::new(
+            parse_level(LEVEL).unwrap(),
+            &fox.model.skeleton,
+            fox.graph.clone(),
+        );
+        world.yaw = std::f32::consts::FRAC_PI_2;
+        world.camera_yaw = std::f32::consts::FRAC_PI_2;
+        let controls = Controls {
+            move_z: 1.0,
+            ..Default::default()
+        };
+        run(&mut world, &fox.model, 0.4, controls);
+        let before = world.pos;
+        run(&mut world, &fox.model, 1.0, controls);
+        let speed = (world.pos - before).length();
+        assert!((speed - rig::RUN_SPEED).abs() < 0.4, "ran {speed} m in 1 s");
     }
 
     fn run(world: &mut World, model: &redox_anim::SkinnedModel, seconds: f32, controls: Controls) {

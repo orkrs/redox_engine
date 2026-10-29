@@ -33,3 +33,7 @@ Textures: `cargo bench -p redox_asset --bench ktx2` (RGBA8 KTX2 file, whole file
 | 1024 px, Zstd | ~2.9 ms |
 | 4096 px, stored | ~4.1 ms |
 | 4096 px, Zstd | ~42.9 ms |
+
+## GPU/CPU skinning threshold (ANM-04)
+
+Not measured yet. Run `cargo test --release -p redox_render --test gpu_skinning threshold_bench -- --ignored --nocapture` and paste the table here (ms per frame for 500 / 2k / 10k / 50k vertices x 1 / 10 / 100 characters: CPU, GPU single submits, GPU one batch). Then set `GPU_SKIN_MIN_VERTICES`, `GPU_BATCH_MIN_MESHES` and `MORPH_COST_FACTOR` in `crates/redox_render/src/skinning.rs` from it, and write the values and the date in its doc comments.

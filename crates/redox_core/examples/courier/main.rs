@@ -3,8 +3,9 @@
 //!
 //! * assets: everything (level text, textures) is read from a `.pak`; the big ground texture is a
 //!   KTX2 file with 12 mips that the `TextureStreamer` brings in small-first;
-//! * animation: a procedural humanoid driven by an animation graph (idle/walk/run blend tree,
-//!   an arm-only wave layer, root motion decides the speed);
+//! * animation: the Foxfire fox (glTF clips bound to idle/walk/run roles) driven by an animation
+//!   graph (idle/walk/run blend tree, the stick sets the speed). `--procedural-rig` plays the old
+//!   procedural humanoid instead, with an arm-only wave layer and root motion;
 //! * UI: main menu, HUD, pause and win screens with the game UI toolkit, English and Russian
 //!   (with plural forms), keyboard and mouse navigation.
 //!
@@ -12,12 +13,14 @@
 //! Gamepad: left stick moves, right stick turns the camera, A waves and confirms, D-pad moves the
 //! menu focus, B / Start pauses. The best time and the language are saved between runs.
 //!
-//! Run: `cargo run --example courier -p redox_core --release`
+//! Run: `cargo run --example courier -p redox_core --release` (add `-- --procedural-rig` for the old
+//! humanoid)
 //! Tests (game rules, rig, screens): `cargo test --example courier -p redox_core`
 
 // Demo code: panicking on setup failure is acceptable here.
 #![allow(clippy::unwrap_used)]
 
+mod fox_rig;
 mod game;
 mod mem_overlay;
 mod pad;
@@ -74,6 +77,8 @@ struct Scene {
     ground: Streamed,
     crate_tex: Streamed,
     hero: SkinnedMeshBinding,
+    /// Model units to metres for the hero (the fox is scaled down, the procedural humanoid is not).
+    hero_scale: f32,
 }
 
 /// A streamed texture and the material that uses it once it exists.
@@ -114,8 +119,8 @@ fn load_environment(r: &mut Renderer) {
     }
 }
 
-fn model_matrix(pos: Vec3, yaw: f32) -> Mat4 {
-    Mat4::from_rotation_translation(Quat::from_rotation_y(yaw), pos)
+fn model_matrix(pos: Vec3, yaw: f32, scale: f32) -> Mat4 {
+    Mat4::from_scale_rotation_translation(Vec3::splat(scale), Quat::from_rotation_y(yaw), pos)
 }
 
 fn bounds_of(r: &Renderer, mesh: usize, model: Mat4) -> Aabb {
@@ -146,6 +151,7 @@ impl Scene {
         assets: &mut AssetManager,
         streamer: &mut TextureStreamer,
         hero: &redox_anim::SkinnedModel,
+        hero_scale: f32,
     ) -> Self {
         let cube = r.upload_mesh(&primitive::create_cube());
         let coin_mesh = r.upload_mesh(&primitive::create_sphere(0.25, 18));
@@ -188,6 +194,7 @@ impl Scene {
                 textured: None,
             },
             hero,
+            hero_scale,
         }
     }
 
@@ -252,7 +259,7 @@ impl Scene {
             out.push(object(r, model, self.coin_mesh, self.coin_material));
             ids.push(1000 + i as u64);
         }
-        let hero = model_matrix(world.pos, world.yaw);
+        let hero = model_matrix(world.pos, world.yaw, self.hero_scale);
         out.push(RenderObject {
             id: out.len() as u32,
             shadow_class: redox_render::shadow::ShadowClass::Auto,
@@ -375,9 +382,16 @@ fn main() {
         demote_after_frames: 90,
         ..Default::default()
     });
-    let model = rig::humanoid();
-    let mut scene = Scene::new(&mut ctx, &mut assets, &mut streamer, &model);
-    let mut world = World::new(level.clone(), &model.skeleton);
+    let character = rig::select(std::env::args().any(|a| a == "--procedural-rig"));
+    let model = character.model;
+    let mut scene = Scene::new(
+        &mut ctx,
+        &mut assets,
+        &mut streamer,
+        &model,
+        character.scale,
+    );
+    let mut world = World::new(level.clone(), &model.skeleton, character.graph.clone());
 
     let mut ui_ctx = UiContext::new(&window, ctx.device(), ctx.surface_format());
     ui_ctx.show_debug = false;
@@ -553,7 +567,7 @@ fn main() {
                         let hero_bounds = scene
                             .hero
                             .swept_bounds()
-                            .transform(model_matrix(world.pos, world.yaw));
+                            .transform(model_matrix(world.pos, world.yaw, scene.hero_scale));
                         ctx.invalidate_shadow_region(&[hero_bounds]);
 
                         let camera = Camera::new(
@@ -724,7 +738,11 @@ fn main() {
                                         settings_menu = SettingsMenu::new();
                                     }
                                     if restart {
-                                        world = World::new(level.clone(), &model.skeleton);
+                                        world = World::new(
+                                            level.clone(),
+                                            &model.skeleton,
+                                            character.graph.clone(),
+                                        );
                                     }
                                 }
                             }

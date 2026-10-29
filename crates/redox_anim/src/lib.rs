@@ -6,6 +6,8 @@ pub mod animator;
 pub mod gltf_import;
 /// Parameters, state machines, blend trees, layers and root motion.
 pub mod graph;
+/// Binding of a graph to a glTF model: clip roles, bone masks and index checks (ANM-04).
+pub mod graph_binding;
 pub mod ik;
 /// Hides the visible jump when switching clips by decaying the pose difference.
 pub mod inertialization;
@@ -17,6 +19,9 @@ pub use animator::{Animator, SkinnedModel};
 pub use graph::{
     AnimGraph, Compare, Condition, GraphOutput, GraphPlayer, LayerDef, Motion, Params, RootMotion,
     StateDef, TransitionDef,
+};
+pub use graph_binding::{
+    bind_clips, required_bones, validate_binding, BindingError, ClipBinding, ClipRole,
 };
 pub use ik::{apply_two_bone_ik, solve_two_bone_ik};
 pub use inertialization::{InertialBoneDiff, Inertializer};
