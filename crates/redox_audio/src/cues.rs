@@ -251,6 +251,11 @@ impl CueLibrary {
         self.index.get(name).and_then(|&i| self.cues.get(i))
     }
 
+    /// Iterates over the cues in the order they were defined.
+    pub fn cues(&self) -> impl Iterator<Item = &SoundCue> {
+        self.cues.iter()
+    }
+
     /// Number of cues in the library.
     pub fn len(&self) -> usize {
         self.cues.len()

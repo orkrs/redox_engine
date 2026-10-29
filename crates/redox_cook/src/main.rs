@@ -15,6 +15,9 @@
 //! redox_cook bake-navmesh <in.glb|gltf> <out.nav> [--tile 16] [--radius 0.4] [--height 1.8]
 //!                                          [--step 0.4] [--slope 45]
 //!                                          bake walkable tiles for one agent to a .nav file
+//! redox_cook audio-check <assets-dir> [--cues cues.ron] [--target-lufs -16] [--target-lufs-sfx -18]
+//!                                          [--tolerance 3] [--json]
+//!                                          measure sound files (peak, LUFS, loop seam), check a cue library
 //! ```
 //!
 //! `.meta` sidecars are not packed (they are editor data); everything else is.
@@ -22,6 +25,7 @@
 //! `<out.pak>.stamp` file (path, size and modification time of every input plus the options)
 //! and skips the work when nothing changed since the last run.
 
+mod audio_check;
 #[cfg(feature = "bake")]
 mod bake;
 mod hlod_bake;
@@ -34,12 +38,13 @@ use std::process::ExitCode;
 use redox_asset::{AssetRegistry, PakReader, PakWriter};
 
 const USAGE: &str = "usage:\n  redox_cook scan <assets-dir>\n  redox_cook pack <assets-dir> <out.pak> [--compress] [--incremental] [--textures]\n  redox_cook texture <out.ktx2> <images...> [--etc1s] [--linear] [--no-mips] [--no-zstd] [--array|--cube]\n  redox_cook list <file.pak>\n  redox_cook verify <file.pak>\n  redox_cook texture-info <file.ktx2>\n  redox_cook bake-ibl <sky.hdr> <out-dir>\n  redox_cook bake-hlod <world.bin> <out-dir> [--triangles 2000]
-  redox_cook bake-navmesh <in.glb> <out.nav> [--tile 16] [--radius 0.4] [--height 1.8] [--step 0.4] [--slope 45]";
+  redox_cook bake-navmesh <in.glb> <out.nav> [--tile 16] [--radius 0.4] [--height 1.8] [--step 0.4] [--slope 45]\n  redox_cook audio-check <assets-dir> [--cues cues.ron] [--target-lufs -16] [--target-lufs-sfx -18] [--tolerance 3] [--json]";
 
 /// A parsed command line.
 #[derive(Debug, PartialEq)]
 enum Command {
     BakeNavmesh(nav::NavJob),
+    AudioCheck(audio_check::AudioCheckJob),
     Scan(PathBuf),
     Pack {
         dir: PathBuf,
@@ -108,6 +113,9 @@ fn parse(args: &[String]) -> Result<Command, String> {
             triangles: hlod_bake::parse_triangles(flags)?,
         }),
         ["bake-navmesh", args @ ..] => nav::parse_bake_navmesh(args).map(Command::BakeNavmesh),
+        ["audio-check", args @ ..] => {
+            audio_check::parse_audio_check(args).map(Command::AudioCheck)
+        }
         [] => Err("missing command".into()),
         [cmd, ..]
             if ![
@@ -120,6 +128,7 @@ fn parse(args: &[String]) -> Result<Command, String> {
                 "bake-ibl",
                 "bake-hlod",
                 "bake-navmesh",
+                "audio-check",
             ]
             .contains(cmd) =>
         {
@@ -203,6 +212,7 @@ fn run(command: Command) -> Result<(), String> {
             triangles,
         } => hlod_bake::bake_hlod(&world, &out, triangles),
         Command::BakeNavmesh(job) => nav::run(&job),
+        Command::AudioCheck(job) => audio_check::run(&job),
         Command::Verify(pak) => {
             let reader = PakReader::open(&pak).map_err(|e| e.to_string())?;
             let mut bad = 0usize;
