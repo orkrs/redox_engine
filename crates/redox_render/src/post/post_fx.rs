@@ -3,7 +3,7 @@
 //! The chain is `TAA output -> [motion blur] -> [depth of field] -> bloom -> tone mapping`.
 //! It runs only in the TAA branch, because the velocity and depth it reads are produced there.
 //! Effects write their own targets and never the TAA history, so blur does not accumulate
-//! across frames. With every effect off, [`PostFx::run_chain`] records nothing and the frame
+//! across frames. With every effect off, `PostFx::run_chain` records nothing and the frame
 //! is bit-identical to a build without this module.
 
 use bytemuck::{Pod, Zeroable};

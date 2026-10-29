@@ -11,7 +11,7 @@ WARN_LINES = 800
 FAIL_LINES = 1500
 EXCEPTIONS = {
     # One constructor that builds every GPU resource; dissolved by the render graph (roadmap 1.2.3).
-    "crates/redox_render/src/renderer/init.rs": 1000,
+    "crates/redox_render/src/renderer/init.rs": 950,
 }
 
 root = pathlib.Path(__file__).resolve().parent.parent
