@@ -15,6 +15,8 @@ pub mod context;
 pub mod frame;
 pub mod frame_graph;
 pub mod gi;
+/// Hierarchical LOD proxies per world cell, the `.hlod` format and the cell LOD switch.
+pub mod hlod;
 pub mod light;
 pub mod material;
 /// GPU memory bookkeeping by category (pure accounting, no GPU access).
