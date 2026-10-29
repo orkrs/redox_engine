@@ -1,9 +1,9 @@
 # SCR-02 — SDK для авторов WASM-скриптов (`redox_script_sdk`)
 
-- **Размер:** M. **Состояние:** **ЗАБЛОКИРОВАНО решением владельца** — на машине установлен только `x86_64-pc-windows-msvc`
-  (`rustup target list --installed`), цели `wasm32-unknown-unknown` нет. Без неё нельзя собрать и проверить ни одного скрипта на Rust.
-- **Что нужно от владельца:** разрешить `rustup target add wasm32-unknown-unknown` (≈ 20 МБ, меняет тулчейн) — или решить, что скрипты пишутся на WAT/C/AssemblyScript без SDK.
-- **Зависит от:** SCR-01 (желательно). **Блокирует:** примеры скриптов для редактора.
+- **Статус:** не начат. **Одобрено владельцем 2026-10-29** (в общем «да» на оставшиеся пункты); цель `wasm32-unknown-unknown` устанавливает **координатор** (`rustup target add wasm32-unknown-unknown`, ≈ 20 МБ) перед запуском агента; агент цель не ставит.
+- **Размер:** M. На машине до установки только `x86_64-pc-windows-msvc` (`rustup target list --installed`).
+- **Решение владельца при отказе:** если цель ставить нельзя — скрипты на WAT/C/AssemblyScript без SDK, спека закрывается.
+- **Зависит от:** SCR-01 (готов); **SCR-04** (после него SDK покрывает и новое хост-API: `find_by_name`, `overlap_*`, `nav_path`, `sys.*`-команды — шаг 5 ниже). **Блокирует:** примеры скриптов для редактора.
 - **Модель:** sonnet.
 
 ## Суть
@@ -32,6 +32,10 @@ pub fn raycast(origin: [f32; 3], dir: [f32; 3], max: f32) -> Option<f32>;   // r
 2. Написать крейт и пример «монеты» (повторяет `scripted_coins.rs`), собрать `cargo build -p redox_script_sdk --example coins --target wasm32-unknown-unknown --release`.
 3. Тест хоста: загрузить `.wasm` из `target/wasm32-unknown-unknown/release/examples/coins.wasm`, пропустить тест, если файла нет (CI без цели), иначе проверить событие `coin`.
 4. Документ `docs/SCRIPTING_GUIDE.md` на одну страницу с примером.
+5. После SCR-04: обёртки `find_by_name(&str) -> Option<EntityId>`, `find_by_tag`, `position_of`, `overlap_sphere`, `get_value_of`, `nav_path`, `system_command(...)` с тестом `sdk_guard_example` (пример сторожа из SCR-04 шаг 5, собранный из Rust).
+
+## Проверка
+`cargo fmt`, `cargo clippy -p redox_script_sdk -p redox_script --all-targets -- -D warnings`, `cargo build -p redox_script_sdk --example coins --target wasm32-unknown-unknown --release`, `cargo test -p redox_script --test sdk_example`, `cargo test -p redox_script --features wasmtime --test sdk_example`, `cargo check --workspace --all-targets`, `python scripts/check_file_sizes.py`, `python scripts/gen_crates_doc.py --check`.
 
 ## Для исполнителя
 Не начинай, пока в каталоге задач нет отметки о разблокировке. Не устанавливай цель сам.

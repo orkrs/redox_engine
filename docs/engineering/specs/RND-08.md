@@ -1,6 +1,6 @@
 # RND-08 — Тени: статика и динамика в VSM (C2), пошагово с воротами
 
-- **Статус:** шаги 1–2 выполнены 2026-10-29; шаг 3 (два слоя) не начат, по воротам.
+- **Статус:** шаги 1–2 выполнены 2026-10-29; шаг 3 (два слоя) не начат, по воротам; шаг 4 (деформация: скиннинг, морфы, WPO) добавлен 2026-10-29, не начат — запускать вместе с шагом 3 или раньше (не зависит от него).
 
 - **Размер:** M + M + L (шаги 1–3; шаг 3 — только если ворота после шага 2 это покажут). **Крейт:** `redox_render`. **Зависит от:** RND-04 (замер, готово). **Блокирует:** ничего.
 - **Модель:** haiku для шагов 0–2; шаг 3 — по отдельному решению владельца после замера (в спеке расписан, но не запускать без замера).
@@ -95,6 +95,22 @@ GPU-тест (`tests/shadow_dynamic.rs`, пропуск без адаптера;
 3. Таблица страниц для затенения указывает на динамическую копию, если она есть, иначе на статическую (шейдер `vsm_visibility.wgsl`/`pbr.wgsl` **не меняется**: меняется только значение физического индекса в записи таблицы на CPU).
 4. Тест: движущийся персонаж → `pages_dirty_static == 0` (новый счётчик в `VsmStats`); картинка статической части совпадает с путём без слоёв (golden с допуском 0,01).
 Размер файла `vsm_clipmap.rs` (766 строк) — до начала шага вынести инвалидацию в `vsm_clipmap/invalidate.rs`, иначе превысит 800.
+
+## Шаг 4 — деформируемая геометрия: скиннинг, морфы, WPO в инвалидации страниц (M, добавлено 2026-10-29)
+Пробел, найденный при сверке: `extract_render_objects_into` (`systems.rs:132`) и `batching.rs:97` всегда ставят `ShadowClass::Auto`, а определение движения (`moved_shadow_bounds`, `next_shadow_poses`) сравнивает **матрицы моделей**. Скинированный персонаж на месте (идёт «в стойке», машет рукой) и объект с морфами или WPO (MAT-03/07) не меняют матрицу — страницы теней под их вытянутой рукой не обновляются, тень «замерзает».
+- `RenderObject` получает поле `deforms: bool` (по умолчанию `false`; раскладка GPU не затронута — поле только на CPU) — выставляется в `extract_render_objects_into` из наличия `SkinnedMeshBinding`/`MorphWeights`/графового материала с `Features::vertex_anim` (**ПРОВЕРИТЬ** где живут эти компоненты: `grep -rn "SkinnedMeshBinding\|vertex_anim" crates --include=*.rs | head`); если компонентов в ECS-извлечении нет, поле выставляет игра через `FrameRenderObjects`, а `Auto`-классификация считает `deforms == true` динамическим (`is_dynamic_caster(class, bounds, deforms)`; старая сигнатура остаётся обёрткой с `deforms = false`).
+- Для деформируемых объектов инвалидируются страницы под **объединением** `bounds` текущего и прошлого кадра **каждый кадр, пока анимация идёт** (а не по смене матрицы); если анимация остановлена (клип на паузе, веса не менялись — `SkinnedMeshBinding::pose_hash` равен прошлому) — страницы не трогаются (**ПРОВЕРИТЬ** есть ли хеш позы; нет — добавить дешёвый `pose_version: u32`, увеличиваемый при записи в `deform_into`/`set_morph_weights`).
+- Границы деформируемого меша: `bounds` из `SkinnedModel` — консервативные (по bind pose + запас `deform_margin`, по умолчанию 25 % размера, настройка на объекте); вытянутая рука в пределах запаса.
+Тесты:
+```rust
+#[test] fn a_skinned_object_that_only_changes_pose_is_a_dynamic_caster() { /* чистая функция: deforms=true, class Auto, матрица не менялась -> true */ }
+#[test] fn a_static_class_overrides_deformation() { /* Static + deforms=true -> false (явное решение игры) */ }
+#[test] fn an_unchanged_pose_does_not_invalidate_shadow_pages() { /* pose_version равен -> moved_shadow_bounds пуст */ }
+#[test] fn a_changed_pose_invalidates_the_union_of_old_and_new_bounds() { /* ... */ }
+#[test] fn the_shadow_of_a_waving_arm_updates_in_the_pages() { /* GPU: персонаж стоит, рука поднимается за 10 кадров — центр тени на земле смещается ≥ 3 пикселя; до исправления красный */ }
+#[test] fn morph_weight_changes_invalidate_shadow_pages() { /* ... */ }
+```
+Документ: строка в `PLAN_LIGHTING.md` §2.1 («деформация учтена»), `CHANGELOG.md`.
 
 ## Границы
 - **Читать:** `shadow/cache.rs`, `shadow/page_table.rs`, `shadow/vsm_clipmap.rs:90–130,284–340,380–500`, `renderer/frame/shadows.rs`, `renderer/frame.rs:340–405`, `renderer/contexts.rs:195–260`, `systems.rs:55–130`, `shadow/vsm_clipmap/tests.rs`, `tests/golden_frames.rs`.

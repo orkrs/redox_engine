@@ -1,0 +1,49 @@
+# PHY-06 — Контроллер персонажа: перенос вращения платформы и прилипание на крутых спусках
+
+- **Статус:** не начат.
+
+- **Размер:** 3 шага (S, S, S) ≈ 3 дня. **Крейт:** `redox_physics`. **Зависит от:** PHY-01…03 (готовы). **Блокирует:** — (NET-03 использует шаг контроллера).
+- **Модель:** haiku (физические числа — стратегия «остановись и сообщи»).
+- Закрывает «нет: перенос вращения платформы, спец-режимы» из `PLAN_EXECUTION.md` B5.
+
+## Суть и аудит
+- `character.rs`: `platform_carry(colliders, ground_pose) -> Vec3` (строка ~37) переносит персонажа линейной скоростью платформы; **вращение** платформы (карусель, поворотный мост) не учитывается — персонаж стоит на месте, пока платформа вращается под ним. Прилипание к земле (`snap_to_ground`) работает на склонах до `max_slope`; на спусках круче `snap_slope` (но ходимых) персонаж «отскакивает» короткими прыжками, а на ступенях при быстром спуске отрывается.
+- Скорость платформы определяется как разность положения за шаг (`ground_pose` — `(ColliderHandle, Vec3)`; **ПРОВЕРИТЬ** что хранится и откуда).
+
+## Шаг 1 — перенос вращения (S)
+- В `ground_pose` добавить ориентацию платформы: `GroundPose { handle, position: Vec3, rotation: Quat }`; в `platform_carry` вычислять смещение точки опоры при вращении платформы за шаг: `delta = (rot_now * rot_prev⁻¹) * (p_char − pos_prev) + (pos_now − pos_prev) − (p_char − pos_prev)`; применять к желаемому смещению. Вращение персонажа вокруг вертикали вместе с платформой (`yaw_delta`) — **параметр** `CharacterSettings::inherit_platform_yaw: bool` (по умолчанию false; игра решает).
+- Чистая функция `rotate_about(point, pivot, delta_rot) -> Vec3` и `yaw_of(quat) -> f32` с тестами.
+Тесты (`redox_physics/tests/character_platforms.rs`, рядом с существующим тестом платформ):
+```rust
+#[test] fn a_character_on_a_rotating_platform_moves_along_the_circle() { /* платформа вращается 1 рад/с вокруг оси Y, персонаж стоит на радиусе 2 м: через 1 с угол позиции относительно оси ≈ 1 рад ±0.1, расстояние до оси 2 ±0.05 */ }
+#[test] fn the_character_stays_at_the_same_point_of_the_platform_in_its_local_frame() { /* ошибка ≤ 5 см за 3 с */ }
+#[test] fn a_platform_that_rotates_and_translates_carries_the_character_with_both() { /* ... */ }
+#[test] fn inheriting_yaw_turns_the_character_with_the_platform() { /* флаг включён: yaw_delta ≈ угол платформы ±0.05 */ }
+#[test] fn the_old_linear_platform_test_still_passes() { /* регресс */ }
+```
+
+## Шаг 2 — прилипание на крутых спусках (S)
+- Диагностика сначала: тест-воспроизведение `walking_down_a_steep_slope_stays_grounded` (склон 40° при `max_slope = 50°`, ходьба вниз 3 с): доля тиков с `grounded == false` должна быть ≤ 5 %. Если на текущем коде красный — измерить число (находка), затем исправить: `snap_to_ground` дистанция = `max(snap_distance, step_len * tan(slope_angle_below) + eps)` (увеличивать по скорости спуска), ограничение — `max_snap`.
+- Тесты:
+```rust
+#[test] fn walking_down_a_steep_slope_stays_grounded() { /* ≤ 5% тиков в воздухе */ }
+#[test] fn a_ledge_still_lets_the_character_fall() { /* обрыв > max_snap: падает */ }
+#[test] fn jumping_still_leaves_the_ground_on_a_slope() { /* прыжок отрывает: snap не мешает */ }
+#[test] fn walking_down_stairs_keeps_contact() { /* лестница 20 см × 10: grounded ≥ 90% тиков */ }
+#[test] fn the_snap_does_not_pull_the_character_up_a_wall() { /* ... */ }
+```
+
+## Шаг 3 — документация (S)
+Строки `PLAN_EXECUTION.md` B5 (✅ полностью), `PROGRESS.md`, `CHANGELOG.md`; doc-комментарии новых полей `CharacterSettings`.
+
+## Границы
+- **Читать:** `redox_physics/src/{character,components,context,sync}.rs`, `tests/{character_v2,character_platforms}.rs`.
+- **Создать:** тесты по необходимости.
+- **Менять:** `character.rs`, `components.rs` (поле настроек).
+- **Не трогать:** joints, контакты.
+
+## Проверка
+`cargo fmt`, `cargo clippy -p redox_physics --all-targets -- -D warnings`, `cargo test -p redox_physics`, `cargo check --workspace --all-targets`, `python scripts/check_file_sizes.py`.
+
+## Для исполнителя
+`git merge --ff-only main`; `Cargo.lock` из main. Если числа допусков недостижимы (вращение, прилипание) — остановись и сообщи измеренные значения. Не менять сигнатуры публичного API без нужды (поля настроек — только добавлять, с `Default`).

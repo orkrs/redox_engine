@@ -8,7 +8,7 @@
 | [audit/REVISION_REPORT.md](audit/REVISION_REPORT.md) | Состояние кода, сопоставление планов с кодом, найденные проблемы, проверенные «ложные тревоги» |
 | [audit/CANCELLED.md](audit/CANCELLED.md) | Реестр закрытых, исключённых и отложенных задач с причинами |
 | [BACKLOG.md](BACKLOG.md) | Задачи с ID, размерами, зависимостями, группами для параллельной работы; раздел 4 — перенос всех открытых пунктов `PLAN_EXECUTION.md` (спеки пишутся перед запуском); вопросы к владельцу |
-| `specs/` | По одному файлу на задачу (19 выполненных или заблокированных + 24 новых спеки волны 7, см. BACKLOG §6) |
+| `specs/` | По одному файлу на задачу (64 файла: 19 выполненных или заблокированных + 24 спеки волны 7 + 21 спека волны 8, см. BACKLOG §6–7) |
 | `../PLAN_EXECUTION.md` | Единственный источник статуса этапов A–H (общий план) |
 | `../../crates/redox_physics/tests/character_v2.rs`, `ray_sensors.rs` | Тесты PHY-01/02 и AUD-03 (были с `#[ignore]`, теперь включены и зелёные) |
 
@@ -27,6 +27,13 @@
 Навигация: [NAV-01](specs/NAV-01.md) (spike) → [NAV-02](specs/NAV-02.md) → [NAV-03](specs/NAV-03.md) → [NAV-04](specs/NAV-04.md).
 Виртуальная геометрия: [VG-01](specs/VG-01.md) → [VG-02](specs/VG-02.md) → [VG-03](specs/VG-03.md); [VG-04](specs/VG-04.md) (HLOD).
 Материалы: [MAT-01](specs/MAT-01.md) → [MAT-02](specs/MAT-02.md) → [MAT-03](specs/MAT-03.md); [MAT-04](specs/MAT-04.md), [MAT-05](specs/MAT-05.md), [MAT-06](specs/MAT-06.md) (после MAT-01) → [MAT-07](specs/MAT-07.md).
+
+**Волна 8 (одобрена владельцем 2026-10-29, ещё не выполнялась):**
+Рендер: [RND-06](specs/RND-06.md) (разбить `frame.rs`) → [RND-09](specs/RND-09.md) (ресурсный граф кадра); [RND-10](specs/RND-10.md) (скорость и прозрачные, по воротам); [PST-03](specs/PST-03.md) (motion blur за контур), [PST-07](specs/PST-07.md) (TSR).
+Отражения и GI: [RFL-01](specs/RFL-01.md) (пробы отражений) → [GI-01](specs/GI-01.md) (DDGI по SDF) → [GI-02](specs/GI-02.md) (карточки) → [GI-03](specs/GI-03.md) (экранные пробы), [GI-04](specs/GI-04.md) (отражения из кэша); [GI-05](specs/GI-05.md) (аппаратные лучи, spike); [GI-06](specs/GI-06.md) (SDF из мира, стриминг).
+Анимация: [ANM-04](specs/ANM-04.md) (glTF в Courier, порог GPU/CPU). Физика: [PHY-06](specs/PHY-06.md), [PHY-07](specs/PHY-07.md) (ragdoll). Навигация: [NAV-05](specs/NAV-05.md).
+Скрипты: [SCR-04](specs/SCR-04.md) (host API v2) → [SCR-02](specs/SCR-02.md) (SDK). Сеть: [NET-01](specs/NET-01.md) → [NET-02](specs/NET-02.md) → [NET-03](specs/NET-03.md). Звук: [AUD-07](specs/AUD-07.md).
+Остатки волны 7 расписаны в её же спеках (в строке «Статус» указано, какие шаги остались): [VG-02](specs/VG-02.md), [VG-03](specs/VG-03.md), [VG-04](specs/VG-04.md), [MAT-02](specs/MAT-02.md)…[MAT-07](specs/MAT-07.md), [PST-06](specs/PST-06.md), [RND-08](specs/RND-08.md) (шаги 3–4).
 
 ## Как взять задачу (инструкция исполнителю)
 1. Прочитай **только** свою спецификацию и файлы из её раздела «Читать». Остальной репозиторий не изучай.
