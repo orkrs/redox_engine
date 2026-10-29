@@ -51,10 +51,14 @@ pub struct ApiPermissions {
     pub entity_values: bool,
     /// Allows importing `env.nav_path`.
     pub nav: bool,
+    /// Allows `sys.`-prefixed commands (`sys.spawn`, `sys.despawn`, `sys.set_position`,
+    /// `sys.set_active`), which the host applies after the call. Other commands are game commands
+    /// and are not affected by this switch.
+    pub commands_system: bool,
 }
 
 impl ApiPermissions {
-    /// Every API function is permitted.
+    /// Every API function is permitted, including the host API v2 additions.
     pub const fn all() -> Self {
         Self {
             state: true,
@@ -63,6 +67,22 @@ impl ApiPermissions {
             query: true,
             entity_values: true,
             nav: true,
+            commands_system: true,
+        }
+    }
+
+    /// The host API v1 surface only: `state`, `events` and `world` are permitted, every v2 switch
+    /// (`query`, `entity_values`, `nav`, `commands_system`) is off. A script importing a v2
+    /// function fails to link under this configuration.
+    pub const fn v1_only() -> Self {
+        Self {
+            state: true,
+            events: true,
+            world: true,
+            query: false,
+            entity_values: false,
+            nav: false,
+            commands_system: false,
         }
     }
 
@@ -75,6 +95,7 @@ impl ApiPermissions {
             query: false,
             entity_values: false,
             nav: false,
+            commands_system: false,
         }
     }
 }
@@ -87,9 +108,17 @@ mod tests {
     fn permissions_default_to_off() {
         let none = ApiPermissions::none();
         assert!(!none.query && !none.entity_values && !none.nav);
-        assert!(!none.world);
+        assert!(!none.world && !none.commands_system);
         let all = ApiPermissions::all();
         assert!(all.query && all.entity_values && all.nav && all.world);
+        assert!(all.commands_system);
+    }
+
+    #[test]
+    fn v1_only_disables_the_new_imports() {
+        let v1 = ApiPermissions::v1_only();
+        assert!(v1.state && v1.events && v1.world);
+        assert!(!v1.query && !v1.entity_values && !v1.nav && !v1.commands_system);
     }
 }
 

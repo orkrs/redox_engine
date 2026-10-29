@@ -62,7 +62,7 @@ impl ScriptBackend for WasmiBackend {
         let linker = build_linker(&self.engine, config)?;
 
         let state = State {
-            host: HostData::default(),
+            host: HostData::with_system_commands(config.api.commands_system),
             limits: StoreLimitsBuilder::new()
                 .memory_size(config.memory_limit_bytes)
                 .build(),

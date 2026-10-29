@@ -217,9 +217,15 @@ pub(crate) fn answer_bytes(answers: &[f32]) -> Vec<u8> {
     answers.iter().flat_map(|v| v.to_le_bytes()).collect()
 }
 
+/// Prefix of the commands the host itself applies after a call (`sys.spawn`, ...). Other command
+/// names belong to the game.
+pub(crate) const SYSTEM_COMMAND_PREFIX: &str = "sys.";
+
 /// Per-instance state shared between the host functions and the runtime.
 #[derive(Debug, Default)]
 pub(crate) struct HostData {
+    /// Whether scripts may emit `sys.` commands.
+    system_commands: bool,
     /// Accumulated game time in seconds.
     pub(crate) clock: f32,
     logs: VecDeque<String>,
@@ -455,8 +461,22 @@ impl HostData {
         std::mem::take(&mut self.events)
     }
 
-    /// Queues a command; dropped once [`MAX_COMMANDS`] are pending.
+    /// A host with the `sys.` command permission set as given (see
+    /// [`ApiPermissions::commands_system`](crate::ApiPermissions::commands_system)).
+    pub(crate) fn with_system_commands(allowed: bool) -> Self {
+        Self {
+            system_commands: allowed,
+            ..Self::default()
+        }
+    }
+
+    /// Queues a command; dropped once [`MAX_COMMANDS`] are pending. A `sys.` command is dropped
+    /// (and logged) unless the system command permission was granted.
     pub(crate) fn emit_command(&mut self, name: &str, args: [f32; 3]) {
+        if name.starts_with(SYSTEM_COMMAND_PREFIX) && !self.system_commands {
+            log::warn!("script command `{name}` needs the system command permission");
+            return;
+        }
         if self.commands.len() < MAX_COMMANDS {
             self.commands.push(ScriptCommand {
                 name: name.to_owned(),
@@ -645,6 +665,23 @@ mod tests {
             answer_bytes(&[1.0, -1.0]),
             [1.0f32.to_le_bytes(), (-1.0f32).to_le_bytes()].concat()
         );
+    }
+
+    #[test]
+    fn system_commands_require_the_permission() {
+        let mut denied = HostData::default();
+        denied.emit_command("sys.spawn", [0.0; 3]);
+        denied.emit_command("game.fire", [1.0, 0.0, 0.0]);
+        let names: Vec<String> = denied
+            .take_commands()
+            .into_iter()
+            .map(|c| c.name)
+            .collect();
+        assert_eq!(names, vec!["game.fire"], "only game commands pass");
+
+        let mut allowed = HostData::with_system_commands(true);
+        allowed.emit_command("sys.spawn", [0.0; 3]);
+        assert_eq!(allowed.take_commands().len(), 1);
     }
 
     fn ray_bytes(ray: [f32; 7]) -> Vec<u8> {

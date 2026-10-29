@@ -393,3 +393,65 @@ fn the_value_and_nav_permissions_gate_their_imports() {
         );
     }
 }
+
+/// Emits a system command and a game command, in that order.
+const COMMANDS: &str = r#"
+(module
+  (import "env" "emit_command" (func $cmd (param i32 i32 f32 f32 f32)))
+  (memory (export "memory") 1)
+  (data (i32.const 0) "sys.spawn")
+  (data (i32.const 16) "game.fire")
+  (func (export "on_update") (param f32)
+    (call $cmd (i32.const 0) (i32.const 9) (f32.const 1) (f32.const 2) (f32.const 3))
+    (call $cmd (i32.const 16) (i32.const 9) (f32.const 0) (f32.const 0) (f32.const 0))))
+"#;
+
+#[test]
+fn a_sys_command_is_dropped_without_the_permission() {
+    for kind in backends() {
+        let config = ScriptConfig {
+            api: ApiPermissions {
+                commands_system: false,
+                ..ApiPermissions::all()
+            },
+            ..ScriptConfig::default()
+        };
+        let mut rt = runtime(kind, config);
+        let id = rt.instantiate(&wasm(COMMANDS)).unwrap();
+        rt.update(id, 0.016).unwrap();
+        let names: Vec<String> = rt.take_commands(id).into_iter().map(|c| c.name).collect();
+        assert_eq!(names, vec!["game.fire"], "{kind:?}");
+    }
+}
+
+#[test]
+fn a_sys_command_passes_with_the_permission() {
+    for kind in backends() {
+        let mut rt = runtime(kind, ScriptConfig::default());
+        let id = rt.instantiate(&wasm(COMMANDS)).unwrap();
+        rt.update(id, 0.016).unwrap();
+        let commands = rt.take_commands(id);
+        assert_eq!(commands.len(), 2, "{kind:?}");
+        assert_eq!(commands[0].name, "sys.spawn");
+        assert_eq!(commands[0].args, [1.0, 2.0, 3.0]);
+    }
+}
+
+#[test]
+fn v1_only_disables_the_new_imports() {
+    for kind in backends() {
+        let config = ScriptConfig {
+            api: ApiPermissions::v1_only(),
+            ..ScriptConfig::default()
+        };
+        let mut rt = runtime(kind, config);
+        assert!(
+            matches!(rt.instantiate(&wasm(NAME_LOOKUP)), Err(ScriptError::Link(_))),
+            "{kind:?}: find_by_name is a v2 import"
+        );
+        assert!(
+            rt.instantiate(&wasm(COMMANDS)).is_ok(),
+            "{kind:?}: v1 imports still link"
+        );
+    }
+}
