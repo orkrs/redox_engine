@@ -33,6 +33,9 @@ pub mod systems;
 pub mod validate;
 pub mod voices;
 
+pub use analyze::{
+    AnalyzeError, AudioStats, DecodedAudio, analyze_samples, decode_bytes, loop_seam_error,
+};
 pub use asset_types::AudioData;
 pub use components::{
     AcousticMaterial, AudioEmitter, AudioListener, ReverbPreset, ReverbZone, SpatialAudioEmitter,
@@ -53,9 +56,6 @@ pub use music_play::{KiraMusicVoice, MusicError};
 pub use systems::{
     OcclusionResult, check_occlusion, compute_active_reverb, occlusion_from_hits,
     occlusion_raycast_system, reverb_listener_system,
-};
-pub use analyze::{
-    AnalyzeError, AudioStats, DecodedAudio, analyze_samples, decode_bytes, loop_seam_error,
 };
 pub use validate::{Finding, Severity, validate_cue_library, validate_cue_ron};
 pub use voices::{VoiceBudget, VoiceDecision};

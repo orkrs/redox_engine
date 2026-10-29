@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use redox_anim::gltf_import::load_glb;
-use redox_anim::{bind_clips, validate_binding, ClipRole};
+use redox_anim::{ClipRole, bind_clips, validate_binding};
 
 use crate::rig::{self, Rig};
 
@@ -54,8 +54,7 @@ pub fn load_from(path: &Path) -> Result<Rig, String> {
         .ok_or("no skinned model in the file")?;
     let binding = bind_clips(&FOX_ROLES, &model, &[]).map_err(|e| format!("{e:?}"))?;
     let graph = rig::graph(&binding, None).ok_or("the fox lacks an idle, walk or run clip")?;
-    validate_binding(&graph, &model.skeleton, model.clips.len())
-        .map_err(|e| format!("{e:?}"))?;
+    validate_binding(&graph, &model.skeleton, model.clips.len()).map_err(|e| format!("{e:?}"))?;
     Ok(Rig {
         model,
         graph,

@@ -187,7 +187,11 @@ impl Renderer {
                     wgpu::TexelCopyTextureInfo {
                         texture: prefiltered,
                         mip_level: mip,
-                        origin: wgpu::Origin3d { x: 0, y: 0, z: face },
+                        origin: wgpu::Origin3d {
+                            x: 0,
+                            y: 0,
+                            z: face,
+                        },
                         aspect: wgpu::TextureAspect::All,
                     },
                     wgpu::TexelCopyTextureInfo {

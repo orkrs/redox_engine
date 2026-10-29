@@ -113,9 +113,7 @@ fn parse(args: &[String]) -> Result<Command, String> {
             triangles: hlod_bake::parse_triangles(flags)?,
         }),
         ["bake-navmesh", args @ ..] => nav::parse_bake_navmesh(args).map(Command::BakeNavmesh),
-        ["audio-check", args @ ..] => {
-            audio_check::parse_audio_check(args).map(Command::AudioCheck)
-        }
+        ["audio-check", args @ ..] => audio_check::parse_audio_check(args).map(Command::AudioCheck),
         [] => Err("missing command".into()),
         [cmd, ..]
             if ![

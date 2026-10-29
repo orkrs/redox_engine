@@ -104,7 +104,7 @@ fn find_clip(role: &ClipRole, model: &SkinnedModel, overrides: &[(&str, &str)]) 
         .iter()
         .find(|entry| entry.0 == role.role)
         .and_then(|entry| by_name(entry.1))
-        .or_else(|| role.candidates.iter().find_map(|name| by_name(*name)))
+        .or_else(|| role.candidates.iter().find_map(|name| by_name(name)))
 }
 
 /// Lower-cased name without an `armature|` style prefix.
@@ -138,7 +138,9 @@ pub fn validate_binding(
         for state in &layer.states {
             let indices: Vec<usize> = match &state.motion {
                 Motion::Clip(index) => vec![*index],
-                Motion::Blend1D { entries, .. } => entries.iter().map(|(_, index)| *index).collect(),
+                Motion::Blend1D { entries, .. } => {
+                    entries.iter().map(|(_, index)| *index).collect()
+                }
             };
             for index in indices.into_iter().filter(|index| *index >= clips_len) {
                 errors.push(BindingError::ClipIndexOutOfRange {

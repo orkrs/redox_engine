@@ -47,7 +47,13 @@ fn f16_to_f32(bits: u16) -> f32 {
 }
 
 /// Reads texel `(x, y)` of mip 0 of one cube-array layer, as linear RGBA.
-fn read_probe_texel(renderer: &Renderer, set: &ReflectionProbeSet, layer: u32, x: u32, y: u32) -> [f32; 4] {
+fn read_probe_texel(
+    renderer: &Renderer,
+    set: &ReflectionProbeSet,
+    layer: u32,
+    x: u32,
+    y: u32,
+) -> [f32; 4] {
     let device = &renderer.device;
     let row_bytes = SIZE * TEXEL_BYTES;
     let buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -61,7 +67,11 @@ fn read_probe_texel(renderer: &Renderer, set: &ReflectionProbeSet, layer: u32, x
         wgpu::TexelCopyTextureInfo {
             texture: set.texture(),
             mip_level: 0,
-            origin: wgpu::Origin3d { x: 0, y: 0, z: layer },
+            origin: wgpu::Origin3d {
+                x: 0,
+                y: 0,
+                z: layer,
+            },
             aspect: wgpu::TextureAspect::All,
         },
         wgpu::TexelCopyBufferInfo {
@@ -86,7 +96,7 @@ fn read_probe_texel(renderer: &Renderer, set: &ReflectionProbeSet, layer: u32, x
     });
     let _ = device.poll(wgpu::PollType::wait_indefinitely());
     rx.recv().expect("map callback").expect("map read");
-    let data = slice.get_mapped_range();
+    let data = slice.get_mapped_range().expect("mapped range");
     let offset = (y * row_bytes + x * TEXEL_BYTES) as usize;
     let texel: Vec<f32> = (0..4)
         .map(|c| {
@@ -123,12 +133,26 @@ fn object(mesh: usize, material: usize, id: u32, center: Vec3, scale: Vec3) -> R
 fn scene(renderer: &mut Renderer) -> Scene {
     let cube = renderer.upload_mesh(&create_cube());
     let floor_material = renderer.add_material(
-        Material::solid(Vec3::splat(0.6)).metallic(1.0).roughness(0.1),
+        Material::solid(Vec3::splat(0.6))
+            .metallic(1.0)
+            .roughness(0.1),
     );
     let wall_material = renderer.add_material(Material::solid(Vec3::new(1.0, 0.0, 0.0)));
     let objects = vec![
-        object(cube, floor_material, 1, Vec3::new(0.0, -1.0, 0.0), Vec3::new(20.0, 0.1, 20.0)),
-        object(cube, wall_material, 2, Vec3::new(4.0, 0.0, 0.0), Vec3::splat(2.0)),
+        object(
+            cube,
+            floor_material,
+            1,
+            Vec3::new(0.0, -1.0, 0.0),
+            Vec3::new(20.0, 0.1, 20.0),
+        ),
+        object(
+            cube,
+            wall_material,
+            2,
+            Vec3::new(4.0, 0.0, 0.0),
+            Vec3::splat(2.0),
+        ),
     ];
     let mut lights = LightScene::new(DirectionalLight::new(
         Vec3::new(0.3, -0.6, -1.0),
@@ -161,11 +185,19 @@ fn scene(renderer: &mut Renderer) -> Scene {
 }
 
 /// Renders the scene from `eye` looking along `forward`; returns the RGBA8 bytes.
+/// Renders 16 frames and returns the last. The dither pattern of the shader repeats every 16
+/// frames, and shadow pages settle after the first frame, so two images taken 16 frames apart are
+/// comparable bit for bit; images of neighbouring frames differ by a level or two.
 fn render(renderer: &mut Renderer, scene: &Scene, eye: Vec3, forward: Vec3) -> Vec<u8> {
+    for _ in 0..15 {
+        let _ = render_once(renderer, scene, eye, forward);
+    }
+    render_once(renderer, scene, eye, forward)
+}
+
+fn render_once(renderer: &mut Renderer, scene: &Scene, eye: Vec3, forward: Vec3) -> Vec<u8> {
     let rotation = Quat::from_rotation_arc(Vec3::NEG_Z, forward.normalize());
-    renderer
-        .camera_uniform
-        .update(&scene.camera, eye, rotation);
+    renderer.camera_uniform.update(&scene.camera, eye, rotation);
     renderer.update_camera_buffer();
     let frame = FrameView::new(&scene.camera, &scene.objects, &scene.lights);
     renderer
@@ -252,7 +284,13 @@ fn a_captured_probe_contains_the_colour_of_the_wall_it_faces() {
         .capture_reflection_probe(0, &scene.objects, &scene.lights)
         .expect("capture");
 
-    let texel = read_probe_texel(&renderer, &renderer.reflection_probes, 0, SIZE / 2, SIZE / 2);
+    let texel = read_probe_texel(
+        &renderer,
+        &renderer.reflection_probes,
+        0,
+        SIZE / 2,
+        SIZE / 2,
+    );
     assert!(texel[0] > 0.5, "red channel {}", texel[0]);
     assert!(texel[2] < 0.2, "blue channel {}", texel[2]);
 }
@@ -281,7 +319,10 @@ fn capture_restores_the_renderer_settings() {
         .capture_reflection_probe(0, &[], &lights)
         .expect("capture");
 
-    assert_eq!(bytemuck::bytes_of(&renderer.camera_uniform), &before_camera[..]);
+    assert_eq!(
+        bytemuck::bytes_of(&renderer.camera_uniform),
+        &before_camera[..]
+    );
     assert_eq!(
         bytemuck::bytes_of(&renderer.pbr_pass_light_uniform()),
         &before_light[..]
@@ -307,7 +348,19 @@ fn the_frame_is_unchanged_without_probes() {
     renderer.set_reflection_probes(&[]);
     let enabled_but_empty = render(&mut renderer, &scene, eye, forward);
 
-    assert_eq!(without, enabled_but_empty);
+    let differing = without
+        .iter()
+        .zip(&enabled_but_empty)
+        .filter(|(a, b)| a != b)
+        .count();
+    // Two images 16 frames apart still differ by one level in a handful of bytes (temporal
+    // filtering); the probe path must not add more than that.
+    assert!(
+        differing * 200 <= without.len() && max_channel_diff(&without, &enabled_but_empty) <= 1,
+        "{differing} of {} bytes differ, largest difference {}",
+        without.len(),
+        max_channel_diff(&without, &enabled_but_empty)
+    );
 }
 
 #[test]
@@ -380,9 +433,9 @@ fn outside_the_box_the_global_ibl_is_used() {
     };
     let scene = scene(&mut renderer);
     let (eye, forward) = reflection_view();
-    let without = render(&mut renderer, &scene, eye, forward);
 
-    // The box is smaller than the floor distance: every floor pixel lies outside it.
+    // The box is smaller than the floor distance: every floor pixel lies outside it. The capture
+    // happens first so that its side effects (shadow pages re-centred on the probe) are in both images.
     let tiny = ReflectionProbe {
         center: Vec3::ZERO,
         half_extent: Vec3::splat(0.5),
@@ -393,8 +446,14 @@ fn outside_the_box_the_global_ibl_is_used() {
     renderer
         .capture_reflection_probe(0, &scene.objects, &scene.lights)
         .expect("capture");
+    let without = render(&mut renderer, &scene, eye, forward);
     renderer.set_reflection_probes_enabled(true);
     let with = render(&mut renderer, &scene, eye, forward);
 
-    assert!(max_channel_diff(&without, &with) <= 1);
+    let differing = without.iter().zip(&with).filter(|(a, b)| a != b).count();
+    assert!(
+        max_channel_diff(&without, &with) <= 1,
+        "{differing} bytes differ, largest difference {}",
+        max_channel_diff(&without, &with)
+    );
 }

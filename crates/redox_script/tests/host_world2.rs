@@ -169,7 +169,11 @@ fn position_of_writes_three_floats() {
         assert_eq!(rt.read_output(id, "x"), Some(1.5), "{kind:?}");
         assert_eq!(rt.read_output(id, "y"), Some(-2.0), "{kind:?}");
         assert_eq!(rt.read_output(id, "z"), Some(3.25), "{kind:?}");
-        assert_eq!(rt.read_output(id, "none"), Some(0.0), "{kind:?}: unknown id");
+        assert_eq!(
+            rt.read_output(id, "none"),
+            Some(0.0),
+            "{kind:?}: unknown id"
+        );
     }
 }
 
@@ -232,7 +236,10 @@ fn without_the_query_permission_the_import_is_missing_or_denied() {
         };
         let mut rt = runtime(kind, config);
         assert!(
-            matches!(rt.instantiate(&wasm(NAME_LOOKUP)), Err(ScriptError::Link(_))),
+            matches!(
+                rt.instantiate(&wasm(NAME_LOOKUP)),
+                Err(ScriptError::Link(_))
+            ),
             "{kind:?}: find_by_name needs `query`"
         );
         assert!(matches!(
@@ -316,7 +323,11 @@ fn overlap_sphere_and_get_value_of_answer_through_the_host() {
         assert_eq!(rt.read_output(id, "n"), Some(2.0), "{kind:?}");
         assert_eq!(rt.read_output(id, "first"), Some(1.0), "{kind:?}");
         assert_eq!(rt.read_output(id, "hp"), Some(80.0), "{kind:?}");
-        assert_eq!(rt.read_output(id, "none"), Some(0.0), "{kind:?}: no such entity");
+        assert_eq!(
+            rt.read_output(id, "none"),
+            Some(0.0),
+            "{kind:?}: no such entity"
+        );
     }
 }
 
@@ -388,7 +399,10 @@ fn the_value_and_nav_permissions_gate_their_imports() {
         };
         let mut rt = runtime(kind, without_values);
         assert!(
-            matches!(rt.instantiate(&wasm(FIELD_QUERIES)), Err(ScriptError::Link(_))),
+            matches!(
+                rt.instantiate(&wasm(FIELD_QUERIES)),
+                Err(ScriptError::Link(_))
+            ),
             "{kind:?}: get_value_of needs `entity_values`"
         );
     }
@@ -446,7 +460,10 @@ fn v1_only_disables_the_new_imports() {
         };
         let mut rt = runtime(kind, config);
         assert!(
-            matches!(rt.instantiate(&wasm(NAME_LOOKUP)), Err(ScriptError::Link(_))),
+            matches!(
+                rt.instantiate(&wasm(NAME_LOOKUP)),
+                Err(ScriptError::Link(_))
+            ),
             "{kind:?}: find_by_name is a v2 import"
         );
         assert!(
@@ -497,7 +514,12 @@ fn the_guard_example_alerts_within_five_metres_and_counts_allies() {
         let id = rt.instantiate(&wasm(include_str!("guard.wat"))).unwrap();
         rt.set_input(id, "self_id", 2.0);
 
-        rt.set_world_queries(id, Box::new(Yard { player: [3.0, 0.0, 0.0] }));
+        rt.set_world_queries(
+            id,
+            Box::new(Yard {
+                player: [3.0, 0.0, 0.0],
+            }),
+        );
         rt.update(id, 0.016).unwrap();
         assert_eq!(rt.read_output(id, "distance"), Some(3.0), "{kind:?}");
         assert_eq!(rt.read_output(id, "allies"), Some(3.0), "{kind:?}");
@@ -506,7 +528,12 @@ fn the_guard_example_alerts_within_five_metres_and_counts_allies() {
         assert_eq!(events[0].name, "alert");
         assert_eq!(events[0].value, 3.0);
 
-        rt.set_world_queries(id, Box::new(Yard { player: [10.0, 0.0, 0.0] }));
+        rt.set_world_queries(
+            id,
+            Box::new(Yard {
+                player: [10.0, 0.0, 0.0],
+            }),
+        );
         rt.update(id, 0.016).unwrap();
         assert_eq!(rt.read_output(id, "distance"), Some(10.0), "{kind:?}");
         assert!(rt.take_events(id).is_empty(), "{kind:?}: no alert at 10 m");

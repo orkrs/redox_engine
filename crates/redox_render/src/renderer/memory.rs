@@ -38,10 +38,7 @@ impl Renderer {
         let mut budget = self.memory_limits.clone();
         budget.add(MemoryCategory::Meshes, self.registry.mesh_bytes());
         // Reflection probe array (RFL-01), allocated once; counted as texture memory.
-        budget.add(
-            MemoryCategory::Textures,
-            self.reflection_probes.gpu_bytes(),
-        );
+        budget.add(MemoryCategory::Textures, self.reflection_probes.gpu_bytes());
         for texture in self.registry.textures() {
             budget.add(MemoryCategory::Textures, gpu_texture_bytes(texture));
         }

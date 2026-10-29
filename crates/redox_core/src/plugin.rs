@@ -162,6 +162,26 @@ impl Plugin for NavPlugin {
     }
 }
 
+/// Script host world access: inserts an empty [`crate::script_world::ScriptPrefabs`] table so that
+/// `sys.spawn.<prefab>` commands resolve (the game registers its prefabs in `on_setup` or later).
+///
+/// Scripts run when the game calls [`crate::script_world::run_script_update`] for each script
+/// instance; the plugin adds no system of its own (which instances run, and when, is the game's choice).
+pub struct ScriptWorldPlugin;
+
+impl Plugin for ScriptWorldPlugin {
+    fn build(&self, app: &mut AppBuilder) {
+        app.on_setup(|world| {
+            if world
+                .get_resource::<crate::script_world::ScriptPrefabs>()
+                .is_none()
+            {
+                world.insert_resource(crate::script_world::ScriptPrefabs::new());
+            }
+        });
+    }
+}
+
 /// GPU renderer is created in [`AppBuilder::run`]; this plugin is the explicit hook.
 pub struct RenderPlugin;
 

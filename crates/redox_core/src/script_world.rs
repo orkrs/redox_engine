@@ -126,12 +126,8 @@ impl WorldQueries for WorldAdapter {
         let snap = self.lock();
         let physics = snap.physics.as_ref()?;
         let origin = Vec3::from_array(origin);
-        let (point, _, _) = physics.cast_ray_with_normal(
-            origin,
-            Vec3::from_array(direction),
-            max_distance,
-            &[],
-        )?;
+        let (point, _, _) =
+            physics.cast_ray_with_normal(origin, Vec3::from_array(direction), max_distance, &[])?;
         Some(point.distance(origin))
     }
 
@@ -144,12 +140,8 @@ impl WorldQueries for WorldAdapter {
         let snap = self.lock();
         let physics = snap.physics.as_ref()?;
         let origin = Vec3::from_array(origin);
-        let (point, _, entity) = physics.cast_ray_with_normal(
-            origin,
-            Vec3::from_array(direction),
-            max_distance,
-            &[],
-        )?;
+        let (point, _, entity) =
+            physics.cast_ray_with_normal(origin, Vec3::from_array(direction), max_distance, &[])?;
         Some((ScriptEntityId(entity?.id()), point.distance(origin)))
     }
 
@@ -198,7 +190,10 @@ impl WorldQueries for WorldAdapter {
     }
 
     fn find_by_name(&mut self, name: &str) -> Option<ScriptEntityId> {
-        self.lock().ids_by_name.get(name).map(|id| ScriptEntityId(*id))
+        self.lock()
+            .ids_by_name
+            .get(name)
+            .map(|id| ScriptEntityId(*id))
     }
 
     fn find_by_tag(&mut self, tag: &str, out: &mut Vec<ScriptEntityId>, limit: usize) {
@@ -232,11 +227,8 @@ impl WorldQueries for WorldAdapter {
             return false;
         };
         // Agent class 0: the default class of the baked data.
-        let Some(path) = nav.find_path(
-            Vec3::from_array(from),
-            Vec3::from_array(to),
-            AgentClass(0),
-        ) else {
+        let Some(path) = nav.find_path(Vec3::from_array(from), Vec3::from_array(to), AgentClass(0))
+        else {
             return false;
         };
         let found = !path.is_empty();

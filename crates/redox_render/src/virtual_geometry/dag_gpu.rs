@@ -19,6 +19,8 @@
 //!   RFL-01 raises it, so up to 12 storage buffers per stage would be allowed after that change.
 //! - Capacities (`max_clusters`, `max_child_ids`, `queue_capacity`) are fixed at construction.
 
+use std::collections::HashMap;
+
 use bytemuck::{Pod, Zeroable};
 
 use super::dag::{ClusterDag, DagClusterGpu, DagInstance};
@@ -137,6 +139,14 @@ impl DagSceneData {
             out.child_ids.extend(children.iter().map(|&c| c + base));
 
             let root_first = out.root_list.len() as u32;
+            // Every cluster of a group shares its children, so only the first one of the group
+            // queues them (`_pad[0] = 1`); the others would queue the same clusters again.
+            let mut group_leader: HashMap<u32, usize> = HashMap::new();
+            for (i, c) in dag.clusters.iter().enumerate() {
+                if c.group != u32::MAX {
+                    group_leader.entry(c.group).or_insert(i);
+                }
+            }
             for (i, c) in dag.clusters.iter().enumerate() {
                 let (first, count) = match c.group {
                     u32::MAX => (0, 0),
@@ -144,6 +154,7 @@ impl DagSceneData {
                 };
                 let mut gpu = DagClusterGpu::from_cluster(c, child_base + first, count);
                 gpu.index_offset += index_base;
+                gpu._pad[0] = u32::from(group_leader.get(&c.group) == Some(&i));
                 out.clusters.push(gpu);
                 out.max_level = out.max_level.max(c.level);
                 if c.parent_error == f32::INFINITY {
@@ -288,15 +299,27 @@ impl DagTraversal {
             bind_group_layouts: &[Some(&bgl_traverse)],
             immediate_size: 0,
         });
-        let traverse = create_pipeline(device, &shader, &traverse_layout, "main", "vg_dag_traverse");
-        let retest =
-            create_pipeline(device, &shader, &traverse_layout, "retest_rejects", "vg_dag_retest");
+        let traverse =
+            create_pipeline(device, &shader, &traverse_layout, "main", "vg_dag_traverse");
+        let retest = create_pipeline(
+            device,
+            &shader,
+            &traverse_layout,
+            "retest_rejects",
+            "vg_dag_retest",
+        );
         let prepare_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("vg_dag_prepare_layout"),
             bind_group_layouts: &[Some(&bgl_prepare)],
             immediate_size: 0,
         });
-        let prepare = create_pipeline(device, &shader, &prepare_layout, "prepare_args", "vg_dag_prepare");
+        let prepare = create_pipeline(
+            device,
+            &shader,
+            &prepare_layout,
+            "prepare_args",
+            "vg_dag_prepare",
+        );
 
         let queue_bytes = u64::from(queue_capacity).max(1) * QUEUE_ENTRY_BYTES;
         let storage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST;
@@ -424,6 +447,11 @@ impl DagTraversal {
         self.scene.as_ref()?.bounds.get(dag).copied()
     }
 
+    /// Counters buffer (see the `COUNTER_*` constants); tests read it back.
+    pub fn counters_buffer(&self) -> &wgpu::Buffer {
+        &self.counters
+    }
+
     /// Number of traversal passes needed by the uploaded hierarchies (0 when nothing is uploaded).
     pub fn pass_count(&self) -> u32 {
         self.scene
@@ -472,7 +500,10 @@ impl DagTraversal {
                 });
                 pass.set_pipeline(&self.traverse);
                 pass.set_bind_group(0, &traverse_bg[src], &[]);
-                pass.dispatch_workgroups_indirect(&self.dispatch_args, src as u64 * DISPATCH_STRIDE);
+                pass.dispatch_workgroups_indirect(
+                    &self.dispatch_args,
+                    src as u64 * DISPATCH_STRIDE,
+                );
             }
             self.dispatch_prepare(encoder, &prepare_bg);
         }
@@ -545,12 +576,14 @@ impl DagTraversal {
         };
         let mut instances = Vec::with_capacity(frame.instances.len());
         let mut seeds: Vec<[u32; 2]> = Vec::new();
-        for (ii, inst) in frame.instances.iter().take(self.max_instances as usize).enumerate() {
-            let (root_begin, root_count) = scene
-                .root_ranges
-                .get(inst.dag)
-                .copied()
-                .unwrap_or((0, 0));
+        for (ii, inst) in frame
+            .instances
+            .iter()
+            .take(self.max_instances as usize)
+            .enumerate()
+        {
+            let (root_begin, root_count) =
+                scene.root_ranges.get(inst.dag).copied().unwrap_or((0, 0));
             let bound = scene.bounds.get(inst.dag).copied().unwrap_or([0.0; 4]);
             let vertex_base = scene.vertex_bases.get(inst.dag).copied().unwrap_or(0);
             let (local_eye, root_count) = match local_point(inst.transform, frame.eye) {

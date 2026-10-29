@@ -373,7 +373,10 @@ mod carry_math_tests {
             Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
         );
         // Offset (1, 0, 0) from the pivot turns to (0, 0, -1) under a +90 degree turn about Y.
-        assert!((turned - Vec3::new(2.0, 0.0, -1.0)).length() < EPS, "{turned:?}");
+        assert!(
+            (turned - Vec3::new(2.0, 0.0, -1.0)).length() < EPS,
+            "{turned:?}"
+        );
     }
 
     #[test]
@@ -387,7 +390,10 @@ mod carry_math_tests {
     fn yaw_of_a_pure_yaw_rotation_is_its_angle() {
         for angle in [-2.0_f32, -0.3, 0.0, 0.3, 1.0, 3.0] {
             let measured = yaw_of(Quat::from_rotation_y(angle));
-            assert!((measured - angle).abs() < EPS, "angle {angle}: got {measured}");
+            assert!(
+                (measured - angle).abs() < EPS,
+                "angle {angle}: got {measured}"
+            );
         }
     }
 

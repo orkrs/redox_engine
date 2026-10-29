@@ -40,7 +40,8 @@ struct DagCluster {
     group: u32,
     first_child: u32,
     child_count: u32,
-    _p0: u32,
+    // 1 for the first cluster of its group: only it queues the children shared by the group.
+    leader: u32,
     _p1: u32,
     _p2: u32,
     _p3: u32,
@@ -201,6 +202,15 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // Precise enough (or a leaf): this cluster is the cut.
     if (own_px <= dag_params.threshold_px || c.child_count == 0u) {
         select_cluster(item.x, item.y, inst, c);
+        return;
+    }
+    if (c.leader == 0u) {
+        // A sibling of the leader: the children are queued once, by the leader. Coarsen only when
+        // the queue can no longer take them (the leader then selects itself too).
+        let used = atomicLoad(&counters[dag_params.dst_slot]);
+        if (used + c.child_count > dag_params.queue_capacity) {
+            select_cluster(item.x, item.y, inst, c);
+        }
         return;
     }
     push_children(item.x, item.y, inst, c);

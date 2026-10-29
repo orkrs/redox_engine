@@ -137,7 +137,10 @@ mod tests {
     fn a_shifted_position_changes_the_corrected_direction() {
         let p = probe(Vec3::ZERO, 5.0, 1.0, 0);
         let pos = Vec3::new(2.0, 0.0, 0.0);
-        assert_vec_near(parallax_direction(&p, pos, Vec3::X), Vec3::new(5.0, 0.0, 0.0));
+        assert_vec_near(
+            parallax_direction(&p, pos, Vec3::X),
+            Vec3::new(5.0, 0.0, 0.0),
+        );
         assert_vec_near(
             parallax_direction(&p, pos, Vec3::Y),
             Vec3::new(2.0, 5.0, 0.0),

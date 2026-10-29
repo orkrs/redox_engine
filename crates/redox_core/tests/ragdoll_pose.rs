@@ -231,8 +231,8 @@ fn a_skinned_mesh_receives_the_ragdoll_pose() {
         "starts at the animated head"
     );
 
-    let rig = rig(&world, entity);
-    let head = rig.ragdoll.bodies()[2];
+    let state = rig(&world, entity);
+    let head = state.ragdoll.bodies()[2];
     let mut physics = world.remove_resource::<PhysicsContext>().unwrap();
     let handle = physics.get_body_handle(head).unwrap();
     let (translation, rotation) = physics.get_rigid_body_transform(handle).unwrap();

@@ -10,8 +10,8 @@
 
 use std::io::Cursor;
 
-use kira::sound::static_sound::StaticSoundData;
 use kira::Frame;
+use kira::sound::static_sound::StaticSoundData;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -31,7 +31,7 @@ const LOUDNESS_OFFSET: f64 = -0.691;
 const CLIP_LEVEL: f32 = 1.0;
 
 // K-weighting coefficients (ITU-R BS.1770-4), derived from the analog prototypes for any sample rate.
-const SHELF_F0: f64 = 1681.974_450_955_533;
+const SHELF_F0: f64 = 1_681.974_450_955_533;
 const SHELF_GAIN_DB: f64 = 3.999_843_853_973_347;
 const SHELF_Q: f64 = 0.707_175_236_955_419_6;
 const SHELF_VB_EXPONENT: f64 = 0.499_666_774_154_541_6;
@@ -96,7 +96,14 @@ pub fn analyze_samples(samples: &[f32], channels: u16, rate: u32) -> AudioStats 
     let sum_sq: f64 = samples.iter().map(|&s| f64::from(s).powi(2)).sum();
     let peak = samples.iter().fold(0.0_f32, |m, s| m.max(s.abs()));
     let per_channel: Vec<Vec<f64>> = (0..ch)
-        .map(|c| samples.iter().skip(c).step_by(ch).map(|&s| f64::from(s)).collect())
+        .map(|c| {
+            samples
+                .iter()
+                .skip(c)
+                .step_by(ch)
+                .map(|&s| f64::from(s))
+                .collect()
+        })
         .collect();
     let weighted: Vec<Vec<f64>> = per_channel
         .iter()
@@ -112,7 +119,11 @@ pub fn analyze_samples(samples: &[f32], channels: u16, rate: u32) -> AudioStats 
         lufs_integrated: floor_db(integrated_lufs(&weighted, rate)),
         duration: frames as f32 / rate.max(1) as f32,
         clipped_samples: samples.iter().filter(|s| s.abs() >= CLIP_LEVEL).count(),
-        dc_offset: if count > 0.0 { (sum / count) as f32 } else { 0.0 },
+        dc_offset: if count > 0.0 {
+            (sum / count) as f32
+        } else {
+            0.0
+        },
         channels_detected: channels.max(1),
     }
 }
@@ -225,7 +236,10 @@ impl Biquad {
         let a0 = 1.0 + k / HIGHPASS_Q + k * k;
         Self {
             b: [1.0 / a0, -2.0 / a0, 1.0 / a0],
-            a: [2.0 * (k * k - 1.0) / a0, (1.0 - k / HIGHPASS_Q + k * k) / a0],
+            a: [
+                2.0 * (k * k - 1.0) / a0,
+                (1.0 - k / HIGHPASS_Q + k * k) / a0,
+            ],
         }
     }
 
@@ -407,10 +421,7 @@ mod tests {
     #[test]
     fn a_duplicated_mono_signal_is_analysed_as_mono() {
         let mono = sine(997.0, amplitude_for_rms_db(-23.0), 10.0);
-        let frames: Vec<Frame> = mono
-            .iter()
-            .map(|&s| Frame { left: s, right: s })
-            .collect();
+        let frames: Vec<Frame> = mono.iter().map(|&s| Frame { left: s, right: s }).collect();
         let (samples, channels) = frames_to_samples(&frames);
         assert_eq!(channels, 1);
         assert_eq!(samples.len(), mono.len());
@@ -421,7 +432,16 @@ mod tests {
 
     #[test]
     fn a_stereo_signal_keeps_two_channels() {
-        let frames = [Frame { left: 0.5, right: 0.25 }, Frame { left: 0.1, right: 0.0 }];
+        let frames = [
+            Frame {
+                left: 0.5,
+                right: 0.25,
+            },
+            Frame {
+                left: 0.1,
+                right: 0.0,
+            },
+        ];
         let (samples, channels) = frames_to_samples(&frames);
         assert_eq!(channels, 2);
         assert_eq!(samples, vec![0.5, 0.25, 0.1, 0.0]);

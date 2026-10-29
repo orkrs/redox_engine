@@ -93,7 +93,8 @@ pub struct DagClusterGpu {
     pub first_child: u32,
     /// Number of children (0 for leaves).
     pub child_count: u32,
-    /// Padding to 96 bytes.
+    /// Padding to 96 bytes. `_pad[0]` is 1 for the first cluster of its group (the only one that
+    /// queues the group's children during traversal, set by `DagSceneData::concat`).
     pub _pad: [u32; 4],
 }
 

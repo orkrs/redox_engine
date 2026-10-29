@@ -15,8 +15,7 @@
 use std::path::{Path, PathBuf};
 
 use redox_audio::{
-    AudioStats, Finding, Severity, analyze_samples, decode_bytes, loop_seam_error,
-    validate_cue_ron,
+    AudioStats, Finding, Severity, analyze_samples, decode_bytes, loop_seam_error, validate_cue_ron,
 };
 
 /// Default loudness target for music in LUFS.
@@ -148,8 +147,7 @@ pub fn parse_audio_check(args: &[&str]) -> Result<AudioCheckJob, String> {
 
 /// Takes the value that follows `flag`.
 fn value<'a>(rest: &mut impl Iterator<Item = &'a str>, flag: &str) -> Result<&'a str, String> {
-    rest.next()
-        .ok_or_else(|| format!("{flag} needs a value"))
+    rest.next().ok_or_else(|| format!("{flag} needs a value"))
 }
 
 /// Parses a finite number for `flag`.
@@ -178,7 +176,10 @@ pub fn check(job: &AudioCheckJob) -> Result<Report, String> {
         }
         None => Vec::new(),
     };
-    Ok(Report { files, cue_findings })
+    Ok(Report {
+        files,
+        cue_findings,
+    })
 }
 
 /// Runs the check, prints the report and returns an error when the report has errors.
@@ -239,9 +240,11 @@ fn sound_exists(dir: &Path, variant: &str) -> bool {
 fn is_music(path: &Path, dir: &Path) -> bool {
     let relative = path.strip_prefix(dir).unwrap_or(path);
     relative.parent().is_some_and(|parent| {
-        parent
-            .components()
-            .any(|part| part.as_os_str().to_string_lossy().eq_ignore_ascii_case("music"))
+        parent.components().any(|part| {
+            part.as_os_str()
+                .to_string_lossy()
+                .eq_ignore_ascii_case("music")
+        })
     })
 }
 
@@ -323,7 +326,10 @@ fn problems_for(
         warn(format!("loop seam differs by {seam:.2} dB"));
     }
     if !music && stats.duration > SFX_MAX_SECONDS {
-        warn(format!("{:.2} s is longer than {SFX_MAX_SECONDS} s", stats.duration));
+        warn(format!(
+            "{:.2} s is longer than {SFX_MAX_SECONDS} s",
+            stats.duration
+        ));
     }
     problems
 }
@@ -415,9 +421,7 @@ fn file_json(entry: &FileEntry) -> String {
         ),
         None => "\"peak_db\":null,\"rms_db\":null,\"lufs\":null,\"duration\":null,\"clipped_samples\":null,\"dc_offset\":null,\"channels\":null".into(),
     };
-    let seam = entry
-        .seam_db
-        .map_or_else(|| "null".to_owned(), json_number);
+    let seam = entry.seam_db.map_or_else(|| "null".to_owned(), json_number);
     let problems: Vec<String> = entry
         .problems
         .iter()
@@ -511,16 +515,30 @@ mod tests {
     fn parses_the_defaults_and_every_option() {
         let plain = job();
         assert_eq!(plain.dir, PathBuf::from("assets"));
-        assert_eq!((plain.target_lufs_music, plain.target_lufs_sfx), (-16.0, -18.0));
+        assert_eq!(
+            (plain.target_lufs_music, plain.target_lufs_sfx),
+            (-16.0, -18.0)
+        );
         assert_eq!(plain.tolerance, 3.0);
         assert!(!plain.json && plain.cues.is_none());
         let full = parse_audio_check(&[
-            "assets", "--cues", "c.ron", "--target-lufs", "-14", "--target-lufs-sfx", "-20",
-            "--tolerance", "1.5", "--json",
+            "assets",
+            "--cues",
+            "c.ron",
+            "--target-lufs",
+            "-14",
+            "--target-lufs-sfx",
+            "-20",
+            "--tolerance",
+            "1.5",
+            "--json",
         ])
         .expect("full line parses");
         assert_eq!(full.cues, Some(PathBuf::from("c.ron")));
-        assert_eq!((full.target_lufs_music, full.target_lufs_sfx), (-14.0, -20.0));
+        assert_eq!(
+            (full.target_lufs_music, full.target_lufs_sfx),
+            (-14.0, -20.0)
+        );
         assert!(full.json && full.tolerance == 1.5);
     }
 
@@ -583,21 +601,37 @@ mod tests {
 
     #[test]
     fn a_directory_check_reports_a_bad_file_as_an_error() {
-        let dir = std::env::temp_dir().join(format!("redox_cook_audio_check_{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("redox_cook_audio_check_{}", std::process::id()));
         std::fs::create_dir_all(dir.join("music")).expect("temp dir");
         std::fs::write(dir.join("bad.wav"), b"not a sound file").expect("write bad");
         let tone: Vec<i16> = (0..48_000)
-            .map(|n| (0.5 * (n as f32 * 2.0 * std::f32::consts::PI * 997.0 / 48_000.0).sin() * 32_767.0) as i16)
+            .map(|n| {
+                (0.5 * (n as f32 * 2.0 * std::f32::consts::PI * 997.0 / 48_000.0).sin() * 32_767.0)
+                    as i16
+            })
             .collect();
-        std::fs::write(dir.join("music").join("tone.wav"), wav_bytes(&tone, 48_000)).expect("write tone");
-        let job = AudioCheckJob { dir: dir.clone(), ..job() };
+        std::fs::write(dir.join("music").join("tone.wav"), wav_bytes(&tone, 48_000))
+            .expect("write tone");
+        let job = AudioCheckJob {
+            dir: dir.clone(),
+            ..job()
+        };
         let report = check(&job);
         let _ = std::fs::remove_dir_all(&dir);
         let report = report.expect("check runs");
         assert_eq!((report.files.len(), report.error_count()), (2, 1));
-        let tone = report.files.iter().find(|e| e.path == "music/tone.wav").expect("tone measured");
+        let tone = report
+            .files
+            .iter()
+            .find(|e| e.path == "music/tone.wav")
+            .expect("tone measured");
         assert!(tone.music && tone.stats.is_some() && tone.seam_db.is_some());
-        let bad = report.files.iter().find(|e| e.path == "bad.wav").expect("bad file listed");
+        let bad = report
+            .files
+            .iter()
+            .find(|e| e.path == "bad.wav")
+            .expect("bad file listed");
         assert!(bad.stats.is_none());
     }
 
@@ -634,7 +668,9 @@ mod tests {
                     .find(|&i| !b"+-.0123456789eE".contains(&text[i]))
                     .unwrap_or(text.len());
                 let slice = std::str::from_utf8(&text[pos..end]).map_err(|e| e.to_string())?;
-                let value = slice.parse::<f64>().map_err(|_| format!("bad number `{slice}`"))?;
+                let value = slice
+                    .parse::<f64>()
+                    .map_err(|_| format!("bad number `{slice}`"))?;
                 Ok((Json::Num(value), end))
             }
         }
@@ -754,8 +790,14 @@ mod tests {
             dc_offset: 0.125,
             channels_detected: 2,
         };
-        let warn = Problem { severity: Severity::Warning, message: "clipping: \"peak\"".into() };
-        let error = Problem { severity: Severity::Error, message: "cannot decode".into() };
+        let warn = Problem {
+            severity: Severity::Warning,
+            message: "clipping: \"peak\"".into(),
+        };
+        let error = Problem {
+            severity: Severity::Error,
+            message: "cannot decode".into(),
+        };
         Report {
             files: vec![
                 FileEntry {
@@ -765,7 +807,13 @@ mod tests {
                     seam_db: Some(1.5),
                     problems: vec![warn],
                 },
-                FileEntry { path: "bad.wav".into(), music: false, stats: None, seam_db: None, problems: vec![error] },
+                FileEntry {
+                    path: "bad.wav".into(),
+                    music: false,
+                    stats: None,
+                    seam_db: None,
+                    problems: vec![error],
+                },
             ],
             cue_findings: vec![Finding {
                 severity: Severity::Error,
@@ -789,7 +837,10 @@ mod tests {
         assert_eq!(field(first, "channels"), &Json::Num(2.0));
         assert_eq!(field(first, "seam_db"), &Json::Num(1.5));
         let problem = item(field(first, "problems"), 0);
-        assert_eq!(field(problem, "message"), &Json::Str("clipping: \"peak\"".into()));
+        assert_eq!(
+            field(problem, "message"),
+            &Json::Str("clipping: \"peak\"".into())
+        );
         let bad = item(files, 1);
         assert_eq!(field(bad, "peak_db"), &Json::Null);
         assert_eq!(field(bad, "seam_db"), &Json::Null);

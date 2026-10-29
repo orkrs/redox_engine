@@ -92,7 +92,10 @@ fn position(world: &World, e: Entity) -> Vec3 {
 }
 
 fn grounded(world: &World, e: Entity) -> bool {
-    world.get_component::<CharacterController>(e).unwrap().grounded
+    world
+        .get_component::<CharacterController>(e)
+        .unwrap()
+        .grounded
 }
 
 /// Walks the character at `speed` along +X for `ticks` steps; returns how many ticks ended in the air.
@@ -118,13 +121,20 @@ fn walking_down_a_steep_slope_stays_grounded() {
     world.insert_resource(PhysicsContext::new(Vec3::new(0.0, -9.81, 0.0)));
     spawn_ramp(&mut world);
     // Start 3 m up the ramp, feet just above the surface (height = 3 * tan 40 degrees).
-    let start = Vec3::new(-3.0, 3.0 * SLOPE.tan() + CAPSULE_CENTRE_ABOVE_FEET + 0.02, 0.0);
+    let start = Vec3::new(
+        -3.0,
+        3.0 * SLOPE.tan() + CAPSULE_CENTRE_ABOVE_FEET + 0.02,
+        0.0,
+    );
     let player = spawn_player(&mut world, start, steep_but_walkable());
 
     let ticks = 180; // 3 s
     let airborne = walk_counting_airborne(&mut world, player, 3.0, ticks);
     let share = airborne as f32 / ticks as f32;
-    assert!(share <= 0.05, "in the air {airborne} of {ticks} ticks ({share:.3})");
+    assert!(
+        share <= 0.05,
+        "in the air {airborne} of {ticks} ticks ({share:.3})"
+    );
 }
 
 #[test]
@@ -132,9 +142,17 @@ fn a_ledge_still_lets_the_character_fall() {
     let mut world = World::new();
     world.insert_resource(PhysicsContext::new(Vec3::new(0.0, -9.81, 0.0)));
     // Upper ledge: top at y = 0 for x in [-10, 0].
-    spawn_static_box(&mut world, Vec3::new(-5.0, -0.25, 0.0), Vec3::new(5.0, 0.25, 5.0));
+    spawn_static_box(
+        &mut world,
+        Vec3::new(-5.0, -0.25, 0.0),
+        Vec3::new(5.0, 0.25, 5.0),
+    );
     // Lower floor: top at y = -2 for x in [0, 20], two metres below the ledge.
-    spawn_static_box(&mut world, Vec3::new(10.0, -2.25, 0.0), Vec3::new(10.0, 0.25, 5.0));
+    spawn_static_box(
+        &mut world,
+        Vec3::new(10.0, -2.25, 0.0),
+        Vec3::new(10.0, 0.25, 5.0),
+    );
     let player = spawn_player(
         &mut world,
         Vec3::new(-3.0, 0.72, 0.0),
@@ -151,13 +169,20 @@ fn jumping_still_leaves_the_ground_on_a_slope() {
     let mut world = World::new();
     world.insert_resource(PhysicsContext::new(Vec3::new(0.0, -9.81, 0.0)));
     spawn_ramp(&mut world);
-    let start = Vec3::new(-3.0, 3.0 * SLOPE.tan() + CAPSULE_CENTRE_ABOVE_FEET + 0.02, 0.0);
+    let start = Vec3::new(
+        -3.0,
+        3.0 * SLOPE.tan() + CAPSULE_CENTRE_ABOVE_FEET + 0.02,
+        0.0,
+    );
     let player = spawn_player(&mut world, start, steep_but_walkable());
     for _ in 0..20 {
         sync_to_physics(&mut world);
         tick_physics(&mut world, DT);
     }
-    assert!(grounded(&world, player), "expected to stand on the ramp before jumping");
+    assert!(
+        grounded(&world, player),
+        "expected to stand on the ramp before jumping"
+    );
     let rest_y = position(&world, player).y;
 
     assert!(
@@ -184,7 +209,11 @@ fn walking_down_stairs_keeps_contact() {
     let mut world = World::new();
     world.insert_resource(PhysicsContext::new(Vec3::new(0.0, -9.81, 0.0)));
     // Flat ground for x < 0 (top at y = 0).
-    spawn_static_box(&mut world, Vec3::new(-5.0, -0.25, 0.0), Vec3::new(5.0, 0.25, 5.0));
+    spawn_static_box(
+        &mut world,
+        Vec3::new(-5.0, -0.25, 0.0),
+        Vec3::new(5.0, 0.25, 5.0),
+    );
     // Ten treads, each 0.5 m long and 0.2 m lower than the one before.
     for i in 0..10 {
         let top = -0.2 * (i as f32 + 1.0);
@@ -196,7 +225,11 @@ fn walking_down_stairs_keeps_contact() {
         );
     }
     // Lower floor past the stairs (top at y = -2).
-    spawn_static_box(&mut world, Vec3::new(15.0, -2.25, 0.0), Vec3::new(10.0, 0.25, 5.0));
+    spawn_static_box(
+        &mut world,
+        Vec3::new(15.0, -2.25, 0.0),
+        Vec3::new(10.0, 0.25, 5.0),
+    );
     let player = spawn_player(
         &mut world,
         Vec3::new(-3.0, 0.72, 0.0),
@@ -217,16 +250,27 @@ fn walking_down_stairs_keeps_contact() {
         }
     }
     let share = grounded_ticks as f32 / ticks as f32;
-    assert!(share >= 0.9, "grounded on {share:.3} of ticks, expected at least 0.9");
+    assert!(
+        share >= 0.9,
+        "grounded on {share:.3} of ticks, expected at least 0.9"
+    );
 }
 
 #[test]
 fn the_snap_does_not_pull_the_character_up_a_wall() {
     let mut world = World::new();
     world.insert_resource(PhysicsContext::new(Vec3::new(0.0, -9.81, 0.0)));
-    spawn_static_box(&mut world, Vec3::new(0.0, -0.25, 0.0), Vec3::new(20.0, 0.25, 5.0));
+    spawn_static_box(
+        &mut world,
+        Vec3::new(0.0, -0.25, 0.0),
+        Vec3::new(20.0, 0.25, 5.0),
+    );
     // Wall from x = 1.0 to 1.5, rising from y = 0 to 4: far above the step height.
-    spawn_static_box(&mut world, Vec3::new(1.25, 2.0, 0.0), Vec3::new(0.25, 2.0, 5.0));
+    spawn_static_box(
+        &mut world,
+        Vec3::new(1.25, 2.0, 0.0),
+        Vec3::new(0.25, 2.0, 5.0),
+    );
     let start_y = 0.72;
     let player = spawn_player(
         &mut world,
@@ -244,6 +288,9 @@ fn the_snap_does_not_pull_the_character_up_a_wall() {
         tick_physics(&mut world, DT);
         highest = highest.max(position(&world, player).y);
     }
-    assert!(highest < start_y + 0.05, "climbed the wall: y rose to {highest}");
+    assert!(
+        highest < start_y + 0.05,
+        "climbed the wall: y rose to {highest}"
+    );
     assert!(position(&world, player).x < 1.0, "went through the wall");
 }

@@ -209,20 +209,100 @@ enum Preset {
 /// Humanoid layout: part, side, parent index into this table, joint preset. Parents come first.
 const HUMANOID_LAYOUT: [(Part, Side, Option<usize>, Preset); 15] = [
     (Part::Hips, Side::Centre, None, Preset::Root),
-    (Part::Spine, Side::Centre, Some(0), Preset::Ball { swing_deg: 20.0, twist_deg: TWIST_DEG }),
-    (Part::Head, Side::Centre, Some(1), Preset::Ball { swing_deg: 35.0, twist_deg: TWIST_DEG }),
-    (Part::UpperArm, Side::Left, Some(1), Preset::Ball { swing_deg: 60.0, twist_deg: TWIST_DEG }),
+    (
+        Part::Spine,
+        Side::Centre,
+        Some(0),
+        Preset::Ball {
+            swing_deg: 20.0,
+            twist_deg: TWIST_DEG,
+        },
+    ),
+    (
+        Part::Head,
+        Side::Centre,
+        Some(1),
+        Preset::Ball {
+            swing_deg: 35.0,
+            twist_deg: TWIST_DEG,
+        },
+    ),
+    (
+        Part::UpperArm,
+        Side::Left,
+        Some(1),
+        Preset::Ball {
+            swing_deg: 60.0,
+            twist_deg: TWIST_DEG,
+        },
+    ),
     (Part::Forearm, Side::Left, Some(3), Preset::Hinge),
-    (Part::Hand, Side::Left, Some(4), Preset::Ball { swing_deg: 40.0, twist_deg: TWIST_DEG }),
-    (Part::UpperArm, Side::Right, Some(1), Preset::Ball { swing_deg: 60.0, twist_deg: TWIST_DEG }),
+    (
+        Part::Hand,
+        Side::Left,
+        Some(4),
+        Preset::Ball {
+            swing_deg: 40.0,
+            twist_deg: TWIST_DEG,
+        },
+    ),
+    (
+        Part::UpperArm,
+        Side::Right,
+        Some(1),
+        Preset::Ball {
+            swing_deg: 60.0,
+            twist_deg: TWIST_DEG,
+        },
+    ),
     (Part::Forearm, Side::Right, Some(6), Preset::Hinge),
-    (Part::Hand, Side::Right, Some(7), Preset::Ball { swing_deg: 40.0, twist_deg: TWIST_DEG }),
-    (Part::Thigh, Side::Left, Some(0), Preset::Ball { swing_deg: 70.0, twist_deg: TWIST_DEG }),
+    (
+        Part::Hand,
+        Side::Right,
+        Some(7),
+        Preset::Ball {
+            swing_deg: 40.0,
+            twist_deg: TWIST_DEG,
+        },
+    ),
+    (
+        Part::Thigh,
+        Side::Left,
+        Some(0),
+        Preset::Ball {
+            swing_deg: 70.0,
+            twist_deg: TWIST_DEG,
+        },
+    ),
     (Part::Calf, Side::Left, Some(9), Preset::Hinge),
-    (Part::Foot, Side::Left, Some(10), Preset::Ball { swing_deg: 30.0, twist_deg: 15.0 }),
-    (Part::Thigh, Side::Right, Some(0), Preset::Ball { swing_deg: 70.0, twist_deg: TWIST_DEG }),
+    (
+        Part::Foot,
+        Side::Left,
+        Some(10),
+        Preset::Ball {
+            swing_deg: 30.0,
+            twist_deg: 15.0,
+        },
+    ),
+    (
+        Part::Thigh,
+        Side::Right,
+        Some(0),
+        Preset::Ball {
+            swing_deg: 70.0,
+            twist_deg: TWIST_DEG,
+        },
+    ),
     (Part::Calf, Side::Right, Some(12), Preset::Hinge),
-    (Part::Foot, Side::Right, Some(13), Preset::Ball { swing_deg: 30.0, twist_deg: 15.0 }),
+    (
+        Part::Foot,
+        Side::Right,
+        Some(13),
+        Preset::Ball {
+            swing_deg: 30.0,
+            twist_deg: 15.0,
+        },
+    ),
 ];
 
 /// Mass in kilograms of each humanoid part (one body per side for limbs).
@@ -405,7 +485,11 @@ impl RagdollTemplate {
     /// # Errors
     /// Returns [`RagdollError::MissingBone`] when a template bone is not in the skeleton, or
     /// [`RagdollError::PoseCount`] when `model` does not cover the skeleton.
-    pub fn bone_poses(&self, skeleton: &Skeleton, model: &[Mat4]) -> Result<Vec<Mat4>, RagdollError> {
+    pub fn bone_poses(
+        &self,
+        skeleton: &Skeleton,
+        model: &[Mat4],
+    ) -> Result<Vec<Mat4>, RagdollError> {
         if model.len() != skeleton.len() {
             return Err(RagdollError::PoseCount {
                 expected: skeleton.len(),

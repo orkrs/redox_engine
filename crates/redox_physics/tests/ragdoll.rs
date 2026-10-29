@@ -6,7 +6,9 @@ use rapier3d::prelude::{ColliderBuilder, RigidBodyBuilder, RigidBodyHandle};
 use redox_anim::Skeleton;
 use redox_ecs::{Entity, World};
 use redox_math::{Mat4, Vec3};
-use redox_physics::{PhysicsContext, RagdollError, RagdollHandle, RagdollJointKind, RagdollTemplate};
+use redox_physics::{
+    PhysicsContext, RagdollError, RagdollHandle, RagdollJointKind, RagdollTemplate,
+};
 
 const DT: f32 = 1.0 / 60.0;
 const DEG: f32 = std::f32::consts::PI / 180.0;
@@ -230,7 +232,11 @@ fn masses_sum_to_a_plausible_body_mass() {
 #[test]
 fn the_knee_and_elbow_are_hinges_and_the_hip_a_ball() {
     let template = RagdollTemplate::humanoid(&humanoid_skeleton()).unwrap();
-    let calf = template.bones.iter().find(|b| b.bone.ends_with("LeftLeg")).unwrap();
+    let calf = template
+        .bones
+        .iter()
+        .find(|b| b.bone.ends_with("LeftLeg"))
+        .unwrap();
     match calf.joint.as_ref().unwrap().kind {
         RagdollJointKind::Hinge { min, max, .. } => {
             assert_eq!(min, 0.0);
@@ -238,7 +244,11 @@ fn the_knee_and_elbow_are_hinges_and_the_hip_a_ball() {
         }
         ref other => panic!("knee should be a hinge, got {other:?}"),
     }
-    let thigh = template.bones.iter().find(|b| b.bone.ends_with("LeftUpLeg")).unwrap();
+    let thigh = template
+        .bones
+        .iter()
+        .find(|b| b.bone.ends_with("LeftUpLeg"))
+        .unwrap();
     match thigh.joint.as_ref().unwrap().kind {
         RagdollJointKind::Ball { swing, .. } => assert!((swing - 70.0 * DEG).abs() < 1e-5),
         ref other => panic!("hip should be a ball, got {other:?}"),
@@ -292,11 +302,10 @@ fn the_joints_keep_the_body_connected() {
         .collect();
     run(&mut ctx, 2.0);
     for (parent, child, anchor_in_parent) in joints {
-        let parent_point = body_matrix(&ctx, ragdoll.bodies()[parent])
-            .transform_point3(anchor_in_parent);
+        let parent_point =
+            body_matrix(&ctx, ragdoll.bodies()[parent]).transform_point3(anchor_in_parent);
         let offset = Vec3::from_array(template.bones[child].offset);
-        let child_origin = body_matrix(&ctx, ragdoll.bodies()[child])
-            .transform_point3(-offset);
+        let child_origin = body_matrix(&ctx, ragdoll.bodies()[child]).transform_point3(-offset);
         let gap = (parent_point - child_origin).length();
         assert!(gap <= 0.03, "joint {child} opened by {gap} m");
     }
@@ -317,11 +326,21 @@ fn the_knee_does_not_bend_backwards() {
         Vec3::new(-10.0, 0.0, 0.0),
     );
     run(&mut ctx, 2.0);
-    let thigh_q = ctx.get_rigid_body_transform(body_handle(&ctx, ragdoll.bodies()[9])).unwrap().1;
-    let calf_q = ctx.get_rigid_body_transform(body_handle(&ctx, calf)).unwrap().1;
+    let thigh_q = ctx
+        .get_rigid_body_transform(body_handle(&ctx, ragdoll.bodies()[9]))
+        .unwrap()
+        .1;
+    let calf_q = ctx
+        .get_rigid_body_transform(body_handle(&ctx, calf))
+        .unwrap()
+        .1;
     let (axis, angle) = (thigh_q.inverse() * calf_q).to_axis_angle();
     let bend = angle * axis.x;
-    assert!(bend >= -3.0 * DEG, "knee bent backwards: {} deg", bend / DEG);
+    assert!(
+        bend >= -3.0 * DEG,
+        "knee bent backwards: {} deg",
+        bend / DEG
+    );
     assert!(bend <= 2.4 + 3.0 * DEG, "knee past its stop: {bend}");
 }
 
@@ -330,7 +349,14 @@ fn the_initial_velocity_is_inherited() {
     let skeleton = humanoid_skeleton();
     let mut world = World::new();
     let mut ctx = PhysicsContext::new(Vec3::ZERO);
-    let ragdoll = spawn(&mut ctx, &mut world, &skeleton, 0.0, Vec3::new(5.0, 0.0, 0.0), 2);
+    let ragdoll = spawn(
+        &mut ctx,
+        &mut world,
+        &skeleton,
+        0.0,
+        Vec3::new(5.0, 0.0, 0.0),
+        2,
+    );
     let start: Vec<f32> = ragdoll
         .bodies()
         .iter()
@@ -368,7 +394,10 @@ fn adjacent_bones_do_not_collide_with_each_other() {
         ctx.step(DT);
         fastest = fastest.max(max_speed(&ctx, &ragdoll));
     }
-    assert!(fastest < 20.0, "a body reached {fastest} m/s: the stack exploded");
+    assert!(
+        fastest < 20.0,
+        "a body reached {fastest} m/s: the stack exploded"
+    );
 }
 
 #[test]

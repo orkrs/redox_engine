@@ -21,7 +21,7 @@ pub use graph::{
     StateDef, TransitionDef,
 };
 pub use graph_binding::{
-    bind_clips, required_bones, validate_binding, BindingError, ClipBinding, ClipRole,
+    BindingError, ClipBinding, ClipRole, bind_clips, required_bones, validate_binding,
 };
 pub use ik::{apply_two_bone_ik, solve_two_bone_ik};
 pub use inertialization::{InertialBoneDiff, Inertializer};

@@ -17,10 +17,10 @@ pub mod joint_component;
 pub mod joints;
 /// Named collision layers and their collision matrix, loaded from RON.
 pub mod layer_config;
-/// Ragdoll templates built from a skeleton, and spawning them as joined rigid bodies.
-pub mod ragdoll;
 /// Convenience re-exports of the physics modules.
 pub mod physics;
+/// Ragdoll templates built from a skeleton, and spawning them as joined rigid bodies.
+pub mod ragdoll;
 /// Raycast requests and results.
 pub mod raycast;
 /// Shape casts, overlap queries and collision layers.
@@ -39,11 +39,11 @@ pub use convex::ConvexHull;
 pub use joint_component::{Joint, JointLink, sync_joints};
 pub use joints::{JointAxes, JointBroken, JointDesc, JointId, JointKind, JointMotor};
 pub use layer_config::{LayerConfig, LayerConfigError};
-pub use raycast::{RaycastRequest, RaycastResult};
 pub use ragdoll::{
     RagdollBody, RagdollBone, RagdollError, RagdollHandle, RagdollJoint, RagdollJointKind,
     RagdollShape, RagdollTemplate, bone_world_from_body,
 };
+pub use raycast::{RaycastRequest, RaycastResult};
 pub use shapes::{ClosestPoint, CollisionLayers, QueryShape, ShapeHit};
 pub use sync::{step_physics, sync_from_physics, sync_to_physics, tick_physics};
 pub use trigger::{TriggerEnter, TriggerExit};

@@ -21,7 +21,7 @@ const PROBE_BYTES_PER_TEXEL: u32 = 8;
 /// priorities keep their input order.
 pub fn pick_by_priority(probes: &[ReflectionProbe]) -> Vec<ReflectionProbe> {
     let mut sorted = probes.to_vec();
-    sorted.sort_by(|a, b| b.priority.cmp(&a.priority));
+    sorted.sort_by_key(|p| std::cmp::Reverse(p.priority));
     sorted.truncate(MAX_PROBES);
     sorted
 }
@@ -160,7 +160,10 @@ mod tests {
     #[test]
     fn pick_keeps_the_four_highest_priorities() {
         let input: Vec<_> = [0, 5, 1, 4, 3, 2].into_iter().map(probe).collect();
-        let kept: Vec<i32> = pick_by_priority(&input).iter().map(|p| p.priority).collect();
+        let kept: Vec<i32> = pick_by_priority(&input)
+            .iter()
+            .map(|p| p.priority)
+            .collect();
         assert_eq!(kept, vec![5, 4, 3, 2]);
     }
 }

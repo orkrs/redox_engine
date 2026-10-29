@@ -204,7 +204,10 @@ mod tests {
         assert_eq!(model.names(), vec!["step".to_owned(), "hit".to_owned()]);
         assert!(model.reload(OTHER_LIBRARY, &exists));
         assert_eq!(model.names(), vec!["hit".to_owned()]);
-        assert!(!model.reload(OTHER_LIBRARY, &exists), "same text must not reload");
+        assert!(
+            !model.reload(OTHER_LIBRARY, &exists),
+            "same text must not reload"
+        );
     }
 
     #[test]

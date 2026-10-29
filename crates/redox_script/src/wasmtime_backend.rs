@@ -304,12 +304,12 @@ fn host_position_of(mut caller: Caller<'_, State>, id: i32, out_ptr: i32) -> i32
     let Some(Extern::Memory(memory)) = caller.get_export(MEMORY_EXPORT) else {
         return 0;
     };
-    let Some(out) = host::guest_range(memory.data(&caller).len(), out_ptr, host::VEC3_BYTES)
-    else {
+    let Some(out) = host::guest_range(memory.data(&caller).len(), out_ptr, host::VEC3_BYTES) else {
         return 0;
     };
-    let Some(position) =
-        u32::try_from(id).ok().and_then(|id| caller.data_mut().host.position_of(id))
+    let Some(position) = u32::try_from(id)
+        .ok()
+        .and_then(|id| caller.data_mut().host.position_of(id))
     else {
         return 0;
     };
@@ -339,10 +339,11 @@ fn host_raycast_entity(
     ) else {
         return 0;
     };
-    let Some((id, distance)) = caller
-        .data_mut()
-        .host
-        .raycast_entity(origin, direction, max_distance)
+    let Some((id, distance)) =
+        caller
+            .data_mut()
+            .host
+            .raycast_entity(origin, direction, max_distance)
     else {
         return 0;
     };

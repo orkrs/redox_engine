@@ -23,11 +23,11 @@ use crate::virtual_geometry::meshlet::VGInstanceData;
 use super::{VGAssetId, VGInstanceHandle, VGSystem};
 
 /// Clusters of all DAG assets together.
-const DAG_MAX_CLUSTERS: usize = 1 << 18;
+const DAG_MAX_CLUSTERS: usize = 1 << 16;
 /// Child ids of all DAG assets together.
-const DAG_MAX_CHILD_IDS: usize = 1 << 19;
+const DAG_MAX_CHILD_IDS: usize = 1 << 17;
 /// Entries of each traversal queue and of the Hi-Z reject list.
-const DAG_QUEUE_CAPACITY: u32 = 1 << 16;
+const DAG_QUEUE_CAPACITY: u32 = 1 << 15;
 /// Identity transform for slots that hold no DAG instance this frame.
 const IDENTITY: [[f32; 4]; 4] = [
     [1.0, 0.0, 0.0, 0.0],
@@ -302,10 +302,10 @@ impl VGSystem {
                 continue;
             }
             let transform = self.instance_data[slot].transform;
-            if let Some(bound) = self.dag.traversal.dag_bound(dag) {
-                if !sphere_in_frustum(frustum, transform, bound) {
-                    continue;
-                }
+            if let Some(bound) = self.dag.traversal.dag_bound(dag)
+                && !sphere_in_frustum(frustum, transform, bound)
+            {
+                continue;
             }
             out[slot] = DagInstance { dag, transform };
         }
@@ -408,7 +408,7 @@ impl VGSystem {
         self.gpu_cull.kick_readback();
     }
 
-    /// Run GPU cull (requires [`VGConfig::gpu_cull`] and a pre-built encoder).
+    /// Run GPU cull (requires `VGConfig::gpu_cull` and a pre-built encoder).
     #[allow(dead_code)]
     pub fn run_gpu_cull(
         &mut self,

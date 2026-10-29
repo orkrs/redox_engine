@@ -204,7 +204,11 @@ fn validate_ray(
     if length <= 0.0 {
         return None;
     }
-    Some((origin, direction.map(|v| v / length), max.min(MAX_RAY_DISTANCE)))
+    Some((
+        origin,
+        direction.map(|v| v / length),
+        max.min(MAX_RAY_DISTANCE),
+    ))
 }
 
 /// True when all three components are finite numbers.
@@ -300,7 +304,12 @@ impl HostData {
 
     /// Entities whose volume overlaps the sphere, at most `limit` (and [`MAX_OVERLAP_RESULTS`]).
     /// Empty for a non finite centre, a negative or non finite radius, or when no query is left.
-    pub(crate) fn overlap_sphere(&mut self, center: [f32; 3], radius: f32, limit: usize) -> Vec<u32> {
+    pub(crate) fn overlap_sphere(
+        &mut self,
+        center: [f32; 3],
+        radius: f32,
+        limit: usize,
+    ) -> Vec<u32> {
         if !is_finite3(center) || !radius.is_finite() || radius < 0.0 {
             return Vec::new();
         }
@@ -545,13 +554,7 @@ mod tests {
             Some(1.0)
         }
 
-        fn overlap_sphere(
-            &mut self,
-            _: [f32; 3],
-            _: f32,
-            out: &mut Vec<ScriptEntityId>,
-            _: usize,
-        ) {
+        fn overlap_sphere(&mut self, _: [f32; 3], _: f32, out: &mut Vec<ScriptEntityId>, _: usize) {
             out.extend((0..100).map(ScriptEntityId));
         }
     }
@@ -561,9 +564,15 @@ mod tests {
         let mut host = HostData::default();
         host.begin_call();
         host.set_world(Box::new(Crowd));
-        assert_eq!(host.overlap_sphere([0.0; 3], 1.0, 1000).len(), MAX_OVERLAP_RESULTS);
+        assert_eq!(
+            host.overlap_sphere([0.0; 3], 1.0, 1000).len(),
+            MAX_OVERLAP_RESULTS
+        );
         assert_eq!(host.overlap_sphere([0.0; 3], 1.0, 3), vec![0, 1, 2]);
-        assert!(host.overlap_sphere([0.0; 3], -1.0, 3).is_empty(), "negative radius");
+        assert!(
+            host.overlap_sphere([0.0; 3], -1.0, 3).is_empty(),
+            "negative radius"
+        );
         assert!(host.overlap_sphere([f32::NAN, 0.0, 0.0], 1.0, 3).is_empty());
     }
 
@@ -576,7 +585,11 @@ mod tests {
             host.overlap_sphere([0.0; 3], 1.0, 1);
         }
         assert!(host.overlap_sphere([0.0; 3], 1.0, 1).is_empty(), "used up");
-        assert_eq!(host.raycast([0.0; 3], [0.0, -1.0, 0.0], 5.0), -1.0, "shared");
+        assert_eq!(
+            host.raycast([0.0; 3], [0.0, -1.0, 0.0], 5.0),
+            -1.0,
+            "shared"
+        );
     }
 
     #[test]
@@ -672,11 +685,7 @@ mod tests {
         let mut denied = HostData::default();
         denied.emit_command("sys.spawn", [0.0; 3]);
         denied.emit_command("game.fire", [1.0, 0.0, 0.0]);
-        let names: Vec<String> = denied
-            .take_commands()
-            .into_iter()
-            .map(|c| c.name)
-            .collect();
+        let names: Vec<String> = denied.take_commands().into_iter().map(|c| c.name).collect();
         assert_eq!(names, vec!["game.fire"], "only game commands pass");
 
         let mut allowed = HostData::with_system_commands(true);

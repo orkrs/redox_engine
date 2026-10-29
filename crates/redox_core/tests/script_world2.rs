@@ -3,13 +3,13 @@
 
 #![allow(clippy::unwrap_used)]
 
+use rapier3d::prelude::{ColliderBuilder, RigidBodyBuilder};
 use redox_core::script_world::{ScriptInactive, ScriptPrefabs, ScriptValues, run_script_update};
 use redox_ecs::{Entity, World};
 use redox_math::{Quat, Transform, Vec3};
 use redox_physics::PhysicsContext;
 use redox_scene::{Name, Tag};
 use redox_script::{ApiPermissions, InstanceId, ScriptConfig, ScriptRuntime};
-use rapier3d::prelude::{ColliderBuilder, RigidBodyBuilder, vector};
 
 fn module(text: &str) -> Vec<u8> {
     wat::parse_str(text).expect("valid wat")
@@ -55,7 +55,7 @@ fn place_ball(world: &mut World, at: Vec3) -> Entity {
     physics
         .add_rigid_body(
             entity,
-            RigidBodyBuilder::fixed().translation(vector![at.x, at.y, at.z]),
+            RigidBodyBuilder::fixed().translation(at),
             vec![ColliderBuilder::ball(0.5)],
         )
         .unwrap();
@@ -205,7 +205,11 @@ fn crate_prefabs() -> ScriptPrefabs {
 }
 
 fn crates(world: &World) -> usize {
-    world.query::<(Entity, &Name)>().iter(world).filter(|(_, n)| n.0 == "crate").count()
+    world
+        .query::<(Entity, &Name)>()
+        .iter(world)
+        .filter(|(_, n)| n.0 == "crate")
+        .count()
 }
 
 #[test]
@@ -235,11 +239,14 @@ fn spawn_happens_after_the_call() {
 fn commands_are_applied_in_emission_order() {
     let mut world = physics_world();
     let mover = world.spawn();
-    world.add_component(mover, Transform {
-        translation: Vec3::ZERO,
-        rotation: Quat::IDENTITY,
-        scale: Vec3::ONE,
-    });
+    world.add_component(
+        mover,
+        Transform {
+            translation: Vec3::ZERO,
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
+    );
     let id_text = mover.id();
     let mut rt = ScriptRuntime::new(ScriptConfig::default());
     let id = rt
@@ -260,14 +267,14 @@ fn an_unknown_prefab_is_logged_and_ignored() {
     let before = world.all_entities().count();
     let mut rt = ScriptRuntime::new(ScriptConfig::default());
     let id = rt
-        .instantiate(&commands_module(&[(
-            "sys.spawn.nope".to_owned(),
-            [0.0; 3],
-        )]))
+        .instantiate(&commands_module(&[("sys.spawn.nope".to_owned(), [0.0; 3])]))
         .unwrap();
     run(&mut world, &mut rt, id);
     assert_eq!(world.all_entities().count(), before);
-    assert!(!rt.is_disabled(id), "a bad command does not disable the script");
+    assert!(
+        !rt.is_disabled(id),
+        "a bad command does not disable the script"
+    );
 }
 
 #[test]
@@ -296,6 +303,8 @@ fn system_commands_require_the_permission() {
 fn despawn_of_an_unknown_id_is_ignored() {
     let mut world = physics_world();
     let keep = world.spawn();
+    // `all_entities` lists entities that own components.
+    world.add_component(keep, Name("keep".to_owned()));
     let before = world.all_entities().count();
     let mut rt = ScriptRuntime::new(ScriptConfig::default());
     let id = rt
@@ -313,6 +322,7 @@ fn despawn_of_an_unknown_id_is_ignored() {
 fn set_active_toggles_the_inactive_marker() {
     let mut world = physics_world();
     let target = world.spawn();
+    world.add_component(target, Name("target".to_owned()));
     let id_text = target.id();
     let mut rt = ScriptRuntime::new(ScriptConfig::default());
     let off = rt
@@ -359,7 +369,7 @@ fn tags_are_visible_to_scripts_through_the_snapshot() {
   (data (i32.const 8) "count")
   (func (export "on_update") (param f32)
     (call $set (i32.const 8) (i32.const 5)
-      (f32.convert_i32_s (call $tag (i32.const 0) (i32.const 5) (i32.const 400) (i32.const 4)))))))"#,
+      (f32.convert_i32_s (call $tag (i32.const 0) (i32.const 5) (i32.const 400) (i32.const 4))))))"#,
         ))
         .unwrap();
     run(&mut world, &mut rt, id);

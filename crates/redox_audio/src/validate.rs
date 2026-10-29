@@ -103,19 +103,13 @@ fn check_cue(cue: &SoundCue, exists: &dyn Fn(&str) -> bool, out: &mut Vec<Findin
     if cue.volume.0 < 0.0 || cue.volume.1 > MAX_LINEAR_GAIN {
         out.push(Finding::error(
             cue,
-            format!(
-                "volume {:?} is outside 0..={MAX_LINEAR_GAIN}",
-                cue.volume
-            ),
+            format!("volume {:?} is outside 0..={MAX_LINEAR_GAIN}", cue.volume),
         ));
     }
     if cue.pitch.0 <= 0.0 || cue.pitch.1 > MAX_PLAYBACK_RATE {
         out.push(Finding::error(
             cue,
-            format!(
-                "pitch {:?} is outside (0..={MAX_PLAYBACK_RATE}]",
-                cue.pitch
-            ),
+            format!("pitch {:?} is outside (0..={MAX_PLAYBACK_RATE}]", cue.pitch),
         ));
     }
     if cue.variants.len() == 1 && cue.pitch.0 == cue.pitch.1 {
@@ -196,7 +190,12 @@ mod tests {
 
     #[test]
     fn a_missing_file_is_an_error() {
-        let lib = library(&list(&[cue_text("boom", &["b1", "missing"], (1.0, 1.0), (1.0, 1.0))]));
+        let lib = library(&list(&[cue_text(
+            "boom",
+            &["b1", "missing"],
+            (1.0, 1.0),
+            (1.0, 1.0),
+        )]));
         let findings = validate_cue_library(&lib, &|name| name != "missing");
         let errs = errors(&findings);
         assert_eq!(errs.len(), 1);
@@ -235,15 +234,36 @@ mod tests {
 
     #[test]
     fn a_volume_outside_the_range_is_an_error() {
-        let too_loud = library(&list(&[cue_text("a", &["s1", "s2"], (0.5, 5.0), (1.0, 1.0))]));
-        let negative = library(&list(&[cue_text("b", &["s1", "s2"], (-0.1, 1.0), (1.0, 1.0))]));
-        assert_eq!(errors(&validate_cue_library(&too_loud, &all_exist)).len(), 1);
-        assert_eq!(errors(&validate_cue_library(&negative, &all_exist)).len(), 1);
+        let too_loud = library(&list(&[cue_text(
+            "a",
+            &["s1", "s2"],
+            (0.5, 5.0),
+            (1.0, 1.0),
+        )]));
+        let negative = library(&list(&[cue_text(
+            "b",
+            &["s1", "s2"],
+            (-0.1, 1.0),
+            (1.0, 1.0),
+        )]));
+        assert_eq!(
+            errors(&validate_cue_library(&too_loud, &all_exist)).len(),
+            1
+        );
+        assert_eq!(
+            errors(&validate_cue_library(&negative, &all_exist)).len(),
+            1
+        );
     }
 
     #[test]
     fn a_pitch_at_or_below_zero_is_an_error() {
-        let lib = library(&list(&[cue_text("a", &["s1", "s2"], (1.0, 1.0), (0.0, 1.0))]));
+        let lib = library(&list(&[cue_text(
+            "a",
+            &["s1", "s2"],
+            (1.0, 1.0),
+            (0.0, 1.0),
+        )]));
         assert_eq!(errors(&validate_cue_library(&lib, &all_exist)).len(), 1);
     }
 

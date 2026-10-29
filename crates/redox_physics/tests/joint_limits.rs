@@ -203,7 +203,11 @@ fn the_twist_is_limited() {
     let (mut lowest, mut highest) = (f32::MAX, f32::MIN);
     for _ in 0..60 {
         ctx.step(DT);
-        let (axis, angle) = ctx.get_rigid_body_transform(handle).unwrap().1.to_axis_angle();
+        let (axis, angle) = ctx
+            .get_rigid_body_transform(handle)
+            .unwrap()
+            .1
+            .to_axis_angle();
         let twist = angle * axis.x;
         lowest = lowest.min(twist);
         highest = highest.max(twist);
@@ -216,7 +220,11 @@ fn the_twist_is_limited() {
 #[test]
 fn an_unlimited_ball_still_swings_freely() {
     let run = run_ball_pendulum(JointKind::Ball, Vec3::new(9.81, 0.0, 0.0), None, 3.0);
-    assert!(run.max_angle > 90.0 * DEG, "free swing: {} deg", run.max_angle / DEG);
+    assert!(
+        run.max_angle > 90.0 * DEG,
+        "free swing: {} deg",
+        run.max_angle / DEG
+    );
 }
 
 #[test]
@@ -229,5 +237,9 @@ fn the_limits_hold_while_the_joint_is_stressed_but_not_broken() {
     // Ten times gravity, with a break force far above the load.
     let run = run_ball_pendulum(kind, Vec3::new(98.1, 0.0, 0.0), Some(1.0e6), 3.0);
     assert!(run.ctx.joint_exists(run.joint), "the joint is not broken");
-    assert!(run.max_angle <= 47.0 * DEG, "limit still holds: {} deg", run.max_angle / DEG);
+    assert!(
+        run.max_angle <= 47.0 * DEG,
+        "limit still holds: {} deg",
+        run.max_angle / DEG
+    );
 }

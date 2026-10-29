@@ -7,8 +7,8 @@ use std::f32::consts::TAU;
 
 use redox_anim::graph::{AnimGraph, Compare, Condition, LayerDef, Motion, StateDef, TransitionDef};
 use redox_anim::{
-    bind_clips, AnimationClip, ClipBinding, ClipRole, Keyframe, Skeleton, SkinnedGeometry,
-    SkinnedModel,
+    AnimationClip, ClipBinding, ClipRole, Keyframe, Skeleton, SkinnedGeometry, SkinnedModel,
+    bind_clips,
 };
 use redox_math::{Mat4, Quat, Vec3};
 
@@ -51,7 +51,6 @@ pub struct Rig {
 pub const ROOT: usize = 0;
 pub const WALK_SPEED: f32 = 1.5;
 pub const RUN_SPEED: f32 = 4.0;
-
 
 /// `(name, parent, global bind position)` of every bone.
 const BONES: [(&str, Option<usize>, [f32; 3]); 11] = [
@@ -431,7 +430,6 @@ mod tests {
         player.update(1.0 / 60.0, &model.skeleton, &model.clips);
         assert_eq!(player.state_name(1), None);
     }
-
 
     #[test]
     fn the_model_is_consistent() {
