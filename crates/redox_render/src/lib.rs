@@ -23,6 +23,8 @@ pub mod memory_budget;
 pub mod mesh;
 pub mod pass;
 pub mod pipeline_cache;
+/// Local reflection probes: influence boxes, parallax correction, selection (RFL-01).
+pub mod reflection;
 /// Post-processing passes.
 pub mod post;
 pub mod profiler;

@@ -24,6 +24,7 @@ mod resize;
 mod scene_sync;
 mod settings;
 
+pub use create::required_device_limits;
 pub use error::RendererError;
 pub use helpers::pick_hdr_msaa_sample_count;
 use helpers::*;
