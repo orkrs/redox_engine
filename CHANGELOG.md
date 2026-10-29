@@ -5,6 +5,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 ## [Unreleased]
 
 ### Added
+- Physics: character controller with accumulating gravity, `jump()`, autostep/slope/ground-snap settings (`CharacterSettings`) and moving-platform carry; walking on kinematic platforms fixed; ECS `Joint`/`JointLink`; `CombineRule` for friction/restitution; sound rays ignore sensors.
+- Render: skinned-mesh tangents (data, glTF import, CPU and GPU), `MemoryCategory::Buffers` accounting, `last_frame_cpu_timings`, `Renderer::try_new`/`RendererError`, optional motion blur and depth of field (`set_motion_blur`, `set_depth_of_field`).
+- Script: `ScriptRuntime::reload`, `ScriptWatcher`. Audio: `register_music_file` (streamed from disk), per-source occlusion by wall count (no global low-pass).
 - Render (A1): per-object motion vectors for TAA (`ObjectVelocityPass`, `FrameView::with_object_ids`); moving objects no longer smear.
 - Physics (B3): contact events (`ContactEvent`, enter/exit with point, normal, impulse; opt-in per entity) and `PhysicsMaterial` (friction, restitution). Known deviation: sensors keep `COLLISION_EVENTS` even with contact events off.
 - Audio (B8, first part): data-driven `SoundCue` (variants without repeats, volume/pitch ranges, cooldown), `CueLibrary` from RON, `AudioContext::play_cue`. Music streaming is not done; `priority` is stored but unused.
