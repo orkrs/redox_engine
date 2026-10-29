@@ -28,6 +28,7 @@ pub mod asset_pipeline;
 pub mod cache;
 pub mod culling;
 pub mod dag;
+pub mod dag_gpu;
 pub mod gpu_cull;
 pub mod hiz;
 pub mod indirect;
