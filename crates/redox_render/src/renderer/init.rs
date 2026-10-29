@@ -310,6 +310,8 @@ impl Renderer {
             wgpu::TextureFormat::Rgba16Float,
             "normal",
         );
+        let (material_surface_texture, material_surface_view) =
+            create_material_surface_target(&device, internal_width, internal_height);
         let (ssao_raw_texture, ssao_raw_view) =
             create_normal_ssao_texture(&device, half_width, half_height, gtao_fmt, "gtao_raw");
         let (ssao_half_blurred_texture, ssao_half_blurred_view) = create_normal_ssao_texture(
@@ -499,6 +501,8 @@ impl Renderer {
                 history_views: [&taa_history_view0, &taa_history_view1],
                 velocity_view: &taa_velocity_view,
                 depth_view: &depth_view,
+                normal_view: &normal_view,
+                surface_view: &material_surface_view,
                 bloom_view: &bloom_mip_views[0],
                 tone_pipeline: &tone_mapping_pipeline,
                 tone_uniform: &tonemap_uniform_buffer,
@@ -784,6 +788,8 @@ impl Renderer {
             hdr_sampler,
             normal_texture,
             normal_view,
+            material_surface_texture,
+            material_surface_view,
             normal_bind_group,
             ssao_raw_texture,
             ssao_raw_view,

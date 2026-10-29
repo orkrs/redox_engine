@@ -420,6 +420,7 @@ impl Renderer {
                 normal_pass: &self.normal_pass,
                 normal_bind_group: &self.normal_bind_group,
                 normal_view: &self.normal_view,
+                surface_view: &self.material_surface_view,
                 depth_view: &self.depth_view,
                 registry: &self.registry,
             };

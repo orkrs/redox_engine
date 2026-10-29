@@ -16,6 +16,8 @@ pub struct PrepassContext<'a> {
     pub normal_pass: &'a NormalPass,
     pub normal_bind_group: &'a wgpu::BindGroup,
     pub normal_view: &'a wgpu::TextureView,
+    /// Material surface target (roughness, metallic).
+    pub surface_view: &'a wgpu::TextureView,
     pub depth_view: &'a wgpu::TextureView,
     pub registry: &'a GpuRegistry,
 }
@@ -34,20 +36,36 @@ pub fn record_normal_prepass(
 
     let mut normal_render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("normal_pass_parallel"),
-        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-            depth_slice: None,
-            view: ctx.normal_view,
-            resolve_target: None,
-            ops: wgpu::Operations {
-                load: wgpu::LoadOp::Clear(wgpu::Color {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 0.0,
-                    a: 1.0,
-                }),
-                store: wgpu::StoreOp::Store,
-            },
-        })],
+        color_attachments: &[
+            Some(wgpu::RenderPassColorAttachment {
+                depth_slice: None,
+                view: ctx.normal_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
+                    }),
+                    store: wgpu::StoreOp::Store,
+                },
+            }),
+            Some(wgpu::RenderPassColorAttachment {
+                depth_slice: None,
+                view: ctx.surface_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: 1.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 0.0,
+                    }),
+                    store: wgpu::StoreOp::Store,
+                },
+            }),
+        ],
         depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
             view: ctx.depth_view,
             depth_ops: Some(wgpu::Operations {

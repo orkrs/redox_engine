@@ -132,12 +132,18 @@ impl Renderer {
             // --- 6e. Optional post effects (motion blur, DoF) on the TAA output, then bloom
             // and tone map. The history stays sharp: effects write their own targets. ---
             let taa_out_view = &self.taa_history_view[history_write_idx];
+            let chain_frame = ChainFrame {
+                camera: &self.camera_uniform,
+                near_far: [self.camera_near, self.camera_far],
+                screen: [self.config.width as f32, self.config.height as f32],
+                sun_direction: self.light_uniform.dir_direction,
+                sun_color: self.light_uniform.dir_color,
+            };
             let fx_out = self.post_fx.run_chain(
                 encoder,
                 &self.queue,
                 history_write_idx,
-                [self.config.width as f32, self.config.height as f32],
-                [self.camera_near, self.camera_far],
+                &chain_frame,
                 &self.post_fx_settings,
             );
             let bloom_src = match fx_out {

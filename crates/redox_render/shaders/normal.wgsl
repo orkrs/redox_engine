@@ -7,6 +7,7 @@ struct Model {
     model: mat4x4<f32>,
     normal_matrix: mat3x3<f32>,
     color: vec4<f32>,
+    // w of bounds_min = roughness and w of bounds_extent = metallic (see scene_sync.rs).
     bounds_min: vec4<f32>,
     bounds_extent: vec4<f32>,
 };
@@ -18,8 +19,15 @@ struct VertexOutput {
     @builtin(position) clip_pos: vec4<f32>,
     @location(0) world_normal: vec3<f32>,
     @location(1) world_pos: vec3<f32>,
+    @location(2) @interpolate(flat) surface: vec2<f32>,
 };
 
+struct FragmentOutput {
+    @location(0) normal_depth: vec4<f32>,
+    @location(1) surface: vec4<f32>,
+};
+
+// View distance that maps to 1.0 in the alpha channel. Must match NORMAL_DEPTH_RANGE in pass/normal.rs.
 const FAR: f32 = 1000.0;
 
 @vertex
@@ -32,16 +40,20 @@ fn vs_main(in: CompressedVertIn, @builtin(instance_index) instance_idx: u32) -> 
     out.world_pos = world_pos.xyz;
     let nm = mdl.normal_matrix;
     out.world_normal = normalize(nm * oct_decode(in.normal_oct));
+    out.surface = vec2<f32>(mdl.bounds_min.w, mdl.bounds_extent.w);
     return out;
 }
 
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+fn fs_main(in: VertexOutput) -> FragmentOutput {
     // Positive view-space distance along the projection ray (clip.w ≈ |view_z|
     // for RH perspective). Prefer this over radial length() so SSAO samples
     // share a plane-aligned depth metric.
     let clip = camera.view_proj * vec4<f32>(in.world_pos, 1.0);
     let view_z = max(abs(clip.w), 1e-5);
     let linear_depth = clamp(view_z / FAR, 0.0, 1.0);
-    return vec4<f32>(normalize(in.world_normal), linear_depth);
+    var out: FragmentOutput;
+    out.normal_depth = vec4<f32>(normalize(in.world_normal), linear_depth);
+    out.surface = vec4<f32>(in.surface, 0.0, 0.0);
+    return out;
 }
