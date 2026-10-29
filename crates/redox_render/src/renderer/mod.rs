@@ -361,6 +361,8 @@ pub struct Renderer {
     pub ibl_processor: IBLProcessor,
     /// The current image-based lighting environment.
     pub ibl_resource: IBLResource,
+    /// Local reflection probes (RFL-01): slots and their prefiltered cube array.
+    pub reflection_probes: crate::reflection::ReflectionProbeSet,
 
     // --- Debug visualization (e.g. audio occlusion rays) ---
     /// Pass that draws debug lines.

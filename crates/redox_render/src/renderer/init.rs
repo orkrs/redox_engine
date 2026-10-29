@@ -513,6 +513,7 @@ impl Renderer {
         // --- IBL ---
         let ibl_processor = IBLProcessor::new(&device);
         let ibl_resource = IBLResource::dummy(&device, &queue);
+        let reflection_probes = crate::reflection::ReflectionProbeSet::new(&device);
 
         // --- Clustered Forward Rendering ---
         let dummy_camera = Camera::new(std::f32::consts::PI / 4.0, 16.0 / 9.0, 0.1, 1000.0);
@@ -867,6 +868,7 @@ impl Renderer {
             skin_pipeline: std::sync::OnceLock::new(),
             ibl_processor,
             ibl_resource,
+            reflection_probes,
             skybox_pass: None,
             transparent_pass,
             debug_lines_pass,
