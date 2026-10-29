@@ -142,6 +142,22 @@ fn build_linker(engine: &Engine, config: &ScriptConfig) -> Result<Linker<State>,
         linker
             .func_wrap("env", "position_of", host_position_of)
             .map_err(link_err)?;
+        linker
+            .func_wrap("env", "overlap_sphere", host_overlap_sphere)
+            .map_err(link_err)?;
+        linker
+            .func_wrap("env", "overlap_box", host_overlap_box)
+            .map_err(link_err)?;
+    }
+    if api.entity_values {
+        linker
+            .func_wrap("env", "get_value_of", host_get_value_of)
+            .map_err(link_err)?;
+    }
+    if api.nav {
+        linker
+            .func_wrap("env", "nav_path", host_nav_path)
+            .map_err(link_err)?;
     }
     Ok(linker)
 }
@@ -179,14 +195,117 @@ fn host_find_by_tag(
         return 0;
     };
     let ids = caller.data_mut().host.find_by_tag(&tag, granted);
-    let bytes = host::id_bytes(&ids);
-    if let Some(dst) = memory
-        .data_mut(&mut caller)
-        .get_mut(range.start..range.start + bytes.len())
-    {
-        dst.copy_from_slice(&bytes);
-    }
-    i32::try_from(ids.len()).unwrap_or(0)
+    host::write_ids(memory.data_mut(&mut caller), range, &ids)
+}
+
+/// `env.overlap_sphere(cx, cy, cz, radius, out_ptr, out_cap) -> i32`: writes the ids of the
+/// entities overlapping the sphere and returns how many were written.
+fn host_overlap_sphere(
+    mut caller: Caller<'_, State>,
+    cx: f32,
+    cy: f32,
+    cz: f32,
+    radius: f32,
+    out_ptr: i32,
+    out_cap: i32,
+) -> i32 {
+    let Some(Extern::Memory(memory)) = caller.get_export(MEMORY_EXPORT) else {
+        return 0;
+    };
+    let Some((range, granted)) =
+        host::id_buffer_range(memory.data(&caller).len(), out_ptr, out_cap)
+    else {
+        return 0;
+    };
+    let ids = caller
+        .data_mut()
+        .host
+        .overlap_sphere([cx, cy, cz], radius, granted);
+    host::write_ids(memory.data_mut(&mut caller), range, &ids)
+}
+
+/// `env.overlap_box(cx, cy, cz, hx, hy, hz, out_ptr, out_cap) -> i32`: as `overlap_sphere`, for
+/// an axis aligned box given by its centre and half extents.
+#[allow(clippy::too_many_arguments)]
+fn host_overlap_box(
+    mut caller: Caller<'_, State>,
+    cx: f32,
+    cy: f32,
+    cz: f32,
+    hx: f32,
+    hy: f32,
+    hz: f32,
+    out_ptr: i32,
+    out_cap: i32,
+) -> i32 {
+    let Some(Extern::Memory(memory)) = caller.get_export(MEMORY_EXPORT) else {
+        return 0;
+    };
+    let Some((range, granted)) =
+        host::id_buffer_range(memory.data(&caller).len(), out_ptr, out_cap)
+    else {
+        return 0;
+    };
+    let ids = caller
+        .data_mut()
+        .host
+        .overlap_box([cx, cy, cz], [hx, hy, hz], granted);
+    host::write_ids(memory.data_mut(&mut caller), range, &ids)
+}
+
+/// `env.get_value_of(id, key_ptr, key_len, out_ptr) -> i32`: writes the named value of entity
+/// `id` as `f32` and returns 1, or returns 0 when the entity has no such value.
+fn host_get_value_of(
+    mut caller: Caller<'_, State>,
+    id: i32,
+    key_ptr: i32,
+    key_len: i32,
+    out_ptr: i32,
+) -> i32 {
+    let Some(Extern::Memory(memory)) = caller.get_export(MEMORY_EXPORT) else {
+        return 0;
+    };
+    let Some(out) = host::guest_range(memory.data(&caller).len(), out_ptr, host::VALUE_BYTES)
+    else {
+        return 0;
+    };
+    let Some(key) = read_name(&mut caller, key_ptr, key_len) else {
+        return 0;
+    };
+    let Some(value) = u32::try_from(id)
+        .ok()
+        .and_then(|id| caller.data_mut().host.get_value(id, &key))
+    else {
+        return 0;
+    };
+    memory.data_mut(&mut caller)[out].copy_from_slice(&value.to_le_bytes());
+    1
+}
+
+/// `env.nav_path(from_ptr, to_ptr, out_ptr, out_cap) -> i32`: writes the points of a walkable
+/// path (three `f32` each) and returns their number; 0 when there is no path or a range is bad.
+fn host_nav_path(
+    mut caller: Caller<'_, State>,
+    from_ptr: i32,
+    to_ptr: i32,
+    out_ptr: i32,
+    out_cap: i32,
+) -> i32 {
+    let Some(Extern::Memory(memory)) = caller.get_export(MEMORY_EXPORT) else {
+        return 0;
+    };
+    let data = memory.data(&caller);
+    let Some((range, granted)) = host::point_buffer_range(data.len(), out_ptr, out_cap) else {
+        return 0;
+    };
+    let (Some(from), Some(to)) = (
+        host::read_vec3(data, from_ptr),
+        host::read_vec3(data, to_ptr),
+    ) else {
+        return 0;
+    };
+    let path = caller.data_mut().host.nav_path(from, to, granted);
+    host::write_points(memory.data_mut(&mut caller), range, &path)
 }
 
 /// `env.position_of(id, out_ptr) -> i32`: writes the position (three `f32`) and returns 1, or 0

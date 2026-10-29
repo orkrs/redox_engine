@@ -24,6 +24,8 @@ pub(crate) const MAX_COMMANDS: usize = 256;
 pub(crate) const MAX_QUERIES_PER_CALL: u32 = 64;
 /// Most entities returned by one overlap or tag search.
 pub(crate) const MAX_OVERLAP_RESULTS: usize = 64;
+/// Most points returned by one `nav_path` call.
+pub(crate) const MAX_NAV_POINTS: usize = 32;
 /// Longest ray the host is asked to cast, in metres.
 pub(crate) const MAX_RAY_DISTANCE: f32 = 1000.0;
 /// Most rays accepted by one `raycast_many` call.
@@ -90,23 +92,70 @@ pub(crate) const VEC3_BYTES: usize = 12;
 /// Bytes of a `raycast_entity` answer: the id (`u32`) followed by the distance (`f32`).
 pub(crate) const HIT_BYTES: usize = 8;
 
-/// Guest byte range for an id buffer holding up to `capacity` ids, and the capacity actually
-/// granted: negative capacities count as zero and the grant is capped at [`MAX_OVERLAP_RESULTS`].
+/// Bytes of one `f32` value written by `get_value_of`.
+pub(crate) const VALUE_BYTES: usize = 4;
+
+/// Guest byte range for an output buffer of up to `capacity` items of `item_bytes` each, and the
+/// capacity actually granted: negative capacities count as zero, the grant is capped at
+/// `max_items`.
+fn buffer_range(
+    memory_len: usize,
+    out_ptr: i32,
+    capacity: i32,
+    item_bytes: usize,
+    max_items: usize,
+) -> Option<(Range<usize>, usize)> {
+    let granted = usize::try_from(capacity).unwrap_or(0).min(max_items);
+    let range = guest_range(memory_len, out_ptr, granted * item_bytes)?;
+    Some((range, granted))
+}
+
+/// Guest byte range for an id buffer holding up to `capacity` ids (see [`buffer_range`]).
 pub(crate) fn id_buffer_range(
     memory_len: usize,
     out_ptr: i32,
     capacity: i32,
 ) -> Option<(Range<usize>, usize)> {
-    let granted = usize::try_from(capacity)
-        .unwrap_or(0)
-        .min(MAX_OVERLAP_RESULTS);
-    let range = guest_range(memory_len, out_ptr, granted * ID_BYTES)?;
-    Some((range, granted))
+    buffer_range(memory_len, out_ptr, capacity, ID_BYTES, MAX_OVERLAP_RESULTS)
 }
 
-/// Encodes entity ids as little-endian `u32` bytes, ready to be written to guest memory.
-pub(crate) fn id_bytes(ids: &[u32]) -> Vec<u8> {
-    ids.iter().flat_map(|id| id.to_le_bytes()).collect()
+/// Guest byte range for a path buffer holding up to `capacity` points (see [`buffer_range`]).
+pub(crate) fn point_buffer_range(
+    memory_len: usize,
+    out_ptr: i32,
+    capacity: i32,
+) -> Option<(Range<usize>, usize)> {
+    buffer_range(memory_len, out_ptr, capacity, VEC3_BYTES, MAX_NAV_POINTS)
+}
+
+/// Writes the ids into `memory` at `range` (which must hold at least `ids.len()` ids) and returns
+/// how many were written, or 0 when the range does not fit the ids.
+pub(crate) fn write_ids(memory: &mut [u8], range: Range<usize>, ids: &[u32]) -> i32 {
+    let bytes: Vec<u8> = ids.iter().flat_map(|id| id.to_le_bytes()).collect();
+    match memory.get_mut(range.start..range.start + bytes.len()) {
+        Some(dst) => {
+            dst.copy_from_slice(&bytes);
+            i32::try_from(ids.len()).unwrap_or(0)
+        }
+        None => 0,
+    }
+}
+
+/// Writes path points into `memory` at `range` and returns how many were written, or 0 when the
+/// range does not fit them.
+pub(crate) fn write_points(memory: &mut [u8], range: Range<usize>, points: &[[f32; 3]]) -> i32 {
+    let bytes: Vec<u8> = points
+        .iter()
+        .flatten()
+        .flat_map(|c| c.to_le_bytes())
+        .collect();
+    match memory.get_mut(range.start..range.start + bytes.len()) {
+        Some(dst) => {
+            dst.copy_from_slice(&bytes);
+            i32::try_from(points.len()).unwrap_or(0)
+        }
+        None => 0,
+    }
 }
 
 /// Encodes a `raycast_entity` answer: the id, then the distance.
@@ -287,6 +336,31 @@ impl HostData {
         self.query(|world| world.position_of(ScriptEntityId(id)))
             .flatten()
             .filter(|p| is_finite3(*p))
+    }
+
+    /// Named numeric value of another entity; `None` when absent, not finite or no query is left.
+    pub(crate) fn get_value(&mut self, id: u32, key: &str) -> Option<f32> {
+        self.query(|world| world.get_value(ScriptEntityId(id), key))
+            .flatten()
+            .filter(|v| v.is_finite())
+    }
+
+    /// Walkable polyline from `from` to `to`, at most `limit` points (and [`MAX_NAV_POINTS`]).
+    /// Empty when there is no path, a point is not finite, or no query is left.
+    pub(crate) fn nav_path(&mut self, from: [f32; 3], to: [f32; 3], limit: usize) -> Vec<[f32; 3]> {
+        if !is_finite3(from) || !is_finite3(to) {
+            return Vec::new();
+        }
+        let cap = limit.min(MAX_NAV_POINTS);
+        let mut path = Vec::new();
+        let found = self
+            .query(|world| world.nav_path(from, to, &mut path, cap))
+            .unwrap_or(false);
+        if !found || path.is_empty() || path.iter().any(|p| !is_finite3(*p)) {
+            return Vec::new();
+        }
+        path.truncate(cap);
+        path
     }
 
     /// Runs an id producing query and returns at most `limit` ids (never more than
