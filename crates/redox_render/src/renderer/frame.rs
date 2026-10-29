@@ -4,6 +4,7 @@ use super::*;
 
 mod post;
 mod geometry;
+mod gi;
 mod shadows;
 mod vg;
 
@@ -251,28 +252,6 @@ impl Renderer {
             vsm_dirty,
             hdr_resolve_pass,
         }
-    }
-
-    fn pass_ddgi_fill(&mut self, f: &mut FrameState<'_>) {
-        let objects = f.objects;
-        let encoder = &mut f.encoder;
-        self.ddgi_gpu.record_gpu_fill(
-            &self.device,
-            &self.queue,
-            encoder,
-            objects,
-            -Vec3::from_array([
-                self.light_uniform.dir_direction[0],
-                self.light_uniform.dir_direction[1],
-                self.light_uniform.dir_direction[2],
-            ]),
-            Vec3::from_array([
-                self.light_uniform.dir_color[0],
-                self.light_uniform.dir_color[1],
-                self.light_uniform.dir_color[2],
-            ]),
-            self.light_uniform.dir_color[3],
-        );
     }
 
     /// Point-light atlas and virtual shadow map pages; recorded into separate command buffers
