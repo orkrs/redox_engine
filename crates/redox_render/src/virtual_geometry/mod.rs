@@ -33,7 +33,10 @@ pub mod hiz;
 pub mod indirect;
 pub mod lod;
 pub mod meshlet;
+pub mod pages;
+pub mod pool;
 pub mod runtime;
+pub mod rvg;
 
 // ── Public API re-exports ─────────────────────────────────────────────────────
 
