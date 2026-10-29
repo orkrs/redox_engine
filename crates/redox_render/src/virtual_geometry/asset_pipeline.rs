@@ -42,7 +42,7 @@ const MESHLET_CONE_WEIGHT: f32 = 0.5;
 
 /// Byte view over a vertex pool for meshopt. `Vertex.position` sits at byte
 /// offset 0 (see `Vertex::buffer_layout`).
-fn position_adapter(verts: &[Vertex]) -> VertexDataAdapter<'_> {
+pub(super) fn position_adapter(verts: &[Vertex]) -> VertexDataAdapter<'_> {
     VertexDataAdapter::new(
         bytemuck::cast_slice(verts),
         std::mem::size_of::<Vertex>(),
@@ -164,7 +164,7 @@ fn cluster_level(
 
 // ── Global AABB ──────────────────────────────────────────────────────────────
 
-fn compute_aabb(vertices: &[Vertex]) -> [[f32; 3]; 2] {
+pub(super) fn compute_aabb(vertices: &[Vertex]) -> [[f32; 3]; 2] {
     if vertices.is_empty() {
         return [[0.0; 3]; 2];
     }
