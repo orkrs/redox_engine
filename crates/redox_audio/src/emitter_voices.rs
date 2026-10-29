@@ -216,3 +216,39 @@ fn apply_snapshot(ctx: &mut AudioContext, snapshot: &EmitterSnapshot) {
         EmitterAction::Stop => ctx.stop_emitter_voice(entity),
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_emitter_that_plays_without_a_voice_starts() {
+        assert_eq!(emitter_action(true, true, false), EmitterAction::Start);
+    }
+
+    #[test]
+    fn a_playing_emitter_with_a_voice_is_updated() {
+        assert_eq!(emitter_action(true, true, true), EmitterAction::Update);
+    }
+
+    #[test]
+    fn a_stopped_emitter_with_a_voice_is_stopped() {
+        assert_eq!(emitter_action(false, true, true), EmitterAction::Stop);
+    }
+
+    #[test]
+    fn losing_the_sound_stops_the_voice() {
+        assert_eq!(emitter_action(true, false, true), EmitterAction::Stop);
+    }
+
+    #[test]
+    fn an_idle_emitter_without_a_voice_does_nothing() {
+        assert_eq!(emitter_action(false, false, false), EmitterAction::Idle);
+    }
+
+    #[test]
+    fn a_playing_emitter_whose_sound_is_not_ready_waits() {
+        assert_eq!(emitter_action(true, false, false), EmitterAction::Idle);
+    }
+}

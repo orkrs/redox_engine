@@ -31,6 +31,8 @@ pub struct SkinnedMeshBinding {
     gpu: Option<GpuSkin>,
     /// Set once [`Self::update_gpu`] ran: `deformed_bounds` is then the conservative `bounds`.
     gpu_skinned: bool,
+    /// Morph target weights applied by [`Self::update`] (CPU path); see [`Self::set_morph_weights`].
+    morph_weights: Vec<f32>,
 }
 
 impl SkinnedMeshBinding {
@@ -75,6 +77,20 @@ impl SkinnedMeshBinding {
             previous_bounds: None,
             gpu,
             gpu_skinned: false,
+            morph_weights: Vec::new(),
+        }
+    }
+
+    /// Sets the morph target weights (one per target; missing ones count as 0). Applied by the next
+    /// [`Self::update`] on the CPU path, and written to the GPU skinning pass immediately. Does
+    /// nothing for a mesh without morph targets.
+    pub fn set_morph_weights(&mut self, renderer: &Renderer, weights: &[f32]) {
+        if self.geometry.morph_targets.is_empty() {
+            return;
+        }
+        self.morph_weights = weights.to_vec();
+        if let Some(gpu) = &self.gpu {
+            gpu.upload_morph_weights(renderer.queue(), weights);
         }
     }
 
@@ -151,8 +167,12 @@ impl SkinnedMeshBinding {
     pub fn update(&mut self, renderer: &Renderer, skin_matrices: &[Mat4]) -> bool {
         self.gpu_skinned = false;
         self.previous_bounds = (!self.positions.is_empty()).then(|| self.deformed_bounds());
-        self.geometry
-            .deform_into(skin_matrices, &mut self.positions, &mut self.normals);
+        self.geometry.deform_morphed_into(
+            skin_matrices,
+            &self.morph_weights,
+            &mut self.positions,
+            &mut self.normals,
+        );
         self.geometry
             .deform_tangents_into(skin_matrices, &mut self.tangents);
         for (index, ((vertex, position), normal)) in self
