@@ -34,6 +34,12 @@ struct Material {
     layer0_params: vec4<f32>,
     layer1_color: vec4<f32>,
     layer1_params: vec4<f32>,
+    // MAT-04/05 rows (appended, 176-byte uniform): coat (weight, roughness, ior, aniso),
+    // coat tint, subsurface colour (rgb, radius mm), subsurface params (wrap, ...).
+    coat_params: vec4<f32>,
+    coat_tint: vec4<f32>,
+    sss_color: vec4<f32>,
+    sss_params: vec4<f32>,
 };
 
 struct Model {
@@ -664,6 +670,166 @@ fn eval_substrate_lit(
     return out;
 }
 
+// ── MAT-04/05 extension: clearcoat, anisotropy, wrap lighting ─────────────
+// CPU mirrors: src/substrate.rs, src/post/sss.rs. Each function is reached only
+// when its `material.flags` bit is set, so other materials keep the legacy path.
+const MAT_FLAG_COAT: u32 = 32u;
+const MAT_FLAG_ANISO: u32 = 64u;
+const MAT_FLAG_SSS: u32 = 128u;
+
+/// Wrapped Lambert term, normalised so `n_dot_l = 1` maps to 1 (see `wrap_diffuse` in sss.rs).
+fn wrap_diffuse(n_dot_l: f32, wrap: f32) -> f32 {
+    let w = clamp(wrap, 0.0, 1.0);
+    return max((n_dot_l + w) / (1.0 + w), 0.0);
+}
+
+/// Coat reflectance at normal incidence, from the coat IOR.
+fn coat_f0() -> f32 {
+    let ior = material.coat_params.z;
+    let r = (ior - 1.0) / max(ior + 1.0, 1.0e-4);
+    return clamp(r * r, 0.0, 1.0);
+}
+
+/// Schlick Fresnel of the coat at cosine `n_dot_v`.
+fn coat_fresnel_at(n_dot_v: f32) -> f32 {
+    let f0 = coat_f0();
+    return f0 + (1.0 - f0) * pow(clamp(1.0 - n_dot_v, 0.0, 1.0), 5.0);
+}
+
+/// Energy left for the base after the coat, per channel: (1 - w * Fc) * tint.
+fn coat_transmittance(n_dot_v: f32) -> vec3<f32> {
+    let w = clamp(material.coat_params.x, 0.0, 1.0);
+    let tint = clamp(material.coat_tint.rgb, vec3<f32>(0.0), vec3<f32>(1.0));
+    return (1.0 - w * coat_fresnel_at(n_dot_v)) * tint;
+}
+
+/// Clearcoat GGX specular times n·l (scalar, uses the base normal in v1).
+fn eval_coat_spec(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>) -> f32 {
+    let n_dot_l = max(dot(n, l), 0.0);
+    let n_dot_v = max(dot(n, v), 0.0);
+    if (n_dot_l <= 0.0 || n_dot_v <= 0.0) {
+        return 0.0;
+    }
+    let vl = v + l;
+    let vl_sq = dot(vl, vl);
+    if (vl_sq < 1.0e-8) {
+        return 0.0;
+    }
+    let h = vl * inverseSqrt(vl_sq);
+    let r = clamp(material.coat_params.y, 0.05, 1.0);
+    let f0 = coat_f0();
+    let ndf = distribution_ggx(n, h, r);
+    let g = geometry_smith(n, v, l, r);
+    let f = f0 + (1.0 - f0) * pow(clamp(1.0 - max(dot(h, v), 0.0), 0.0, 1.0), 5.0);
+    return material.coat_params.x * (ndf * g * f) / max(4.0 * n_dot_v * n_dot_l, 0.0001) * n_dot_l;
+}
+
+/// Tangent orthogonal to `n`; falls back to any perpendicular for degenerate input.
+fn orthonormal_tangent(t: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
+    let p = t - n * dot(t, n);
+    let len_sq = dot(p, p);
+    if (len_sq > 1.0e-12) {
+        return p * inverseSqrt(len_sq);
+    }
+    return normalize(cross(n, select(vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(1.0, 0.0, 0.0), abs(n.z) > 0.9)));
+}
+
+/// Anisotropic GGX distribution (Burley). Mirror of `substrate::d_ggx_aniso`.
+fn d_ggx_aniso(n_dot_h: f32, h_dot_t: f32, h_dot_b: f32, roughness: f32, aniso: f32) -> f32 {
+    let a = roughness * roughness;
+    let k = clamp(aniso, -0.99, 0.99);
+    let ax = a * (1.0 + k);
+    let ay = a * (1.0 - k);
+    let t = h_dot_t / ax;
+    let b = h_dot_b / ay;
+    let term = t * t + b * b + n_dot_h * n_dot_h;
+    return 1.0 / (PI * ax * ay * term * term);
+}
+
+/// Base Cook-Torrance lobe × n·l with anisotropic D and/or wrapped diffuse.
+/// G and F stay isotropic (v1). Used only as a delta against `eval_brdf_lobe`.
+fn eval_base_lobe_ext(
+    n: vec3<f32>,
+    t: vec3<f32>,
+    b: vec3<f32>,
+    v: vec3<f32>,
+    l: vec3<f32>,
+    albedo: vec3<f32>,
+    metallic: f32,
+    roughness: f32,
+    aniso_on: bool,
+    wrap_on: bool,
+) -> vec3<f32> {
+    let n_dot_v = max(dot(n, v), 0.0);
+    if (n_dot_v <= 0.0) {
+        return vec3<f32>(0.0);
+    }
+    let n_dot_l_raw = dot(n, l);
+    let n_dot_l = max(n_dot_l_raw, 0.0);
+    let vl = v + l;
+    let vl_sq = dot(vl, vl);
+    if (vl_sq < 1.0e-8) {
+        return vec3<f32>(0.0);
+    }
+    let h = vl * inverseSqrt(vl_sq);
+    let r = apply_geometric_specular_aa(n, clamp(roughness, 0.05, 1.0));
+    let f0 = mix(vec3<f32>(0.04), albedo, metallic);
+    var ndf: f32;
+    if (aniso_on) {
+        ndf = d_ggx_aniso(dot(n, h), dot(h, t), dot(h, b), r, material.coat_params.w);
+    } else {
+        ndf = distribution_ggx(n, h, r);
+    }
+    let g = geometry_smith(n, v, l, r);
+    let f = fresnel_schlick(max(dot(h, v), 0.0), f0);
+    let specular = (ndf * g * f) / max(4.0 * n_dot_v * n_dot_l, 0.0001);
+    let kd = (vec3<f32>(1.0) - f) * (1.0 - metallic);
+    var diffuse_term = kd * albedo / PI * n_dot_l;
+    if (wrap_on) {
+        let w = clamp(material.sss_params.x, 0.0, 1.0);
+        let tint = mix(vec3<f32>(1.0), material.sss_color.rgb, clamp(-n_dot_l_raw, 0.0, 1.0) * w);
+        diffuse_term = kd * albedo / PI * wrap_diffuse(n_dot_l_raw, w) * tint;
+    }
+    return diffuse_term + specular * n_dot_l;
+}
+
+/// Direct light of the material with coat, anisotropy and wrap. Without flags
+/// it returns `eval_substrate_lit` unchanged.
+fn eval_lit_material(
+    n: vec3<f32>,
+    t: vec3<f32>,
+    b: vec3<f32>,
+    v: vec3<f32>,
+    l: vec3<f32>,
+    albedo: vec3<f32>,
+    metallic: f32,
+    roughness: f32,
+) -> vec3<f32> {
+    var lit = eval_substrate_lit(n, v, l, albedo, metallic, roughness);
+    let aniso_on = (material.flags & MAT_FLAG_ANISO) != 0u;
+    let wrap_on = (material.flags & MAT_FLAG_SSS) != 0u;
+    if (aniso_on || wrap_on) {
+        let w_base = max(1.0 - material.layer0_params.y - material.layer1_params.y, 0.0);
+        let ext = eval_base_lobe_ext(n, t, b, v, l, albedo, metallic, roughness, aniso_on, wrap_on);
+        lit = lit + w_base * (ext - eval_brdf_lobe(n, v, l, albedo, metallic, roughness));
+    }
+    if ((material.flags & MAT_FLAG_COAT) != 0u) {
+        let n_dot_v = max(dot(n, v), 0.0);
+        lit = coat_transmittance(n_dot_v) * lit + vec3<f32>(eval_coat_spec(n, v, l));
+    }
+    return lit;
+}
+
+/// Clearcoat IBL reflection (added on top of the transmitted base ambient).
+fn coat_ibl_term(n_dot_v: f32, r: vec3<f32>) -> vec3<f32> {
+    let w = clamp(material.coat_params.x, 0.0, 1.0);
+    let rc = clamp(material.coat_params.y, 0.05, 1.0);
+    let fc = coat_fresnel_at(n_dot_v);
+    let pre = textureSampleLevel(t_prefiltered, s_ibl, r, rc * 4.0).rgb;
+    let brdf = textureSampleLevel(t_brdf_lut, s_ibl, vec2<f32>(n_dot_v, rc), 0.0).rg;
+    return w * pre * (fc * brdf.x + brdf.y);
+}
+
 // Clustered Forward Rendering helper functions
 fn linearize_depth(ndc_depth: f32, near: f32, far: f32) -> f32 {
     let z_ndc = ndc_depth * 2.0 - 1.0; // Convert from [0, 1] to [-1, 1]
@@ -758,6 +924,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let v = normalize(camera.camera_pos.xyz - in.world_pos);
     let n_dot_v = max(dot(n, v), 0.0);
     let f0 = mix(vec3<f32>(0.04), albedo, metallic);
+    // MAT-04: anisotropy frame (tangent from the vertex stream, orthogonal to n).
+    let aniso_t = orthonormal_tangent(in.world_tangent, n);
+    let aniso_b = cross(n, aniso_t);
 
     // --- DEBUG VISUALIZATION OVERLAY ---
     if (shader_debug.debug_viz_mode == 1u) {
@@ -846,7 +1015,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         );
         let blend = smoothstep(0.0, 0.3, sdf_result.y);
         shadow = mix(sdf_result.x, dir_shadow, blend);
-        lo += eval_substrate_lit(n, v, l, albedo, metallic, roughness) * radiance * shadow;
+        lo += eval_lit_material(n, aniso_t, aniso_b, v, l, albedo, metallic, roughness) * radiance * shadow;
     }
 
     // --- Point Lights (Clustered Forward Rendering) ---
@@ -893,7 +1062,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let attenuation = inv_dist_sq * window * window;
             let radiance = p_color * p_intensity;
             let p_shadow = get_point_light_shadow(light, in.world_pos, n);
-            lo += eval_substrate_lit(n, v, l, albedo, metallic, roughness)
+            lo += eval_lit_material(n, aniso_t, aniso_b, v, l, albedo, metallic, roughness)
                 * radiance * attenuation * p_shadow;
         }
     }
@@ -958,7 +1127,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Combine IBL with DDGI diffuse bounce (bent normal) — single ambient source.
     // Constant ambient (light_u.ambient.xyz) is small 0.02×albedo fallback when IBL/DDGI missing, not triple.
     let ddgi = ddgi_sample_irradiance(in.world_pos, bent_n);
-    let ambient = (w_base * (kD_ibl * diffuse_ibl + specular_ibl) + substrate_ibl + ddgi * albedo + light_u.ambient.xyz * albedo) * ambient_factor * ao;
+    let ambient_base = (w_base * (kD_ibl * diffuse_ibl + specular_ibl) + substrate_ibl + ddgi * albedo + light_u.ambient.xyz * albedo) * ambient_factor * ao;
+    // MAT-04: the clearcoat attenuates the base ambient and adds its own reflection.
+    var ambient = ambient_base;
+    if ((material.flags & MAT_FLAG_COAT) != 0u && shader_debug.ibl_enabled != 0u) {
+        ambient = ambient_base * coat_transmittance(n_dot_v) + coat_ibl_term(n_dot_v, r) * ambient_factor;
+    }
     let color = ambient + lo + material.emissive.rgb;
     return vec4<f32>(sanitize_hdr(color), material.base_color.a * in.instance_color.a);
 }

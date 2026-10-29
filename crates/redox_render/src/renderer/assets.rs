@@ -356,6 +356,7 @@ impl Renderer {
             emissive: data.emissive,
             layers: data.layers,
             sheen: data.sheen,
+            ..Material::solid(data.base_color)
         };
         let idx = self.add_material_impl(material, true);
         self.material_blend_flags[idx] = data.blend;

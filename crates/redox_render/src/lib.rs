@@ -32,6 +32,8 @@ pub mod resource;
 pub mod sdf;
 pub mod shader;
 pub mod shadow;
+/// Substrate-lite material model: slabs, clearcoat, energy checks (MAT-04).
+pub mod substrate;
 pub mod skinning;
 mod skinning_gpu;
 pub mod surface;

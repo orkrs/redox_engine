@@ -47,6 +47,9 @@ pub enum BlendMode {
     /// Alpha-blended surface: rendered after all opaque geometry, sorted
     /// back-to-front, without writing depth.
     Alpha,
+    /// Additive surface (fire, glow): rendered after the alpha pass with
+    /// `dst + src * alpha`, no sorting (order does not matter), no depth write.
+    Additive,
 }
 
 /// Material descriptor (no GPU indices). Stored in the asset manager.
