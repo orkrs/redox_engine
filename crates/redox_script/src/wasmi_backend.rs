@@ -128,8 +128,117 @@ fn build_linker(engine: &Engine, config: &ScriptConfig) -> Result<Linker<State>,
         linker
             .func_wrap("env", "raycast_many", host_raycast_many)
             .map_err(link_err)?;
+        linker
+            .func_wrap("env", "raycast_entity", host_raycast_entity)
+            .map_err(link_err)?;
+    }
+    if api.query {
+        linker
+            .func_wrap("env", "find_by_name", host_find_by_name)
+            .map_err(link_err)?;
+        linker
+            .func_wrap("env", "find_by_tag", host_find_by_tag)
+            .map_err(link_err)?;
+        linker
+            .func_wrap("env", "position_of", host_position_of)
+            .map_err(link_err)?;
     }
     Ok(linker)
+}
+
+/// `env.find_by_name(name_ptr, name_len) -> i32`: the entity id, or -1 when no entity has the name.
+fn host_find_by_name(mut caller: Caller<'_, State>, ptr: i32, len: i32) -> i32 {
+    match read_name(&mut caller, ptr, len) {
+        Some(name) => caller
+            .data_mut()
+            .host
+            .find_by_name(&name)
+            .map_or(-1, host::id_as_i32),
+        None => -1,
+    }
+}
+
+/// `env.find_by_tag(tag_ptr, tag_len, out_ptr, out_cap) -> i32`: writes up to `out_cap` ids and
+/// returns how many were written; 0 on any invalid range.
+fn host_find_by_tag(
+    mut caller: Caller<'_, State>,
+    tag_ptr: i32,
+    tag_len: i32,
+    out_ptr: i32,
+    out_cap: i32,
+) -> i32 {
+    let Some(Extern::Memory(memory)) = caller.get_export(MEMORY_EXPORT) else {
+        return 0;
+    };
+    let Some((range, granted)) =
+        host::id_buffer_range(memory.data(&caller).len(), out_ptr, out_cap)
+    else {
+        return 0;
+    };
+    let Some(tag) = read_name(&mut caller, tag_ptr, tag_len) else {
+        return 0;
+    };
+    let ids = caller.data_mut().host.find_by_tag(&tag, granted);
+    let bytes = host::id_bytes(&ids);
+    if let Some(dst) = memory
+        .data_mut(&mut caller)
+        .get_mut(range.start..range.start + bytes.len())
+    {
+        dst.copy_from_slice(&bytes);
+    }
+    i32::try_from(ids.len()).unwrap_or(0)
+}
+
+/// `env.position_of(id, out_ptr) -> i32`: writes the position (three `f32`) and returns 1, or 0
+/// when the entity is unknown or the output does not fit in memory.
+fn host_position_of(mut caller: Caller<'_, State>, id: i32, out_ptr: i32) -> i32 {
+    let Some(Extern::Memory(memory)) = caller.get_export(MEMORY_EXPORT) else {
+        return 0;
+    };
+    let Some(out) = host::guest_range(memory.data(&caller).len(), out_ptr, host::VEC3_BYTES)
+    else {
+        return 0;
+    };
+    let Some(position) =
+        u32::try_from(id).ok().and_then(|id| caller.data_mut().host.position_of(id))
+    else {
+        return 0;
+    };
+    memory.data_mut(&mut caller)[out].copy_from_slice(&host::answer_bytes(&position));
+    1
+}
+
+/// `env.raycast_entity(origin_ptr, dir_ptr, max_distance, out_ptr) -> i32`: writes the id and the
+/// distance of the first entity hit (`u32`, `f32`) and returns 1; returns 0 on a miss.
+fn host_raycast_entity(
+    mut caller: Caller<'_, State>,
+    origin_ptr: i32,
+    dir_ptr: i32,
+    max_distance: f32,
+    out_ptr: i32,
+) -> i32 {
+    let Some(Extern::Memory(memory)) = caller.get_export(MEMORY_EXPORT) else {
+        return 0;
+    };
+    let data = memory.data(&caller);
+    let Some(out) = host::guest_range(data.len(), out_ptr, host::HIT_BYTES) else {
+        return 0;
+    };
+    let (Some(origin), Some(direction)) = (
+        host::read_vec3(data, origin_ptr),
+        host::read_vec3(data, dir_ptr),
+    ) else {
+        return 0;
+    };
+    let Some((id, distance)) = caller
+        .data_mut()
+        .host
+        .raycast_entity(origin, direction, max_distance)
+    else {
+        return 0;
+    };
+    memory.data_mut(&mut caller)[out].copy_from_slice(&host::hit_bytes(id, distance));
+    1
 }
 
 /// `env.log(ptr, len)`: copies a bounded slice of guest memory into the log buffer.

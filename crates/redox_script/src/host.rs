@@ -77,10 +77,58 @@ pub(crate) fn batch_ranges(
 }
 
 /// `len` bytes starting at guest pointer `ptr`, when that range lies inside `memory_len`.
-fn guest_range(memory_len: usize, ptr: i32, len: usize) -> Option<Range<usize>> {
+pub(crate) fn guest_range(memory_len: usize, ptr: i32, len: usize) -> Option<Range<usize>> {
     let start = usize::try_from(ptr).ok()?;
     let end = start.checked_add(len)?;
     (end <= memory_len).then_some(start..end)
+}
+
+/// Bytes of one entity id in guest memory (little-endian `u32`).
+const ID_BYTES: usize = 4;
+/// Bytes of one vector in guest memory (three little-endian `f32`).
+pub(crate) const VEC3_BYTES: usize = 12;
+/// Bytes of a `raycast_entity` answer: the id (`u32`) followed by the distance (`f32`).
+pub(crate) const HIT_BYTES: usize = 8;
+
+/// Guest byte range for an id buffer holding up to `capacity` ids, and the capacity actually
+/// granted: negative capacities count as zero and the grant is capped at [`MAX_OVERLAP_RESULTS`].
+pub(crate) fn id_buffer_range(
+    memory_len: usize,
+    out_ptr: i32,
+    capacity: i32,
+) -> Option<(Range<usize>, usize)> {
+    let granted = usize::try_from(capacity)
+        .unwrap_or(0)
+        .min(MAX_OVERLAP_RESULTS);
+    let range = guest_range(memory_len, out_ptr, granted * ID_BYTES)?;
+    Some((range, granted))
+}
+
+/// Encodes entity ids as little-endian `u32` bytes, ready to be written to guest memory.
+pub(crate) fn id_bytes(ids: &[u32]) -> Vec<u8> {
+    ids.iter().flat_map(|id| id.to_le_bytes()).collect()
+}
+
+/// Encodes a `raycast_entity` answer: the id, then the distance.
+pub(crate) fn hit_bytes(id: u32, distance: f32) -> Vec<u8> {
+    [id.to_le_bytes(), distance.to_le_bytes()].concat()
+}
+
+/// Reads the vector stored at guest pointer `ptr`; `None` when it does not fit in `memory`.
+pub(crate) fn read_vec3(memory: &[u8], ptr: i32) -> Option<[f32; 3]> {
+    let range = guest_range(memory.len(), ptr, VEC3_BYTES)?;
+    let bytes = memory.get(range)?;
+    let mut out = [0.0_f32; 3];
+    for (value, chunk) in out.iter_mut().zip(bytes.chunks_exact(4)) {
+        *value = f32::from_le_bytes(chunk.try_into().ok()?);
+    }
+    Some(out)
+}
+
+/// Converts an entity id to the `i32` a script receives: `-1` when it does not fit, which a
+/// script reads as "not found" (ids are handed out sequentially and stay far below `i32::MAX`).
+pub(crate) fn id_as_i32(id: u32) -> i32 {
+    i32::try_from(id).unwrap_or(-1)
 }
 
 /// Decodes one ray record; a short slice reads as zeros (callers pass whole records).
@@ -220,6 +268,25 @@ impl HostData {
         self.collect_ids(limit, |world, out, cap| {
             world.overlap_box(center, half_extent, out, cap);
         })
+    }
+
+    /// The entity with the given name, or `None` (no world, no query left, or unknown name).
+    pub(crate) fn find_by_name(&mut self, name: &str) -> Option<u32> {
+        self.query(|world| world.find_by_name(name))
+            .flatten()
+            .map(|id| id.0)
+    }
+
+    /// Entities carrying `tag`, at most `limit` (and [`MAX_OVERLAP_RESULTS`]).
+    pub(crate) fn find_by_tag(&mut self, tag: &str, limit: usize) -> Vec<u32> {
+        self.collect_ids(limit, |world, out, cap| world.find_by_tag(tag, out, cap))
+    }
+
+    /// World position of an entity; `None` when unknown, not finite, or no query is left.
+    pub(crate) fn position_of(&mut self, id: u32) -> Option<[f32; 3]> {
+        self.query(|world| world.position_of(ScriptEntityId(id)))
+            .flatten()
+            .filter(|p| is_finite3(*p))
     }
 
     /// Runs an id producing query and returns at most `limit` ids (never more than
