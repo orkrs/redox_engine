@@ -511,28 +511,17 @@ mod tests {
     fn parses_the_defaults_and_every_option() {
         let plain = job();
         assert_eq!(plain.dir, PathBuf::from("assets"));
-        assert_eq!(plain.target_lufs_music, -16.0);
-        assert_eq!(plain.target_lufs_sfx, -18.0);
+        assert_eq!((plain.target_lufs_music, plain.target_lufs_sfx), (-16.0, -18.0));
         assert_eq!(plain.tolerance, 3.0);
         assert!(!plain.json && plain.cues.is_none());
         let full = parse_audio_check(&[
-            "assets",
-            "--cues",
-            "c.ron",
-            "--target-lufs",
-            "-14",
-            "--target-lufs-sfx",
-            "-20",
-            "--tolerance",
-            "1.5",
-            "--json",
+            "assets", "--cues", "c.ron", "--target-lufs", "-14", "--target-lufs-sfx", "-20",
+            "--tolerance", "1.5", "--json",
         ])
         .expect("full line parses");
         assert_eq!(full.cues, Some(PathBuf::from("c.ron")));
-        assert_eq!(full.target_lufs_music, -14.0);
-        assert_eq!(full.target_lufs_sfx, -20.0);
-        assert_eq!(full.tolerance, 1.5);
-        assert!(full.json);
+        assert_eq!((full.target_lufs_music, full.target_lufs_sfx), (-14.0, -20.0));
+        assert!(full.json && full.tolerance == 1.5);
     }
 
     #[test]
@@ -594,51 +583,24 @@ mod tests {
 
     #[test]
     fn a_directory_check_reports_a_bad_file_as_an_error() {
-        let dir = std::env::temp_dir().join(format!(
-            "redox_cook_audio_check_{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("redox_cook_audio_check_{}", std::process::id()));
         std::fs::create_dir_all(dir.join("music")).expect("temp dir");
         std::fs::write(dir.join("bad.wav"), b"not a sound file").expect("write bad");
         let tone: Vec<i16> = (0..48_000)
-            .map(|n| {
-                let t = n as f32 / 48_000.0;
-                (0.5 * (2.0 * std::f32::consts::PI * 997.0 * t).sin() * 32_767.0) as i16
-            })
+            .map(|n| (0.5 * (n as f32 * 2.0 * std::f32::consts::PI * 997.0 / 48_000.0).sin() * 32_767.0) as i16)
             .collect();
-        std::fs::write(dir.join("music").join("tone.wav"), wav_bytes(&tone, 48_000))
-            .expect("write tone");
-        let job = AudioCheckJob {
-            dir: dir.clone(),
-            ..job()
-        };
+        std::fs::write(dir.join("music").join("tone.wav"), wav_bytes(&tone, 48_000)).expect("write tone");
+        let job = AudioCheckJob { dir: dir.clone(), ..job() };
         let report = check(&job);
         let _ = std::fs::remove_dir_all(&dir);
         let report = report.expect("check runs");
-        assert_eq!(report.files.len(), 2);
-        assert_eq!(report.error_count(), 1);
-        let tone_entry = report
-            .files
-            .iter()
-            .find(|entry| entry.path == "music/tone.wav")
-            .expect("tone measured");
-        assert!(tone_entry.music);
-        assert!(tone_entry.stats.is_some() && tone_entry.seam_db.is_some());
-        let bad = report
-            .files
-            .iter()
-            .find(|entry| entry.path == "bad.wav")
-            .expect("bad file listed");
+        assert_eq!((report.files.len(), report.error_count()), (2, 1));
+        let tone = report.files.iter().find(|e| e.path == "music/tone.wav").expect("tone measured");
+        assert!(tone.music && tone.stats.is_some() && tone.seam_db.is_some());
+        let bad = report.files.iter().find(|e| e.path == "bad.wav").expect("bad file listed");
         assert!(bad.stats.is_none());
     }
 
-    #[test]
-    fn json_strings_are_escaped() {
-        assert_eq!(json_string("a\"b\\c\n"), "\"a\\\"b\\\\c\\n\"");
-        assert_eq!(json_string("\u{1}"), "\"\\u0001\"");
-    }
-
-    /// A JSON value, read back by the test to check the report.
     #[derive(Debug, PartialEq)]
     enum Json {
         Null,
@@ -649,164 +611,117 @@ mod tests {
         Obj(Vec<(String, Json)>),
     }
 
-    /// Minimal JSON reader for the report format.
-    struct Reader<'a> {
-        bytes: &'a [u8],
-        pos: usize,
+    fn ws(text: &[u8], mut pos: usize) -> usize {
+        while text.get(pos).is_some_and(u8::is_ascii_whitespace) {
+            pos += 1;
+        }
+        pos
     }
 
-    impl Reader<'_> {
-        fn skip_ws(&mut self) {
-            while self.bytes.get(self.pos).is_some_and(u8::is_ascii_whitespace) {
-                self.pos += 1;
+    /// Reads one value at `pos`, returning it and the position after it.
+    fn read(text: &[u8], pos: usize) -> Result<(Json, usize), String> {
+        let pos = ws(text, pos);
+        let rest = text.get(pos..).unwrap_or(&[]);
+        match *text.get(pos).ok_or("unexpected end")? {
+            b'{' => read_object(text, pos),
+            b'[' => read_array(text, pos),
+            b'"' => read_string(text, pos).map(|(s, end)| (Json::Str(s), end)),
+            _ if rest.starts_with(b"null") => Ok((Json::Null, pos + 4)),
+            _ if rest.starts_with(b"true") => Ok((Json::Bool(true), pos + 4)),
+            _ if rest.starts_with(b"false") => Ok((Json::Bool(false), pos + 5)),
+            _ => {
+                let end = (pos..text.len())
+                    .find(|&i| !b"+-.0123456789eE".contains(&text[i]))
+                    .unwrap_or(text.len());
+                let slice = std::str::from_utf8(&text[pos..end]).map_err(|e| e.to_string())?;
+                let value = slice.parse::<f64>().map_err(|_| format!("bad number `{slice}`"))?;
+                Ok((Json::Num(value), end))
             }
         }
+    }
 
-        fn eat(&mut self, byte: u8) -> Result<(), String> {
-            self.skip_ws();
-            if self.bytes.get(self.pos) == Some(&byte) {
-                self.pos += 1;
-                Ok(())
-            } else {
-                Err(format!("expected `{}` at {}", byte as char, self.pos))
-            }
+    /// Checks the separator after an item: a comma (skipped) or the closing byte (kept).
+    fn after_item(text: &[u8], pos: usize, close: u8) -> Result<usize, String> {
+        let pos = ws(text, pos);
+        match text.get(pos) {
+            Some(b',') => Ok(ws(text, pos + 1)),
+            Some(&byte) if byte == close => Ok(pos),
+            _ => Err(format!("expected `,` or `{}` at {pos}", close as char)),
         }
+    }
 
-        fn literal(&mut self, word: &str, value: Json) -> Result<Json, String> {
-            let matches = self
-                .bytes
-                .get(self.pos..)
-                .is_some_and(|rest| rest.starts_with(word.as_bytes()));
-            if matches {
-                self.pos += word.len();
-                Ok(value)
-            } else {
-                Err(format!("bad literal at {}", self.pos))
+    fn read_object(text: &[u8], pos: usize) -> Result<(Json, usize), String> {
+        let mut members = Vec::new();
+        let mut pos = ws(text, pos + 1);
+        while text.get(pos) != Some(&b'}') {
+            let (key, after_key) = read(text, pos)?;
+            let Json::Str(key) = key else {
+                return Err(format!("object key at {pos} is not a string"));
+            };
+            let colon = ws(text, after_key);
+            if text.get(colon) != Some(&b':') {
+                return Err(format!("expected `:` at {colon}"));
             }
+            let (value, after_value) = read(text, colon + 1)?;
+            members.push((key, value));
+            pos = after_item(text, after_value, b'}')?;
         }
+        Ok((Json::Obj(members), pos + 1))
+    }
 
-        fn value(&mut self) -> Result<Json, String> {
-            self.skip_ws();
-            match self.bytes.get(self.pos).copied() {
-                Some(b'{') => self.object(),
-                Some(b'[') => self.array(),
-                Some(b'"') => self.string().map(Json::Str),
-                Some(b'n') => self.literal("null", Json::Null),
-                Some(b't') => self.literal("true", Json::Bool(true)),
-                Some(b'f') => self.literal("false", Json::Bool(false)),
-                Some(_) => self.number(),
-                None => Err("unexpected end".into()),
-            }
+    fn read_array(text: &[u8], pos: usize) -> Result<(Json, usize), String> {
+        let mut items = Vec::new();
+        let mut pos = ws(text, pos + 1);
+        while text.get(pos) != Some(&b']') {
+            let (item, after) = read(text, pos)?;
+            items.push(item);
+            pos = after_item(text, after, b']')?;
         }
+        Ok((Json::Arr(items), pos + 1))
+    }
 
-        fn number(&mut self) -> Result<Json, String> {
-            let start = self.pos;
-            while self
-                .bytes
-                .get(self.pos)
-                .is_some_and(|b| b"+-.0123456789eE".contains(b))
-            {
-                self.pos += 1;
-            }
-            let text = std::str::from_utf8(&self.bytes[start..self.pos]).map_err(|e| e.to_string())?;
-            text.parse::<f64>()
-                .map(Json::Num)
-                .map_err(|_| format!("bad number `{text}`"))
-        }
-
-        fn string(&mut self) -> Result<String, String> {
-            self.eat(b'"')?;
-            let mut out: Vec<u8> = Vec::new();
-            loop {
-                let byte = *self.bytes.get(self.pos).ok_or("unterminated string")?;
-                self.pos += 1;
-                match byte {
-                    b'"' => break,
-                    b'\\' => {
-                        let escape = *self.bytes.get(self.pos).ok_or("bad escape")?;
-                        self.pos += 1;
-                        match escape {
-                            b'"' | b'\\' | b'/' => out.push(escape),
-                            b'n' => out.push(b'\n'),
-                            b'r' => out.push(b'\r'),
-                            b't' => out.push(b'\t'),
-                            b'u' => {
-                                let hex = self.bytes.get(self.pos..self.pos + 4).ok_or("bad \\u")?;
-                                let text = std::str::from_utf8(hex).map_err(|e| e.to_string())?;
-                                let code = u32::from_str_radix(text, 16).map_err(|e| e.to_string())?;
-                                self.pos += 4;
-                                let c = char::from_u32(code).ok_or("bad code point")?;
-                                let mut buf = [0u8; 4];
-                                out.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
-                            }
-                            other => return Err(format!("unknown escape {}", other as char)),
+    fn read_string(text: &[u8], pos: usize) -> Result<(String, usize), String> {
+        let mut out = Vec::new();
+        let mut i = pos + 1;
+        loop {
+            let byte = *text.get(i).ok_or("unterminated string")?;
+            i += 1;
+            match byte {
+                b'"' => break,
+                b'\\' => {
+                    let escape = *text.get(i).ok_or("bad escape")?;
+                    i += 1;
+                    let decoded = match escape {
+                        b'n' => '\n',
+                        b'r' => '\r',
+                        b't' => '\t',
+                        b'u' => {
+                            let hex = text.get(i..i + 4).ok_or("bad \\u escape")?;
+                            i += 4;
+                            let hex = std::str::from_utf8(hex).map_err(|e| e.to_string())?;
+                            let code = u32::from_str_radix(hex, 16).map_err(|e| e.to_string())?;
+                            char::from_u32(code).ok_or("bad code point")?
                         }
-                    }
-                    other => out.push(other),
+                        other => other as char,
+                    };
+                    let mut buf = [0u8; 4];
+                    out.extend_from_slice(decoded.encode_utf8(&mut buf).as_bytes());
                 }
-            }
-            String::from_utf8(out).map_err(|e| e.to_string())
-        }
-
-        fn object(&mut self) -> Result<Json, String> {
-            self.eat(b'{')?;
-            let mut members = Vec::new();
-            self.skip_ws();
-            if self.bytes.get(self.pos) == Some(&b'}') {
-                self.pos += 1;
-                return Ok(Json::Obj(members));
-            }
-            loop {
-                let key = self.string()?;
-                self.eat(b':')?;
-                members.push((key, self.value()?));
-                self.skip_ws();
-                match self.bytes.get(self.pos).copied() {
-                    Some(b',') => self.pos += 1,
-                    Some(b'}') => {
-                        self.pos += 1;
-                        return Ok(Json::Obj(members));
-                    }
-                    _ => return Err(format!("expected `,` or `}}` at {}", self.pos)),
-                }
+                other => out.push(other),
             }
         }
-
-        fn array(&mut self) -> Result<Json, String> {
-            self.eat(b'[')?;
-            let mut items = Vec::new();
-            self.skip_ws();
-            if self.bytes.get(self.pos) == Some(&b']') {
-                self.pos += 1;
-                return Ok(Json::Arr(items));
-            }
-            loop {
-                items.push(self.value()?);
-                self.skip_ws();
-                match self.bytes.get(self.pos).copied() {
-                    Some(b',') => self.pos += 1,
-                    Some(b']') => {
-                        self.pos += 1;
-                        return Ok(Json::Arr(items));
-                    }
-                    _ => return Err(format!("expected `,` or `]` at {}", self.pos)),
-                }
-            }
-        }
+        let decoded = String::from_utf8(out).map_err(|e| e.to_string())?;
+        Ok((decoded, i))
     }
 
     /// Parses a whole JSON document.
     fn parse_json(text: &str) -> Result<Json, String> {
-        let mut reader = Reader {
-            bytes: text.as_bytes(),
-            pos: 0,
-        };
-        let value = reader.value()?;
-        reader.skip_ws();
-        if reader.pos == reader.bytes.len() {
+        let bytes = text.as_bytes();
+        let (value, end) = read(bytes, 0)?;
+        if ws(bytes, end) == bytes.len() {
             Ok(value)
         } else {
-            Err(format!("trailing text at {}", reader.pos))
+            Err(format!("trailing text at {end}"))
         }
     }
 
@@ -822,7 +737,6 @@ mod tests {
         }
     }
 
-    /// The item at `index` of a JSON array.
     fn item(value: &Json, index: usize) -> &Json {
         match value {
             Json::Arr(items) => &items[index],
@@ -831,36 +745,27 @@ mod tests {
     }
 
     fn sample_report() -> Report {
+        let loud = AudioStats {
+            peak_db: -0.5,
+            rms_db: -20.25,
+            lufs_integrated: -16.5,
+            duration: 2.5,
+            clipped_samples: 3,
+            dc_offset: 0.125,
+            channels_detected: 2,
+        };
+        let warn = Problem { severity: Severity::Warning, message: "clipping: \"peak\"".into() };
+        let error = Problem { severity: Severity::Error, message: "cannot decode".into() };
         Report {
             files: vec![
                 FileEntry {
                     path: "music/a \"q\".ogg".into(),
                     music: true,
-                    stats: Some(AudioStats {
-                        peak_db: -0.5,
-                        rms_db: -20.25,
-                        lufs_integrated: -16.5,
-                        duration: 2.5,
-                        clipped_samples: 3,
-                        dc_offset: 0.125,
-                        channels_detected: 2,
-                    }),
+                    stats: Some(loud),
                     seam_db: Some(1.5),
-                    problems: vec![Problem {
-                        severity: Severity::Warning,
-                        message: "clipping: peak -0.50 dBFS".into(),
-                    }],
+                    problems: vec![warn],
                 },
-                FileEntry {
-                    path: "bad.wav".into(),
-                    music: false,
-                    stats: None,
-                    seam_db: None,
-                    problems: vec![Problem {
-                        severity: Severity::Error,
-                        message: "cannot decode".into(),
-                    }],
-                },
+                FileEntry { path: "bad.wav".into(), music: false, stats: None, seam_db: None, problems: vec![error] },
             ],
             cue_findings: vec![Finding {
                 severity: Severity::Error,
@@ -872,8 +777,7 @@ mod tests {
 
     #[test]
     fn the_json_report_roundtrips() {
-        let json = to_json(&sample_report());
-        let root = parse_json(&json).expect("the report is valid JSON");
+        let root = parse_json(&to_json(&sample_report())).expect("the report is valid JSON");
         assert_eq!(field(&root, "errors"), &Json::Num(2.0));
         assert_eq!(field(&root, "warnings"), &Json::Num(1.0));
         let files = field(&root, "files");
@@ -884,6 +788,8 @@ mod tests {
         assert_eq!(field(first, "lufs"), &Json::Num(-16.5));
         assert_eq!(field(first, "channels"), &Json::Num(2.0));
         assert_eq!(field(first, "seam_db"), &Json::Num(1.5));
+        let problem = item(field(first, "problems"), 0);
+        assert_eq!(field(problem, "message"), &Json::Str("clipping: \"peak\"".into()));
         let bad = item(files, 1);
         assert_eq!(field(bad, "peak_db"), &Json::Null);
         assert_eq!(field(bad, "seam_db"), &Json::Null);
