@@ -6,18 +6,52 @@
 use std::f32::consts::TAU;
 
 use redox_anim::graph::{AnimGraph, Compare, Condition, LayerDef, Motion, StateDef, TransitionDef};
-use redox_anim::{AnimationClip, Keyframe, Skeleton, SkinnedGeometry, SkinnedModel};
+use redox_anim::{
+    bind_clips, AnimationClip, ClipBinding, ClipRole, Keyframe, Skeleton, SkinnedGeometry,
+    SkinnedModel,
+};
 use redox_math::{Mat4, Quat, Vec3};
+
+use crate::fox_rig;
+
+/// Clip roles of the procedural humanoid, matched by the names of [`humanoid`]'s clips.
+pub const PROCEDURAL_ROLES: [ClipRole; 4] = [
+    ClipRole {
+        role: "idle",
+        candidates: &["idle"],
+        required: true,
+    },
+    ClipRole {
+        role: "walk",
+        candidates: &["walk"],
+        required: true,
+    },
+    ClipRole {
+        role: "run",
+        candidates: &["run"],
+        required: true,
+    },
+    ClipRole {
+        role: "wave",
+        candidates: &["wave"],
+        required: false,
+    },
+];
+
+/// A character the game can play: its model, its animation graph and how it is scaled.
+pub struct Rig {
+    /// Skeleton, clips and bind-pose mesh.
+    pub model: SkinnedModel,
+    /// Graph over the model's clips, built by [`graph`].
+    pub graph: AnimGraph,
+    /// Scale from model units to metres (1 for the procedural humanoid).
+    pub scale: f32,
+}
 
 pub const ROOT: usize = 0;
 pub const WALK_SPEED: f32 = 1.5;
 pub const RUN_SPEED: f32 = 4.0;
 
-/// Clip indices in [`humanoid`]'s model.
-pub const IDLE: usize = 0;
-pub const WALK: usize = 1;
-pub const RUN: usize = 2;
-pub const WAVE: usize = 3;
 
 /// `(name, parent, global bind position)` of every bone.
 const BONES: [(&str, Option<usize>, [f32; 3]); 11] = [
@@ -236,7 +270,7 @@ fn wave(skeleton: &Skeleton) -> AnimationClip {
     )
 }
 
-/// The skinned model with the clips [`IDLE`], [`WALK`], [`RUN`] and [`WAVE`].
+/// The skinned model with the clips idle, walk, run and wave (in that order).
 pub fn humanoid() -> SkinnedModel {
     let skeleton = skeleton();
     let mut geometry = SkinnedGeometry::default();
@@ -264,24 +298,30 @@ pub fn humanoid() -> SkinnedModel {
 }
 
 /// Idle / move (walk-run blend by `speed`) on the base layer; an upper-arm wave on a second layer
-/// started by the `wave` trigger.
-pub fn graph() -> AnimGraph {
+/// started by the `wave` trigger. The clips are looked up by role in `binding`; without a `wave`
+/// clip the wave layer is left out. `root_bone` selects root motion (`None` = the game moves the
+/// character). Returns `None` when idle, walk or run is missing.
+pub fn graph(binding: &ClipBinding, root_bone: Option<usize>) -> Option<AnimGraph> {
+    let idle = binding.index("idle")?;
+    let walk = binding.index("walk")?;
+    let run = binding.index("run")?;
+    let wave = binding.index("wave").unwrap_or(idle);
     let speed = |compare, value| Condition::Float {
         param: "speed".into(),
         compare,
         value,
     };
-    AnimGraph {
-        root_bone: Some(ROOT),
+    let mut graph = AnimGraph {
+        root_bone,
         layers: vec![
             LayerDef {
                 states: vec![
-                    StateDef::new("idle", Motion::Clip(IDLE)),
+                    StateDef::new("idle", Motion::Clip(idle)),
                     StateDef::new(
                         "move",
                         Motion::Blend1D {
                             param: "speed".into(),
-                            entries: vec![(0.0, WALK), (1.0, RUN)],
+                            entries: vec![(0.0, walk), (1.0, run)],
                         },
                     ),
                 ],
@@ -307,8 +347,8 @@ pub fn graph() -> AnimGraph {
             },
             LayerDef {
                 states: vec![
-                    StateDef::new("rest", Motion::Clip(IDLE)),
-                    StateDef::one_shot("wave", Motion::Clip(WAVE)),
+                    StateDef::new("rest", Motion::Clip(idle)),
+                    StateDef::one_shot("wave", Motion::Clip(wave)),
                 ],
                 transitions: vec![
                     TransitionDef {
@@ -333,12 +373,65 @@ pub fn graph() -> AnimGraph {
                 mask: Some(vec!["upper_arm_r".into()]),
             },
         ],
+    };
+    if binding.index("wave").is_none() {
+        graph.layers.truncate(1);
     }
+    Some(graph)
+}
+
+/// The procedural humanoid with its graph (root motion from the walk and run clips).
+pub fn procedural_rig() -> Rig {
+    let model = humanoid();
+    let binding = bind_clips(&PROCEDURAL_ROLES, &model, &[]).expect("procedural clips bind");
+    let graph = graph(&binding, Some(ROOT)).expect("procedural clips cover the graph");
+    Rig {
+        model,
+        graph,
+        scale: 1.0,
+    }
+}
+
+/// The character for this run: the Foxfire fox when `procedural` is false and it loads and binds,
+/// otherwise the procedural humanoid. The reason for a fallback is logged.
+pub fn select(procedural: bool) -> Rig {
+    if !procedural {
+        match fox_rig::load() {
+            Ok(rig) => return rig,
+            Err(e) => log::warn!("fox rig unavailable, using the procedural rig: {e}"),
+        }
+    }
+    procedural_rig()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use redox_anim::graph::GraphPlayer;
+
+    #[test]
+    fn the_procedural_fallback_still_builds() {
+        let rig = select(true);
+        assert_eq!(rig.model.clips.len(), 4);
+        assert_eq!(rig.graph.layers.len(), 2);
+        assert_eq!(rig.graph.root_bone, Some(ROOT));
+        assert_eq!(rig.scale, 1.0);
+    }
+
+    #[test]
+    fn a_missing_wave_clip_disables_the_wave_layer_not_the_game() {
+        let mut model = humanoid();
+        model.clips.retain(|c| c.name != "wave");
+        let binding = bind_clips(&PROCEDURAL_ROLES, &model, &[]).expect("wave is optional");
+        assert_eq!(binding.index("wave"), None);
+        let graph = graph(&binding, Some(ROOT)).expect("idle, walk and run remain");
+        assert_eq!(graph.layers.len(), 1);
+        let mut player = GraphPlayer::new(graph, &model.skeleton);
+        player.set_layer_weight(1, 1.0);
+        player.update(1.0 / 60.0, &model.skeleton, &model.clips);
+        assert_eq!(player.state_name(1), None);
+    }
+
 
     #[test]
     fn the_model_is_consistent() {
@@ -363,10 +456,11 @@ mod tests {
                 .translation
                 .z
         };
-        let walk = &model.clips[WALK];
-        let run = &model.clips[RUN];
-        let walk_speed = (z(WALK, walk.duration) - z(WALK, 0.0)) / walk.duration;
-        let run_speed = (z(RUN, run.duration) - z(RUN, 0.0)) / run.duration;
+        let (walk_clip, run_clip) = (1, 2);
+        let walk = &model.clips[walk_clip];
+        let run = &model.clips[run_clip];
+        let walk_speed = (z(walk_clip, walk.duration) - z(walk_clip, 0.0)) / walk.duration;
+        let run_speed = (z(run_clip, run.duration) - z(run_clip, 0.0)) / run.duration;
         assert!((walk_speed - WALK_SPEED).abs() < 1e-3, "{walk_speed}");
         assert!(
             (run_speed - RUN_SPEED * 0.7 / 0.7).abs() < 1e-3,
