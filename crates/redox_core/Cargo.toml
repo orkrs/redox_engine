@@ -19,6 +19,7 @@ redox_render = { path = "../redox_render" }
 redox_input = { path = "../redox_input" }
 redox_asset = { path = "../redox_asset" }
 redox_audio = { path = "../redox_audio" }
+redox_nav = { path = "../redox_nav" }
 redox_ui = { path = "../redox_ui" }
 redox_physics = { path = "../redox_physics" }
 

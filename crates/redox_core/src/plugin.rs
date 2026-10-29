@@ -123,6 +123,41 @@ fn sync_audio_listener(world: &mut World) {
     }
 }
 
+/// Navigation on `Stage::Update`: path requests and path following, or local avoidance when the
+/// [`redox_nav::NavWorld`] resource has agents.
+///
+/// The plugin loads no navigation data. The game inserts a [`redox_nav::NavWorld`] resource
+/// (built from baked `.nav` data); without it the systems do nothing.
+pub struct NavPlugin;
+
+impl Plugin for NavPlugin {
+    fn build(&self, app: &mut AppBuilder) {
+        app.on_setup(|world| {
+            world.insert_resource(redox_nav::PathQueue::new());
+            world.insert_resource(Events::<redox_nav::PathReached>::new());
+            world.insert_resource(Events::<redox_nav::PathFailed>::new());
+        });
+        app.register_events::<redox_nav::PathReached>();
+        app.register_events::<redox_nav::PathFailed>();
+        app.add_system_mut(Stage::Update, |world, _| {
+            let dt = world
+                .get_resource::<Time>()
+                .map(|t| t.delta_time)
+                .unwrap_or(1.0 / 60.0);
+            let avoidance = world
+                .get_resource::<redox_nav::NavWorld>()
+                .is_some_and(|nav| nav.agent_count() > 0);
+            if avoidance {
+                redox_nav::nav_avoid_system(world, dt);
+                redox_nav::nav_move_system(world, dt);
+            } else {
+                redox_nav::nav_path_system(world);
+                redox_nav::nav_follow_system(world, dt);
+            }
+        });
+    }
+}
+
 /// GPU renderer is created in [`AppBuilder::run`]; this plugin is the explicit hook.
 pub struct RenderPlugin;
 

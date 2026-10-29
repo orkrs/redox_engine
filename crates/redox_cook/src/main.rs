@@ -10,6 +10,9 @@
 //!                                          encode images to KTX2 (UASTC or ETC1S, with mips)
 //! redox_cook texture-info <file.ktx2>      print format, size, mips, layers, faces, compression
 //! redox_cook bake-ibl <sky.hdr> <out-dir>  bake IBL maps to KTX2 (build with --features bake)
+//! redox_cook bake-navmesh <in.glb|gltf> <out.nav> [--tile 16] [--radius 0.4] [--height 1.8]
+//!                                          [--step 0.4] [--slope 45]
+//!                                          bake walkable tiles for one agent to a .nav file
 //! ```
 //!
 //! `.meta` sidecars are not packed (they are editor data); everything else is.
@@ -19,6 +22,7 @@
 
 #[cfg(feature = "bake")]
 mod bake;
+mod nav;
 mod texture;
 
 use std::path::{Path, PathBuf};
@@ -26,11 +30,12 @@ use std::process::ExitCode;
 
 use redox_asset::{AssetRegistry, PakReader, PakWriter};
 
-const USAGE: &str = "usage:\n  redox_cook scan <assets-dir>\n  redox_cook pack <assets-dir> <out.pak> [--compress] [--incremental] [--textures]\n  redox_cook texture <out.ktx2> <images...> [--etc1s] [--linear] [--no-mips] [--no-zstd] [--array|--cube]\n  redox_cook list <file.pak>\n  redox_cook verify <file.pak>\n  redox_cook texture-info <file.ktx2>\n  redox_cook bake-ibl <sky.hdr> <out-dir>";
+const USAGE: &str = "usage:\n  redox_cook scan <assets-dir>\n  redox_cook pack <assets-dir> <out.pak> [--compress] [--incremental] [--textures]\n  redox_cook texture <out.ktx2> <images...> [--etc1s] [--linear] [--no-mips] [--no-zstd] [--array|--cube]\n  redox_cook list <file.pak>\n  redox_cook verify <file.pak>\n  redox_cook texture-info <file.ktx2>\n  redox_cook bake-ibl <sky.hdr> <out-dir>\n  redox_cook bake-navmesh <in.glb> <out.nav> [--tile 16] [--radius 0.4] [--height 1.8] [--step 0.4] [--slope 45]";
 
 /// A parsed command line.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 enum Command {
+    BakeNavmesh(nav::NavJob),
     Scan(PathBuf),
     Pack {
         dir: PathBuf,
@@ -88,6 +93,7 @@ fn parse(args: &[String]) -> Result<Command, String> {
             input: input.into(),
             out: out.into(),
         }),
+        ["bake-navmesh", args @ ..] => nav::parse_bake_navmesh(args).map(Command::BakeNavmesh),
         [] => Err("missing command".into()),
         [cmd, ..]
             if ![
@@ -98,6 +104,7 @@ fn parse(args: &[String]) -> Result<Command, String> {
                 "texture",
                 "texture-info",
                 "bake-ibl",
+                "bake-navmesh",
             ]
             .contains(cmd) =>
         {
@@ -175,6 +182,7 @@ fn run(command: Command) -> Result<(), String> {
             Ok(())
         }
         Command::BakeIbl { input, out } => run_bake_ibl(&input, &out),
+        Command::BakeNavmesh(job) => nav::run(&job),
         Command::Verify(pak) => {
             let reader = PakReader::open(&pak).map_err(|e| e.to_string())?;
             let mut bad = 0usize;
