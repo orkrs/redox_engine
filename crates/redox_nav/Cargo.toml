@@ -1,0 +1,23 @@
+[package]
+name = "redox_nav"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+redox_math = { path = "../redox_math" }
+redox_ecs = { path = "../redox_ecs" }
+redox_physics = { path = "../redox_physics" }
+# Recast port (bake). Its `serialize` feature is not enabled: the cooked format is ours.
+rerecast = { version = "0.4", default-features = false, features = ["std", "libm"] }
+# Pathfinding and avoidance. `Vec3` is re-exported by landmass (glam 0.30).
+landmass = "0.9"
+log = { workspace = true }
+thiserror = { workspace = true }

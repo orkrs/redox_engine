@@ -12,6 +12,7 @@ members = [
     "crates/redox_asset",
     "crates/redox_cook",
     "crates/redox_audio",
+    "crates/redox_nav",
     "crates/redox_ui",
     "crates/redox_scene",
     "crates/redox_gameplay",
