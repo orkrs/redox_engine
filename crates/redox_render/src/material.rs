@@ -27,6 +27,32 @@ pub struct Material {
     pub sheen: f32,
 }
 
+/// Identifier of a material graph (MAT-02). Reserved: no graph is loaded yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MaterialGraphId(pub u32);
+
+/// One material slot together with the optional graph that drives its surface.
+///
+/// `graph` stays `None` until the material graph pipeline (MAT-02) lands; until then the
+/// instance renders exactly like a bare [`Material`].
+#[derive(Clone, Debug)]
+pub struct MaterialInstance {
+    /// Material graph that generates this instance's surface, if any.
+    pub graph: Option<MaterialGraphId>,
+    /// Fixed material parameters (textures, factors, flags).
+    pub material: Material,
+}
+
+impl MaterialInstance {
+    /// Wraps a plain material with no graph.
+    pub fn new(material: Material) -> Self {
+        Self {
+            graph: None,
+            material,
+        }
+    }
+}
+
 /// GPU material uniform — must stay 16-byte aligned (wgpu validation is fatal).
 ///
 /// Layout (112 bytes):
