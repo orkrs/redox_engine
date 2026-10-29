@@ -93,6 +93,8 @@ fn check(mode: Mode) {
     let material = renderer.add_material(glow);
     let mesh = renderer.upload_mesh(&create_cube());
     let cube = RenderObject {
+        id: 0,
+        shadow_class: redox_render::shadow::ShadowClass::Auto,
         model_matrix: Mat4::IDENTITY,
         color: [1.0; 4],
         mesh_index: mesh,

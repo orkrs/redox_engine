@@ -4,6 +4,7 @@
 
 pub mod atlas_allocator;
 pub mod cache;
+pub mod classify;
 pub mod depth_pass;
 pub mod page_request;
 pub mod page_table;
@@ -13,6 +14,10 @@ pub mod vsm_clipmap;
 
 pub use atlas_allocator::{
     ATLAS_PX, MAX_CASTERS, NO_TILE, ShadowAtlasAllocator, TILE_PX, TILES_PER_AXIS, TOTAL_TILES,
+};
+pub use classify::{
+    SHADOW_MOVED_EPS, ShadowClass, ShadowPose, is_dynamic_caster, moved_shadow_bounds,
+    next_shadow_poses,
 };
 pub use page_table::{PhysPageAllocator, VirtualPageTable};
 pub use smrt::{SmrtConfig, SmrtQuality, SmrtUniform, smrt_sample_params};

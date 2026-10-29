@@ -464,8 +464,9 @@ pub struct Renderer {
     vsm_shadow_temporal_alpha: f32,
     /// True after at least one VSM frame with zero dirty pages (clipmap cached).
     vsm_warm: bool,
-    /// Debounce for dynamic invalidation: centers from previous frame, only invalidate if moved >0.5m.
-    prev_dynamic_centers: Vec<redox_math::Vec3>,
+    /// Dynamic casters' poses (and AABBs) at their last shadow invalidation, keyed by
+    /// `RenderObject::id`. An object refreshes its pages once it has drifted past the threshold.
+    prev_dynamic_poses: std::collections::HashMap<u32, crate::shadow::ShadowPose>,
     /// Cached D2Array view for VSM pages (avoid per-frame view alloc).
     vsm_pages_array_view: wgpu::TextureView,
     vg_bind_groups_dirty: bool,

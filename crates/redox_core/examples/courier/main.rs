@@ -130,6 +130,8 @@ fn bounds_of(r: &Renderer, mesh: usize, model: Mat4) -> Aabb {
 
 fn object(r: &Renderer, model: Mat4, mesh: usize, material: usize) -> RenderObject {
     RenderObject {
+        id: 0,
+        shadow_class: redox_render::shadow::ShadowClass::Auto,
         model_matrix: model,
         color: [1.0; 4],
         mesh_index: mesh,
@@ -252,6 +254,8 @@ impl Scene {
         }
         let hero = model_matrix(world.pos, world.yaw);
         out.push(RenderObject {
+            id: out.len() as u32,
+            shadow_class: redox_render::shadow::ShadowClass::Auto,
             model_matrix: hero,
             color: [1.0; 4],
             mesh_index: self.hero.mesh_slot,

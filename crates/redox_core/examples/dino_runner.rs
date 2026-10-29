@@ -464,6 +464,8 @@ fn extract_objects(world: &World, ctx: &RenderContext) -> Vec<RenderObject> {
             .map(|b| b.transform(matrix))
             .unwrap_or_else(redox_math::Aabb::empty);
         out.push(RenderObject {
+            id: out.len() as u32,
+            shadow_class: redox_render::shadow::ShadowClass::Auto,
             model_matrix: matrix,
             color: [1.0; 4],
             mesh_index: r.mesh_index,

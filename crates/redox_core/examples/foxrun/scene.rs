@@ -139,6 +139,8 @@ fn bounds_of(r: &Renderer, mesh: usize, model: Mat4) -> Aabb {
 
 fn object(r: &Renderer, model: Mat4, mesh: usize, material: usize) -> RenderObject {
     RenderObject {
+        id: 0,
+        shadow_class: redox_render::shadow::ShadowClass::Auto,
         model_matrix: model,
         color: [1.0; 4],
         mesh_index: mesh,
@@ -266,6 +268,8 @@ impl Scene {
             Vec3::new(x, 0.0, z),
         );
         frame.objects.push(RenderObject {
+            id: frame.objects.len() as u32,
+            shadow_class: redox_render::shadow::ShadowClass::Auto,
             model_matrix: model,
             color: if world.invulnerable() && (time * 14.0).sin() > 0.0 {
                 [1.0, 0.45, 0.45, 1.0]

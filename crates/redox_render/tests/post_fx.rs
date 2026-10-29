@@ -76,6 +76,8 @@ fn rig() -> Option<Rig> {
 impl Rig {
     fn object(&self, center: Vec3, scale: Vec3) -> RenderObject {
         RenderObject {
+            id: 0,
+            shadow_class: redox_render::shadow::ShadowClass::Auto,
             model_matrix: Mat4::from_scale_rotation_translation(scale, Quat::IDENTITY, center),
             color: [1.0; 4],
             mesh_index: self.mesh,
