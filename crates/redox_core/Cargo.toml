@@ -22,6 +22,7 @@ redox_audio = { path = "../redox_audio" }
 redox_nav = { path = "../redox_nav" }
 redox_ui = { path = "../redox_ui" }
 redox_physics = { path = "../redox_physics" }
+redox_anim = { path = "../redox_anim" }
 
 serde = { workspace = true }
 ron = { workspace = true }

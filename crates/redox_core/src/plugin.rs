@@ -72,6 +72,9 @@ impl Plugin for PhysicsPlugin {
             redox_physics::tick_physics(world, dt);
             redox_physics::sync_from_physics(world);
         });
+        app.add_system_mut(Stage::PhysicsSync, |world, _| {
+            crate::ragdoll_system::ragdoll_pose_system(world);
+        });
     }
 }
 
