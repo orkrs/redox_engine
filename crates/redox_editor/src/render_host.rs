@@ -495,6 +495,8 @@ fn push_ground(out: &mut Vec<RenderObject>, mesh: usize, mat: usize) {
     );
     let local = redox_math::Aabb::from_center_size(Vec3::ZERO, Vec3::splat(0.5));
     out.push(RenderObject {
+        id: out.len() as u32,
+        shadow_class: redox_render::shadow::ShadowClass::Auto,
         model_matrix: model,
         color: [1.0, 1.0, 1.0, 1.0],
         mesh_index: mesh,
@@ -520,6 +522,8 @@ fn push_entities(
         };
         let local = redox_math::Aabb::from_center_size(Vec3::ZERO, Vec3::splat(0.5));
         out.push(RenderObject {
+            id: out.len() as u32,
+            shadow_class: redox_render::shadow::ShadowClass::Auto,
             model_matrix: model,
             color: [1.0, 1.0, 1.0, 1.0],
             mesh_index: mesh,

@@ -93,6 +93,8 @@ mod tests {
 
     fn object(mesh: usize, material: usize) -> RenderObject {
         RenderObject {
+            id: 0,
+            shadow_class: crate::shadow::ShadowClass::Auto,
             model_matrix: Mat4::IDENTITY,
             color: [1.0; 4],
             mesh_index: mesh,

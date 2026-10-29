@@ -133,6 +133,8 @@ mod tests {
 
     fn object(mesh: usize, material: usize, x: f32) -> RenderObject {
         RenderObject {
+            id: 0,
+            shadow_class: crate::shadow::ShadowClass::Auto,
             model_matrix: Mat4::from_translation(Vec3::new(x, 0.0, 0.0)),
             color: [1.0; 4],
             mesh_index: mesh,

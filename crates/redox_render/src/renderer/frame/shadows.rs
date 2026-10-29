@@ -20,32 +20,25 @@ impl Renderer {
                 min: cam_eye - redox_math::Vec3::splat(frustum_pad),
                 max: cam_eye + redox_math::Vec3::splat(frustum_pad),
             });
-            let dynamic_aabbs: Vec<redox_math::Aabb> = objects
+            // Only dynamic casters are tracked; each is matched by its id, so list order does
+            // not matter. Only the objects that actually moved (or appeared/vanished) refresh
+            // their pages, both where they were and where they are now.
+            let dynamic_poses: Vec<(u32, redox_math::Mat4, redox_math::Aabb)> = objects
                 .iter()
-                .filter(|o| {
-                    let ext = o.bounds.max - o.bounds.min;
-                    !(ext.y < 0.6 && ext.x > 8.0 && ext.z > 8.0) // ground
-                        && ext.x < 6.0 && ext.z < 6.0 && ext.y < 4.0 // small dynamic
-                })
-                .map(|o| o.bounds)
+                .filter(|o| crate::shadow::is_dynamic_caster(o.shadow_class, &o.bounds))
+                .map(|o| (o.id, o.model_matrix, o.bounds))
                 .collect();
-            // Debounce dynamic invalidation: only if centers moved >0.5м (prevents 4м grid thrash)
-            let cur_centers: Vec<redox_math::Vec3> = dynamic_aabbs
-                .iter()
-                .map(|a| (a.min + a.max) * 0.5)
-                .collect();
-            let need_invalidate = if cur_centers.len() != self.prev_dynamic_centers.len() {
-                true
-            } else {
-                cur_centers
-                    .iter()
-                    .zip(self.prev_dynamic_centers.iter())
-                    .any(|(c, p)| (*c - *p).length() > 0.5)
-            };
-            if need_invalidate {
-                self.prev_dynamic_centers = cur_centers;
-                self.vsm_clipmap.invalidate_aabbs(&dynamic_aabbs);
-            }
+            let moved_aabbs = crate::shadow::moved_shadow_bounds(
+                &self.prev_dynamic_poses,
+                &dynamic_poses,
+                crate::shadow::SHADOW_MOVED_EPS,
+            );
+            self.prev_dynamic_poses = crate::shadow::next_shadow_poses(
+                &self.prev_dynamic_poses,
+                &dynamic_poses,
+                crate::shadow::SHADOW_MOVED_EPS,
+            );
+            self.vsm_clipmap.invalidate_aabbs(&moved_aabbs);
             // Fine pages come from the screen feedback (what the pixels actually see); the
             // two coarsest levels are requested for the scene bounds as a safety net while
             // that feedback is a frame or two behind.

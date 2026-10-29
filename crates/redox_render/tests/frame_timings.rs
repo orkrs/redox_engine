@@ -64,6 +64,8 @@ impl Rig {
                     0.0,
                 );
                 RenderObject {
+                    id: 0,
+                    shadow_class: redox_render::shadow::ShadowClass::Auto,
                     model_matrix: Mat4::from_scale_rotation_translation(
                         Vec3::splat(0.4),
                         Quat::IDENTITY,

@@ -74,6 +74,8 @@ fn center_pixel(ktx: Ktx2Texture) -> Option<[u8; 3]> {
     ));
     lights.ambient = Vec3::splat(0.8);
     let objects = [RenderObject {
+        id: 0,
+        shadow_class: redox_render::shadow::ShadowClass::Auto,
         model_matrix: Mat4::IDENTITY,
         color: [1.0; 4],
         mesh_index,

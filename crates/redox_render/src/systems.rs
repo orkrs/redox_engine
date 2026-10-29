@@ -59,6 +59,12 @@ pub struct MaterialHandle(pub Handle<MaterialData>);
 /// Temporary structure built each frame during the `RenderPrep` stage.
 #[derive(Clone, Debug)]
 pub struct RenderObject {
+    /// Stable per-object key (the entity index when extracted from ECS). Used to match
+    /// the same object across frames for shadow invalidation; must be unique among objects
+    /// that cast dynamic shadows.
+    pub id: u32,
+    /// How the object's shadow is cached by the virtual shadow map.
+    pub shadow_class: crate::shadow::ShadowClass,
     /// Model matrix of the object.
     pub model_matrix: Mat4,
     /// Object color (rgba).
@@ -122,6 +128,8 @@ pub fn extract_render_objects_into(
             .unwrap_or_else(redox_math::Aabb::empty);
 
         out.push(RenderObject {
+            id: entity.id(),
+            shadow_class: crate::shadow::ShadowClass::Auto,
             model_matrix,
             mesh_index,
             material_index,
