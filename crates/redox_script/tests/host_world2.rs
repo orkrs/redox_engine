@@ -455,3 +455,60 @@ fn v1_only_disables_the_new_imports() {
         );
     }
 }
+
+/// A yard with the player at a settable position, the guard (id 2) at the origin and three
+/// entities in the overlap sphere.
+struct Yard {
+    player: [f32; 3],
+}
+
+impl WorldQueries for Yard {
+    fn raycast(&mut self, _: [f32; 3], _: [f32; 3], _: f32) -> Option<f32> {
+        None
+    }
+
+    fn find_by_name(&mut self, name: &str) -> Option<ScriptEntityId> {
+        (name == "player").then_some(ScriptEntityId(1))
+    }
+
+    fn position_of(&mut self, id: ScriptEntityId) -> Option<[f32; 3]> {
+        match id.0 {
+            1 => Some(self.player),
+            2 => Some([0.0; 3]),
+            _ => None,
+        }
+    }
+
+    fn overlap_sphere(
+        &mut self,
+        _center: [f32; 3],
+        _radius: f32,
+        out: &mut Vec<ScriptEntityId>,
+        _limit: usize,
+    ) {
+        out.extend([ScriptEntityId(1), ScriptEntityId(2), ScriptEntityId(3)]);
+    }
+}
+
+#[test]
+fn the_guard_example_alerts_within_five_metres_and_counts_allies() {
+    for kind in backends() {
+        let mut rt = runtime(kind, ScriptConfig::default());
+        let id = rt.instantiate(&wasm(include_str!("guard.wat"))).unwrap();
+        rt.set_input(id, "self_id", 2.0);
+
+        rt.set_world_queries(id, Box::new(Yard { player: [3.0, 0.0, 0.0] }));
+        rt.update(id, 0.016).unwrap();
+        assert_eq!(rt.read_output(id, "distance"), Some(3.0), "{kind:?}");
+        assert_eq!(rt.read_output(id, "allies"), Some(3.0), "{kind:?}");
+        let events = rt.take_events(id);
+        assert_eq!(events.len(), 1, "{kind:?}: one alert");
+        assert_eq!(events[0].name, "alert");
+        assert_eq!(events[0].value, 3.0);
+
+        rt.set_world_queries(id, Box::new(Yard { player: [10.0, 0.0, 0.0] }));
+        rt.update(id, 0.016).unwrap();
+        assert_eq!(rt.read_output(id, "distance"), Some(10.0), "{kind:?}");
+        assert!(rt.take_events(id).is_empty(), "{kind:?}: no alert at 10 m");
+    }
+}
