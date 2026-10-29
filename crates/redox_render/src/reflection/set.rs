@@ -29,8 +29,10 @@ pub fn pick_by_priority(probes: &[ReflectionProbe]) -> Vec<ReflectionProbe> {
 /// Probe slots plus the cube-array texture holding one prefiltered cube per slot.
 pub struct ReflectionProbeSet {
     probes: Vec<ReflectionProbe>,
+    enabled: bool,
     texture: wgpu::Texture,
     view: wgpu::TextureView,
+    buffer: wgpu::Buffer,
 }
 
 impl ReflectionProbeSet {
@@ -57,11 +59,29 @@ impl ReflectionProbeSet {
             dimension: Some(wgpu::TextureViewDimension::CubeArray),
             ..Default::default()
         });
+        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("reflection_probe_table"),
+            size: std::mem::size_of::<ProbesGpu>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         Self {
             probes: Vec::new(),
+            enabled: false,
             texture,
             view,
+            buffer,
         }
+    }
+
+    /// Whether the shader may use the probes. Disabled by default.
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    /// Enables or disables probe lookups; takes effect after [`Self::upload`].
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
     }
 
     /// Replaces the active probes with the highest-priority ones (at most [`MAX_PROBES`]).
@@ -77,9 +97,28 @@ impl ReflectionProbeSet {
         &self.probes
     }
 
-    /// The probe table uniform for the active probes.
-    pub fn uniform(&self) -> ProbesGpu {
-        ProbesGpu::from_probes(&self.probes)
+    /// The probe table the shader should see: the active probes when enabled, otherwise empty.
+    pub fn table(&self) -> ProbesGpu {
+        if self.enabled {
+            ProbesGpu::from_probes(&self.probes)
+        } else {
+            ProbesGpu::default()
+        }
+    }
+
+    /// Writes [`Self::table`] to the GPU buffer.
+    pub fn upload(&self, queue: &wgpu::Queue) {
+        self.write_table(queue, &self.table());
+    }
+
+    /// Writes an arbitrary table to the GPU buffer (the capture uses an empty one).
+    pub fn write_table(&self, queue: &wgpu::Queue, table: &ProbesGpu) {
+        queue.write_buffer(&self.buffer, 0, bytemuck::bytes_of(table));
+    }
+
+    /// The probe table uniform buffer (binding 9 of the frame group).
+    pub fn buffer(&self) -> &wgpu::Buffer {
+        &self.buffer
     }
 
     /// Cube-array view over all slots (`CubeArray`, 6 layers per slot).

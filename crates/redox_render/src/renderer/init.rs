@@ -628,6 +628,8 @@ impl Renderer {
             &ibl_processor.sampler,
             &blue_noise_view,
             &blue_noise_sampler,
+            reflection_probes.view(),
+            reflection_probes.buffer(),
         );
         let scene_bind_group = pbr_pass.create_scene_bind_group(
             &device,

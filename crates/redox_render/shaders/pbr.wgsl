@@ -42,6 +42,9 @@ struct Model {
 @group(0) @binding(5) var s_ibl: sampler;
 @group(0) @binding(6) var t_blue_noise: texture_2d<f32>;
 @group(0) @binding(7) var s_blue_noise: sampler;
+// Reflection probes (RFL-01): cube array of prefiltered captures and the probe table.
+@group(0) @binding(8) var t_probes: texture_cube_array<f32>;
+@group(0) @binding(9) var<uniform> probes: ProbesGpu;
 
 // ── Group 1: Pass / scene (once per pass) ───────────────────────────────
 @group(1) @binding(0) var<uniform> light_u: LightUniform;
@@ -803,11 +806,11 @@ fn eval_lit_material(
 }
 
 /// Clearcoat IBL reflection (added on top of the transmitted base ambient).
-fn coat_ibl_term(n_dot_v: f32, r: vec3<f32>) -> vec3<f32> {
+fn coat_ibl_term(n_dot_v: f32, r: vec3<f32>, world_pos: vec3<f32>) -> vec3<f32> {
     let w = clamp(material.coat_params.x, 0.0, 1.0);
     let rc = clamp(material.coat_params.y, 0.05, 1.0);
     let fc = coat_fresnel_at(n_dot_v);
-    let pre = textureSampleLevel(t_prefiltered, s_ibl, r, rc * 4.0).rgb;
+    let pre = reflection_prefiltered(world_pos, r, rc, textureSampleLevel(t_prefiltered, s_ibl, r, rc * 4.0).rgb);
     let brdf = textureSampleLevel(t_brdf_lut, s_ibl, vec2<f32>(n_dot_v, rc), 0.0).rg;
     return w * pre * (fc * brdf.x + brdf.y);
 }
@@ -1038,7 +1041,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let r = reflect(-v, n);
     if (shader_debug.ibl_enabled != 0u) {
         irradiance = textureSample(t_irradiance, s_ibl, bent_n).rgb;
-        prefiltered_color = textureSampleLevel(t_prefiltered, s_ibl, r, spec_roughness * 4.0).rgb;
+        let global_pre = textureSampleLevel(t_prefiltered, s_ibl, r, spec_roughness * 4.0).rgb;
+        prefiltered_color = reflection_prefiltered(in.world_pos, r, spec_roughness, global_pre);
         env_brdf = textureSample(t_brdf_lut, s_ibl, vec2<f32>(n_dot_v, spec_roughness)).rg;
     }
     let diffuse_ibl = irradiance * albedo;
@@ -1055,7 +1059,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let f0_0 = mix(vec3<f32>(0.04), a0, m0);
         let ks0 = fresnel_schlick_roughness(n_dot_v, f0_0, r0);
         let kd0 = (vec3<f32>(1.0) - ks0) * (1.0 - m0);
-        let pre0 = textureSampleLevel(t_prefiltered, s_ibl, r, r0 * 4.0).rgb;
+        let pre0 = reflection_prefiltered(in.world_pos, r, r0, textureSampleLevel(t_prefiltered, s_ibl, r, r0 * 4.0).rgb);
         let brdf0 = textureSample(t_brdf_lut, s_ibl, vec2<f32>(n_dot_v, r0)).rg;
         substrate_ibl = substrate_ibl + w0 * (kd0 * irradiance * a0 + pre0 * (ks0 * brdf0.x + brdf0.y));
     }
@@ -1066,7 +1070,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let f0_1 = mix(vec3<f32>(0.04), a1, m1);
         let ks1 = fresnel_schlick_roughness(n_dot_v, f0_1, r1);
         let kd1 = (vec3<f32>(1.0) - ks1) * (1.0 - m1);
-        let pre1 = textureSampleLevel(t_prefiltered, s_ibl, r, r1 * 4.0).rgb;
+        let pre1 = reflection_prefiltered(in.world_pos, r, r1, textureSampleLevel(t_prefiltered, s_ibl, r, r1 * 4.0).rgb);
         let brdf1 = textureSample(t_brdf_lut, s_ibl, vec2<f32>(n_dot_v, r1)).rg;
         substrate_ibl = substrate_ibl + w1 * (kd1 * irradiance * a1 + pre1 * (ks1 * brdf1.x + brdf1.y));
     }
@@ -1082,7 +1086,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // MAT-04: the clearcoat attenuates the base ambient and adds its own reflection.
     var ambient = ambient_base;
     if ((material.flags & MAT_FLAG_COAT) != 0u && shader_debug.ibl_enabled != 0u) {
-        ambient = ambient_base * coat_transmittance(n_dot_v) + coat_ibl_term(n_dot_v, r) * ambient_factor;
+        ambient = ambient_base * coat_transmittance(n_dot_v) + coat_ibl_term(n_dot_v, r, in.world_pos) * ambient_factor;
     }
     let color = ambient + lo + material.emissive.rgb;
     return vec4<f32>(sanitize_hdr(color), material.base_color.a * in.instance_color.a);

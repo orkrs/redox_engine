@@ -3,6 +3,7 @@
 
 use redox_math::{Vec3, look_at, perspective};
 
+use super::gpu::ProbesGpu;
 use super::probe::ReflectionProbe;
 use super::set::{PROBE_FACE_SIZE, PROBE_MIP_LEVELS};
 use crate::camera::{Camera, CameraUniform};
@@ -88,6 +89,10 @@ impl Renderer {
     /// Renders the six faces (sky and objects, post effects as the renderer applies them to
     /// the frame), prefilters the cube and copies it into the slot. Call again after the
     /// scene changes. The light uniform and camera uniform are restored afterwards.
+    ///
+    /// Known limitation: the faces go through the normal tone-mapped path, so the capture is
+    /// LDR in the surface format, not HDR; very bright sky or lights clip in reflections.
+    /// Probes are not sampled while capturing.
     pub fn capture_reflection_probe(
         &mut self,
         slot: usize,
@@ -104,7 +109,11 @@ impl Renderer {
         let saved_light = self.pbr_pass_light_uniform();
         let camera = Camera::new(std::f32::consts::FRAC_PI_2, 1.0, CAPTURE_NEAR, CAPTURE_FAR);
 
+        // Captures must not sample probes (recursion): the table is empty while the faces render.
+        self.reflection_probes
+            .write_table(&self.queue, &ProbesGpu::default());
         let result = self.render_probe_faces(&target, &camera, lights, objects, &probe);
+        self.reflection_probes.upload(&self.queue);
         self.camera_uniform = saved_camera;
         self.update_light_buffer(&saved_light);
         result?;
