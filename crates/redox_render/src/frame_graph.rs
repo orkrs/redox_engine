@@ -114,7 +114,13 @@ pub fn frame_pass_order() -> &'static [&'static str] {
 mod tests {
     use super::*;
 
-    const FRAME_SOURCE: &str = include_str!("renderer/frame.rs");
+    /// The renderer's frame code: the dispatcher in `frame.rs` plus every `frame/*.rs` pass module.
+    const FRAME_SOURCE: &str = concat!(
+        include_str!("renderer/frame.rs"),
+        include_str!("renderer/frame/post.rs"),
+        include_str!("renderer/frame/shadows.rs"),
+        include_str!("renderer/frame/vg.rs"),
+    );
 
     #[test]
     fn every_declared_pass_has_an_implementation_in_the_renderer() {
