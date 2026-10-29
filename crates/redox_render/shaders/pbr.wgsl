@@ -686,8 +686,36 @@ fn get_cluster_index(screen_pos: vec2<f32>, cluster_info: ClusterInfo) -> u32 {
     return cluster_x + cluster_y * cluster_info.clusters_x;
 }
 
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+/// Per-fragment inputs of the material surface function.
+struct SurfaceInput {
+    world_pos: vec3<f32>,
+    world_normal: vec3<f32>,
+    world_tangent: vec3<f32>,
+    uv: vec2<f32>,
+    view_dir: vec3<f32>,
+    instance_color: vec4<f32>,
+    frag_coord: vec4<f32>,
+};
+
+/// Everything the lighting code reads from a material surface.
+struct SurfaceData {
+    base_color: vec3<f32>,
+    opacity: f32,
+    normal: vec3<f32>,
+    metallic: f32,
+    roughness: f32,
+    emissive: vec3<f32>,
+    // Substrate lobes: layer rgb + metallic, then params (roughness, weight, pad, pad).
+    layer0: vec4<f32>,
+    layer0_params: vec4<f32>,
+    layer1: vec4<f32>,
+    layer1_params: vec4<f32>,
+    sheen: f32,
+};
+
+/// Material surface of one fragment: textures, alpha test and the shading normal and
+/// roughness. The body is the former `fs_main` prologue moved verbatim (same operation order).
+fn material_surface(in: SurfaceInput) -> SurfaceData {
     var albedo = material.base_color.rgb * in.instance_color.rgb;
     var alpha = material.base_color.a * in.instance_color.a;
     if ((material.flags & 1u) != 0u) {
@@ -699,14 +727,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Stochastic alpha-to-coverage with blue noise + golden-ratio temporal offset.
     let use_alpha_test = (material.flags & 16u) != 0u;
     if (use_alpha_test || alpha < 0.999) {
-        let screen_uv = in.clip_pos.xy / vec2<f32>(textureDimensions(t_blue_noise));
+        let screen_uv = in.frag_coord.xy / vec2<f32>(textureDimensions(t_blue_noise));
         let noise = textureSample(t_blue_noise, s_blue_noise, screen_uv).r;
         let dither = fract(noise + f32(shader_debug.frame_index % 16u) * 0.61803398875);
         if (alpha < dither) {
             discard;
         }
     }
-    
+
     var n = in.world_normal;
     let n_len_sq = dot(n, n);
     if (n_len_sq > 1.0e-12) {
@@ -753,9 +781,40 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         roughness *= mr.g;
     }
     roughness = clamp(roughness + toksvig_delta, 0.05, 1.0);
+
+    return SurfaceData(
+        albedo,
+        alpha,
+        n,
+        metallic,
+        roughness,
+        material.emissive.rgb,
+        material.layer0_color,
+        material.layer0_params,
+        material.layer1_color,
+        material.layer1_params,
+        material.sheen,
+    );
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let v = normalize(camera.camera_pos.xyz - in.world_pos);
+    let surf = material_surface(SurfaceInput(
+        in.world_pos,
+        in.world_normal,
+        in.world_tangent,
+        in.uv,
+        v,
+        in.instance_color,
+        in.clip_pos,
+    ));
+    let albedo = surf.base_color;
+    let n = surf.normal;
+    let metallic = surf.metallic;
+    let roughness = surf.roughness;
     let spec_roughness = apply_geometric_specular_aa(n, roughness);
 
-    let v = normalize(camera.camera_pos.xyz - in.world_pos);
     let n_dot_v = max(dot(n, v), 0.0);
     let f0 = mix(vec3<f32>(0.04), albedo, metallic);
 
