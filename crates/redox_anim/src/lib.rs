@@ -23,4 +23,4 @@ pub use inertialization::{InertialBoneDiff, Inertializer};
 pub use skeleton::{
     AnimationClip, Bone, BoneTransform, Keyframe, LocalPose, Pose, Skeleton, SkinnedMesh,
 };
-pub use skinning::SkinnedGeometry;
+pub use skinning::{MorphTarget, SkinnedGeometry};
