@@ -27,6 +27,7 @@
 pub mod asset_pipeline;
 pub mod cache;
 pub mod culling;
+pub mod dag;
 pub mod gpu_cull;
 pub mod hiz;
 pub mod indirect;
@@ -38,6 +39,10 @@ pub mod runtime;
 
 pub use asset_pipeline::build_vg_asset;
 pub use culling::Frustum;
+pub use dag::{
+    ClusterDag, DagCluster, DagClusterGpu, DagError, DagInstance, DagParams, VGDagAsset,
+    build_cluster_dag, build_vg_dag_asset, gpu_clusters, select_for_instances,
+};
 pub use lod::{LodChainConfig, LodLevelConfig};
 pub use meshlet::{
     DrawIndexedIndirectCmd, MAX_TRIANGLES_PER_MESHLET, MAX_VERTICES_PER_MESHLET, MeshletDescriptor,
