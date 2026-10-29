@@ -14,6 +14,7 @@
 
 #![warn(missing_docs)]
 
+pub mod analyze;
 pub mod asset_types;
 pub mod components;
 pub mod context;
@@ -52,6 +53,9 @@ pub use music_play::{KiraMusicVoice, MusicError};
 pub use systems::{
     OcclusionResult, check_occlusion, compute_active_reverb, occlusion_from_hits,
     occlusion_raycast_system, reverb_listener_system,
+};
+pub use analyze::{
+    AnalyzeError, AudioStats, DecodedAudio, analyze_samples, decode_bytes, loop_seam_error,
 };
 pub use validate::{Finding, Severity, validate_cue_library, validate_cue_ron};
 pub use voices::{VoiceBudget, VoiceDecision};
