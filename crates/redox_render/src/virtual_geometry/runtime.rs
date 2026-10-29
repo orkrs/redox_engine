@@ -34,6 +34,7 @@ mod dag;
 mod pipeline;
 mod types;
 
+use dag::DagState;
 use pipeline::build_pipeline;
 pub use types::{VGAssetId, VGConfig, VGInstanceHandle, VGStats};
 
@@ -90,6 +91,9 @@ pub struct VGSystem {
     #[allow(dead_code)]
     instances_bgl: wgpu::BindGroupLayout,
     instances_bind_group: wgpu::BindGroup,
+
+    /// DAG path (VG-02): traversal, draw commands and hierarchies.
+    dag: DagState,
 
     // CPU-side state
     /// All meshlet descriptors accumulated from every registered asset.
@@ -243,6 +247,7 @@ impl VGSystem {
             camera_bind_group,
             instances_bgl,
             instances_bind_group,
+            dag: DagState::new(device, config.max_instances, config.max_visible_commands),
             global_meshlets: Vec::new(),
             meshlets_dirty: false,
             instance_data: Vec::new(),
@@ -413,6 +418,7 @@ impl VGSystem {
 
     /// Remove an instance.  Its slot is reused by the next `spawn_instance`.
     pub fn despawn_instance(&mut self, handle: VGInstanceHandle) {
+        self.forget_dag_instance(handle);
         if let Some(slot) = self.instance_map.remove(&handle) {
             // Mark slot as free by zeroing the meshlet_count
             self.instance_data[slot].meshlet_count = 0;

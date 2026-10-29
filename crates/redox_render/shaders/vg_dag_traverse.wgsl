@@ -6,12 +6,19 @@
 // The local eye of every instance is computed on the CPU (`dag_gpu.rs`), so the projection runs in
 // the same local space as the reference.
 //
-// Entry points: `main` (one traversal pass) and `prepare_args` (one thread; writes the indirect
-// dispatch sizes of both queues from the counters). The Rust side must keep the layouts of
-// `DagClusterGpu`, `DagInstanceGpu`, `DagPassParams` and `PrepareParams` in sync with the structs below.
+// Hi-Z: a selected cluster that fails the occlusion test is recorded in `rejects`. After the
+// pyramid of the current frame is built, `retest_rejects` tests those records again and draws the
+// survivors (the same-frame phase 2 of the flat path).
+//
+// Entry points: `main` (one traversal pass), `prepare_args` (one thread; indirect dispatch sizes of
+// both queues), `retest_rejects` (phase 2).
+//
+// Layout contract (keep in sync with `dag_gpu.rs`): `DagClusterGpu` is 96 bytes and is mirrored by
+// the scalar fields of `DagCluster` (vec3 would be 16-aligned and shift the offsets). `DagInstanceGpu`
+// is 112 bytes, `DagPassParams` 32 bytes, `PrepareParams` 16 bytes.
 // `CullParams`, `test_sphere`, `max_scale` and `test_hiz_occlusion` come from `vg_common.wgsl`.
 
-// Matches `DagClusterGpu` (96 bytes). Scalars instead of vec3 keep the offsets of `repr(C)`.
+// Matches `DagClusterGpu` (96 bytes). Field order is the Rust field order.
 struct DagCluster {
     index_offset: u32,
     index_count: u32,
@@ -46,7 +53,8 @@ struct DagInstanceGpu {
     bound: vec4<f32>,
     root_begin: u32,
     root_count: u32,
-    _pad: vec2<u32>,
+    vertex_base: u32,
+    _pad: u32,
 };
 
 // Matches `DagPassParams` (32 bytes).
@@ -76,9 +84,11 @@ struct DrawIndexedIndirectCmd {
     first_instance: u32,
 };
 
-// Counter slots: [0] queue A count, [1] queue B count, [2] draw commands, [3] overflow events.
+// Counter slots: [0] queue A count, [1] queue B count, [2] draw commands,
+// [3] overflow events, [4] Hi-Z rejects.
 const COUNTER_CMD: u32 = 2u;
 const COUNTER_OVERFLOW: u32 = 3u;
+const COUNTER_REJECT: u32 = 4u;
 // Stand-in for an infinite parent error of a root (kept finite on purpose).
 const ROOT_PARENT_PX: f32 = 3.0e38;
 
@@ -89,14 +99,16 @@ const ROOT_PARENT_PX: f32 = 3.0e38;
 @group(0) @binding(4) var<storage, read> instances: array<DagInstanceGpu>;
 @group(0) @binding(5) var<storage, read> src_queue: array<vec2<u32>>;
 @group(0) @binding(6) var<storage, read_write> dst_queue: array<vec2<u32>>;
-@group(0) @binding(7) var<storage, read_write> counters: array<atomic<u32>, 4>;
+@group(0) @binding(7) var<storage, read_write> counters: array<atomic<u32>, 5>;
 @group(0) @binding(8) var<storage, read_write> commands: array<DrawIndexedIndirectCmd>;
 @group(0) @binding(9) var t_hiz: texture_2d<f32>;
 @group(0) @binding(10) var s_hiz: sampler;
+// Records `(instance, cluster)` of clusters rejected by Hi-Z, for the phase-2 retest.
+@group(0) @binding(11) var<storage, read_write> rejects: array<vec2<u32>>;
 
-// Prepare-pass bindings (separate bind group layout, same counters buffer).
-@group(0) @binding(11) var<storage, read_write> dispatch_args: array<u32>;
-@group(0) @binding(12) var<uniform> prepare_params: PrepareParams;
+// Prepare-pass bindings (separate bind group layout; the counters are shared).
+@group(0) @binding(12) var<storage, read_write> dispatch_args: array<u32>;
+@group(0) @binding(13) var<uniform> prepare_params: PrepareParams;
 
 fn cluster_centre(c: DagCluster) -> vec3<f32> {
     return vec3<f32>(c.cx, c.cy, c.cz);
@@ -116,17 +128,7 @@ fn projected_px(error: f32, centre: vec3<f32>, radius: f32, eye: vec3<f32>) -> f
     return error * dag_params.pixels_per_unit / d;
 }
 
-// Frustum and Hi-Z test of a selected cluster (world space).
-fn is_visible(inst: DagInstanceGpu, c: DagCluster) -> bool {
-    let wc = (inst.transform * vec4<f32>(cluster_centre(c), 1.0)).xyz;
-    let wr = c.radius * max_scale(inst.transform);
-    if (dag_params.cull_frustum != 0u && !test_sphere(wc, wr)) {
-        return false;
-    }
-    return test_hiz_occlusion(wc, wr, cull_params.view_proj);
-}
-
-fn emit_cluster(inst_idx: u32, c: DagCluster) {
+fn emit_cluster(inst_idx: u32, base_vertex: i32, c: DagCluster) {
     let slot = atomicAdd(&counters[COUNTER_CMD], 1u);
     if (slot >= arrayLength(&commands)) {
         return;
@@ -134,20 +136,40 @@ fn emit_cluster(inst_idx: u32, c: DagCluster) {
     commands[slot].index_count = c.index_count;
     commands[slot].instance_count = 1u;
     commands[slot].first_index = c.index_offset;
-    commands[slot].base_vertex = 0;
+    commands[slot].base_vertex = base_vertex;
     commands[slot].first_instance = inst_idx;
 }
 
-// Queues the children of `c`. When the destination queue is full, `c` itself is drawn instead
-// (coarser, never dropped), provided that it passes the visibility test.
-fn push_children(inst_idx: u32, inst: DagInstanceGpu, c: DagCluster) {
+fn push_reject(inst_idx: u32, cluster_id: u32) {
+    let slot = atomicAdd(&counters[COUNTER_REJECT], 1u);
+    if (slot >= dag_params.queue_capacity) {
+        return;
+    }
+    rejects[slot] = vec2<u32>(inst_idx, cluster_id);
+}
+
+// Draws a selected cluster when it passes the frustum test; records a reject when Hi-Z occludes it.
+fn select_cluster(inst_idx: u32, cluster_id: u32, inst: DagInstanceGpu, c: DagCluster) {
+    let wc = (inst.transform * vec4<f32>(cluster_centre(c), 1.0)).xyz;
+    let wr = c.radius * max_scale(inst.transform);
+    if (dag_params.cull_frustum != 0u && !test_sphere(wc, wr)) {
+        return;
+    }
+    if (!test_hiz_occlusion(wc, wr, cull_params.view_proj)) {
+        push_reject(inst_idx, cluster_id);
+        return;
+    }
+    emit_cluster(inst_idx, i32(inst.vertex_base), c);
+}
+
+// Queues the children of `c`. When the destination queue is full, `c` itself is selected instead
+// (coarser, never dropped).
+fn push_children(inst_idx: u32, cluster_id: u32, inst: DagInstanceGpu, c: DagCluster) {
     let n = c.child_count;
     let slot = atomicAdd(&counters[dag_params.dst_slot], n);
     if (slot + n > dag_params.queue_capacity) {
         atomicAdd(&counters[COUNTER_OVERFLOW], 1u);
-        if (is_visible(inst, c)) {
-            emit_cluster(inst_idx, c);
-        }
+        select_cluster(inst_idx, cluster_id, inst, c);
         return;
     }
     for (var i = 0u; i < n; i++) {
@@ -178,12 +200,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
     // Precise enough (or a leaf): this cluster is the cut.
     if (own_px <= dag_params.threshold_px || c.child_count == 0u) {
-        if (is_visible(inst, c)) {
-            emit_cluster(item.x, c);
-        }
+        select_cluster(item.x, item.y, inst, c);
         return;
     }
-    push_children(item.x, inst, c);
+    push_children(item.x, item.y, inst, c);
 }
 
 @compute @workgroup_size(1, 1, 1)
@@ -193,5 +213,22 @@ fn prepare_args() {
         dispatch_args[s * 3u] = (n + 63u) / 64u;
         dispatch_args[s * 3u + 1u] = 1u;
         dispatch_args[s * 3u + 2u] = 1u;
+    }
+}
+
+// Phase 2: re-tests the Hi-Z rejects of this frame against the freshly built pyramid.
+@compute @workgroup_size(64, 1, 1)
+fn retest_rejects(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let n = min(atomicLoad(&counters[COUNTER_REJECT]), dag_params.queue_capacity);
+    if (gid.x >= n) {
+        return;
+    }
+    let r = rejects[gid.x];
+    let inst = instances[r.x];
+    let c = clusters[r.y];
+    let wc = (inst.transform * vec4<f32>(cluster_centre(c), 1.0)).xyz;
+    let wr = c.radius * max_scale(inst.transform);
+    if (test_hiz_occlusion(wc, wr, cull_params.view_proj)) {
+        emit_cluster(r.x, i32(inst.vertex_base), c);
     }
 }
