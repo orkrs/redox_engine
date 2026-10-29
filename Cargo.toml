@@ -52,7 +52,7 @@ opt-level = 3
 
 
 [workspace.dependencies]
-glam = "0.33"
+glam = "0.34"
 winit = "0.30"
 wgpu = "30"
 rapier3d = "0.36"
