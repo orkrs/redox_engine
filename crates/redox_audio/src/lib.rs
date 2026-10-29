@@ -29,6 +29,7 @@ pub mod music_layers;
 mod music_play;
 pub mod spatial;
 pub mod systems;
+pub mod validate;
 pub mod voices;
 
 pub use asset_types::AudioData;
@@ -52,4 +53,5 @@ pub use systems::{
     OcclusionResult, check_occlusion, compute_active_reverb, occlusion_from_hits,
     occlusion_raycast_system, reverb_listener_system,
 };
+pub use validate::{Finding, Severity, validate_cue_library, validate_cue_ron};
 pub use voices::{VoiceBudget, VoiceDecision};
