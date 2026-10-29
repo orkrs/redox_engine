@@ -13,10 +13,12 @@
 
 mod asset;
 mod build;
+mod gpu;
 mod group;
 
 pub use asset::{VGDagAsset, build_vg_dag_asset};
 pub use build::{build_cluster_dag, weld_positions};
+pub use gpu::{DagClusterGpu, DagInstance, gpu_clusters, select_for_instances};
 pub use group::{adjacency, group_clusters};
 
 /// One cluster of the hierarchy. Triangles live in the asset's index buffer at `index_offset..index_offset+index_count`.

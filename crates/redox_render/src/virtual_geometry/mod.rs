@@ -40,7 +40,8 @@ pub mod runtime;
 pub use asset_pipeline::build_vg_asset;
 pub use culling::Frustum;
 pub use dag::{
-    ClusterDag, DagCluster, DagError, DagParams, VGDagAsset, build_cluster_dag, build_vg_dag_asset,
+    ClusterDag, DagCluster, DagClusterGpu, DagError, DagInstance, DagParams, VGDagAsset,
+    build_cluster_dag, build_vg_dag_asset, gpu_clusters, select_for_instances,
 };
 pub use lod::{LodChainConfig, LodLevelConfig};
 pub use meshlet::{
