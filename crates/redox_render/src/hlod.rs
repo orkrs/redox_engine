@@ -286,8 +286,8 @@ fn simplify_welded(welded: &Welded, params: &HlodParams) -> Result<Vec<u32>, Hlo
     ))
 }
 
-/// Number of colour channels per vertex attribute block.
-const COLOUR_ATTRIBUTE_WEIGHT_STRIDE: usize = 3;
+/// Bytes per vertex attribute block (meshopt wants the stride in bytes): three colour channels.
+const COLOUR_ATTRIBUTE_WEIGHT_STRIDE: usize = 3 * std::mem::size_of::<f32>();
 
 /// Meshopt view over a position array (three `f32` per vertex, offset 0).
 fn position_adapter(positions: &[[f32; 3]]) -> Result<VertexDataAdapter<'_>, HlodError> {
