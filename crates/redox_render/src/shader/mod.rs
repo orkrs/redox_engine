@@ -21,8 +21,17 @@ pub use watch::{ShaderReloadReport, ShaderWatcher};
 
 /// Source of `forward.wgsl`.
 pub const FORWARD_WGSL: &str = include_str!("../../shaders/forward.wgsl");
-/// Source of `pbr.wgsl`.
-pub const PBR_WGSL: &str = include_str!("../../shaders/pbr.wgsl");
+/// Source of `material_surface.wgsl`: shared material types and `material_surface` (MAT-01).
+pub const MATERIAL_SURFACE_WGSL: &str = include_str!("../../shaders/material_surface.wgsl");
+/// Source of `pbr.wgsl` alone (without the material surface prelude).
+#[cfg(feature = "shader-hot-reload")]
+const PBR_BODY_WGSL: &str = include_str!("../../shaders/pbr.wgsl");
+/// Full `pbr.wgsl` module: the material surface prelude followed by the pass shader.
+pub const PBR_WGSL: &str = concat!(
+    include_str!("../../shaders/material_surface.wgsl"),
+    "\n",
+    include_str!("../../shaders/pbr.wgsl"),
+);
 /// Source of `shadow.wgsl`.
 pub const SHADOW_WGSL: &str = include_str!("../../shaders/shadow.wgsl");
 /// Source of `normal.wgsl`.
@@ -110,6 +119,11 @@ pub const SMAA_NEIGHBORHOOD_WGSL: &str = include_str!("../../shaders/smaa/neighb
 const EMBEDDED: &[(&str, &str, &str)] = &[
     ("forward", "forward.wgsl", FORWARD_WGSL),
     ("pbr", "pbr.wgsl", PBR_WGSL),
+    (
+        "material_surface",
+        "material_surface.wgsl",
+        MATERIAL_SURFACE_WGSL,
+    ),
     ("shadow", "shadow.wgsl", SHADOW_WGSL),
     ("normal", "normal.wgsl", NORMAL_WGSL),
     ("gtao", "gtao.wgsl", GTAO_WGSL),
@@ -241,11 +255,25 @@ pub(crate) fn shaders_dir() -> std::path::PathBuf {
 /// Without the feature: return the embedded copy (zero I/O).
 #[cfg(feature = "shader-hot-reload")]
 pub fn load(name: &str) -> String {
+    if name == "pbr" {
+        // `pbr` is built from two files; see [`PBR_WGSL`].
+        return [
+            read_part("material_surface.wgsl", MATERIAL_SURFACE_WGSL),
+            read_part("pbr.wgsl", PBR_BODY_WGSL),
+        ]
+        .join("\n");
+    }
     EMBEDDED
         .iter()
         .find(|(stem, _, _)| *stem == name)
         .and_then(|(_, rel, _)| std::fs::read_to_string(shaders_dir().join(rel)).ok())
         .unwrap_or_else(|| fallback(name).to_string())
+}
+
+/// On-disk text of `shaders/<rel>`, or `embedded` when the file cannot be read.
+#[cfg(feature = "shader-hot-reload")]
+fn read_part(rel: &str, embedded: &str) -> String {
+    std::fs::read_to_string(shaders_dir().join(rel)).unwrap_or_else(|_| embedded.to_string())
 }
 
 /// Load a shader by file stem (see hot-reload variant).
