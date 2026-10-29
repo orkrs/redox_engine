@@ -210,12 +210,42 @@ pub struct AnimationClip {
     pub duration: f32,
     /// Keyframes per bone name, sorted by time.
     pub tracks: std::collections::HashMap<String, Vec<Keyframe>>,
+    /// Keyframes of the morph weights (one value per target) sorted by time; empty = the clip
+    /// does not animate morphs.
+    pub morph_weights: Vec<(f32, Vec<f32>)>,
 }
 
 impl AnimationClip {
     /// Total number of keyframes over all tracks.
     pub fn keyframe_count(&self) -> usize {
         self.tracks.values().map(Vec::len).sum()
+    }
+
+    /// Morph weights at `time`: linear interpolation between neighbouring keyframes, clamped
+    /// outside the clip and wrapped with `looping` (same time rules as [`Self::sample`]).
+    /// `count` is the number of targets of the model; shorter keyframes are padded with 0.
+    /// A clip without morph keyframes returns `count` zeros.
+    pub fn sample_morph_weights(&self, time: f32, looping: bool, count: usize) -> Vec<f32> {
+        let keys = &self.morph_weights;
+        if keys.is_empty() {
+            return vec![0.0; count];
+        }
+        let t = if looping && self.duration > f32::EPSILON {
+            time.rem_euclid(self.duration)
+        } else {
+            time.clamp(0.0, self.duration.max(0.0))
+        };
+        let next = keys.partition_point(|k| k.0 <= t);
+        if next == 0 {
+            return padded(&keys[0].1, count);
+        }
+        if next >= keys.len() {
+            return padded(&keys[keys.len() - 1].1, count);
+        }
+        let (a, b) = (&keys[next - 1], &keys[next]);
+        let s = ((t - a.0) / (b.0 - a.0).max(f32::EPSILON)).clamp(0.0, 1.0);
+        let (wa, wb) = (padded(&a.1, count), padded(&b.1, count));
+        wa.iter().zip(&wb).map(|(x, y)| x + (y - x) * s).collect()
     }
 
     /// Samples the clip at `time`. With `looping` the time wraps, otherwise it clamps to the clip.
@@ -236,6 +266,13 @@ impl AnimationClip {
             .collect();
         LocalPose { bones }
     }
+}
+
+/// Copies `values` into a vector of exactly `count` entries, padding with 0 or dropping the rest.
+fn padded(values: &[f32], count: usize) -> Vec<f32> {
+    (0..count)
+        .map(|i| values.get(i).copied().unwrap_or(0.0))
+        .collect()
 }
 
 fn sample_keys(keys: &[Keyframe], t: f32) -> BoneTransform {

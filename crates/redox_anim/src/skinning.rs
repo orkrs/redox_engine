@@ -2,6 +2,21 @@
 
 use redox_math::{Mat4, Vec3};
 
+/// One morph target: per-vertex offsets from the bind pose (glTF `targets[i]`).
+/// Arrays are either empty (not animated) or as long as the geometry.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MorphTarget {
+    /// Target name (glTF `targetNames`, or `morph_{i}` when absent).
+    pub name: String,
+    /// Position offsets per vertex.
+    pub positions: Vec<[f32; 3]>,
+    /// Normal offsets per vertex. Empty keeps the bind normals.
+    pub normals: Vec<[f32; 3]>,
+    /// Tangent offsets per vertex. Imported and validated, but not applied by
+    /// [`SkinnedGeometry::morph_into`] (morphing only moves positions and normals).
+    pub tangents: Vec<[f32; 3]>,
+}
+
 /// Bind-pose geometry with per-vertex bone influences (up to four).
 #[derive(Clone, Debug, Default)]
 pub struct SkinnedGeometry {
@@ -19,6 +34,10 @@ pub struct SkinnedGeometry {
     pub weights: Vec<[f32; 4]>,
     /// Triangle list indices into the vertex arrays.
     pub indices: Vec<u32>,
+    /// Morph targets (blend shapes); empty when the geometry has none.
+    pub morph_targets: Vec<MorphTarget>,
+    /// Default morph weights (glTF `mesh.weights`); empty means all zero.
+    pub morph_defaults: Vec<f32>,
 }
 
 impl SkinnedGeometry {
@@ -44,6 +63,17 @@ impl SkinnedGeometry {
                 "tangents has {} entries, expected 0 or {n}",
                 self.tangents.len()
             ));
+        }
+        for target in &self.morph_targets {
+            let wrong = [&target.positions, &target.normals, &target.tangents]
+                .iter()
+                .any(|array| !array.is_empty() && array.len() != n);
+            if wrong {
+                return Err(format!(
+                    "morph target '{}' has an array that does not match {n} vertices",
+                    target.name
+                ));
+            }
         }
         if let Some(bad) = self.indices.iter().find(|&&i| i as usize >= n) {
             return Err(format!("index {bad} out of range for {n} vertices"));
@@ -83,23 +113,109 @@ impl SkinnedGeometry {
 
     /// Deforms the bind pose by `skin_matrices` (see `Pose::skin_matrices`).
     /// Output vectors are cleared and refilled, so scratch buffers can be reused every frame.
+    ///
+    /// Morph targets are ignored here; use [`Self::deform_morphed_into`] to apply them.
     pub fn deform_into(
         &self,
         skin_matrices: &[Mat4],
         out_positions: &mut Vec<[f32; 3]>,
         out_normals: &mut Vec<[f32; 3]>,
     ) {
+        self.blend_into(
+            skin_matrices,
+            &self.positions,
+            &self.normals,
+            out_positions,
+            out_normals,
+        );
+    }
+
+    /// Adds the weighted offsets of all morph targets to the bind pose.
+    /// Weights shorter than the target list count as 0, longer ones are ignored, and
+    /// non-finite weights (NaN) count as 0. Targets with an empty array contribute nothing to it.
+    /// Output vectors are cleared and refilled. Without active targets the output is a copy of
+    /// the bind pose; normals are renormalised only when at least one target is active.
+    /// Morph tangents are not applied (see [`MorphTarget::tangents`]).
+    pub fn morph_into(
+        &self,
+        weights: &[f32],
+        out_positions: &mut Vec<[f32; 3]>,
+        out_normals: &mut Vec<[f32; 3]>,
+    ) {
+        out_positions.clear();
+        out_positions.extend_from_slice(&self.positions);
+        out_normals.clear();
+        out_normals.extend_from_slice(&self.normals);
+        let mut any_active = false;
+        for (t, target) in self.morph_targets.iter().enumerate() {
+            let w = sanitize_weight(weights.get(t).copied().unwrap_or(0.0));
+            if w == 0.0 {
+                continue;
+            }
+            any_active = true;
+            add_scaled(out_positions, &target.positions, w);
+            add_scaled(out_normals, &target.normals, w);
+        }
+        if any_active {
+            for n in out_normals.iter_mut() {
+                *n = Vec3::from(*n).normalize_or_zero().to_array();
+            }
+        }
+    }
+
+    /// Skinning on top of morphing: `deform_into`, but the bind pose is first morphed with `weights`.
+    /// Without morph targets this is exactly `deform_into`.
+    pub fn deform_morphed_into(
+        &self,
+        skin: &[Mat4],
+        weights: &[f32],
+        out_positions: &mut Vec<[f32; 3]>,
+        out_normals: &mut Vec<[f32; 3]>,
+    ) {
+        if self.morph_targets.is_empty() {
+            self.deform_into(skin, out_positions, out_normals);
+            return;
+        }
+        let (mut positions, mut normals) = (Vec::new(), Vec::new());
+        self.morph_into(weights, &mut positions, &mut normals);
+        self.blend_into(skin, &positions, &normals, out_positions, out_normals);
+    }
+
+    /// Shared skinning loop: blends the bone matrices per vertex and transforms the given
+    /// positions and normals (bind pose or morphed pose).
+    fn blend_into(
+        &self,
+        skin: &[Mat4],
+        positions: &[[f32; 3]],
+        normals: &[[f32; 3]],
+        out_positions: &mut Vec<[f32; 3]>,
+        out_normals: &mut Vec<[f32; 3]>,
+    ) {
         out_positions.clear();
         out_normals.clear();
         for v in 0..self.vertex_count() {
-            let blended = blend_matrix(skin_matrices, &self.joints[v], &self.weights[v]);
-            let p = blended.transform_point3(Vec3::from(self.positions[v]));
+            let blended = blend_matrix(skin, &self.joints[v], &self.weights[v]);
+            let p = blended.transform_point3(Vec3::from(positions[v]));
             let n = blended
-                .transform_vector3(Vec3::from(self.normals[v]))
+                .transform_vector3(Vec3::from(normals[v]))
                 .normalize_or_zero();
             out_positions.push(p.to_array());
             out_normals.push(n.to_array());
         }
+    }
+}
+
+/// Morph weights outside the usable range are treated as 0: NaN and infinite values.
+fn sanitize_weight(w: f32) -> f32 {
+    if w.is_finite() { w } else { 0.0 }
+}
+
+/// Adds `w * offsets` to `out` element-wise; an empty `offsets` array does nothing.
+fn add_scaled(out: &mut [[f32; 3]], offsets: &[[f32; 3]], w: f32) {
+    for (o, d) in out.iter_mut().zip(offsets) {
+        o[0] += w * d[0];
+        o[1] += w * d[1];
+        o[2] += w * d[2];
     }
 }
 
@@ -139,6 +255,7 @@ mod tests {
             joints: vec![[0, 0, 0, 0], [0, 1, 0, 0]],
             weights: vec![[1.0, 0.0, 0.0, 0.0], [0.5, 0.5, 0.0, 0.0]],
             indices: vec![0, 1, 0],
+            ..Default::default()
         }
     }
 
@@ -157,6 +274,7 @@ mod tests {
             joints: vec![[0, 0, 0, 0]; 4],
             weights: vec![[1.0, 0.0, 0.0, 0.0]; 4],
             indices: vec![0, 1, 2, 0, 2, 3],
+            ..Default::default()
         }
     }
 

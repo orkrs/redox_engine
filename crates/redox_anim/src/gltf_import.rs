@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use redox_math::{Mat4, Quat, Vec3};
 
-use crate::{AnimationClip, Keyframe, Skeleton, SkinnedGeometry, SkinnedModel};
+use crate::{AnimationClip, Keyframe, MorphTarget, Skeleton, SkinnedGeometry, SkinnedModel};
 
 /// Loads every skinned mesh in a `.glb` / self-contained `.gltf` byte slice.
 pub fn load_glb(bytes: &[u8]) -> Result<Vec<SkinnedModel>, String> {
@@ -38,9 +38,19 @@ fn build_model(
         }
     }
 
-    let geometry = build_geometry(buffers, mesh)?;
+    let mut geometry = build_geometry(buffers, mesh)?;
+    let target_count = geometry.morph_targets.len();
+    if target_count > 0 {
+        geometry.morph_defaults = mesh.weights().map_or_else(Vec::new, <[f32]>::to_vec);
+    }
     geometry.validate(skeleton.len())?;
-    let clips = build_clips(document, buffers, &skeleton, &joint_nodes);
+    let clips = build_clips(
+        document,
+        buffers,
+        &skeleton,
+        &joint_nodes,
+        (mesh.index(), target_count),
+    );
     Ok(SkinnedModel {
         skeleton,
         clips,
@@ -104,6 +114,19 @@ fn build_geometry(
     let any_tangents = mesh
         .primitives()
         .any(|p| p.get(&gltf::Semantic::Tangents).is_some());
+    // Morph targets are numbered by glTF order; every primitive of the mesh must have the same count.
+    let target_count = mesh
+        .primitives()
+        .next()
+        .map_or(0, |p| p.morph_targets().count());
+    g.morph_targets = (0..target_count)
+        .map(|i| MorphTarget {
+            name: format!("morph_{i}"),
+            ..Default::default()
+        })
+        .collect();
+    // Per target: whether any primitive supplied positions, normals, tangents.
+    let mut presence = vec![[false; 3]; target_count];
     for primitive in mesh.primitives() {
         let reader = primitive.reader(|b| Some(&buffers[b.index()]));
         let positions: Vec<[f32; 3]> = reader
@@ -143,6 +166,22 @@ fn build_geometry(
         {
             return Err("primitive attribute counts differ".to_string());
         }
+        if primitive.morph_targets().count() != target_count {
+            return Err("primitives have different morph target counts".to_string());
+        }
+        for ((target, flags), (pos, nor, tan)) in g
+            .morph_targets
+            .iter_mut()
+            .zip(presence.iter_mut())
+            .zip(reader.read_morph_targets())
+        {
+            let has = [
+                append_deltas(&mut target.positions, pos.map(|p| p.collect()), count)?,
+                append_deltas(&mut target.normals, nor.map(|n| n.collect()), count)?,
+                append_deltas(&mut target.tangents, tan.map(|t| t.collect()), count)?,
+            ];
+            *flags = [flags[0] || has[0], flags[1] || has[1], flags[2] || has[2]];
+        }
         if any_tangents {
             g.tangents
                 .extend(tangents.unwrap_or_else(|| vec![[1.0, 0.0, 0.0]; count]));
@@ -154,7 +193,39 @@ fn build_geometry(
         g.weights.extend(weights);
         g.indices.extend(indices.into_iter().map(|i| i + base));
     }
+    // Arrays that no primitive supplied stay empty (= not morphed), not zero-filled.
+    for (target, flags) in g.morph_targets.iter_mut().zip(&presence) {
+        if !flags[0] {
+            target.positions.clear();
+        }
+        if !flags[1] {
+            target.normals.clear();
+        }
+        if !flags[2] {
+            target.tangents.clear();
+        }
+    }
     Ok(g)
+}
+
+/// Appends one primitive's morph deltas to `out`. A primitive without data for this array gets
+/// zeros, which keeps the arrays aligned with the merged vertex order. Returns whether data existed.
+fn append_deltas(
+    out: &mut Vec<[f32; 3]>,
+    deltas: Option<Vec<[f32; 3]>>,
+    count: usize,
+) -> Result<bool, String> {
+    match deltas {
+        Some(d) if d.len() == count => {
+            out.extend(d);
+            Ok(true)
+        }
+        Some(_) => Err("morph target size differs from its primitive".to_string()),
+        None => {
+            out.resize(out.len() + count, [0.0; 3]);
+            Ok(false)
+        }
+    }
 }
 
 #[derive(Default)]
@@ -164,11 +235,13 @@ struct BoneChannels {
     scale: Vec<(f32, Vec3)>,
 }
 
+/// `mesh` is the mesh index of the imported node and its morph target count.
 fn build_clips(
     document: &gltf::Document,
     buffers: &[gltf::buffer::Data],
     skeleton: &Skeleton,
     joint_nodes: &[usize],
+    mesh: (usize, usize),
 ) -> Vec<AnimationClip> {
     let joint_of: HashMap<usize, usize> = joint_nodes
         .iter()
@@ -210,11 +283,14 @@ fn build_clips(
             }
         }
 
+        let (morph_weights, morph_end) = morph_frames(&animation, buffers, mesh.0, mesh.1);
+        duration = duration.max(morph_end);
         let mut clip = AnimationClip {
             name: animation
                 .name()
                 .map_or_else(|| format!("clip_{index}"), str::to_string),
             duration,
+            morph_weights,
             ..Default::default()
         };
         for (joint, data) in channels {
@@ -226,6 +302,55 @@ fn build_clips(
         clips.push(clip);
     }
     clips
+}
+
+/// Morph-weight keyframes of the channel that targets the imported mesh node, and that channel's
+/// last key time. Channels of other nodes are ignored: one mesh per model is supported.
+fn morph_frames(
+    animation: &gltf::Animation,
+    buffers: &[gltf::buffer::Data],
+    mesh_index: usize,
+    target_count: usize,
+) -> (Vec<(f32, Vec<f32>)>, f32) {
+    if target_count == 0 {
+        return (Vec::new(), 0.0);
+    }
+    for channel in animation.channels() {
+        if channel.target().node().mesh().map(|m| m.index()) != Some(mesh_index) {
+            continue;
+        }
+        let reader = channel.reader(|b| Some(&buffers[b.index()]));
+        let (Some(times), Some(gltf::animation::util::ReadOutputs::MorphTargetWeights(weights))) =
+            (reader.read_inputs(), reader.read_outputs())
+        else {
+            continue;
+        };
+        let times: Vec<f32> = times.collect();
+        let values: Vec<f32> = weights.into_f32().collect();
+        // Cubic splines store (in-tangents, values, out-tangents) blocks per key; keep the values.
+        let cubic =
+            channel.sampler().interpolation() == gltf::animation::Interpolation::CubicSpline;
+        let stride = if cubic {
+            3 * target_count
+        } else {
+            target_count
+        };
+        if values.len() != times.len() * stride {
+            continue;
+        }
+        let value_offset = if cubic { target_count } else { 0 };
+        let frames = times
+            .iter()
+            .copied()
+            .zip(values.chunks_exact(stride))
+            .map(|(time, block)| {
+                let start = value_offset;
+                (time, block[start..start + target_count].to_vec())
+            })
+            .collect();
+        return (frames, times.last().copied().unwrap_or(0.0));
+    }
+    (Vec::new(), 0.0)
 }
 
 /// Cubic-spline outputs come as (in-tangent, value, out-tangent) triples: keep the value.
