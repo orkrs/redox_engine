@@ -20,7 +20,9 @@ use kira::listener::ListenerHandle;
 use kira::sound::FromFileError;
 use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle, StaticSoundSettings};
 use kira::sound::streaming::{StreamingSoundData, StreamingSoundHandle};
-use kira::track::{MainTrackBuilder, SpatialTrackBuilder, TrackBuilder, TrackHandle};
+use kira::track::{
+    MainTrackBuilder, SpatialTrackBuilder, SpatialTrackHandle, TrackBuilder, TrackHandle,
+};
 use kira::{AudioManager, AudioManagerSettings, Decibels, DefaultBackend, Mix, Tween};
 use redox_asset::{AssetId, Handle};
 use redox_ecs::{Entity, World};
@@ -73,6 +75,8 @@ pub struct AudioContext {
     pub(crate) music_voices: MusicVoices<KiraMusicVoice>,
     /// Music crossfade state (see `play_music`).
     pub(crate) music: MusicDirector,
+    /// Spatial kira voices of playing emitters, by entity (see `emitter_voices`).
+    pub(crate) emitter_voices: HashMap<Entity, crate::emitter_voices::EmitterVoice>,
 }
 
 impl AudioContext {
@@ -141,6 +145,7 @@ impl AudioContext {
             music_sources: HashMap::new(),
             music_voices: MusicVoices::new(),
             music: MusicDirector::new(DEFAULT_MUSIC_CROSSFADE_SECONDS),
+            emitter_voices: HashMap::new(),
         }
     }
 
@@ -502,6 +507,29 @@ impl AudioContext {
     ) -> Option<StaticSoundHandle> {
         let data = self.sound_cache.get(&handle.id())?.clone();
         self.play_spatial(data, position, max_distance)
+    }
+
+    /// Clone of the cached decoded sound for `handle`, if it has been synced.
+    pub(crate) fn cached_sound(&self, handle: Handle<AudioData>) -> Option<StaticSoundData> {
+        self.sound_cache.get(&handle.id()).cloned()
+    }
+
+    /// A new spatial sub-track at `position`. It lives while its handle does. `None` without a
+    /// device or listener.
+    pub(crate) fn spatial_track(
+        &mut self,
+        position: redox_math::Vec3,
+        max_distance: f32,
+    ) -> Option<SpatialTrackHandle> {
+        let manager = self.manager.as_mut()?;
+        let listener = self.listener.as_ref()?;
+        manager
+            .add_spatial_sub_track(
+                listener,
+                position,
+                SpatialTrackBuilder::new().distances((0.1, max_distance.max(0.11))),
+            )
+            .ok()
     }
 }
 

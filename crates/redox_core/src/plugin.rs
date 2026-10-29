@@ -75,7 +75,7 @@ impl Plugin for PhysicsPlugin {
     }
 }
 
-/// Audio context, occlusion raycasts, listener pose, lowpass.
+/// Audio context, occlusion raycasts, emitter voices (order: occlusion, voices, listener), reverb.
 pub struct AudioPlugin;
 
 impl Plugin for AudioPlugin {
@@ -85,6 +85,7 @@ impl Plugin for AudioPlugin {
         });
         app.add_system_mut(Stage::PostUpdate, |world, _| {
             redox_audio::occlusion_raycast_system(world);
+            redox_audio::emitter_playback_system(world);
             sync_audio_listener(world);
             sync_audio_reverb(world);
         });

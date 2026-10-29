@@ -22,6 +22,7 @@ pub mod debug;
 pub mod loader;
 pub mod mixer;
 pub mod music;
+mod emitter_voices;
 mod music_apply;
 mod music_play;
 pub mod spatial;
@@ -35,6 +36,7 @@ pub use components::{
 pub use context::{AudioContext, sync_assets_to_audio, with_audio};
 pub use cues::{CueError, CueLibrary, CuePlay, CueRng, CueSelector, SoundCue, SplitMix64};
 pub use debug::AudioDebugDraw;
+pub use emitter_voices::{emitter_playback_system, emitter_target_volume};
 pub use loader::AudioLoader;
 pub use mixer::{
     DuckingController, MixerBus, MixerBusId, MixerGraph, PlayMode, PlayRequest, db_to_linear,
