@@ -23,7 +23,9 @@ pub mod loader;
 pub mod mixer;
 pub mod music;
 mod emitter_voices;
+mod music_adaptive;
 mod music_apply;
+pub mod music_layers;
 mod music_play;
 pub mod spatial;
 pub mod systems;
@@ -43,6 +45,7 @@ pub use mixer::{
     linear_to_db,
 };
 pub use music::{MusicDirector, MusicFrame};
+pub use music_layers::{AdaptiveMusic, MusicLayer};
 pub use music_apply::{MusicVoice, MusicVoices};
 pub use music_play::{KiraMusicVoice, MusicError};
 pub use systems::{

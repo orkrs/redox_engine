@@ -77,6 +77,8 @@ pub struct AudioContext {
     pub(crate) music: MusicDirector,
     /// Spatial kira voices of playing emitters, by entity (see `emitter_voices`).
     pub(crate) emitter_voices: HashMap<Entity, crate::emitter_voices::EmitterVoice>,
+    /// Adaptive (layered) music being played, if any (see `music_adaptive`).
+    pub(crate) adaptive: Option<crate::music_adaptive::AdaptiveState>,
 }
 
 impl AudioContext {
@@ -146,6 +148,7 @@ impl AudioContext {
             music_voices: MusicVoices::new(),
             music: MusicDirector::new(DEFAULT_MUSIC_CROSSFADE_SECONDS),
             emitter_voices: HashMap::new(),
+            adaptive: None,
         }
     }
 

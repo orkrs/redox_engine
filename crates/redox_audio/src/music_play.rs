@@ -120,7 +120,10 @@ impl AudioContext {
     /// Starts `track` fading in and fades the other tracks out. Playing the current track again
     /// does nothing. With a device and a registered file the track starts streaming (silent until
     /// [`Self::update_music`] raises it).
+    ///
+    /// Adaptive music (see [`Self::play_adaptive_music`]) is faded out first.
     pub fn play_music(&mut self, track: &str) {
+        self.stop_adaptive_music();
         self.music.play(track);
         self.start_music_voice(track);
     }
@@ -140,28 +143,38 @@ impl AudioContext {
     pub fn update_music(&mut self, dt: f32) -> MusicFrame {
         let frame = self.music.update(dt);
         self.music_voices.apply(&frame);
+        self.update_adaptive_music(dt);
         frame
     }
 
     /// Starts the streaming voice of `track` unless it already has one.
     fn start_music_voice(&mut self, track: &str) {
-        if !self.is_available() || self.music_voices.contains(track) {
+        if self.music_voices.contains(track) {
             return;
         }
-        let opened = match self.music_sources.get(track) {
-            Some(MusicSource::Memory(bytes)) => open_stream(bytes),
-            Some(MusicSource::File(path)) => StreamingSoundData::from_file(path),
-            None => return,
+        if let Some(voice) = self.open_music_voice(track) {
+            self.music_voices.insert(track, voice);
+        }
+    }
+
+    /// Opens a silent looping stream of `track` without registering it. `None` without a device,
+    /// for an unregistered track, or when the file cannot be opened.
+    pub(crate) fn open_music_voice(&mut self, track: &str) -> Option<KiraMusicVoice> {
+        if !self.is_available() {
+            return None;
+        }
+        let opened = match self.music_sources.get(track)? {
+            MusicSource::Memory(bytes) => open_stream(bytes),
+            MusicSource::File(path) => StreamingSoundData::from_file(path),
         };
         let data = match opened {
             Ok(data) => data,
             Err(e) => {
                 log::warn!("music track `{track}` could not be opened: {e}");
-                return;
+                return None;
             }
         };
-        if let Some(handle) = self.start_music_stream(data) {
-            self.music_voices.insert(track, KiraMusicVoice { handle });
-        }
+        self.start_music_stream(data)
+            .map(|handle| KiraMusicVoice { handle })
     }
 }
