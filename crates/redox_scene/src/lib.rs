@@ -31,6 +31,23 @@ pub use pcg::{GeneratedWorld, PcgKind, PcgParams, generate, generate_to};
 pub use redox_reflect::{EntitySnapshot, ReflectValue, TypeRegistry, WorldSnapshot};
 pub use save::{LoadedSave, SaveManager, SlotInfo};
 
+/// Components that name and tag scene entities, so that scripts can find them
+/// (`find_by_name`, `find_by_tag`).
+pub mod components {
+    use serde::{Deserialize, Serialize};
+
+    /// Unique lookup name of an entity (scripts call it with `find_by_name`).
+    #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub struct Name(pub String);
+
+    /// One tag of an entity (scripts search for it with `find_by_tag`).
+    /// An entity carries one `Tag` component per tag.
+    #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub struct Tag(pub String);
+}
+
+pub use components::{Name, Tag};
+
 /// Result type of the scene crate.
 pub type SceneResult<T> = Result<T, SceneError>;
 
