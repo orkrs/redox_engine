@@ -99,11 +99,13 @@
 | `nav_path(from, to, out, cap)` | `nav` | число точек (0 — пути нет) | `cap` ≤ 32 точек | один запрос |
 | `emit_command("sys.…", a, b, c)` | `commands_system` | команда доставляется хосту | 256 команд | без права — отбрасывается с предупреждением |
 
+Команды `sys.` (применяет `redox_core::script_world::run_script_update` после вызова скрипта, по порядку испускания): `sys.spawn.<префаб>` (позиция в аргументах; префабы — `ScriptPrefabs`), `sys.despawn.<id>`, `sys.set_position.<id>` (позиция в аргументах), `sys.set_active.<id>` (1 — активен, 0 — маркер `ScriptInactive`). Операнд (префаб, id) записан в имени, потому что у команды три числа. Неизвестный префаб или id — запись в лог и пропуск.
+
 Права: `ApiPermissions::all()` включает все флаги (это `ScriptConfig::default()`); `ApiPermissions::v1_only()` оставляет только `state`, `events`, `world` и отключает v2-импорты (скрипт с v2-импортом не линкуется, `ScriptError::Link`); `none()` выключает всё. Указатель вне памяти, неверный диапазон или неизвестное имя дают значение «промах» без трапа, экземпляр продолжает работать (как `raycast_many` в v1).
 
 Пример: `crates/redox_script/tests/guard.wat` (сторож ищет `player`, при расстоянии < 5 м испускает `alert`, считает союзников через `overlap_sphere`).
 
-Статус: импорты и права реализованы в `redox_script` на обоих бэкендах и покрыты тестами (`tests/host_world2.rs`). Подключение `WorldQueries` к `redox_core` (физика, навигация, компоненты `Name`/`Tag` из `redox_scene`) и применение `sys.`-команд (`sys.spawn`, `sys.despawn`, `sys.set_position`, `sys.set_active`) в хосте игры ещё не сделаны.
+Статус: импорты и права реализованы в `redox_script` на обоих бэкендах (`tests/host_world2.rs`). `redox_core::script_world` реализует `WorldQueries` поверх `PhysicsContext` (лучи, overlap), `NavWorld` (путь), компонентов `Name`/`Tag` и `ScriptValues` и применяет `sys.`-команды (`tests/script_world2.rs`). Ресурсы физики и навигации на время вызова переносятся из мира в адаптер и возвращаются. Снимок имён, тегов, позиций и значений строится на каждый вызов. Регистрация `run_script_update` в расписании `redox_core::plugin` — за координатором.
 
 ## 4. Фазы
 
