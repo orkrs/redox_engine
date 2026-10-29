@@ -17,6 +17,7 @@ members = [
     "crates/redox_gameplay",
     "crates/redox_vfx",
     "crates/redox_anim",
+    "crates/redox_matgraph",
     "crates/redox_script",
     "crates/redox_editor_core",
     "crates/redox_editor_ui",
