@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 ## [Unreleased]
 
 ### Added
+- Audio (AUD-07): `redox_audio::validate` checks a cue library before the game runs (missing files, empty variants, volume and pitch ranges, identical file sets, parse errors); `redox_audio::analyze` measures a clip (peak, RMS, BS.1770 loudness, clipping, loop seam, mono detection); `redox_cook audio-check` reports them for a folder, with `--json`; `examples/audio_lab` runs the cue self-test and the cue check without a window. Authoring guide: `docs/AUDIO_AUTHORING.md`.
 - Audio: `SpatialAudioEmitter` is played through one kira spatial track per entity with occlusion-scaled volume (`emitter_playback_system`); adaptive music layers driven by one control value (`AdaptiveMusic`, `play_adaptive_music`, `set_music_control`).
 - Animation/Render: morph targets - glTF import, weights in clips, CPU (`deform_morphed_into`) and GPU skinning, `SkinnedMeshBinding::set_morph_weights`.
 - Render: SSR (`set_ssr`, material roughness through a second output of the normal prepass), height fog with sun in-scatter (`set_fog`), additive blend mode, clear coat and anisotropy (`Material::coat`, `::anisotropy`), wrap lighting for SSS (`Material::subsurface`), `material_surface` shader function (`MaterialInstance`), `ShadowClass` and reliable moved-caster detection for virtual shadow pages.
