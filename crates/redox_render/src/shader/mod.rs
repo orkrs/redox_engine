@@ -26,9 +26,14 @@ pub const MATERIAL_SURFACE_WGSL: &str = include_str!("../../shaders/material_sur
 /// Source of `pbr.wgsl` alone (without the material surface prelude).
 #[cfg(feature = "shader-hot-reload")]
 const PBR_BODY_WGSL: &str = include_str!("../../shaders/pbr.wgsl");
-/// Full `pbr.wgsl` module: the material surface prelude followed by the pass shader.
+/// Source of `reflection_probe.wgsl`: probe table types and parallax lookup (RFL-01).
+#[cfg(feature = "shader-hot-reload")]
+const REFLECTION_PROBE_WGSL: &str = include_str!("../../shaders/reflection_probe.wgsl");
+/// Full `pbr.wgsl` module: the material surface prelude, the probe helpers, then the pass shader.
 pub const PBR_WGSL: &str = concat!(
     include_str!("../../shaders/material_surface.wgsl"),
+    "\n",
+    include_str!("../../shaders/reflection_probe.wgsl"),
     "\n",
     include_str!("../../shaders/pbr.wgsl"),
 );
@@ -259,6 +264,7 @@ pub fn load(name: &str) -> String {
         // `pbr` is built from two files; see [`PBR_WGSL`].
         return [
             read_part("material_surface.wgsl", MATERIAL_SURFACE_WGSL),
+            read_part("reflection_probe.wgsl", REFLECTION_PROBE_WGSL),
             read_part("pbr.wgsl", PBR_BODY_WGSL),
         ]
         .join("\n");

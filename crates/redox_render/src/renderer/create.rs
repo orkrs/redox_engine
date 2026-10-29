@@ -3,6 +3,41 @@
 use super::error::RendererError;
 use super::*;
 
+/// Upper bound requested for sampled textures per shader stage (reflection probes need 20+).
+const SAMPLED_TEXTURES_CAP: u32 = 32;
+/// Upper bound requested for storage buffers per shader stage.
+const STORAGE_BUFFERS_CAP: u32 = 16;
+/// Upper bound requested for storage textures per shader stage.
+const STORAGE_TEXTURES_CAP: u32 = 8;
+
+/// Device limits to request: the wgpu defaults, with three per-stage limits raised to
+/// `min(adapter, cap)` but never lowered below the defaults.
+pub fn required_device_limits(adapter: &wgpu::Limits) -> wgpu::Limits {
+    let defaults = wgpu::Limits::default();
+    wgpu::Limits {
+        max_sampled_textures_per_shader_stage: raised(
+            adapter.max_sampled_textures_per_shader_stage,
+            defaults.max_sampled_textures_per_shader_stage,
+            SAMPLED_TEXTURES_CAP,
+        ),
+        max_storage_buffers_per_shader_stage: raised(
+            adapter.max_storage_buffers_per_shader_stage,
+            defaults.max_storage_buffers_per_shader_stage,
+            STORAGE_BUFFERS_CAP,
+        ),
+        max_storage_textures_per_shader_stage: raised(
+            adapter.max_storage_textures_per_shader_stage,
+            defaults.max_storage_textures_per_shader_stage,
+            STORAGE_TEXTURES_CAP,
+        ),
+        ..defaults
+    }
+}
+
+fn raised(adapter_value: u32, default: u32, cap: u32) -> u32 {
+    adapter_value.min(cap).max(default)
+}
+
 impl Renderer {
     /// Initialises the entire rendering context.
     ///
@@ -70,11 +105,22 @@ impl Renderer {
         required_features |= adapter.features() & wgpu::Features::TEXTURE_COMPRESSION_BC;
         // Lets pipelines be cached on disk between runs (Vulkan).
         required_features |= adapter.features() & wgpu::Features::PIPELINE_CACHE;
+        let required_limits = if adapter.get_info().backend == wgpu::Backend::Vulkan {
+            required_device_limits(&adapter.limits())
+        } else {
+            wgpu::Limits::default()
+        };
+        log::info!(
+            "Device limits: sampled textures {}, storage buffers {}, storage textures {}",
+            required_limits.max_sampled_textures_per_shader_stage,
+            required_limits.max_storage_buffers_per_shader_stage,
+            required_limits.max_storage_textures_per_shader_stage
+        );
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("redox_device"),
                 required_features,
-                required_limits: wgpu::Limits::default(),
+                required_limits,
                 ..Default::default()
             })
             .await

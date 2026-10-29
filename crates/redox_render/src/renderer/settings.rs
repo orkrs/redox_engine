@@ -53,6 +53,25 @@ impl Renderer {
         })
     }
 
+    /// Enables or disables local reflection probes (RFL-01). Off by default; while off, or with
+    /// no probes, the frame is identical to one rendered without probes.
+    pub fn set_reflection_probes_enabled(&mut self, enabled: bool) {
+        self.reflection_probes.set_enabled(enabled);
+        self.reflection_probes.upload(&self.queue);
+    }
+
+    /// Replaces the active reflection probes with the highest-priority ones (at most four).
+    /// Captures are not refreshed: call [`Self::capture_reflection_probe`] for each slot.
+    /// Returns the number of accepted probes.
+    pub fn set_reflection_probes(
+        &mut self,
+        probes: &[crate::reflection::ReflectionProbe],
+    ) -> usize {
+        let accepted = self.reflection_probes.set_probes(probes);
+        self.reflection_probes.upload(&self.queue);
+        accepted
+    }
+
     /// Sets the linear exposure multiplier used by the ACES tone mapper.
     ///
     /// `1.0` is neutral; larger values brighten the frame. Takes effect on
@@ -207,6 +226,8 @@ impl Renderer {
             &self.ibl_processor.sampler,
             &self.blue_noise_view,
             &self.blue_noise_sampler,
+            self.reflection_probes.view(),
+            self.reflection_probes.buffer(),
         );
         self.scene_bind_group = self.pbr_pass.create_scene_bind_group(
             &self.device,
