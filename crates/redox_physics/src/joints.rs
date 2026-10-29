@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use rapier3d::dynamics::ImpulseJoint;
 use rapier3d::prelude::{
     FixedJointBuilder, GenericJoint, GenericJointBuilder, ImpulseJointHandle, JointAxesMask,
-    MotorModel, PrismaticJointBuilder, RevoluteJointBuilder, RopeJointBuilder,
+    JointAxis, MotorModel, PrismaticJointBuilder, RevoluteJointBuilder, RopeJointBuilder,
     SphericalJointBuilder, SpringJointBuilder,
 };
 use redox_ecs::Entity;
@@ -99,6 +99,21 @@ pub enum JointKind {
     },
     /// Free rotation about the anchor.
     Ball,
+    /// Free rotation about the anchor, limited to a swing cone and a twist range.
+    ///
+    /// The cone is approximated by a square: rotation about each of the local Y and Z axes is
+    /// limited to `±swing_limit`, so the swing may reach `swing_limit` on each axis at once
+    /// (slightly more than the round cone at the corners). Rotation about the local X axis is
+    /// the twist and lies in `[twist_min, twist_max]`. Invalid bounds (non-finite, a negative
+    /// swing or a reversed twist range) mean no limits, as for hinge limits.
+    BallLimited {
+        /// Largest swing per axis in radians (Y and Z), measured from the rest pose.
+        swing_limit: f32,
+        /// Smallest twist about the local X axis in radians.
+        twist_min: f32,
+        /// Largest twist about the local X axis in radians.
+        twist_max: f32,
+    },
     /// Force-based spring: `F = stiffness * extension` (N/m).
     Spring {
         /// Length at which the spring exerts no force.
@@ -119,6 +134,18 @@ pub enum JointKind {
         /// The locked degrees of freedom.
         locked: JointAxes,
     },
+}
+
+/// Rapier ranges `(swing, twist)` for a `BallLimited` joint: `[-swing_limit, swing_limit]` for
+/// the two swing axes and `[twist_min, twist_max]` for the twist. `None` when a bound is not
+/// finite, the swing is negative or the twist range is reversed.
+fn ball_limits(swing_limit: f32, twist_min: f32, twist_max: f32) -> Option<([f32; 2], [f32; 2])> {
+    let valid = swing_limit.is_finite()
+        && swing_limit >= 0.0
+        && twist_min.is_finite()
+        && twist_max.is_finite()
+        && twist_min <= twist_max;
+    valid.then_some(([-swing_limit, swing_limit], [twist_min, twist_max]))
 }
 
 /// Damping of the velocity drive in N*s/m (N*m*s/rad): with the `ForceBased` model the motor applies
@@ -226,6 +253,20 @@ impl JointDesc {
                 builder.build().into()
             }
             JointKind::Ball => SphericalJointBuilder::new().build().into(),
+            JointKind::BallLimited {
+                swing_limit,
+                twist_min,
+                twist_max,
+            } => {
+                let mut builder = SphericalJointBuilder::new();
+                if let Some((swing, twist)) = ball_limits(swing_limit, twist_min, twist_max) {
+                    builder = builder
+                        .limits(JointAxis::AngX, twist)
+                        .limits(JointAxis::AngY, swing)
+                        .limits(JointAxis::AngZ, swing);
+                }
+                builder.build().into()
+            }
             JointKind::Spring {
                 rest_length,
                 stiffness,
