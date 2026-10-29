@@ -22,6 +22,9 @@ redox_audio = { path = "../redox_audio" }
 redox_nav = { path = "../redox_nav" }
 redox_ui = { path = "../redox_ui" }
 redox_physics = { path = "../redox_physics" }
+# Scripts see the world through `script_world` (WorldQueries, sys. commands).
+redox_script = { path = "../redox_script" }
+redox_scene = { path = "../redox_scene" }
 
 serde = { workspace = true }
 ron = { workspace = true }
@@ -44,10 +47,8 @@ gltf = { workspace = true }
 redox_physics = { path = "../redox_physics" }
 redox_gameplay = { path = "../redox_gameplay" }
 redox_vfx = { path = "../redox_vfx" }
-redox_scene = { path = "../redox_scene" }
 rapier3d = { workspace = true }
 # Scripted gameplay in the Courier example (coins as a WASM module).
-redox_script = { path = "../redox_script" }
 wat = "1.262.0"
 pollster = "1"
 egui-wgpu = { workspace = true }
