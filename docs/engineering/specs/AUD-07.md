@@ -39,10 +39,16 @@ pub fn validate_cue_library(lib: &CueLibrary, exists: &dyn Fn(&str) -> bool) -> 
 ## Шаг 4 — документация (S)
 `docs/AUDIO_AUTHORING.md` (как писать `cues.ron`, цели громкости, как запускать `audio-check` и лабораторию, примеры вывода), `PLAN_AUDIO_UI.md` (раздел инструментов), `PLAN_EXECUTION.md` (B8: «авторский инструментарий»), `CHANGELOG.md`, `docs/CRATES.md`.
 
+## Уточнения по отчёту исполнителя (2026-10-29)
+1. **Аксессор разрешён:** в `redox_audio/src/cues.rs` добавить `pub fn cues(&self) -> impl Iterator<Item = &SoundCue>` (файл добавлен в «Менять»; больше ничего в `cues.rs` не менять).
+2. **Правила шага 1, которые `CueLibrary::parse` уже проверяет** (дубликат имени, пустое имя, перевёрнутые диапазоны, NaN, отрицательный cooldown), в `validate_cue_library` **не дублировать**. Вместо этого добавить `validate_cue_ron(text: &str, exists: &dyn Fn(&str) -> bool) -> Vec<Finding>`: ошибка `CueLibrary::parse` превращается в `Finding { severity: Error, cue: None/имя из ошибки, message: текст ошибки }`, при успехе — остальные правила на `lib.cues()` (файл не найден, пустой список вариантов, предупреждения). Тесты на «дубликат» и «cooldown < 0» идут через `validate_cue_ron` (вход — RON-текст), остальные — через `validate_cue_library`.
+3. **Моно/стерео:** `StaticSoundData` всегда стерео (`Frame { left, right }`). Считать файл моно, если `left == right` во всех кадрах (точное равенство `f32`); тогда LUFS/RMS считаются по одному каналу (иначе моно «громче» на ~3 дБ). Запись «mono» — в `AudioStats.channels_detected`. Тест: `a_duplicated_mono_signal_is_analysed_as_mono`.
+4. `Cargo.lock` в worktree не нужен (cargo не запускается).
+
 ## Границы
 - **Читать:** `redox_audio/src/{cues,loader,music,music_layers,spatial,debug}.rs`, `redox_cook/src/{main,nav}.rs` (форма команд), `redox_core/examples/courier/*` (образец egui в примере), `redox_ui`.
 - **Создать:** `redox_audio/src/{validate,analyze}.rs`, `redox_cook/src/audio_check.rs`, `redox_core/examples/audio_lab.rs`, тесты.
-- **Менять:** `redox_audio/src/lib.rs`, `redox_cook/src/main.rs` (общий файл — один агент).
+- **Менять:** `redox_audio/src/lib.rs`, `redox_audio/src/cues.rs` (только аксессор `cues()`), `redox_cook/src/main.rs` (общий файл — один агент).
 - **Не трогать:** воспроизведение, шины, `kira`-обёртки.
 
 ## Проверка
