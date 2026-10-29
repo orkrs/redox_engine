@@ -77,7 +77,16 @@ pub const VG_RESOLVE_WGSL: &str = include_str!("../../shaders/vg_resolve.wgsl");
 /// Source of `vg_shadow.wgsl`.
 pub const VG_SHADOW_WGSL: &str = include_str!("../../shaders/vg_shadow.wgsl");
 /// Source of `vg_cull.wgsl`.
-pub const VG_CULL_WGSL: &str = include_str!("../../shaders/vg_cull.wgsl");
+pub const VG_CULL_WGSL: &str = concat!(
+    include_str!("../../shaders/vg_common.wgsl"),
+    include_str!("../../shaders/vg_cull.wgsl"),
+);
+
+/// DAG cluster traversal (VG-02); `vg_common.wgsl` is concatenated in front of it.
+pub const VG_DAG_TRAVERSE_WGSL: &str = concat!(
+    include_str!("../../shaders/vg_common.wgsl"),
+    include_str!("../../shaders/vg_dag_traverse.wgsl"),
+);
 /// Source of `hiz_copy.wgsl`.
 pub const HIZ_COPY_WGSL: &str = include_str!("../../shaders/hiz_copy.wgsl");
 /// Source of `hiz_downsample.wgsl`.
@@ -411,6 +420,7 @@ mod tests {
             ("debug_lines", super::DEBUG_LINES_WGSL),
             ("vg_resolve", super::VG_RESOLVE_WGSL),
             ("vg_cull", super::VG_CULL_WGSL),
+            ("vg_dag_traverse", super::VG_DAG_TRAVERSE_WGSL),
             ("hiz_copy", super::HIZ_COPY_WGSL),
             ("hiz_downsample", super::HIZ_DOWNSAMPLE_WGSL),
             ("skybox", super::SKYBOX_WGSL),
