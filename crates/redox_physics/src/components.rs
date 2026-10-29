@@ -1,6 +1,6 @@
 use rapier3d::dynamics::RigidBodyHandle;
 use rapier3d::geometry::ColliderHandle;
-use redox_math::Vec3;
+use redox_math::{Quat, Vec3};
 
 /// Component indicating that an entity has a rigid body in the physics world.
 #[derive(Debug, Clone)]
@@ -44,6 +44,12 @@ pub struct CharacterSettings {
     pub max_slope_angle: f32,
     /// Distance below the feet at which the character is pulled back to the ground; 0.0 disables.
     pub snap_to_ground: f32,
+    /// Upper bound of the snap distance. Walking down a slope lengthens the snap by the drop of one
+    /// step, but never beyond this, so a real ledge still lets the character fall.
+    pub max_snap_to_ground: f32,
+    /// Turn the character with the platform it stands on, about the vertical axis. Default `false`:
+    /// the game decides whether a rotating platform also turns its riders.
+    pub inherit_platform_yaw: bool,
 }
 
 impl Default for CharacterSettings {
@@ -53,6 +59,8 @@ impl Default for CharacterSettings {
             step_min_width: 0.1,
             max_slope_angle: std::f32::consts::FRAC_PI_4,
             snap_to_ground: 0.2,
+            max_snap_to_ground: 0.5,
+            inherit_platform_yaw: false,
         }
     }
 }
@@ -77,6 +85,8 @@ pub struct CharacterController {
     /// Ground collider and its position at the last step, used to carry the character with a moving
     /// platform. Controller state.
     pub ground_pose: Option<(ColliderHandle, Vec3)>,
+    /// Rotation of the ground collider at the last step, paired with `ground_pose`. Controller state.
+    pub ground_rotation: Option<Quat>,
 }
 
 impl CharacterController {
@@ -102,6 +112,7 @@ impl Default for CharacterController {
             settings: CharacterSettings::default(),
             ground_collider: None,
             ground_pose: None,
+            ground_rotation: None,
         }
     }
 }

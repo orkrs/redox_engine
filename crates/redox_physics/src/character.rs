@@ -5,21 +5,32 @@ use rapier3d::control::{
 };
 use rapier3d::prelude::*;
 use redox_ecs::World;
-use redox_math::{Transform, Vec3};
+use redox_math::{Quat, Transform, Vec3};
 
 use crate::components::{CharacterController, CharacterSettings, Collider, RigidBody};
 use crate::context::PhysicsContext;
 
+/// Margin added to the slope drop of a step, so rounding does not leave the character floating.
+const SNAP_MARGIN: f32 = 0.01;
+
+/// Snap distance for a step of `step_len` horizontal length: the configured snap, lengthened to the
+/// drop one step can cause on a slope of `max_slope_angle`, and capped at `max_snap_to_ground`.
+fn snap_distance(settings: &CharacterSettings, step_len: f32) -> f32 {
+    let slope_drop = step_len * settings.max_slope_angle.tan() + SNAP_MARGIN;
+    let limit = settings.max_snap_to_ground.max(settings.snap_to_ground);
+    settings.snap_to_ground.max(slope_drop).min(limit)
+}
+
 /// Builds Rapier's controller from the character's settings. While the character rises
 /// (`vertical > 0`) snapping to the ground is off, so a jump is not pulled back down at once.
-fn build_kcc(settings: &CharacterSettings, vertical: f32) -> RapierKcc {
+fn build_kcc(settings: &CharacterSettings, vertical: f32, step_len: f32) -> RapierKcc {
     let autostep = (settings.step_height > 0.0).then_some(CharacterAutostep {
         max_height: CharacterLength::Absolute(settings.step_height),
         min_width: CharacterLength::Absolute(settings.step_min_width),
         include_dynamic_bodies: false,
     });
     let snap_to_ground = (vertical <= 0.0 && settings.snap_to_ground > 0.0)
-        .then_some(CharacterLength::Absolute(settings.snap_to_ground));
+        .then(|| CharacterLength::Absolute(snap_distance(settings, step_len)));
     RapierKcc {
         max_slope_climb_angle: settings.max_slope_angle,
         autostep,
@@ -28,19 +39,43 @@ fn build_kcc(settings: &CharacterSettings, vertical: f32) -> RapierKcc {
     }
 }
 
-/// Translation the ground under a character moved by since the last step; zero when it stood on
-/// nothing or its collider is gone.
+/// Turns `point` by `rotation` about `pivot`.
+fn rotate_about(point: Vec3, pivot: Vec3, rotation: Quat) -> Vec3 {
+    pivot + rotation * (point - pivot)
+}
+
+/// Heading of `rotation` about the vertical axis in radians: the angle of its forward (`+Z`) vector
+/// measured from `+Z` towards `+X`. For a pure yaw rotation this is the turn angle.
+fn yaw_of(rotation: Quat) -> f32 {
+    let forward = rotation * Vec3::Z;
+    forward.x.atan2(forward.z)
+}
+
+/// Motion of the ground under a character since the last step, at the point `at` where it stands:
+/// the translation of that point (including the platform's rotation about its origin) and the
+/// rotation the platform turned by. Zero motion when the character stood on nothing or its collider
+/// is gone.
 ///
 /// Call order in `tick_physics`: `move_character_controllers` runs before the Rapier step, so the
-/// collider positions read here are those of the previous step. The carry is the difference of two
-/// consecutive positions, so the error does not accumulate; it lags by one frame.
-fn platform_carry(colliders: &ColliderSet, ground_pose: Option<(ColliderHandle, Vec3)>) -> Vec3 {
-    let Some((handle, previous)) = ground_pose else {
-        return Vec3::ZERO;
+/// collider poses read here are those of the previous step. The carry is the difference of two
+/// consecutive poses, so the error does not accumulate; it lags by one frame.
+fn platform_carry(
+    colliders: &ColliderSet,
+    ground: Option<(ColliderHandle, Vec3, Quat)>,
+    at: Vec3,
+) -> (Vec3, Quat) {
+    let Some((handle, previous, previous_rotation)) = ground else {
+        return (Vec3::ZERO, Quat::IDENTITY);
     };
-    colliders.get(handle).map_or(Vec3::ZERO, |collider| {
-        collider.position().translation - previous
-    })
+    colliders
+        .get(handle)
+        .map_or((Vec3::ZERO, Quat::IDENTITY), |collider| {
+            let pose = collider.position();
+            let turn = pose.rotation * previous_rotation.inverse();
+            // The point turned with the platform about its previous origin, then moved with the origin.
+            let translation = rotate_about(at, previous, turn) + (pose.translation - previous) - at;
+            (translation, turn)
+        })
 }
 
 /// Moves every [`CharacterController`] this step: gravity, wall slide, autostep, moving platforms.
@@ -64,7 +99,8 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
                 c.gravity,
                 c.vertical_velocity,
                 c.settings,
-                c.ground_pose,
+                c.ground_pose
+                    .map(|(h, p)| (h, p, c.ground_rotation.unwrap_or(Quat::IDENTITY))),
                 *t,
                 rb.handle,
                 col.handle,
@@ -92,12 +128,20 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
         let shape = collider.shape();
         // Semi-implicit Euler: accelerate first, then move with the new speed.
         let mut vy = vertical - gravity * dt;
-        let mut wish = desired + platform_carry(&physics.colliders, ground_pose);
+        let (carry, platform_turn) =
+            platform_carry(&physics.colliders, ground_pose, transform.translation);
+        let mut wish = desired + carry;
         wish.y += vy * dt;
+        let yaw = if settings.inherit_platform_yaw {
+            yaw_of(platform_turn)
+        } else {
+            0.0
+        };
 
         let iso = Pose::from_parts(transform.translation, transform.rotation);
         let filter = QueryFilter::default().exclude_rigid_body(body_handle);
-        let kcc = build_kcc(&settings, vertical);
+        let step_len = (wish.x * wish.x + wish.z * wish.z).sqrt();
+        let kcc = build_kcc(&settings, vertical, step_len);
         // Rapier's controller replaces part of the motion of a character touching a *kinematic* body by that body's
         // velocity. For position-driven platforms this froze the character (it could not walk on them at all), so the
         // query sees no bodies and treats every collider as plain geometry; `platform_carry` moves the character instead.
@@ -118,10 +162,10 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
         let grounded = movement.grounded;
         let ground_collider = if grounded { floor } else { None };
         let next_ground_pose = ground_collider.and_then(|handle| {
-            physics
-                .colliders
-                .get(handle)
-                .map(|collider| (handle, collider.position().translation))
+            physics.colliders.get(handle).map(|collider| {
+                let pose = collider.position();
+                (handle, pose.translation, pose.rotation)
+            })
         });
         // Landing stops the fall; hitting a ceiling stops the rise.
         let hit_ceiling = vy > 0.0 && delta.y < wish.y - 1e-4;
@@ -136,21 +180,26 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
             body_handle,
             ground_collider,
             next_ground_pose,
+            yaw,
         ));
     }
 
     world.insert_resource(physics);
 
-    for (entity, delta, grounded, vy, body_handle, ground_collider, ground_pose) in results {
+    for (entity, delta, grounded, vy, body_handle, ground_collider, ground_pose, yaw) in results {
         if let Some(t) = world.get_component_mut::<Transform>(entity) {
             t.translation += delta;
+            if yaw != 0.0 {
+                t.rotation = Quat::from_rotation_y(yaw) * t.rotation;
+            }
         }
         if let Some(cc) = world.get_component_mut::<CharacterController>(entity) {
             cc.grounded = grounded;
             cc.desired_translation = Vec3::ZERO;
             cc.vertical_velocity = vy;
             cc.ground_collider = ground_collider;
-            cc.ground_pose = ground_pose;
+            cc.ground_pose = ground_pose.map(|(handle, position, _)| (handle, position));
+            cc.ground_rotation = ground_pose.map(|(_, _, rotation)| rotation);
         }
         let translation = world
             .get_component::<Transform>(entity)
@@ -307,5 +356,51 @@ mod kcc_tests {
             events.iter().next().is_some(),
             "expected TriggerEnter when overlapping a sensor"
         );
+    }
+}
+
+#[cfg(test)]
+mod carry_math_tests {
+    use super::*;
+
+    const EPS: f32 = 1e-5;
+
+    #[test]
+    fn rotate_about_turns_a_point_a_quarter_turn_around_the_pivot() {
+        let turned = rotate_about(
+            Vec3::new(3.0, 0.0, 0.0),
+            Vec3::new(2.0, 0.0, 0.0),
+            Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
+        );
+        // Offset (1, 0, 0) from the pivot turns to (0, 0, -1) under a +90 degree turn about Y.
+        assert!((turned - Vec3::new(2.0, 0.0, -1.0)).length() < EPS, "{turned:?}");
+    }
+
+    #[test]
+    fn rotate_about_leaves_the_pivot_fixed() {
+        let pivot = Vec3::new(-4.0, 1.0, 2.5);
+        let turned = rotate_about(pivot, pivot, Quat::from_rotation_y(1.2));
+        assert!((turned - pivot).length() < EPS);
+    }
+
+    #[test]
+    fn yaw_of_a_pure_yaw_rotation_is_its_angle() {
+        for angle in [-2.0_f32, -0.3, 0.0, 0.3, 1.0, 3.0] {
+            let measured = yaw_of(Quat::from_rotation_y(angle));
+            assert!((measured - angle).abs() < EPS, "angle {angle}: got {measured}");
+        }
+    }
+
+    #[test]
+    fn yaw_of_identity_is_zero() {
+        assert!(yaw_of(Quat::IDENTITY).abs() < EPS);
+    }
+
+    #[test]
+    fn platform_carry_without_ground_is_zero() {
+        let colliders = ColliderSet::new();
+        let (translation, turn) = platform_carry(&colliders, None, Vec3::ONE);
+        assert_eq!(translation, Vec3::ZERO);
+        assert_eq!(turn, Quat::IDENTITY);
     }
 }
