@@ -12,10 +12,26 @@ use crate::pass::pbr::PbrPass;
 use crate::pass::shared_layouts::multisample_state;
 use crate::shader::{PBR_WGSL, create_shader_with_vertex_decode};
 
-/// Alpha-blended variant of the PBR pipeline.
+/// Additive blend (MAT-06): `dst + src * alpha`, alpha itself is not added.
+const ADDITIVE_BLEND: wgpu::BlendState = wgpu::BlendState {
+    color: wgpu::BlendComponent {
+        src_factor: wgpu::BlendFactor::SrcAlpha,
+        dst_factor: wgpu::BlendFactor::One,
+        operation: wgpu::BlendOperation::Add,
+    },
+    alpha: wgpu::BlendComponent {
+        src_factor: wgpu::BlendFactor::One,
+        dst_factor: wgpu::BlendFactor::One,
+        operation: wgpu::BlendOperation::Add,
+    },
+};
+
+/// Alpha-blended variant of the PBR pipeline, plus its additive twin.
 pub struct TransparentPass {
-    /// Render pipeline.
+    /// Render pipeline for [`crate::BlendMode::Alpha`] materials.
     pub pipeline: wgpu::RenderPipeline,
+    /// Render pipeline for [`crate::BlendMode::Additive`] materials.
+    pub additive_pipeline: wgpu::RenderPipeline,
 }
 
 impl TransparentPass {
@@ -42,45 +58,53 @@ impl TransparentPass {
             immediate_size: 0,
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: crate::pipeline_cache::get(),
-            label: Some("pbr_transparent_pipeline"),
-            layout: Some(&layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[Some(CompressedVertex::buffer_layout())],
-                compilation_options: Default::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: hdr_format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: Default::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                ..Default::default()
-            },
-            // Depth is tested against the opaque pass results but never
-            // written: transparent objects must not occlude one another.
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: Some(false),
-                depth_compare: Some(wgpu::CompareFunction::LessEqual),
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: multisample_state(sample_count),
-            multiview_mask: None,
-        });
+        let make_pipeline = |label: &str, blend: wgpu::BlendState| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                cache: crate::pipeline_cache::get(),
+                label: Some(label),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[Some(CompressedVertex::buffer_layout())],
+                    compilation_options: Default::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: hdr_format,
+                        blend: Some(blend),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: Default::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: Some(wgpu::Face::Back),
+                    ..Default::default()
+                },
+                // Depth is tested against the opaque pass results but never
+                // written: transparent objects must not occlude one another.
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: Some(false),
+                    depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
+                multisample: multisample_state(sample_count),
+                multiview_mask: None,
+            })
+        };
 
-        Self { pipeline }
+        let pipeline = make_pipeline("pbr_transparent_pipeline", wgpu::BlendState::ALPHA_BLENDING);
+        let additive_pipeline = make_pipeline("pbr_additive_pipeline", ADDITIVE_BLEND);
+
+        Self {
+            pipeline,
+            additive_pipeline,
+        }
     }
 }

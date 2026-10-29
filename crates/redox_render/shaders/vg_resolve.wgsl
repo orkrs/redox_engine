@@ -51,7 +51,7 @@ struct LightUniform {
     vsm_screen_shadows: u32,
 };
 
-/// Storage-buffer variant of the forward Material uniform (112 bytes,
+/// Storage-buffer variant of the forward Material uniform (176 bytes,
 /// identical field layout to `material::MaterialUniform`).
 struct Material {
     base_color: vec4<f32>,
@@ -64,6 +64,11 @@ struct Material {
     layer0_params: vec4<f32>,
     layer1_color: vec4<f32>,
     layer1_params: vec4<f32>,
+    // MAT-04/05 rows (appended; VG resolve does not shade coat/aniso/SSS yet).
+    coat_params: vec4<f32>,
+    coat_tint: vec4<f32>,
+    sss_color: vec4<f32>,
+    sss_params: vec4<f32>,
 };
 
 /// Mirror of `virtual_geometry::meshlet::VGInstanceData` (112 bytes).

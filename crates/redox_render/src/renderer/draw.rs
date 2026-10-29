@@ -94,7 +94,7 @@ impl Renderer {
                     .get(obj.material_index)
                     .copied()
                     .unwrap_or(BlendMode::Opaque)
-                    == BlendMode::Alpha
+                    != BlendMode::Opaque
         })
     }
 
@@ -158,6 +158,58 @@ impl Renderer {
                         .expect("fallback material")
                 });
 
+            render_pass.set_bind_group(2, material_bg, &[]);
+            if let Some(gpu_mesh) = self.registry.mesh_by_slot(obj.mesh_index) {
+                render_pass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));
+                render_pass
+                    .set_index_buffer(gpu_mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                render_pass.draw_indexed(0..gpu_mesh.index_count, 0, (i as u32)..(i as u32 + 1));
+            }
+        }
+    }
+
+    /// Draws additive objects (MAT-06) into the HDR target after the alpha pass.
+    ///
+    /// Additive blending is commutative, so no sorting is needed. Depth is
+    /// tested against the opaque results but not written, as for alpha.
+    pub fn record_draw_additive<'a>(
+        &'a self,
+        render_pass: &mut wgpu::RenderPass<'a>,
+        objects: &[RenderObject],
+        visibility: &[bool],
+    ) {
+        let indices: Vec<usize> = objects
+            .iter()
+            .enumerate()
+            .filter(|(i, obj)| {
+                (visibility.is_empty() || visibility[*i])
+                    && self
+                        .material_blend_flags
+                        .get(obj.material_index)
+                        .copied()
+                        .unwrap_or(BlendMode::Opaque)
+                        == BlendMode::Additive
+            })
+            .map(|(i, _)| i)
+            .collect();
+        if indices.is_empty() {
+            return;
+        }
+
+        render_pass.set_pipeline(&self.transparent_pass.additive_pipeline);
+        render_pass.set_bind_group(0, &self.frame_bind_group, &[]);
+        render_pass.set_bind_group(1, &self.scene_bind_group, &[]);
+        render_pass.set_bind_group(3, &self.model_bind_group, &[]);
+
+        for i in indices {
+            let obj = &objects[i];
+            let Some(material_bg) = self
+                .registry
+                .legacy_material_bind_group(obj.material_index)
+                .or_else(|| self.registry.legacy_material_bind_group(0))
+            else {
+                continue;
+            };
             render_pass.set_bind_group(2, material_bg, &[]);
             if let Some(gpu_mesh) = self.registry.mesh_by_slot(obj.mesh_index) {
                 render_pass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));

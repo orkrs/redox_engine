@@ -675,6 +675,11 @@ impl Renderer {
                 objects,
                 &self.main_vis_scratch,
             );
+            self.record_draw_additive(
+                &mut transparent_render_pass,
+                objects,
+                &self.main_vis_scratch,
+            );
         }
     }
 

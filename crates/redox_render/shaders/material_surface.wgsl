@@ -18,6 +18,12 @@ struct Material {
     layer0_params: vec4<f32>,
     layer1_color: vec4<f32>,
     layer1_params: vec4<f32>,
+    // MAT-04/05 rows (appended, 176-byte uniform): coat (weight, roughness, ior, aniso),
+    // coat tint, subsurface colour (rgb, radius mm), subsurface params (wrap, ...).
+    coat_params: vec4<f32>,
+    coat_tint: vec4<f32>,
+    sss_color: vec4<f32>,
+    sss_params: vec4<f32>,
 };
 
 /// Per-fragment inputs of the material surface function.

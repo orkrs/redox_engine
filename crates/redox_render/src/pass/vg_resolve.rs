@@ -386,7 +386,7 @@ const _: () = {
     use std::mem::size_of;
     assert!(size_of::<MeshletDescriptor>() == 64);
     assert!(size_of::<VGInstanceData>() == 112);
-    assert!(size_of::<MaterialUniform>() == 112);
+    assert!(size_of::<MaterialUniform>() == 176);
 };
 
 // ── Visibility-buffer render targets ──────────────────────────────────────────
