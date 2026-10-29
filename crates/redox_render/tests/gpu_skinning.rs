@@ -36,6 +36,7 @@ use redox_anim::Pose;
 use redox_anim::procedural::demo_rig;
 use redox_math::Mat4;
 use redox_render::mesh::compress::CompressedVertex;
+use redox_render::skinning::SkinningMode;
 use redox_render::{Renderer, SkinnedMeshBinding};
 
 fn renderer() -> Option<Renderer> {
@@ -205,6 +206,108 @@ fn a_batch_skips_unsuitable_entries_and_reports_the_count() {
 fn an_empty_batch_does_nothing() {
     let Some(r) = renderer() else { return };
     assert_eq!(SkinnedMeshBinding::update_gpu_batch(&r, &mut []), 0);
+}
+
+/// Every requested mode ends up with the same vertices as the CPU reference (ANM-04): `Auto`
+/// and `Gpu` take the compute pass when the renderer allows it, `Cpu` the CPU path.
+#[test]
+fn cpu_and_gpu_results_agree_for_every_mode() {
+    let Some(mut r) = renderer() else { return };
+    let model = demo_rig();
+    let mut reference = SkinnedMeshBinding::new(&mut r, &model.geometry, 2.0);
+    for requested in [SkinningMode::Auto, SkinningMode::Cpu, SkinningMode::Gpu] {
+        let mut binding = SkinnedMeshBinding::new(&mut r, &model.geometry, 2.0);
+        binding.set_skinning_mode(requested);
+        for skin in poses(4).iter() {
+            assert!(reference.update(&r, skin));
+            let ok = if binding.resolved_mode(1) == SkinningMode::Gpu {
+                binding.update_gpu(&r, skin)
+            } else {
+                binding.update(&r, skin)
+            };
+            assert!(ok, "{requested:?}: update rejected");
+            let expected = vertices(&r, reference.mesh_slot);
+            let actual = vertices(&r, binding.mesh_slot);
+            for (e, a) in expected.iter().zip(&actual) {
+                assert!(
+                    max_diff_i16(e.position, a.position) <= 3,
+                    "{requested:?}: position {:?} vs {:?}",
+                    e.position,
+                    a.position
+                );
+            }
+        }
+    }
+}
+
+/// A single-bone mesh of `vertices` vertices for the threshold table.
+fn synthetic_geometry(vertices: usize) -> redox_anim::SkinnedGeometry {
+    let triangles = vertices - vertices % 3;
+    redox_anim::SkinnedGeometry {
+        positions: (0..vertices)
+            .map(|i| {
+                [
+                    (i % 64) as f32 * 0.01,
+                    i as f32 * 0.0001,
+                    (i / 64) as f32 * 0.01,
+                ]
+            })
+            .collect(),
+        normals: vec![[0.0, 1.0, 0.0]; vertices],
+        uvs: vec![[0.0; 2]; vertices],
+        joints: vec![[0, 0, 0, 0]; vertices],
+        weights: vec![[1.0, 0.0, 0.0, 0.0]; vertices],
+        indices: (0..triangles as u32).collect(),
+        ..Default::default()
+    }
+}
+
+/// Threshold table for ANM-04 (`#[ignore]`, release): ms per frame for 500 / 2k / 10k / 50k
+/// vertices times 1 / 10 / 100 characters, CPU, GPU with one submit per mesh and GPU in one batch.
+/// Copy the output into `docs/BENCHMARKS.md` and set `GPU_SKIN_MIN_VERTICES` and
+/// `GPU_BATCH_MIN_MESHES` from it.
+/// Run: `cargo test --release -p redox_render --test gpu_skinning threshold_bench -- --ignored --nocapture`
+#[test]
+#[ignore = "threshold table for ANM-04, not a correctness test"]
+fn threshold_bench() {
+    let Some(mut r) = renderer() else { return };
+    for vertices in [500usize, 2_000, 10_000, 50_000] {
+        let geometry = synthetic_geometry(vertices);
+        for characters in [1usize, 10, 100] {
+            let mut bindings: Vec<SkinnedMeshBinding> = (0..characters)
+                .map(|_| SkinnedMeshBinding::new(&mut r, &geometry, 2.0))
+                .collect();
+            for (mode, name) in ["CPU", "GPU single submits", "GPU one batch"]
+                .iter()
+                .enumerate()
+            {
+                let frames = 30;
+                let start = std::time::Instant::now();
+                for f in 0..frames {
+                    let skin = [Mat4::from_rotation_y(0.05 * f as f32)];
+                    match mode {
+                        0 => bindings.iter_mut().for_each(|b| {
+                            b.update(&r, &skin);
+                        }),
+                        1 => bindings.iter_mut().for_each(|b| {
+                            b.update_gpu(&r, &skin);
+                        }),
+                        _ => {
+                            let mut items: Vec<(&mut SkinnedMeshBinding, &[Mat4])> =
+                                bindings.iter_mut().map(|b| (b, &skin[..])).collect();
+                            SkinnedMeshBinding::update_gpu_batch(&r, &mut items);
+                        }
+                    }
+                }
+                // Wait for the GPU so the submission time is not all that is measured.
+                let _ = r.read_mesh_vertex_bytes(bindings[0].mesh_slot);
+                let ms = start.elapsed().as_secs_f64() * 1000.0 / frames as f64;
+                println!(
+                    "vertices {vertices} characters {characters} {name}: {ms:.3} ms per frame"
+                );
+            }
+        }
+    }
 }
 
 /// Timing for the report (run with `cargo test --release -p redox_render --test gpu_skinning -- --ignored --nocapture`).

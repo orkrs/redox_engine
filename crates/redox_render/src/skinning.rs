@@ -13,6 +13,68 @@ use crate::skinning_gpu::{GpuSkin, run_batch};
 /// empty). Such geometry gets a fixed direction, which normal maps cannot use meaningfully.
 const DEFAULT_TANGENT: [f32; 3] = [1.0, 0.0, 0.0];
 
+/// Which path deforms a skinned mesh: the CPU (`update`) or the compute pass (`update_gpu`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SkinningMode {
+    /// Chosen per frame by [`choose_skinning_mode`]: GPU when the mesh is large enough or the
+    /// frame has enough skinned meshes, otherwise CPU.
+    #[default]
+    Auto,
+    /// Always the CPU path.
+    Cpu,
+    /// Always the GPU path, when the renderer and the geometry allow it.
+    Gpu,
+}
+
+/// Vertex count from which one skinned mesh goes to the GPU on its own.
+/// Provisional value; to be replaced with the measured threshold (`threshold_bench`,
+/// `docs/BENCHMARKS.md`) by the coordinator.
+pub const GPU_SKIN_MIN_VERTICES: usize = 4096; // TODO: заменить по таблице замера координатора
+
+/// Number of skinned meshes in a frame from which every one of them goes to the GPU batch.
+/// Provisional value; to be replaced with the measured threshold by the coordinator.
+pub const GPU_BATCH_MIN_MESHES: usize = 8; // TODO: заменить по таблице замера координатора
+
+/// Cost of a mesh with morph targets relative to one without (the morph pass reads every target).
+/// Provisional value; to be replaced with the measured factor by the coordinator.
+pub const MORPH_COST_FACTOR: usize = 2; // TODO: заменить по таблице замера координатора
+
+/// The `Auto` choice: GPU when the (morph-weighted) vertex count alone reaches
+/// [`GPU_SKIN_MIN_VERTICES`], or the frame has at least [`GPU_BATCH_MIN_MESHES`] skinned meshes.
+pub fn choose_skinning_mode(
+    vertices: usize,
+    meshes_in_frame: usize,
+    has_morphs: bool,
+) -> SkinningMode {
+    let cost = if has_morphs {
+        vertices.saturating_mul(MORPH_COST_FACTOR)
+    } else {
+        vertices
+    };
+    if cost >= GPU_SKIN_MIN_VERTICES || meshes_in_frame >= GPU_BATCH_MIN_MESHES {
+        SkinningMode::Gpu
+    } else {
+        SkinningMode::Cpu
+    }
+}
+
+/// The path a mesh takes: an explicit mode wins over `Auto`; without GPU skinning it is always CPU.
+pub fn resolve_skinning_mode(
+    requested: SkinningMode,
+    gpu_available: bool,
+    vertices: usize,
+    meshes_in_frame: usize,
+    has_morphs: bool,
+) -> SkinningMode {
+    if !gpu_available {
+        return SkinningMode::Cpu;
+    }
+    match requested {
+        SkinningMode::Auto => choose_skinning_mode(vertices, meshes_in_frame, has_morphs),
+        explicit => explicit,
+    }
+}
+
 /// A skinned mesh uploaded to the renderer plus the scratch buffers to refresh it each frame.
 pub struct SkinnedMeshBinding {
     geometry: SkinnedGeometry,
@@ -33,6 +95,8 @@ pub struct SkinnedMeshBinding {
     gpu_skinned: bool,
     /// Morph target weights applied by [`Self::update`] (CPU path); see [`Self::set_morph_weights`].
     morph_weights: Vec<f32>,
+    /// Requested skinning path; `Auto` is resolved per frame by [`Self::resolved_mode`].
+    mode: SkinningMode,
 }
 
 impl SkinnedMeshBinding {
@@ -78,7 +142,29 @@ impl SkinnedMeshBinding {
             gpu,
             gpu_skinned: false,
             morph_weights: Vec::new(),
+            mode: SkinningMode::Auto,
         }
+    }
+
+    /// The requested skinning path (default [`SkinningMode::Auto`]).
+    pub fn skinning_mode(&self) -> SkinningMode {
+        self.mode
+    }
+
+    /// Sets the requested skinning path; the caller uses [`Self::resolved_mode`] to pick the call.
+    pub fn set_skinning_mode(&mut self, mode: SkinningMode) {
+        self.mode = mode;
+    }
+
+    /// The path this mesh takes in a frame with `meshes_in_frame` skinned meshes.
+    pub fn resolved_mode(&self, meshes_in_frame: usize) -> SkinningMode {
+        resolve_skinning_mode(
+            self.mode,
+            self.gpu.is_some(),
+            self.geometry.vertex_count(),
+            meshes_in_frame,
+            !self.geometry.morph_targets.is_empty(),
+        )
     }
 
     /// Sets the morph target weights (one per target; missing ones count as 0). Applied by the next
@@ -298,6 +384,75 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod skinning_mode_tests {
+    use super::*;
+
+    #[test]
+    fn the_default_mode_is_auto() {
+        assert_eq!(SkinningMode::default(), SkinningMode::Auto);
+    }
+
+    #[test]
+    fn small_meshes_alone_use_the_cpu() {
+        let mode = choose_skinning_mode(GPU_SKIN_MIN_VERTICES - 1, 1, false);
+        assert_eq!(mode, SkinningMode::Cpu);
+    }
+
+    #[test]
+    fn many_meshes_switch_to_the_gpu_batch() {
+        assert_eq!(
+            choose_skinning_mode(500, GPU_BATCH_MIN_MESHES, false),
+            SkinningMode::Gpu
+        );
+        assert_eq!(
+            choose_skinning_mode(500, GPU_BATCH_MIN_MESHES - 1, false),
+            SkinningMode::Cpu
+        );
+    }
+
+    #[test]
+    fn large_meshes_use_the_gpu_even_alone() {
+        assert_eq!(
+            choose_skinning_mode(GPU_SKIN_MIN_VERTICES, 1, false),
+            SkinningMode::Gpu
+        );
+    }
+
+    #[test]
+    fn morph_targets_count_towards_the_cost() {
+        let vertices = GPU_SKIN_MIN_VERTICES / MORPH_COST_FACTOR;
+        assert_eq!(choose_skinning_mode(vertices, 1, true), SkinningMode::Gpu);
+        assert_eq!(choose_skinning_mode(vertices, 1, false), SkinningMode::Cpu);
+    }
+
+    #[test]
+    fn explicit_modes_override_auto() {
+        let small = (10, 1, false);
+        let large = (1_000_000, 100, false);
+        assert_eq!(
+            resolve_skinning_mode(SkinningMode::Gpu, true, small.0, small.1, small.2),
+            SkinningMode::Gpu
+        );
+        assert_eq!(
+            resolve_skinning_mode(SkinningMode::Cpu, true, large.0, large.1, large.2),
+            SkinningMode::Cpu
+        );
+        assert_eq!(
+            resolve_skinning_mode(SkinningMode::Auto, true, large.0, large.1, large.2),
+            SkinningMode::Gpu
+        );
+    }
+
+    #[test]
+    fn without_gpu_skinning_every_mode_is_cpu() {
+        for requested in [SkinningMode::Auto, SkinningMode::Gpu] {
+            let mode = resolve_skinning_mode(requested, false, 1_000_000, 100, true);
+            assert_eq!(mode, SkinningMode::Cpu);
         }
     }
 }
