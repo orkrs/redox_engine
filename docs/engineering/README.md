@@ -8,7 +8,7 @@
 | [audit/REVISION_REPORT.md](audit/REVISION_REPORT.md) | Состояние кода, сопоставление планов с кодом, найденные проблемы, проверенные «ложные тревоги» |
 | [audit/CANCELLED.md](audit/CANCELLED.md) | Реестр закрытых, исключённых и отложенных задач с причинами |
 | [BACKLOG.md](BACKLOG.md) | Задачи с ID, размерами, зависимостями, группами для параллельной работы; раздел 4 — перенос всех открытых пунктов `PLAN_EXECUTION.md` (спеки пишутся перед запуском); вопросы к владельцу |
-| `specs/` | По одному файлу на задачу (19 штук) |
+| `specs/` | По одному файлу на задачу (19 выполненных или заблокированных + 24 новых спеки волны 7, см. BACKLOG §6) |
 | `../PLAN_EXECUTION.md` | Единственный источник статуса этапов A–H (общий план) |
 | `../../crates/redox_physics/tests/character_v2.rs`, `ray_sensors.rs` | Тесты PHY-01/02 и AUD-03 (были с `#[ignore]`, теперь включены и зелёные) |
 
@@ -19,6 +19,14 @@
 Пост-эффекты: [PST-01](specs/PST-01.md) → [PST-02](specs/PST-02.md).
 Скрипты и аудио: [SCR-01](specs/SCR-01.md) → [SCR-03](specs/SCR-03.md); [SCR-02](specs/SCR-02.md) (заблокировано); [AUD-01](specs/AUD-01.md).
 Владельцу: [QA-01](specs/QA-01.md) (чек-лист живой проверки).
+
+**Волна 7 (новые, ещё не выполнялись):**
+Звук: [AUD-05](specs/AUD-05.md) (проигрывание эмиттеров), [AUD-06](specs/AUD-06.md) (адаптивная музыка).
+Рендер: [RND-07](specs/RND-07.md) (GPU-сцена, с воротами), [RND-08](specs/RND-08.md) (тени статика/динамика); пост-эффекты [PST-04](specs/PST-04.md) (TAA), [PST-05](specs/PST-05.md) (SSR), [PST-06](specs/PST-06.md) (туман).
+Анимация: [ANM-02](specs/ANM-02.md) → [ANM-03](specs/ANM-03.md) (морфы).
+Навигация: [NAV-01](specs/NAV-01.md) (spike) → [NAV-02](specs/NAV-02.md) → [NAV-03](specs/NAV-03.md) → [NAV-04](specs/NAV-04.md).
+Виртуальная геометрия: [VG-01](specs/VG-01.md) → [VG-02](specs/VG-02.md) → [VG-03](specs/VG-03.md); [VG-04](specs/VG-04.md) (HLOD).
+Материалы: [MAT-01](specs/MAT-01.md) → [MAT-02](specs/MAT-02.md) → [MAT-03](specs/MAT-03.md); [MAT-04](specs/MAT-04.md), [MAT-05](specs/MAT-05.md), [MAT-06](specs/MAT-06.md) (после MAT-01) → [MAT-07](specs/MAT-07.md).
 
 ## Как взять задачу (инструкция исполнителю)
 1. Прочитай **только** свою спецификацию и файлы из её раздела «Читать». Остальной репозиторий не изучай.
