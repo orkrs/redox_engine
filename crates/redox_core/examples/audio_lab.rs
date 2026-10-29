@@ -2,7 +2,10 @@
 //!
 //! `--cues <cues.ron>` loads a cue library, prints its cues and the validation findings, and exits
 //! with a failure code when there is an error. `--assets <dir>` also checks that each sound file is
-//! in the directory (a file named like the variant, with no extension, `.wav` or `.ogg`).
+//! in the directory.
+//!
+//! ASSUMPTION: a variant is found as a file named exactly like it, or with a `.wav` or `.ogg`
+//! extension. The engine's asset naming was not checked against the loader.
 //! `--selftest` runs the built-in check of cue selection without an output device.
 //!
 //! The egui window with the Cue, Music, 3D and Analysis tabs is not built yet. Its logic
@@ -113,6 +116,7 @@ fn selftest() -> Result<(), String> {
 }
 
 /// True when `dir` holds the sound `variant` as written, or with a `.wav` or `.ogg` extension.
+/// ASSUMPTION: this file-name convention is a guess, see the module documentation.
 fn find_sound(dir: &Path, variant: &str) -> bool {
     dir.join(variant).is_file()
         || dir.join(format!("{variant}.wav")).is_file()

@@ -15,8 +15,8 @@ use kira::Frame;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Levels below this (in dB) count as silence.
-const SILENCE_DB: f32 = -90.0;
+/// Floor of every level in dB. A zero signal, and any level below the floor, reads as this value.
+pub const SILENCE_DB: f32 = -120.0;
 /// Absolute gate of BS.1770, in LUFS.
 const ABSOLUTE_GATE_LUFS: f64 = -70.0;
 /// Relative gate of BS.1770, in LU below the ungated mean loudness.
@@ -41,11 +41,12 @@ const HIGHPASS_Q: f64 = 0.500_327_037_323_877_3;
 /// Measured properties of one clip.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AudioStats {
-    /// Highest absolute sample in dBFS. Negative infinity for an all-zero clip.
+    /// Highest absolute sample in dBFS, floored at `SILENCE_DB`.
     pub peak_db: f32,
-    /// RMS level over all samples, in dBFS.
+    /// RMS level over all samples in dBFS, floored at `SILENCE_DB`.
     pub rms_db: f32,
-    /// Integrated loudness in LUFS (BS.1770, gated). Negative infinity when nothing passes the gate.
+    /// Integrated loudness in LUFS (BS.1770, gated), floored at `SILENCE_DB`. A clip where no
+    /// block passes the gate gets the floor.
     pub lufs_integrated: f32,
     /// Length in seconds.
     pub duration: f32,
@@ -58,9 +59,9 @@ pub struct AudioStats {
 }
 
 impl AudioStats {
-    /// True when the clip is effectively silent (RMS below -90 dBFS).
+    /// True when the RMS level is at the floor, that is the clip is silent.
     pub fn is_silent(&self) -> bool {
-        self.rms_db < SILENCE_DB
+        self.rms_db <= SILENCE_DB
     }
 }
 
@@ -106,9 +107,9 @@ pub fn analyze_samples(samples: &[f32], channels: u16, rate: u32) -> AudioStats 
         rms_db: if count > 0.0 {
             amplitude_db((sum_sq / count).sqrt())
         } else {
-            f32::NEG_INFINITY
+            SILENCE_DB
         },
-        lufs_integrated: integrated_lufs(&weighted, rate) as f32,
+        lufs_integrated: floor_db(integrated_lufs(&weighted, rate)),
         duration: frames as f32 / rate.max(1) as f32,
         clipped_samples: samples.iter().filter(|s| s.abs() >= CLIP_LEVEL).count(),
         dc_offset: if count > 0.0 { (sum / count) as f32 } else { 0.0 },
@@ -116,11 +117,12 @@ pub fn analyze_samples(samples: &[f32], channels: u16, rate: u32) -> AudioStats 
     }
 }
 
-/// Measures the seam of a loop: how far the RMS level of the last `window` frames is from the
-/// RMS level of the first `window` frames, in dB.
+/// Measures the seam of a loop: the difference in dB between the RMS level of the last `window`
+/// frames and the RMS level of the first `window` frames.
 ///
 /// A perfect loop gives about 0 dB. A clip that ends louder than it starts gives a large value.
 /// The measure compares levels only, so a phase jump between two equally loud ends is not seen.
+/// Both levels are floored at `SILENCE_DB`, so a silent end gives a finite value.
 /// `window` is limited to half the clip. Returns 0 for an empty clip or a zero window.
 pub fn loop_seam_error(samples: &[f32], channels: u16, window: usize) -> f32 {
     let ch = usize::from(channels.max(1));
@@ -129,13 +131,9 @@ pub fn loop_seam_error(samples: &[f32], channels: u16, window: usize) -> f32 {
     if window == 0 {
         return 0.0;
     }
-    let head = rms(&samples[..window * ch]);
-    let tail = rms(&samples[(frames - window) * ch..frames * ch]);
-    let (high, low) = if head >= tail { (head, tail) } else { (tail, head) };
-    if low <= 0.0 {
-        return if high <= 0.0 { 0.0 } else { f32::INFINITY };
-    }
-    (20.0 * (high / low).log10()) as f32
+    let head_db = amplitude_db(rms(&samples[..window * ch]));
+    let tail_db = amplitude_db(rms(&samples[(frames - window) * ch..frames * ch]));
+    (head_db - tail_db).abs()
 }
 
 /// Decodes a sound file (WAV or OGG, whatever the kira decoder supports) into samples.
@@ -169,12 +167,21 @@ pub fn frames_to_samples(frames: &[Frame]) -> (Vec<f32>, u16) {
     }
 }
 
-/// Converts a linear amplitude to dB. Zero (or less) gives negative infinity.
+/// Converts a linear amplitude to dB, floored at `SILENCE_DB`. Zero (or less) gives the floor.
 fn amplitude_db(amplitude: f64) -> f32 {
     if amplitude <= 0.0 {
-        f32::NEG_INFINITY
+        SILENCE_DB
     } else {
-        (20.0 * amplitude.log10()) as f32
+        floor_db(20.0 * amplitude.log10())
+    }
+}
+
+/// Clamps a dB value to `SILENCE_DB`. A non-finite value (no gated block) gives the floor.
+fn floor_db(db: f64) -> f32 {
+    if db.is_finite() {
+        db.max(f64::from(SILENCE_DB)) as f32
+    } else {
+        SILENCE_DB
     }
 }
 
@@ -358,9 +365,12 @@ mod tests {
 
     #[test]
     fn silence_is_flagged() {
-        let stats = analyze_samples(&vec![0.0; RATE as usize], 1, RATE);
+        let silent = vec![0.0_f32; RATE as usize];
+        let stats = analyze_samples(&silent, 1, RATE);
         assert!(stats.is_silent());
-        assert_eq!(stats.lufs_integrated, f32::NEG_INFINITY);
+        assert_eq!(stats.lufs_integrated, SILENCE_DB);
+        assert_eq!(stats.peak_db, SILENCE_DB);
+        assert_eq!(stats.rms_db, SILENCE_DB);
     }
 
     #[test]
@@ -384,6 +394,14 @@ mod tests {
         samples.extend(sine(1000.0, 0.8, 0.5));
         let error = loop_seam_error(&samples, 1, 480);
         assert!(error > 3.0, "seam {error}");
+    }
+
+    #[test]
+    fn a_silent_end_gives_a_finite_seam_error() {
+        let mut samples = sine(1000.0, 0.5, 0.5);
+        samples.extend(std::iter::repeat_n(0.0_f32, samples.len()));
+        let error = loop_seam_error(&samples, 1, 480);
+        assert!(error.is_finite() && error > 3.0, "seam {error}");
     }
 
     #[test]
