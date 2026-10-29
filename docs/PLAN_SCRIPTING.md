@@ -83,6 +83,28 @@
 - Шаблон проекта `cargo generate`-стиля: `cargo build --target wasm32-unknown-unknown`.
 - Описание ABI для C/AssemblyScript (заголовки) — вторым этапом.
 
+## 3b. Host API v2 (запросы к миру, команды `sys.`)
+
+Модель осталась «батч запросов — батч команд»: скрипт спрашивает мир и испускает команды, а не пишет в ECS напрямую. Имена сущностей — непрозрачные `u32` (`ScriptEntityId`), не ECS-хендлы. Все запросы мира делят один бюджет на вызов (`on_update` или `call_i32`): 64 запроса, сверх — ответ «промах» (-1, 0) без трапа. Старые реализации `WorldQueries` работают: все методы, кроме `raycast`, имеют реализации по умолчанию.
+
+| Импорт (`env`) | Право (`ApiPermissions`) | Ответ | Лимит | Стоимость |
+|---|---|---|---|---|
+| `raycast_entity(ox,oy,oz, dx,dy,dz, max, out)` | `world` | 1 и `(id: u32, dist: f32)` в `out`; 0 при промахе | 64 запроса на вызов, `max` ≤ 1000 м | один запрос |
+| `find_by_name(name_ptr, len)` | `query` | id или -1 (имя ≤ 64 байт) | 64 запроса | один запрос |
+| `find_by_tag(tag_ptr, len, out, cap)` | `query` | число записанных id | `cap` ≤ 64 | один запрос |
+| `position_of(id, out)` | `query` | 1 и 3×f32 в `out`; 0 иначе | 64 запроса | один запрос |
+| `overlap_sphere(cx,cy,cz, r, out, cap)` | `query` | число id | `cap` ≤ 64 | один запрос |
+| `overlap_box(cx,cy,cz, hx,hy,hz, out, cap)` | `query` | число id | `cap` ≤ 64 | один запрос |
+| `get_value_of(id, key_ptr, len, out)` | `entity_values` | 1 и f32 в `out`; 0 иначе | 64 запроса | один запрос |
+| `nav_path(from, to, out, cap)` | `nav` | число точек (0 — пути нет) | `cap` ≤ 32 точек | один запрос |
+| `emit_command("sys.…", a, b, c)` | `commands_system` | команда доставляется хосту | 256 команд | без права — отбрасывается с предупреждением |
+
+Права: `ApiPermissions::all()` включает все флаги (это `ScriptConfig::default()`); `ApiPermissions::v1_only()` оставляет только `state`, `events`, `world` и отключает v2-импорты (скрипт с v2-импортом не линкуется, `ScriptError::Link`); `none()` выключает всё. Указатель вне памяти, неверный диапазон или неизвестное имя дают значение «промах» без трапа, экземпляр продолжает работать (как `raycast_many` в v1).
+
+Пример: `crates/redox_script/tests/guard.wat` (сторож ищет `player`, при расстоянии < 5 м испускает `alert`, считает союзников через `overlap_sphere`).
+
+Статус: импорты и права реализованы в `redox_script` на обоих бэкендах и покрыты тестами (`tests/host_world2.rs`). Подключение `WorldQueries` к `redox_core` (физика, навигация, компоненты `Name`/`Tag` из `redox_scene`) и применение `sys.`-команд (`sys.spawn`, `sys.despawn`, `sys.set_position`, `sys.set_active`) в хосте игры ещё не сделаны.
+
 ## 4. Фазы
 
 | Фаза | Содержание | Критерий «готово» | Оценка |

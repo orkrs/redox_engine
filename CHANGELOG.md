@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 ## [Unreleased]
 
 ### Added
+- Scripting (host API v2, `redox_script`): world queries `raycast_entity`, `find_by_name`, `find_by_tag`, `position_of`, `overlap_sphere`, `overlap_box`, `get_value_of`, `nav_path` on both backends, under the new permissions `query`, `entity_values`, `nav`; `ApiPermissions::v1_only()`; `sys.`-prefixed commands gated by `commands_system`. Scene components `Name` and `Tag`. Example `tests/guard.wat`. Not yet wired to `redox_core`.
 - Audio: `SpatialAudioEmitter` is played through one kira spatial track per entity with occlusion-scaled volume (`emitter_playback_system`); adaptive music layers driven by one control value (`AdaptiveMusic`, `play_adaptive_music`, `set_music_control`).
 - Animation/Render: morph targets - glTF import, weights in clips, CPU (`deform_morphed_into`) and GPU skinning, `SkinnedMeshBinding::set_morph_weights`.
 - Render: SSR (`set_ssr`, material roughness through a second output of the normal prepass), height fog with sun in-scatter (`set_fog`), additive blend mode, clear coat and anisotropy (`Material::coat`, `::anisotropy`), wrap lighting for SSS (`Material::subsurface`), `material_surface` shader function (`MaterialInstance`), `ShadowClass` and reliable moved-caster detection for virtual shadow pages.
