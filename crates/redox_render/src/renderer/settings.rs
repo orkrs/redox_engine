@@ -142,6 +142,30 @@ impl Renderer {
         self.post_fx_settings.dof
     }
 
+    /// Enables screen-space reflections (`None` turns them off). The pass runs first in the post
+    /// chain, so like motion blur and DoF it works only with TAA on. It reflects only what is on
+    /// screen, and uses the scalar roughness and metallic of each material (no maps).
+    pub fn set_ssr(&mut self, settings: Option<SsrSettings>) {
+        self.post_fx_settings.ssr = settings;
+    }
+
+    /// Current screen-space reflection settings, or `None` when they are off.
+    pub fn ssr(&self) -> Option<SsrSettings> {
+        self.post_fx_settings.ssr
+    }
+
+    /// Enables height fog (`None` turns it off). The pass runs last in the post chain, so like
+    /// motion blur and DoF it works only with TAA on; the sharp-AA and standard paths draw no fog.
+    /// Sun in-scatter has no shadows, so light shafts show through walls.
+    pub fn set_fog(&mut self, settings: Option<FogSettings>) {
+        self.post_fx_settings.fog = settings;
+    }
+
+    /// Current fog settings, or `None` when fog is off.
+    pub fn fog(&self) -> Option<FogSettings> {
+        self.post_fx_settings.fog
+    }
+
     /// Sets the exposure used by tone mapping.
     pub fn set_exposure(&mut self, exposure: f32) {
         self.exposure = exposure.max(0.0);

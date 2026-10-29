@@ -7,6 +7,13 @@ use crate::mesh::CompressedVertex;
 use crate::pass::forward::DEPTH_FORMAT;
 use crate::shader::{NORMAL_WGSL, create_shader_with_vertex_decode};
 
+/// Format of the material surface target: r = roughness, g = metallic.
+pub const SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rg8Unorm;
+
+/// View distance that maps to 1.0 in the normal target's alpha (`linear_depth = view_z / FAR`).
+/// Must match `FAR` in `shaders/normal.wgsl`.
+pub const NORMAL_DEPTH_RANGE: f32 = 1000.0;
+
 /// Pass that renders view-space normals and depth before shading.
 pub struct NormalPass {
     /// Render pipeline.
@@ -67,11 +74,18 @@ impl NormalPass {
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
+                targets: &[
+                    Some(wgpu::ColorTargetState {
+                        format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    }),
+                    Some(wgpu::ColorTargetState {
+                        format: SURFACE_FORMAT,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    }),
+                ],
                 compilation_options: Default::default(),
             }),
             primitive: wgpu::PrimitiveState {

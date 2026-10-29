@@ -100,6 +100,11 @@ impl Renderer {
         self.normal_texture = nt;
         self.normal_view = nv;
 
+        let (mst, msv) =
+            create_material_surface_target(&self.device, self.internal_width, self.internal_height);
+        self.material_surface_texture = mst;
+        self.material_surface_view = msv;
+
         let (sr, sv) =
             create_normal_ssao_texture(&self.device, half_width, half_height, gtao_fmt, "gtao_raw");
         self.ssao_raw_texture = sr;
@@ -341,6 +346,8 @@ impl Renderer {
                 history_views: [&self.taa_history_view[0], &self.taa_history_view[1]],
                 velocity_view: &self.taa_velocity_view,
                 depth_view: &self.depth_view,
+                normal_view: &self.normal_view,
+                surface_view: &self.material_surface_view,
                 bloom_view: &self.bloom_mip_views[0],
                 tone_pipeline: &self.tone_mapping_pipeline,
                 tone_uniform: &self.tonemap_uniform_buffer,

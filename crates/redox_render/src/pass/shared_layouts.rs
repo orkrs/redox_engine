@@ -86,9 +86,9 @@ pub struct ModelUniform {
     pub normal_matrix: [[f32; 4]; 3],
     /// Object color (rgba).
     pub color: [f32; 4],
-    /// Minimum corner of the object bounds (xyz).
+    /// Minimum corner of the object bounds (xyz); w = material roughness (normal prepass only).
     pub bounds_min: [f32; 4],
-    /// Size of the object bounds (xyz).
+    /// Size of the object bounds (xyz); w = material metallic (normal prepass only).
     pub bounds_extent: [f32; 4],
 }
 

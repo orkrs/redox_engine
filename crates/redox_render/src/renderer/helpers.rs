@@ -26,6 +26,21 @@ pub(super) fn create_normal_ssao_texture(
     (texture, view)
 }
 
+/// Material surface target (`Rg8Unorm`: roughness, metallic) at internal resolution.
+pub(super) fn create_material_surface_target(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+) -> (wgpu::Texture, wgpu::TextureView) {
+    create_normal_ssao_texture(
+        device,
+        width,
+        height,
+        crate::pass::normal::SURFACE_FORMAT,
+        "material_surface",
+    )
+}
+
 /// Pick the best HDR MSAA sample count supported by the adapter (prefer ×4, then ×2).
 ///
 /// Used by [`crate::Renderer`] and editor offscreen hosts that share the Sharp AA path.

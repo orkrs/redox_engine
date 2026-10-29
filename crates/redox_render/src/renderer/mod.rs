@@ -87,8 +87,12 @@ use crate::pass::vg_resolve::{
     create_vg_vis_targets,
 };
 use crate::post::bloom::BloomPass;
-use crate::post::post_fx::{DofSettings, MotionBlurSettings, PostFx, PostFxInputs, PostFxSettings};
+use crate::post::fog::FogSettings;
+use crate::post::post_fx::{
+    ChainFrame, DofSettings, MotionBlurSettings, PostFx, PostFxInputs, PostFxSettings,
+};
 use crate::post::ssao::{SSAOPass, VsmPassUniform, VsmShadowPass, VsmTemporalUniform};
+use crate::post::ssr::SsrSettings;
 use crate::post::tone_mapping::{
     TonemapUniform, create_rcas_present_pipeline, create_tone_mapping_pipeline,
     create_tonemap_bind_group,
@@ -203,6 +207,10 @@ pub struct Renderer {
     pub normal_texture: wgpu::Texture,
     /// View of the normal target.
     pub normal_view: wgpu::TextureView,
+    /// Material surface target (`Rg8Unorm`: r = roughness, g = metallic), written by the normal pass.
+    pub material_surface_texture: wgpu::Texture,
+    /// View of the material surface target.
+    pub material_surface_view: wgpu::TextureView,
     /// Bind group for reading the normal target.
     pub normal_bind_group: wgpu::BindGroup,
     /// Raw ambient occlusion (half resolution).

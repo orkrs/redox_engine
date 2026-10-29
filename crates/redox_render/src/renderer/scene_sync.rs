@@ -2,6 +2,11 @@
 
 use super::*;
 
+/// Copy of `v` with its w component replaced by `w`.
+fn with_w(v: [f32; 4], w: f32) -> [f32; 4] {
+    [v[0], v[1], v[2], w]
+}
+
 impl Renderer {
     /// Writes the current camera uniform to the GPU.
     pub fn update_camera_buffer(&mut self) {
@@ -58,6 +63,12 @@ impl Renderer {
                 .mesh_by_slot(obj.mesh_index)
                 .map(|m| bounds_vectors(&m.local_bounds))
                 .unwrap_or(([0.0; 4], [1.0, 1.0, 1.0, 0.0]));
+            // The w components are free: the normal prepass reads roughness and metallic there.
+            // Missing material: fully rough and dielectric, so no reflection is drawn.
+            let (roughness, metallic) = self
+                .registry
+                .legacy_material(obj.material_index)
+                .map_or((1.0, 0.0), |m| (m.roughness, m.metallic));
             self.model_uniform_scratch.push(ModelUniform {
                 model: obj.model_matrix.to_cols_array_2d(),
                 normal_matrix: [
@@ -66,8 +77,8 @@ impl Renderer {
                     nt.z_axis.extend(0.0).to_array(),
                 ],
                 color: obj.color,
-                bounds_min,
-                bounds_extent,
+                bounds_min: with_w(bounds_min, roughness),
+                bounds_extent: with_w(bounds_extent, metallic),
             });
         }
         let bytes = bytemuck::cast_slice(&self.model_uniform_scratch).to_vec();

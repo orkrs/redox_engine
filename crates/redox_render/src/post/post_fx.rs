@@ -1,13 +1,17 @@
-//! Post effects between TAA and bloom: motion blur, then depth of field.
+//! Post effects between TAA and bloom: screen-space reflections, motion blur, depth of field
+//! and height fog.
 //!
-//! The chain is `TAA output -> [motion blur] -> [depth of field] -> bloom -> tone mapping`.
-//! It runs only in the TAA branch, because the velocity and depth it reads are produced there.
-//! Effects write their own targets and never the TAA history, so blur does not accumulate
-//! across frames. With every effect off, `PostFx::run_chain` records nothing and the frame
-//! is bit-identical to a build without this module.
+//! The chain is `TAA output -> [SSR] -> [motion blur] -> [depth of field] -> [fog] -> bloom ->
+//! tone mapping`. It runs only in the TAA branch, because the velocity and depth it reads are
+//! produced there. Effects write their own targets and never the TAA history, so they do not
+//! accumulate across frames. With every effect off, `PostFx::run_chain` records nothing and the
+//! frame is bit-identical to a build without this module.
 
 use bytemuck::{Pod, Zeroable};
 
+use crate::camera::CameraUniform;
+use crate::post::fog::{FOG_WGSL, FogSettings, fog_uniform};
+use crate::post::ssr::{SSR_WGSL, SsrSettings, ssr_uniform};
 use crate::post::tone_mapping::create_tonemap_bind_group;
 use crate::shader::create_shader_module;
 
@@ -152,6 +156,24 @@ pub struct PostFxSettings {
     pub motion_blur: Option<MotionBlurSettings>,
     /// Depth of field, or `None` when off.
     pub dof: Option<DofSettings>,
+    /// Screen-space reflections, or `None` when off. Runs first in the chain.
+    pub ssr: Option<SsrSettings>,
+    /// Height fog, or `None` when off. Runs last in the chain.
+    pub fog: Option<FogSettings>,
+}
+
+/// Per-frame camera and sun data the effects read.
+pub(crate) struct ChainFrame<'a> {
+    /// Camera uniform of the frame (view, projection and their inverses, camera position).
+    pub camera: &'a CameraUniform,
+    /// Camera near and far planes.
+    pub near_far: [f32; 2],
+    /// Output size in pixels.
+    pub screen: [f32; 2],
+    /// Direction the sun shines in (xyz), from `LightUniform::dir_direction`.
+    pub sun_direction: [f32; 4],
+    /// Sun colour times intensity (rgb), from `LightUniform::dir_color`.
+    pub sun_color: [f32; 4],
 }
 
 #[repr(C)]
@@ -235,7 +257,8 @@ fn uniform_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
 
 /// One fullscreen effect pass: pipeline, group-0 layout, linear clamp sampler and uniform.
 ///
-/// Group 0 is always `0` colour, `1` second texture (velocity or depth), `2` sampler, `3` uniform.
+/// Group 0 is `0` colour, then the extra textures (velocity, depth, normal, surface), then the
+/// sampler and the uniform as the last two bindings.
 struct EffectPass {
     label: &'static str,
     pipeline: wgpu::RenderPipeline,
@@ -315,33 +338,33 @@ impl EffectPass {
         }
     }
 
+    /// Bind group over `textures` (bindings `0..n`), then the sampler (`n`) and the uniform (`n + 1`).
     fn bind_group(
         &self,
         device: &wgpu::Device,
-        color: &wgpu::TextureView,
-        second: &wgpu::TextureView,
+        textures: &[&wgpu::TextureView],
     ) -> wgpu::BindGroup {
+        let mut entries: Vec<wgpu::BindGroupEntry<'_>> = textures
+            .iter()
+            .enumerate()
+            .map(|(i, view)| wgpu::BindGroupEntry {
+                binding: i as u32,
+                resource: wgpu::BindingResource::TextureView(*view),
+            })
+            .collect();
+        let sampler_binding = textures.len() as u32;
+        entries.push(wgpu::BindGroupEntry {
+            binding: sampler_binding,
+            resource: wgpu::BindingResource::Sampler(&self.sampler),
+        });
+        entries.push(wgpu::BindGroupEntry {
+            binding: sampler_binding + 1,
+            resource: self.uniform.as_entire_binding(),
+        });
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(self.label),
             layout: &self.layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(color),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(second),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: self.uniform.as_entire_binding(),
-                },
-            ],
+            entries: &entries,
         })
     }
 
@@ -385,6 +408,10 @@ pub(crate) struct PostFxInputs<'a> {
     pub velocity_view: &'a wgpu::TextureView,
     /// Scene depth (`Depth32Float`, internal resolution).
     pub depth_view: &'a wgpu::TextureView,
+    /// Normal target (`Rgba16Float`: world normal, view depth / 1000); SSR reads it.
+    pub normal_view: &'a wgpu::TextureView,
+    /// Material surface target (`Rg8Unorm`: roughness, metallic); SSR reads it.
+    pub surface_view: &'a wgpu::TextureView,
     /// Bloom mip 0, which the tone-mapping bind groups read.
     pub bloom_view: &'a wgpu::TextureView,
     /// Tone-mapping pipeline the bind groups are laid out against.
@@ -395,11 +422,54 @@ pub(crate) struct PostFxInputs<'a> {
     pub sampler: &'a wgpu::Sampler,
 }
 
-struct BindGroups {
-    tone: [wgpu::BindGroup; 2],
-    motion_blur: [wgpu::BindGroup; 2],
-    /// DoF bind groups: index 0 and 1 read a TAA history slot, index 2 reads target 0.
-    dof: [wgpu::BindGroup; 3],
+/// Passes of the chain. Each owns its pipeline, sampler and uniform buffer.
+struct EffectPasses {
+    ssr: EffectPass,
+    motion_blur: EffectPass,
+    dof: EffectPass,
+    fog: EffectPass,
+}
+
+/// Bind groups of one effect. `history[s]` reads TAA history slot `s`; `target[i]` reads
+/// effect target `i`. The chain picks the one that matches where its input currently is.
+struct Lanes {
+    history: [wgpu::BindGroup; 2],
+    target: [wgpu::BindGroup; 2],
+}
+
+/// Bind groups of every effect.
+struct EffectLanes {
+    ssr: Lanes,
+    motion_blur: Lanes,
+    dof: Lanes,
+    fog: Lanes,
+}
+
+/// Where the chain's current image lives: a TAA history slot, or effect target `i`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Source {
+    History(usize),
+    Target(usize),
+}
+
+impl Source {
+    /// Target an effect reads `self` from and writes to: the first target when the input is
+    /// the TAA history, otherwise the other one, so an effect never reads and writes one target.
+    fn next_target(self) -> usize {
+        match self {
+            Source::History(_) => 0,
+            Source::Target(i) => 1 - i,
+        }
+    }
+}
+
+impl Lanes {
+    fn get(&self, source: Source) -> &wgpu::BindGroup {
+        match source {
+            Source::History(slot) => &self.history[slot],
+            Source::Target(i) => &self.target[i],
+        }
+    }
 }
 
 /// Effect targets (ping-pong pair) and the passes that write them.
@@ -409,10 +479,8 @@ pub(crate) struct PostFx {
     pub(crate) views: [wgpu::TextureView; 2],
     /// Tone-mapping bind groups, one per target.
     pub(crate) tone_bgs: [wgpu::BindGroup; 2],
-    motion_blur: EffectPass,
-    dof: EffectPass,
-    motion_blur_bgs: [wgpu::BindGroup; 2],
-    dof_bgs: [wgpu::BindGroup; 3],
+    passes: EffectPasses,
+    lanes: EffectLanes,
 }
 
 impl PostFx {
@@ -423,40 +491,15 @@ impl PostFx {
         height: u32,
         inputs: &PostFxInputs<'_>,
     ) -> Self {
-        let motion_blur = EffectPass::new(
-            device,
-            "motion_blur",
-            MOTION_BLUR_WGSL,
-            &[
-                texture_entry(0, FILTERABLE),
-                texture_entry(1, FILTERABLE),
-                sampler_entry(2),
-                uniform_entry(3),
-            ],
-            std::mem::size_of::<MotionBlurUniform>() as u64,
-        );
-        let dof = EffectPass::new(
-            device,
-            "depth_of_field",
-            DOF_WGSL,
-            &[
-                texture_entry(0, FILTERABLE),
-                texture_entry(1, wgpu::TextureSampleType::Depth),
-                sampler_entry(2),
-                uniform_entry(3),
-            ],
-            std::mem::size_of::<DofUniform>() as u64,
-        );
+        let passes = create_passes(device);
         let (textures, views) = create_targets(device, width, height);
-        let bgs = build_bind_groups(device, &motion_blur, &dof, &views, inputs);
+        let (tone_bgs, lanes) = build_bindings(device, &passes, &views, inputs);
         Self {
             _textures: textures,
             views,
-            tone_bgs: bgs.tone,
-            motion_blur,
-            dof,
-            motion_blur_bgs: bgs.motion_blur,
-            dof_bgs: bgs.dof,
+            tone_bgs,
+            passes,
+            lanes,
         }
     }
 
@@ -469,46 +512,75 @@ impl PostFx {
         inputs: &PostFxInputs<'_>,
     ) {
         let (textures, views) = create_targets(device, width, height);
-        let bgs = build_bind_groups(device, &self.motion_blur, &self.dof, &views, inputs);
+        let (tone_bgs, lanes) = build_bindings(device, &self.passes, &views, inputs);
         self._textures = textures;
         self.views = views;
-        self.tone_bgs = bgs.tone;
-        self.motion_blur_bgs = bgs.motion_blur;
-        self.dof_bgs = bgs.dof;
+        self.tone_bgs = tone_bgs;
+        self.lanes = lanes;
     }
 
-    /// Records the enabled effects after TAA.
+    /// Records the enabled effects after TAA, in the order SSR, motion blur, DoF, fog.
     ///
-    /// `history_slot` is the TAA slot this frame wrote, `screen` the output size in pixels and
-    /// `near_far` the camera planes. Returns the index of the target that holds the result, or
-    /// `None` when no effect is on, in which case nothing is recorded.
+    /// `history_slot` is the TAA slot this frame wrote. Returns the index of the target that
+    /// holds the result, or `None` when no effect is on, in which case nothing is recorded.
     pub(crate) fn run_chain(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         queue: &wgpu::Queue,
         history_slot: usize,
-        screen: [f32; 2],
-        near_far: [f32; 2],
+        frame: &ChainFrame<'_>,
         settings: &PostFxSettings,
     ) -> Option<usize> {
-        if settings.motion_blur.is_none() && settings.dof.is_none() {
+        if settings.ssr.is_none()
+            && settings.motion_blur.is_none()
+            && settings.dof.is_none()
+            && settings.fog.is_none()
+        {
             return None;
         }
-        let mut out = 0;
-        let mut dof_source = &self.dof_bgs[history_slot];
+        let mut source = Source::History(history_slot);
+        if let Some(s) = settings.ssr {
+            let dst = source.next_target();
+            self.passes.ssr.write(queue, &ssr_uniform(&s, frame));
+            self.passes
+                .ssr
+                .record(encoder, self.lanes.ssr.get(source), &self.views[dst]);
+            source = Source::Target(dst);
+        }
         if let Some(mb) = settings.motion_blur {
-            self.motion_blur
-                .write(queue, &motion_blur_uniform(&mb, screen));
-            self.motion_blur
-                .record(encoder, &self.motion_blur_bgs[history_slot], &self.views[0]);
-            dof_source = &self.dof_bgs[2];
+            let dst = source.next_target();
+            self.passes
+                .motion_blur
+                .write(queue, &motion_blur_uniform(&mb, frame.screen));
+            self.passes.motion_blur.record(
+                encoder,
+                self.lanes.motion_blur.get(source),
+                &self.views[dst],
+            );
+            source = Source::Target(dst);
         }
         if let Some(dof) = settings.dof {
-            out = usize::from(settings.motion_blur.is_some());
-            self.dof.write(queue, &dof_uniform(&dof, screen, near_far));
-            self.dof.record(encoder, dof_source, &self.views[out]);
+            let dst = source.next_target();
+            self.passes
+                .dof
+                .write(queue, &dof_uniform(&dof, frame.screen, frame.near_far));
+            self.passes
+                .dof
+                .record(encoder, self.lanes.dof.get(source), &self.views[dst]);
+            source = Source::Target(dst);
         }
-        Some(out)
+        if let Some(fog) = settings.fog {
+            let dst = source.next_target();
+            self.passes.fog.write(queue, &fog_uniform(&fog, frame));
+            self.passes
+                .fog
+                .record(encoder, self.lanes.fog.get(source), &self.views[dst]);
+            source = Source::Target(dst);
+        }
+        match source {
+            Source::Target(i) => Some(i),
+            Source::History(_) => None,
+        }
     }
 }
 
@@ -541,13 +613,93 @@ fn create_targets(
     ([t0, t1], [v0, v1])
 }
 
-fn build_bind_groups(
+/// Builds the four effect passes (pipelines, samplers, uniform buffers).
+fn create_passes(device: &wgpu::Device) -> EffectPasses {
+    let ssr = EffectPass::new(
+        device,
+        "screen_space_reflections",
+        SSR_WGSL,
+        &[
+            texture_entry(0, FILTERABLE),
+            texture_entry(1, FILTERABLE),
+            texture_entry(2, FILTERABLE),
+            sampler_entry(3),
+            uniform_entry(4),
+        ],
+        std::mem::size_of::<crate::post::ssr::SsrUniform>() as u64,
+    );
+    let motion_blur = EffectPass::new(
+        device,
+        "motion_blur",
+        MOTION_BLUR_WGSL,
+        &[
+            texture_entry(0, FILTERABLE),
+            texture_entry(1, FILTERABLE),
+            sampler_entry(2),
+            uniform_entry(3),
+        ],
+        std::mem::size_of::<MotionBlurUniform>() as u64,
+    );
+    let dof = EffectPass::new(
+        device,
+        "depth_of_field",
+        DOF_WGSL,
+        &[
+            texture_entry(0, FILTERABLE),
+            texture_entry(1, wgpu::TextureSampleType::Depth),
+            sampler_entry(2),
+            uniform_entry(3),
+        ],
+        std::mem::size_of::<DofUniform>() as u64,
+    );
+    let fog = EffectPass::new(
+        device,
+        "fog",
+        FOG_WGSL,
+        &[
+            texture_entry(0, FILTERABLE),
+            texture_entry(1, wgpu::TextureSampleType::Depth),
+            sampler_entry(2),
+            uniform_entry(3),
+        ],
+        std::mem::size_of::<crate::post::fog::FogUniform>() as u64,
+    );
+    EffectPasses {
+        ssr,
+        motion_blur,
+        dof,
+        fog,
+    }
+}
+
+/// Bind groups of one effect: the colour input is the TAA history slot or effect target `i`,
+/// the extra textures are the same for both.
+fn lane_bindings(
     device: &wgpu::Device,
-    motion_blur: &EffectPass,
-    dof: &EffectPass,
+    pass: &EffectPass,
+    history: [&wgpu::TextureView; 2],
+    targets: &[wgpu::TextureView; 2],
+    extra: &[&wgpu::TextureView],
+) -> Lanes {
+    let bind = |color: &wgpu::TextureView| {
+        let mut textures = Vec::with_capacity(1 + extra.len());
+        textures.push(color);
+        textures.extend_from_slice(extra);
+        pass.bind_group(device, &textures)
+    };
+    Lanes {
+        history: [bind(history[0]), bind(history[1])],
+        target: [bind(&targets[0]), bind(&targets[1])],
+    }
+}
+
+/// Builds the tone-mapping bind groups over each target and the lanes of every effect.
+fn build_bindings(
+    device: &wgpu::Device,
+    passes: &EffectPasses,
     views: &[wgpu::TextureView; 2],
     inputs: &PostFxInputs<'_>,
-) -> BindGroups {
+) -> ([wgpu::BindGroup; 2], EffectLanes) {
     let tone = |view: &wgpu::TextureView| {
         create_tonemap_bind_group(
             device,
@@ -558,132 +710,28 @@ fn build_bind_groups(
             inputs.tone_uniform,
         )
     };
-    BindGroups {
-        tone: [tone(&views[0]), tone(&views[1])],
-        motion_blur: [
-            motion_blur.bind_group(device, inputs.history_views[0], inputs.velocity_view),
-            motion_blur.bind_group(device, inputs.history_views[1], inputs.velocity_view),
-        ],
-        dof: [
-            dof.bind_group(device, inputs.history_views[0], inputs.depth_view),
-            dof.bind_group(device, inputs.history_views[1], inputs.depth_view),
-            dof.bind_group(device, &views[0], inputs.depth_view),
-        ],
-    }
+    let history = inputs.history_views;
+    let lanes = EffectLanes {
+        ssr: lane_bindings(
+            device,
+            &passes.ssr,
+            history,
+            views,
+            &[inputs.normal_view, inputs.surface_view],
+        ),
+        motion_blur: lane_bindings(
+            device,
+            &passes.motion_blur,
+            history,
+            views,
+            &[inputs.velocity_view],
+        ),
+        dof: lane_bindings(device, &passes.dof, history, views, &[inputs.depth_view]),
+        fog: lane_bindings(device, &passes.fog, history, views, &[inputs.depth_view]),
+    };
+    ([tone(&views[0]), tone(&views[1])], lanes)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const HD: [f32; 2] = [1920.0, 1080.0];
-
-    #[test]
-    fn a_still_pixel_gets_no_taps() {
-        let s = MotionBlurSettings::default();
-        assert!(motion_blur_offsets([0.0, 0.0], HD, &s).is_empty());
-        // Half a pixel of velocity with the shutter at 0.5 is a quarter of a pixel: still sharp.
-        assert!(motion_blur_offsets([0.5 / 1920.0, 0.0], HD, &s).is_empty());
-        assert!(motion_blur_offsets([f32::NAN, 0.0], HD, &s).is_empty());
-    }
-
-    #[test]
-    fn taps_are_symmetric_and_as_many_as_requested() {
-        let s = MotionBlurSettings {
-            taps: 8,
-            ..Default::default()
-        };
-        let o = motion_blur_offsets([0.02, 0.0], HD, &s);
-        assert_eq!(o.len(), 8);
-        for i in 0..4 {
-            assert!((o[i][0] + o[7 - i][0]).abs() < 1e-7);
-        }
-        assert!(o[0][0] < 0.0 && o[7][0] > 0.0);
-    }
-
-    #[test]
-    fn the_blur_length_is_limited_to_max_pixels() {
-        let s = MotionBlurSettings {
-            shutter: 1.0,
-            max_pixels: 10.0,
-            taps: 5,
-        };
-        let o = motion_blur_offsets([0.5, 0.0], [1000.0, 1000.0], &s); // would be 500 px
-        let span_px = (o[4][0] - o[0][0]) * 1000.0;
-        assert!((span_px - 10.0).abs() < 1e-3, "span {span_px}");
-    }
-
-    #[test]
-    fn the_direction_follows_the_velocity() {
-        let o = motion_blur_offsets(
-            [0.0, 0.03],
-            [1000.0, 1000.0],
-            &MotionBlurSettings::default(),
-        );
-        assert!(!o.is_empty());
-        assert!(o.iter().all(|t| t[0].abs() < 1e-9));
-    }
-
-    #[test]
-    fn the_number_of_taps_is_kept_within_limits() {
-        let few = MotionBlurSettings {
-            taps: 0,
-            ..Default::default()
-        };
-        assert_eq!(
-            motion_blur_offsets([0.05, 0.0], [1000.0, 1000.0], &few).len(),
-            2
-        );
-        let many = MotionBlurSettings {
-            taps: 10_000,
-            ..Default::default()
-        };
-        let n = motion_blur_offsets([0.05, 0.0], [1000.0, 1000.0], &many).len();
-        assert!((2..=64).contains(&n), "{n}");
-    }
-
-    #[test]
-    fn the_focus_plane_is_sharp() {
-        assert_eq!(coc_pixels(10.0, &DofSettings::default()), 0.0);
-    }
-
-    #[test]
-    fn the_blur_grows_away_from_focus_and_is_capped() {
-        let s = DofSettings {
-            focus_distance: 10.0,
-            aperture: 6.0,
-            max_radius_pixels: 8.0,
-        };
-        assert!(coc_pixels(5.0, &s) > 0.0);
-        assert!(coc_pixels(2.0, &s) >= coc_pixels(5.0, &s));
-        assert_eq!(coc_pixels(0.5, &s), 8.0);
-        assert!(coc_pixels(1.0e6, &s) <= 8.0);
-    }
-
-    #[test]
-    fn bad_distances_give_zero_blur() {
-        let s = DofSettings::default();
-        for d in [0.0, -1.0, f32::NAN, f32::INFINITY] {
-            assert_eq!(coc_pixels(d, &s), 0.0, "{d}");
-        }
-    }
-
-    #[test]
-    fn disc_taps_stay_inside_the_unit_disc_and_start_at_the_centre() {
-        let t = disc_taps(16);
-        assert_eq!(t.len(), 16);
-        assert_eq!(t[0], [0.0, 0.0]);
-        assert!(
-            t.iter()
-                .all(|p| (p[0] * p[0] + p[1] * p[1]).sqrt() <= 1.0 + 1e-6)
-        );
-        assert_eq!(disc_taps(0).len(), 1, "at least the centre");
-    }
-
-    #[test]
-    fn linear_distance_matches_near_and_far() {
-        // Standard depth: 0 at the near plane, 1 at the far plane (the renderer's convention).
-        assert!((linear_distance(0.0, 0.1, 100.0) - 0.1).abs() < 1e-4);
-        assert!((linear_distance(1.0, 0.1, 100.0) - 100.0).abs() < 1e-1);
-    }
-}
+#[path = "post_fx_tests.rs"]
+mod tests;

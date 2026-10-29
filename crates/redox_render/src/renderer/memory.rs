@@ -57,6 +57,7 @@ impl Renderer {
             &self.hdr_texture,
             &self.hdr_msaa_texture,
             &self.normal_texture,
+            &self.material_surface_texture,
             &self.ssao_raw_texture,
             &self.ssao_half_blurred_texture,
             &self.ssao_blurred_texture,
