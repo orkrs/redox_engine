@@ -10,16 +10,27 @@ use redox_math::{Quat, Transform, Vec3};
 use crate::components::{CharacterController, CharacterSettings, Collider, RigidBody};
 use crate::context::PhysicsContext;
 
+/// Margin added to the slope drop of a step, so rounding does not leave the character floating.
+const SNAP_MARGIN: f32 = 0.01;
+
+/// Snap distance for a step of `step_len` horizontal length: the configured snap, lengthened to the
+/// drop one step can cause on a slope of `max_slope_angle`, and capped at `max_snap_to_ground`.
+fn snap_distance(settings: &CharacterSettings, step_len: f32) -> f32 {
+    let slope_drop = step_len * settings.max_slope_angle.tan() + SNAP_MARGIN;
+    let limit = settings.max_snap_to_ground.max(settings.snap_to_ground);
+    settings.snap_to_ground.max(slope_drop).min(limit)
+}
+
 /// Builds Rapier's controller from the character's settings. While the character rises
 /// (`vertical > 0`) snapping to the ground is off, so a jump is not pulled back down at once.
-fn build_kcc(settings: &CharacterSettings, vertical: f32) -> RapierKcc {
+fn build_kcc(settings: &CharacterSettings, vertical: f32, step_len: f32) -> RapierKcc {
     let autostep = (settings.step_height > 0.0).then_some(CharacterAutostep {
         max_height: CharacterLength::Absolute(settings.step_height),
         min_width: CharacterLength::Absolute(settings.step_min_width),
         include_dynamic_bodies: false,
     });
     let snap_to_ground = (vertical <= 0.0 && settings.snap_to_ground > 0.0)
-        .then_some(CharacterLength::Absolute(settings.snap_to_ground));
+        .then(|| CharacterLength::Absolute(snap_distance(settings, step_len)));
     RapierKcc {
         max_slope_climb_angle: settings.max_slope_angle,
         autostep,
@@ -129,7 +140,8 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
 
         let iso = Pose::from_parts(transform.translation, transform.rotation);
         let filter = QueryFilter::default().exclude_rigid_body(body_handle);
-        let kcc = build_kcc(&settings, vertical);
+        let step_len = (wish.x * wish.x + wish.z * wish.z).sqrt();
+        let kcc = build_kcc(&settings, vertical, step_len);
         // Rapier's controller replaces part of the motion of a character touching a *kinematic* body by that body's
         // velocity. For position-driven platforms this froze the character (it could not walk on them at all), so the
         // query sees no bodies and treats every collider as plain geometry; `platform_carry` moves the character instead.
