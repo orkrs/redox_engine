@@ -121,7 +121,7 @@ impl DagClusterGpu {
 }
 
 const _: () = assert!(std::mem::size_of::<DagClusterGpu>() == 96);
-const _: () = assert!(std::mem::size_of::<DagClusterGpu>() % 16 == 0);
+const _: () = assert!(std::mem::size_of::<DagClusterGpu>().is_multiple_of(16));
 
 /// GPU-side cluster records of a hierarchy, in the same order as `dag.clusters`.
 pub fn gpu_clusters(dag: &ClusterDag) -> (Vec<DagClusterGpu>, Vec<u32>) {

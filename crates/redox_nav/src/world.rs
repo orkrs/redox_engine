@@ -168,10 +168,10 @@ impl NavWorld {
 
     /// Removes the island of a tile, if it has one.
     fn remove_island_of(&mut self, coord: (i32, i32)) {
-        if let Some(id) = self.islands.remove(&coord) {
-            if self.archipelago.get_island(id).is_some() {
-                self.archipelago.remove_island(id);
-            }
+        if let Some(id) = self.islands.remove(&coord)
+            && self.archipelago.get_island(id).is_some()
+        {
+            self.archipelago.remove_island(id);
         }
     }
 

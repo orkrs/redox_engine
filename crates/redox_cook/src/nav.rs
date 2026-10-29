@@ -143,3 +143,31 @@ fn collect_node(
         collect_node(&child, world, buffers, parts);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn defaults_apply_when_no_flags_are_given() {
+        let job = parse_bake_navmesh(&["level.glb", "level.nav"]).unwrap();
+        assert_eq!(job.agent, AgentParams::default());
+        assert_eq!(job.tile, DEFAULT_TILE);
+    }
+
+    #[test]
+    fn flags_override_the_agent() {
+        let job =
+            parse_bake_navmesh(&["a.glb", "a.nav", "--radius", "0.6", "--slope", "30"]).unwrap();
+        assert_eq!(job.agent.radius, 0.6);
+        assert_eq!(job.agent.max_slope_deg, 30.0);
+    }
+
+    #[test]
+    fn bad_arguments_are_errors() {
+        assert!(parse_bake_navmesh(&["only-one"]).is_err());
+        assert!(parse_bake_navmesh(&["a", "b", "--radius"]).is_err());
+        assert!(parse_bake_navmesh(&["a", "b", "--radius", "wide"]).is_err());
+        assert!(parse_bake_navmesh(&["a", "b", "--nope", "1"]).is_err());
+    }
+}

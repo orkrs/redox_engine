@@ -85,11 +85,7 @@ pub fn generate(ir: &Ir, opts: &CodegenOptions) -> Generated {
 /// `SurfaceData(...)` constructor with the six graph values (zero for fields the pass drops).
 fn return_expr(ir: &Ir, pass: Pass) -> String {
     let keep = |field: bool, id: u32, ty: Ty| {
-        if field {
-            format!("v{id}")
-        } else {
-            zero(ty)
-        }
+        if field { format!("v{id}") } else { zero(ty) }
     };
     let main = pass == Pass::Main;
     let outs = ir.outputs;

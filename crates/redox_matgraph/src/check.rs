@@ -112,12 +112,18 @@ impl<'a> Checker<'a> {
         names: &mut HashSet<&'n str>,
     ) {
         if !is_identifier(name) {
-            self.fail(Some(id), format!("имя параметра «{name}» должно быть идентификатором"));
+            self.fail(
+                Some(id),
+                format!("имя параметра «{name}» должно быть идентификатором"),
+            );
         } else if !names.insert(name) {
             self.fail(Some(id), format!("параметр «{name}» объявлен дважды"));
         }
         if !(ty == Ty::F32 || ty.is_vector()) {
-            self.fail(Some(id), format!("параметр имеет тип {ty:?}, ожидался арифметический"));
+            self.fail(
+                Some(id),
+                format!("параметр имеет тип {ty:?}, ожидался арифметический"),
+            );
         }
         if default.iter().any(|v| !v.is_finite()) {
             self.fail(Some(id), "значение параметра по умолчанию не конечно");
@@ -200,14 +206,14 @@ impl<'a> Checker<'a> {
         let kind = &node.kind;
         let mut ok = true;
         for (port, (fixed, ty)) in input_types(kind).iter().zip(actual).enumerate() {
-            if let Some(expected) = fixed {
-                if expected != ty {
-                    self.fail(
-                        Some(node.id),
-                        format!("вход {port}: ожидалось {expected:?}, получено {ty:?}"),
-                    );
-                    ok = false;
-                }
+            if let Some(expected) = fixed
+                && expected != ty
+            {
+                self.fail(
+                    Some(node.id),
+                    format!("вход {port}: ожидалось {expected:?}, получено {ty:?}"),
+                );
+                ok = false;
             }
         }
         if input_types(kind).iter().all(Option::is_none) {
@@ -216,10 +222,7 @@ impl<'a> Checker<'a> {
         if matches!(kind, NodeKind::Dot | NodeKind::Normalize) {
             for ty in actual {
                 if !ty.is_vector() {
-                    self.fail(
-                        Some(node.id),
-                        format!("ожидался вектор, получено {ty:?}"),
-                    );
+                    self.fail(Some(node.id), format!("ожидался вектор, получено {ty:?}"));
                     ok = false;
                 }
             }
@@ -232,7 +235,10 @@ impl<'a> Checker<'a> {
         let mut ok = true;
         for ty in actual {
             if matches!(ty, Ty::Texture2d | Ty::Sampler) {
-                self.fail(Some(id), format!("ресурс {ty:?} нельзя использовать в арифметике"));
+                self.fail(
+                    Some(id),
+                    format!("ресурс {ty:?} нельзя использовать в арифметике"),
+                );
                 ok = false;
             }
         }

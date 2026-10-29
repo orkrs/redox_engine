@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 ## [Unreleased]
 
 ### Added
+- Audio: `SpatialAudioEmitter` is played through one kira spatial track per entity with occlusion-scaled volume (`emitter_playback_system`); adaptive music layers driven by one control value (`AdaptiveMusic`, `play_adaptive_music`, `set_music_control`).
+- Animation/Render: morph targets - glTF import, weights in clips, CPU (`deform_morphed_into`) and GPU skinning, `SkinnedMeshBinding::set_morph_weights`.
+- Render: SSR (`set_ssr`, material roughness through a second output of the normal prepass), height fog with sun in-scatter (`set_fog`), additive blend mode, clear coat and anisotropy (`Material::coat`, `::anisotropy`), wrap lighting for SSS (`Material::subsurface`), `material_surface` shader function (`MaterialInstance`), `ShadowClass` and reliable moved-caster detection for virtual shadow pages.
+- Virtual geometry: cluster DAG built in the cook step (`build_cluster_dag`, CPU `cut`, no cracks), page plan, `.rvg` format and LRU page pool; HLOD proxies and the cell LOD state machine (`hlod`).
+- New crate `redox_matgraph`: material graph (RON), validation, IR with constant folding and common-subexpression sharing, WGSL generation validated by naga.
+- New crate `redox_nav`: tiled navmesh bake (rerecast), `.nav` format, `NavWorld` paths/links/queue/blockers and local avoidance (landmass), ECS agents and `NavPlugin`; `redox_cook bake-navmesh` and `bake-hlod`.
+- Specs: 24 step-by-step specs in `docs/engineering/specs` (wave seven), measured gates recorded in `docs/engineering/BACKLOG.md`.
 - Physics: character controller with accumulating gravity, `jump()`, autostep/slope/ground-snap settings (`CharacterSettings`) and moving-platform carry; walking on kinematic platforms fixed; ECS `Joint`/`JointLink`; `CombineRule` for friction/restitution; sound rays ignore sensors.
 - Render: skinned-mesh tangents (data, glTF import, CPU and GPU), `MemoryCategory::Buffers` accounting, `last_frame_cpu_timings`, `Renderer::try_new`/`RendererError`, optional motion blur and depth of field (`set_motion_blur`, `set_depth_of_field`).
 - Script: `ScriptRuntime::reload`, `ScriptWatcher`. Audio: `register_music_file` (streamed from disk), per-source occlusion by wall count (no global low-pass).

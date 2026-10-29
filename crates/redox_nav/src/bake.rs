@@ -102,9 +102,9 @@ impl Bounds {
             max: [f32::MIN; 3],
         };
         for vertex in vertices {
-            for axis in 0..3 {
-                bounds.min[axis] = bounds.min[axis].min(vertex[axis]);
-                bounds.max[axis] = bounds.max[axis].max(vertex[axis]);
+            for (axis, &value) in vertex.iter().enumerate() {
+                bounds.min[axis] = bounds.min[axis].min(value);
+                bounds.max[axis] = bounds.max[axis].max(value);
             }
         }
         bounds

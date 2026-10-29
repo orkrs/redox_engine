@@ -96,7 +96,7 @@ impl NavWorld {
     ) -> Option<Vec3> {
         let candidates = self.candidates_near(center, radius);
         let total: f32 = candidates.iter().map(|(_, _, area)| *area).sum();
-        if candidates.is_empty() || !(total > 0.0) {
+        if candidates.is_empty() || total.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater) {
             return None;
         }
         for _ in 0..RANDOM_ATTEMPTS {
@@ -112,9 +112,7 @@ impl NavWorld {
                     }
                 })
                 .or(candidates.last());
-            let Some((tile, polygon, _)) = chosen else {
-                return None;
-            };
+            let (tile, polygon, _) = chosen?;
             let point = sample_polygon(tile, polygon, rng)?;
             if xz_distance(point, center) <= radius {
                 return Some(point);

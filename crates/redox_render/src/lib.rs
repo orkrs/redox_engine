@@ -15,7 +15,6 @@ pub mod context;
 pub mod frame;
 pub mod frame_graph;
 pub mod gi;
-/// Hierarchical LOD proxies per world cell, the `.hlod` format and the cell LOD switch.
 pub mod hlod;
 pub mod light;
 pub mod material;
@@ -34,10 +33,10 @@ pub mod resource;
 pub mod sdf;
 pub mod shader;
 pub mod shadow;
-/// Substrate-lite material model: slabs, clearcoat, energy checks (MAT-04).
-pub mod substrate;
 pub mod skinning;
 mod skinning_gpu;
+/// Substrate-lite material model: slabs, clearcoat, energy checks (MAT-04).
+pub mod substrate;
 pub mod surface;
 pub mod systems;
 pub mod virtual_geometry;

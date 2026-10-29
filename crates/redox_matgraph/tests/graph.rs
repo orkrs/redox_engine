@@ -78,7 +78,11 @@ fn a_cycle_is_reported_with_its_nodes() {
     ]);
     let errors = g.validate();
     assert!(!errors.is_empty());
-    assert!(errors.iter().any(|e| e.message.contains('1') && e.message.contains('2')));
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.message.contains('1') && e.message.contains('2'))
+    );
 }
 
 #[test]

@@ -27,8 +27,8 @@ fn triangles_of(dag: &ClusterDag, indices: &[u32], chosen: &[u32]) -> Vec<(u32, 
     let mut out = Vec::new();
     for &c in chosen {
         let cluster = &dag.clusters[c as usize];
-        let range = cluster.index_offset as usize
-            ..(cluster.index_offset + cluster.index_count) as usize;
+        let range =
+            cluster.index_offset as usize..(cluster.index_offset + cluster.index_count) as usize;
         for t in indices[range].chunks_exact(3) {
             out.push((t[0], t[1], t[2]));
         }
@@ -71,7 +71,11 @@ fn the_root_has_few_triangles() {
         .filter(|c| c.parent_error.is_infinite())
         .map(|c| c.index_count)
         .sum();
-    assert!(root_indices / 3 <= 2 * 124 + 124, "root triangles {}", root_indices / 3);
+    assert!(
+        root_indices / 3 <= 2 * 124 + 124,
+        "root triangles {}",
+        root_indices / 3
+    );
 }
 
 #[test]
@@ -119,7 +123,10 @@ fn leaves_cover_every_triangle_of_the_welded_mesh_once() {
         v.sort_unstable();
         v
     };
-    let mut got: Vec<[u32; 3]> = triangles_of(&dag, &indices, &leaves).into_iter().map(key).collect();
+    let mut got: Vec<[u32; 3]> = triangles_of(&dag, &indices, &leaves)
+        .into_iter()
+        .map(key)
+        .collect();
     let mut want: Vec<[u32; 3]> = mesh
         .indices
         .chunks_exact(3)
@@ -153,10 +160,16 @@ fn no_cut_opens_an_edge_that_the_source_mesh_does_not_have() {
         let distance = 1.5 * 1.15f32.powi(step); // 1.5 .. ~400
         for threshold in [0.5f32, 1.0, 2.0, 4.0] {
             let chosen = cut(&dag, [0.0, 0.0, distance], PPU, threshold);
-            assert!(!chosen.is_empty(), "nothing chosen at {distance} / {threshold}");
+            assert!(
+                !chosen.is_empty(),
+                "nothing chosen at {distance} / {threshold}"
+            );
             let tris = triangles_of(&dag, &indices, &chosen);
             let open = open_edge_count(tris.into_iter(), &weld);
-            assert_eq!(open, baseline, "cracks at distance {distance}, threshold {threshold}");
+            assert_eq!(
+                open, baseline,
+                "cracks at distance {distance}, threshold {threshold}"
+            );
         }
     }
 }
@@ -188,11 +201,18 @@ fn the_cut_covers_every_surface_point_exactly_once_by_triangle_area() {
             })
             .sum()
     };
-    let full = area(&triangles_of(&dag, &indices, &cut(&dag, [0.0, 0.0, 1.5], PPU, 0.01)));
+    let full = area(&triangles_of(
+        &dag,
+        &indices,
+        &cut(&dag, [0.0, 0.0, 1.5], PPU, 0.01),
+    ));
     for distance in [3.0f32, 10.0, 50.0] {
         let chosen = cut(&dag, [0.0, 0.0, distance], PPU, 1.0);
         let a = area(&triangles_of(&dag, &indices, &chosen));
-        assert!(a > 0.5 * full && a < 1.2 * full, "area {a} vs {full} at {distance}");
+        assert!(
+            a > 0.5 * full && a < 1.2 * full,
+            "area {a} vs {full} at {distance}"
+        );
     }
 }
 
@@ -203,7 +223,10 @@ fn every_non_leaf_cluster_has_children_and_leaves_have_none() {
     let (dag, _) = build(&sphere());
     let (gpu, child_ids) = gpu_clusters(&dag);
     assert_eq!(gpu.len(), dag.clusters.len());
-    assert_eq!(std::mem::size_of::<redox_render::virtual_geometry::dag::DagClusterGpu>(), 96);
+    assert_eq!(
+        std::mem::size_of::<redox_render::virtual_geometry::dag::DagClusterGpu>(),
+        96
+    );
     for (c, g) in dag.clusters.iter().zip(&gpu) {
         if c.level == 0 {
             assert_eq!(g.child_count, 0);
@@ -254,7 +277,13 @@ fn pages_respect_size_groups_and_residency() {
     assert_eq!(plan.cluster_page.len(), dag.clusters.len());
     for (page, span) in plan.pages.iter().enumerate() {
         assert!(span.bytes as usize <= PAGE_BYTES, "page {page}");
-        assert!(plan.cluster_page.iter().filter(|&&p| p as usize == page).count() == span.cluster_count as usize);
+        assert!(
+            plan.cluster_page
+                .iter()
+                .filter(|&&p| p as usize == page)
+                .count()
+                == span.cluster_count as usize
+        );
     }
     // A group never straddles two pages.
     let mut group_page = std::collections::HashMap::new();
@@ -311,7 +340,10 @@ fn pages_touched_this_frame_are_never_evicted() {
     let mut pool = PagePool::new(2);
     pool.allocate(1, 5).unwrap();
     pool.allocate(2, 5).unwrap();
-    assert!(pool.allocate(3, 5).is_none(), "everything was used this frame");
+    assert!(
+        pool.allocate(3, 5).is_none(),
+        "everything was used this frame"
+    );
 }
 
 #[test]
@@ -362,7 +394,11 @@ fn rvg_roundtrips_pages_and_detects_corruption() {
         let bytes = &file[start..start + entry.len as usize];
         let data = decode_page(bytes, &index, page).unwrap();
         assert!(!data.clusters.is_empty());
-        assert!(data.indices.iter().all(|&i| (i as usize) < data.vertices.len()));
+        assert!(
+            data.indices
+                .iter()
+                .all(|&i| (i as usize) < data.vertices.len())
+        );
     }
 
     // Flip a byte in the last page: its hash fails, nothing panics.
@@ -378,7 +414,12 @@ fn rvg_roundtrips_pages_and_detects_corruption() {
 fn a_truncated_rvg_index_is_an_error() {
     let mesh = sphere();
     let asset = build_vg_dag_asset(&mesh, &DagParams::default(), 0).unwrap();
-    let bytes: Vec<u32> = asset.dag.clusters.iter().map(|c| c.index_count * 4 + 44).collect();
+    let bytes: Vec<u32> = asset
+        .dag
+        .clusters
+        .iter()
+        .map(|c| c.index_count * 4 + 44)
+        .collect();
     let plan = plan_pages(&asset.dag, &bytes, PAGE_BYTES).unwrap();
     let file = write_rvg(&asset, &plan).unwrap();
     let head_len = header_len(&file[..16]).unwrap();

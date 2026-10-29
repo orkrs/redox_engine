@@ -19,7 +19,7 @@ pub enum ShadowClass {
     Auto,
 }
 
-/// Rotation tolerance for [`pose_changed`]: a basis column changing by more than this
+/// Rotation tolerance for the pose comparison: a basis column changing by more than this
 /// (in model units) counts as a rotation of the object.
 pub const SHADOW_ROTATION_EPS: f32 = 1.0e-3;
 

@@ -153,7 +153,7 @@ impl Welder {
 
     /// Transforms one input to world space and appends its triangles.
     fn add_input(&mut self, input: &HlodInput<'_>) -> Result<(), HlodError> {
-        if input.indices.len() % 3 != 0 {
+        if !input.indices.len().is_multiple_of(3) {
             return Err(HlodError::Degenerate);
         }
         let world: Vec<Vec3> = input

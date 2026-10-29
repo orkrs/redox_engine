@@ -70,9 +70,15 @@ fn position(world: &World, e: Entity) -> Vec3 {
 #[test]
 fn an_agent_with_a_target_gets_a_path() {
     let mut world = world(8);
-    let e = agent(&mut world, Vec3::new(0.5, 0.0, 0.5), Some(Vec3::new(7.5, 0.0, 0.5)));
+    let e = agent(
+        &mut world,
+        Vec3::new(0.5, 0.0, 0.5),
+        Some(Vec3::new(7.5, 0.0, 0.5)),
+    );
     nav_path_system(&mut world);
-    let path = world.get_component::<NavPath>(e).expect("a path was planned");
+    let path = world
+        .get_component::<NavPath>(e)
+        .expect("a path was planned");
     assert!(path.points.len() >= 2);
     assert_eq!(path.next, 0);
 }
@@ -81,9 +87,16 @@ fn an_agent_with_a_target_gets_a_path() {
 fn an_agent_without_a_route_gets_path_failed() {
     let mut world = world(8);
     // The target is far away from the mesh.
-    let e = agent(&mut world, Vec3::new(0.5, 0.0, 0.5), Some(Vec3::new(500.0, 0.0, 500.0)));
+    let e = agent(
+        &mut world,
+        Vec3::new(0.5, 0.0, 0.5),
+        Some(Vec3::new(500.0, 0.0, 500.0)),
+    );
     nav_path_system(&mut world);
-    assert!(world.get_component::<NavTarget>(e).is_none(), "target removed");
+    assert!(
+        world.get_component::<NavTarget>(e).is_none(),
+        "target removed"
+    );
     assert!(world.get_component::<NavPath>(e).is_none());
     let events = world.get_resource::<Events<PathFailed>>().unwrap();
     assert!(events.iter().any(|ev| ev.entity == e));
@@ -102,7 +115,11 @@ fn an_agent_reaches_its_target_and_the_target_is_removed() {
         }
     }
     assert!(world.get_component::<NavTarget>(e).is_none());
-    assert!(position(&world, e).distance(goal) < 0.2, "{:?}", position(&world, e));
+    assert!(
+        position(&world, e).distance(goal) < 0.2,
+        "{:?}",
+        position(&world, e)
+    );
     let events = world.get_resource::<Events<PathReached>>().unwrap();
     assert_eq!(events.iter().filter(|ev| ev.entity == e).count(), 1);
 }
@@ -110,7 +127,11 @@ fn an_agent_reaches_its_target_and_the_target_is_removed() {
 #[test]
 fn the_agent_stays_on_the_mesh_while_following() {
     let mut world = world(8);
-    let e = agent(&mut world, Vec3::new(0.5, 0.0, 0.5), Some(Vec3::new(7.5, 0.0, 1.5)));
+    let e = agent(
+        &mut world,
+        Vec3::new(0.5, 0.0, 0.5),
+        Some(Vec3::new(7.5, 0.0, 1.5)),
+    );
     for tick in 0..400 {
         nav_path_system(&mut world);
         nav_follow_system(&mut world, 1.0 / 60.0);

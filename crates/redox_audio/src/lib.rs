@@ -19,10 +19,10 @@ pub mod components;
 pub mod context;
 pub mod cues;
 pub mod debug;
+mod emitter_voices;
 pub mod loader;
 pub mod mixer;
 pub mod music;
-mod emitter_voices;
 mod music_adaptive;
 mod music_apply;
 pub mod music_layers;
@@ -45,8 +45,8 @@ pub use mixer::{
     linear_to_db,
 };
 pub use music::{MusicDirector, MusicFrame};
-pub use music_layers::{AdaptiveMusic, MusicLayer};
 pub use music_apply::{MusicVoice, MusicVoices};
+pub use music_layers::{AdaptiveMusic, MusicLayer};
 pub use music_play::{KiraMusicVoice, MusicError};
 pub use systems::{
     OcclusionResult, check_occlusion, compute_active_reverb, occlusion_from_hits,

@@ -39,3 +39,25 @@ pub fn bake_hlod(world: &Path, out: &Path, triangles: usize) -> Result<(), Strin
         out.display()
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_default_triangle_count_is_used_without_flags() {
+        assert_eq!(parse_triangles(&[]).unwrap(), 2000);
+    }
+
+    #[test]
+    fn a_triangle_count_flag_is_parsed() {
+        assert_eq!(parse_triangles(&["--triangles", "500"]).unwrap(), 500);
+    }
+
+    #[test]
+    fn bad_flags_are_errors() {
+        assert!(parse_triangles(&["--triangles"]).is_err());
+        assert!(parse_triangles(&["--triangles", "many"]).is_err());
+        assert!(parse_triangles(&["--wat", "1"]).is_err());
+    }
+}

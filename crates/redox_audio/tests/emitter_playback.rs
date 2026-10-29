@@ -67,7 +67,10 @@ fn an_emitter_without_a_cached_sound_gets_no_voice() {
     emitter_playback_system(&mut world);
     assert!(!has_voice(&world, e));
     let emitter = world.get_component::<SpatialAudioEmitter>(e).unwrap();
-    assert!(emitter.emitter.playing, "waiting for the sound keeps `playing`");
+    assert!(
+        emitter.emitter.playing,
+        "waiting for the sound keeps `playing`"
+    );
 }
 
 #[test]
@@ -115,7 +118,10 @@ fn an_occluded_emitter_is_quieter_than_a_clear_one() {
         .set_emitter_occlusion(blocked, 0.8);
     let ctx = world.get_resource::<AudioContext>().unwrap();
     let volume = |e: Entity| {
-        let emitter = &world.get_component::<SpatialAudioEmitter>(e).unwrap().emitter;
+        let emitter = &world
+            .get_component::<SpatialAudioEmitter>(e)
+            .unwrap()
+            .emitter;
         emitter_target_volume(ctx, e, emitter)
     };
     assert!(volume(blocked) < volume(clear));

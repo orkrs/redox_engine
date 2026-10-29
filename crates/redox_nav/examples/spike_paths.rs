@@ -243,7 +243,7 @@ fn crowd_through_door() -> Result<(), Box<dyn std::error::Error>> {
             let Some(a) = arch.get_agent_mut(*id) else {
                 continue;
             };
-            let v = a.get_desired_velocity().clone();
+            let v = *a.get_desired_velocity();
             a.velocity = v;
             a.position += v * dt;
         }

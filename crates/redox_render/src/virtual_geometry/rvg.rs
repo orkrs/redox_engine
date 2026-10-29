@@ -27,8 +27,6 @@ use crate::mesh::Vertex;
 
 const MAGIC: [u8; 4] = *b"RVG1";
 const VERSION: u16 = 1;
-/// Bytes of the fixed header before the root count.
-const FIXED_HEADER_BYTES: usize = 16;
 /// Fixed header plus the root count.
 const HEADER_PREFIX_BYTES: usize = 20;
 const PAGE_ENTRY_BYTES: usize = 16;
@@ -340,7 +338,7 @@ fn validate_plan(asset: &VGDagAsset, plan: &PagePlan) -> Result<(), RvgError> {
         .resident_pages
         .iter()
         .enumerate()
-        .all(|(i, &page)| to_usize(page).map_or(false, |p| p == i));
+        .all(|(i, &page)| to_usize(page) == Ok(i));
     if !resident_ok || plan.resident_pages.len() > plan.pages.len() {
         return Err(RvgError::InvalidPlan(
             "resident pages must be the leading pages",

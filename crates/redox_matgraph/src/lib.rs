@@ -2,7 +2,7 @@
 //! turned into WGSL for `material_surface_graph`. Pure Rust, no GPU dependency.
 //!
 //! Pipeline: [`MaterialGraph::from_ron`] -> [`MaterialGraph::validate`] -> [`lower`] ->
-//! [`optimize`] -> [`generate`]. [`eval`] interprets the IR on the CPU and serves as the
+//! [`optimize`] -> [`generate`]. [`fn@eval`] interprets the IR on the CPU and serves as the
 //! reference for GPU comparisons.
 
 pub mod check;

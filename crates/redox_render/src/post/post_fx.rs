@@ -349,7 +349,7 @@ impl EffectPass {
             .enumerate()
             .map(|(i, view)| wgpu::BindGroupEntry {
                 binding: i as u32,
-                resource: wgpu::BindingResource::TextureView(*view),
+                resource: wgpu::BindingResource::TextureView(view),
             })
             .collect();
         let sampler_binding = textures.len() as u32;

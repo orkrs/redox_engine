@@ -6,12 +6,12 @@
 use std::collections::HashMap;
 
 use redox_math::{Aabb, Mat4, Vec3};
-use redox_render::post::fog::{
-    FogSettings, hg_phase, optical_depth, slice_depth, transmittance,
-};
+use redox_render::post::fog::{FogSettings, hg_phase, optical_depth, slice_depth, transmittance};
 use redox_render::post::refraction::{refraction_mip_level, refraction_offset};
+use redox_render::post::ssr::{
+    SsrSettings, edge_fade, fresnel_weight, roughness_weight, ssr_weight,
+};
 use redox_render::post::sss::{blur_radius_pixels, sss_kernel, wrap_diffuse};
-use redox_render::post::ssr::{SsrSettings, edge_fade, fresnel_weight, roughness_weight, ssr_weight};
 use redox_render::shadow::classify::{
     ShadowClass, is_dynamic_caster, moved_shadow_bounds, next_shadow_poses,
 };
@@ -28,29 +28,44 @@ fn bounds(size: [f32; 3]) -> Aabb {
 
 #[test]
 fn static_is_never_dynamic_even_when_small() {
-    assert!(!is_dynamic_caster(ShadowClass::Static, &bounds([1.0, 1.0, 1.0])));
+    assert!(!is_dynamic_caster(
+        ShadowClass::Static,
+        &bounds([1.0, 1.0, 1.0])
+    ));
 }
 
 #[test]
 fn dynamic_is_dynamic_even_when_large() {
-    assert!(is_dynamic_caster(ShadowClass::Dynamic, &bounds([20.0, 1.0, 20.0])));
+    assert!(is_dynamic_caster(
+        ShadowClass::Dynamic,
+        &bounds([20.0, 1.0, 20.0])
+    ));
 }
 
 #[test]
 fn auto_keeps_the_size_rule() {
     // `from_center_size` takes the half extents, so double the sizes below.
-    assert!(!is_dynamic_caster(ShadowClass::Auto, &Aabb {
-        min: Vec3::new(-10.0, 0.0, -10.0),
-        max: Vec3::new(10.0, 0.3, 10.0),
-    }));
-    assert!(is_dynamic_caster(ShadowClass::Auto, &Aabb {
-        min: Vec3::splat(-0.5),
-        max: Vec3::splat(0.5),
-    }));
-    assert!(!is_dynamic_caster(ShadowClass::Auto, &Aabb {
-        min: Vec3::new(-3.5, 0.0, -1.0),
-        max: Vec3::new(3.5, 2.0, 1.0),
-    }));
+    assert!(!is_dynamic_caster(
+        ShadowClass::Auto,
+        &Aabb {
+            min: Vec3::new(-10.0, 0.0, -10.0),
+            max: Vec3::new(10.0, 0.3, 10.0),
+        }
+    ));
+    assert!(is_dynamic_caster(
+        ShadowClass::Auto,
+        &Aabb {
+            min: Vec3::splat(-0.5),
+            max: Vec3::splat(0.5),
+        }
+    ));
+    assert!(!is_dynamic_caster(
+        ShadowClass::Auto,
+        &Aabb {
+            min: Vec3::new(-3.5, 0.0, -1.0),
+            max: Vec3::new(3.5, 2.0, 1.0),
+        }
+    ));
 }
 
 fn pose(x: f32) -> (u32, Mat4, Aabb) {
@@ -115,7 +130,11 @@ fn a_new_object_invalidates_its_current_bounds() {
 #[test]
 fn reordering_the_list_does_not_invalidate() {
     let a = pose(2.0);
-    let b = (2, Mat4::from_translation(Vec3::new(9.0, 0.0, 0.0)), bounds([1.0; 3]));
+    let b = (
+        2,
+        Mat4::from_translation(Vec3::new(9.0, 0.0, 0.0)),
+        bounds([1.0; 3]),
+    );
     let prev = snapshot(&[a, b]);
     assert!(moved_shadow_bounds(&prev, &[b, a], 0.05).is_empty());
 }
@@ -352,7 +371,10 @@ fn a_coated_slab_never_reflects_more_than_it_receives() {
                         ..Coat::default()
                     };
                     let a = vertical_albedo(&coat, &Slab::default(), n_dot_v, 64);
-                    assert!(a <= 1.0 + 1e-2, "{weight} {coat_roughness} {ior} {n_dot_v}: {a}");
+                    assert!(
+                        a <= 1.0 + 1e-2,
+                        "{weight} {coat_roughness} {ior} {n_dot_v}: {a}"
+                    );
                 }
             }
         }
@@ -393,7 +415,17 @@ fn coat_fresnel_grows_towards_grazing_angles() {
 fn extreme_roughness_values_stay_finite() {
     for roughness in [0.0f32, 1e-6, 1.0] {
         assert!(d_ggx(0.9, roughness).is_finite());
-        assert!(slab_albedo(&Slab { roughness, ..Slab::default() }, 0.5, 32).is_finite());
+        assert!(
+            slab_albedo(
+                &Slab {
+                    roughness,
+                    ..Slab::default()
+                },
+                0.5,
+                32
+            )
+            .is_finite()
+        );
     }
 }
 
@@ -410,8 +442,15 @@ fn zero_anisotropy_equals_isotropic_ggx() {
 
 #[test]
 fn mixing_slabs_with_mask_zero_and_one_returns_the_ends() {
-    let a = Slab { roughness: 0.2, ..Slab::default() };
-    let b = Slab { roughness: 0.9, metallic: 1.0, ..Slab::default() };
+    let a = Slab {
+        roughness: 0.2,
+        ..Slab::default()
+    };
+    let b = Slab {
+        roughness: 0.9,
+        metallic: 1.0,
+        ..Slab::default()
+    };
     assert_eq!(mix_slabs(&a, &b, 0.0), a);
     assert_eq!(mix_slabs(&a, &b, 1.0), b);
     let mid = mix_slabs(&a, &b, 0.5);

@@ -19,7 +19,7 @@ impl Value {
     }
 }
 
-/// Inputs of one fragment for [`eval`].
+/// Inputs of one fragment for [`fn@eval`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct EvalInputs {
     /// Texture coordinates.
@@ -38,7 +38,7 @@ pub struct EvalInputs {
     pub params: Vec<[f32; 4]>,
 }
 
-/// Surface properties produced by [`eval`].
+/// Surface properties produced by [`fn@eval`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SurfaceValues {
     /// Base colour.
@@ -62,7 +62,12 @@ pub fn eval(ir: &Ir, inputs: &EvalInputs) -> SurfaceValues {
         let args: Vec<Value> = op
             .args
             .iter()
-            .map(|&a| values.get(a as usize).copied().unwrap_or(Value::zero(Ty::F32)))
+            .map(|&a| {
+                values
+                    .get(a as usize)
+                    .copied()
+                    .unwrap_or(Value::zero(Ty::F32))
+            })
             .collect();
         let value = match &op.kind {
             OpKind::Uv => Value {
@@ -90,7 +95,12 @@ pub fn eval(ir: &Ir, inputs: &EvalInputs) -> SurfaceValues {
         };
         values.push(value);
     }
-    let get = |id: u32| values.get(id as usize).copied().unwrap_or(Value::zero(Ty::F32));
+    let get = |id: u32| {
+        values
+            .get(id as usize)
+            .copied()
+            .unwrap_or(Value::zero(Ty::F32))
+    };
     let outs = ir.outputs;
     let rgb = |v: Value| [v.c[0], v.c[1], v.c[2]];
     SurfaceValues {
@@ -150,7 +160,11 @@ pub fn apply(kind: &OpKind, ty: Ty, args: &[Value]) -> Option<Value> {
                 .sqrt();
             let mut c = [0.0; 4];
             for (i, slot) in c.iter_mut().enumerate().take(dim) {
-                *slot = if len > 0.0 { component(x, i) / len } else { component(x, i) };
+                *slot = if len > 0.0 {
+                    component(x, i) / len
+                } else {
+                    component(x, i)
+                };
             }
             Value { ty, c }
         }

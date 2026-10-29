@@ -59,7 +59,11 @@ fn a_proxy_has_at_most_the_target_triangle_count() {
         .map(|k| input(&p, &i, Vec3::new(k as f32 * 3.0, 0.0, 0.0), 1.0, [0.5; 3]))
         .collect();
     let proxy = build_proxy(&inputs, &params(300)).unwrap();
-    assert!(proxy.indices.len() / 3 <= 300, "{}", proxy.indices.len() / 3);
+    assert!(
+        proxy.indices.len() / 3 <= 300,
+        "{}",
+        proxy.indices.len() / 3
+    );
     assert!(proxy.source_triangles > 300);
 }
 
@@ -113,7 +117,10 @@ fn building_twice_gives_identical_output() {
 
 #[test]
 fn empty_input_is_an_error() {
-    assert_eq!(build_proxy(&[], &params(100)).unwrap_err(), HlodError::NoInput);
+    assert_eq!(
+        build_proxy(&[], &params(100)).unwrap_err(),
+        HlodError::NoInput
+    );
 }
 
 #[test]
@@ -127,7 +134,11 @@ fn a_small_mesh_below_the_target_is_kept_intact() {
 
 fn sample_proxy() -> HlodProxy {
     let (p, i) = sphere_data();
-    build_proxy(&[input(&p, &i, Vec3::ZERO, 1.0, [0.3, 0.6, 0.9])], &params(150)).unwrap()
+    build_proxy(
+        &[input(&p, &i, Vec3::ZERO, 1.0, [0.3, 0.6, 0.9])],
+        &params(150),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -143,11 +154,17 @@ fn proxy_bytes_roundtrip() {
 fn a_truncated_or_damaged_hlod_file_is_an_error() {
     let bytes = sample_proxy().to_bytes((0, 0));
     for cut in [0usize, 3, 10, bytes.len() / 2, bytes.len() - 1] {
-        assert!(HlodProxy::from_bytes(&bytes[..cut]).is_err(), "cut at {cut}");
+        assert!(
+            HlodProxy::from_bytes(&bytes[..cut]).is_err(),
+            "cut at {cut}"
+        );
     }
     let mut bad = bytes.clone();
     bad[0] ^= 0xFF;
-    assert_eq!(HlodProxy::from_bytes(&bad).unwrap_err(), HlodError::BadMagic);
+    assert_eq!(
+        HlodProxy::from_bytes(&bad).unwrap_err(),
+        HlodError::BadMagic
+    );
 }
 
 // ---------------------------------------------------------------- switching
@@ -170,7 +187,10 @@ fn a_close_cell_stays_in_detail() {
 fn a_far_cell_fades_to_the_proxy_and_stays_there() {
     let cfg = HlodConfig::default();
     let mid = run(CellLod::Detail, 200.0, 0.3, &cfg);
-    assert!(matches!(mid, CellLod::Fading { to_proxy: true, .. }), "{mid:?}");
+    assert!(
+        matches!(mid, CellLod::Fading { to_proxy: true, .. }),
+        "{mid:?}"
+    );
     assert_eq!(run(CellLod::Detail, 200.0, 3.0, &cfg), CellLod::Proxy);
 }
 
@@ -208,7 +228,10 @@ fn the_opacities_sum_to_one_during_a_fade() {
 #[test]
 fn nan_and_negative_inputs_do_not_change_the_state() {
     let cfg = HlodConfig::default();
-    let s = CellLod::Fading { to_proxy: true, t: 0.4 };
+    let s = CellLod::Fading {
+        to_proxy: true,
+        t: 0.4,
+    };
     assert_eq!(step_cell_lod(s, f32::NAN, 0.016, &cfg), s);
     assert_eq!(step_cell_lod(s, 200.0, f32::NAN, &cfg), s);
     assert_eq!(step_cell_lod(s, -1.0, 0.016, &cfg), s);

@@ -180,9 +180,11 @@ fn add_box(g: &mut NavGeometry, min: [f32; 3], max: [f32; 3]) {
     ];
     for q in quads {
         for tri in [[q[0], q[1], q[2]], [q[0], q[2], q[3]]] {
-            g.triangles.push([base + tri[0], base + tri[1], base + tri[2]]);
+            g.triangles
+                .push([base + tri[0], base + tri[1], base + tri[2]]);
             g.areas.push(NavAreaId::WALKABLE);
-            g.triangles.push([base + tri[0], base + tri[2], base + tri[1]]);
+            g.triangles
+                .push([base + tri[0], base + tri[2], base + tri[1]]);
             g.areas.push(NavAreaId::WALKABLE);
         }
     }
@@ -205,7 +207,10 @@ fn bake_world(g: &NavGeometry, tile: f32) -> (NavData, NavWorld) {
 fn a_flat_floor_is_covered_and_connected() {
     let (d, w) = bake_world(&floor(10.0), 16.0);
     assert!(!d.tiles.is_empty());
-    assert!(w.find_path(p(2.0, 2.0), p(8.0, 8.0), AgentClass(0)).is_some());
+    assert!(
+        w.find_path(p(2.0, 2.0), p(8.0, 8.0), AgentClass(0))
+            .is_some()
+    );
 }
 
 #[test]
@@ -230,7 +235,10 @@ fn an_obstacle_splits_the_coverage() {
     let mut g = floor(12.0);
     add_box(&mut g, [0.0, 0.0, 5.8], [12.0, 2.5, 6.2]);
     let (_, w) = bake_world(&g, 16.0);
-    assert!(w.find_path(p(2.0, 2.0), p(2.0, 10.0), AgentClass(0)).is_none());
+    assert!(
+        w.find_path(p(2.0, 2.0), p(2.0, 10.0), AgentClass(0))
+            .is_none()
+    );
 }
 
 #[test]
@@ -239,9 +247,9 @@ fn a_not_walkable_area_is_excluded() {
     for area in &mut g.areas {
         *area = NavAreaId::NOT_WALKABLE;
     }
-    match bake(&g, &AgentParams::default(), 16.0) {
-        Ok(d) => assert!(d.tiles.iter().all(|t| t.polygons.is_empty())),
-        Err(_) => {}
+    // Either nothing walkable is reported as an error, or the tiles hold no polygons.
+    if let Ok(d) = bake(&g, &AgentParams::default(), 16.0) {
+        assert!(d.tiles.iter().all(|t| t.polygons.is_empty()));
     }
 }
 
@@ -252,11 +260,10 @@ fn baking_twice_is_bit_identical() {
     let b = bake(&g, &AgentParams::default(), 16.0).unwrap().to_bytes();
     assert_eq!(a, b);
     let g2 = g.clone();
-    let c = std::thread::spawn(move || {
-        bake(&g2, &AgentParams::default(), 16.0).unwrap().to_bytes()
-    })
-    .join()
-    .unwrap();
+    let c =
+        std::thread::spawn(move || bake(&g2, &AgentParams::default(), 16.0).unwrap().to_bytes())
+            .join()
+            .unwrap();
     assert_eq!(a, c);
 }
 
@@ -283,7 +290,10 @@ fn neighbouring_tiles_are_connected() {
     // 24 m floor with 8 m tiles: three tiles per side.
     let (d, w) = bake_world(&floor(24.0), 8.0);
     assert!(d.tiles.len() >= 4, "tiles: {}", d.tiles.len());
-    assert!(w.find_path(p(2.0, 2.0), p(22.0, 22.0), AgentClass(0)).is_some());
+    assert!(
+        w.find_path(p(2.0, 2.0), p(22.0, 22.0), AgentClass(0))
+            .is_some()
+    );
 }
 
 // ---------------------------------------------------------------- paths
@@ -291,7 +301,9 @@ fn neighbouring_tiles_are_connected() {
 #[test]
 fn a_straight_corridor_gives_a_short_path() {
     let w = world_of(vec![grid_tile((0, 0), 0.0, 0.0, 10, 1, 1.0, walk)]);
-    let path = w.find_path(p(0.5, 0.5), p(9.5, 0.5), AgentClass(0)).unwrap();
+    let path = w
+        .find_path(p(0.5, 0.5), p(9.5, 0.5), AgentClass(0))
+        .unwrap();
     assert!(path.len() >= 2);
     assert!((path_length(&path) - 9.0).abs() < 0.2, "{path:?}");
 }
@@ -300,9 +312,15 @@ fn a_straight_corridor_gives_a_short_path() {
 fn a_path_goes_around_a_wall() {
     // 6 x 5 cells, with the column x = 2 missing for z in 0..4: the gap is at z = 4.
     let w = world_of(vec![grid_tile((0, 0), 0.0, 0.0, 6, 5, 1.0, |c, r| {
-        if c == 2 && r < 4 { None } else { Some(NavAreaId::WALKABLE) }
+        if c == 2 && r < 4 {
+            None
+        } else {
+            Some(NavAreaId::WALKABLE)
+        }
     })]);
-    let path = w.find_path(p(0.5, 0.5), p(5.5, 0.5), AgentClass(0)).unwrap();
+    let path = w
+        .find_path(p(0.5, 0.5), p(5.5, 0.5), AgentClass(0))
+        .unwrap();
     assert!(path_length(&path) > 6.0, "longer than straight: {path:?}");
     for q in &path {
         assert!(w.nearest_point(*q, 0.05).is_some(), "{q:?} is off the mesh");
@@ -315,7 +333,10 @@ fn an_unreachable_target_gives_none() {
         grid_tile((0, 0), 0.0, 0.0, 3, 3, 1.0, walk),
         grid_tile((1, 0), 10.0, 0.0, 3, 3, 1.0, walk),
     ]);
-    assert!(w.find_path(p(1.0, 1.0), p(11.0, 1.0), AgentClass(0)).is_none());
+    assert!(
+        w.find_path(p(1.0, 1.0), p(11.0, 1.0), AgentClass(0))
+            .is_none()
+    );
 }
 
 #[test]
@@ -324,7 +345,9 @@ fn a_path_crosses_a_tile_border() {
         grid_tile((0, 0), 0.0, 0.0, 4, 2, 1.0, walk),
         grid_tile((1, 0), 4.0, 0.0, 4, 2, 1.0, walk),
     ]);
-    let path = w.find_path(p(0.5, 1.0), p(7.5, 1.0), AgentClass(0)).unwrap();
+    let path = w
+        .find_path(p(0.5, 1.0), p(7.5, 1.0), AgentClass(0))
+        .unwrap();
     assert!((path_length(&path) - 7.0).abs() < 0.3, "{path:?}");
 }
 
@@ -358,16 +381,26 @@ fn area_cost_changes_the_route() {
 fn infinite_cost_blocks_the_area() {
     // A one-cell-wide corridor whose middle cell is swamp.
     let mut w = world_of(vec![grid_tile((0, 0), 0.0, 0.0, 5, 1, 1.0, |c, _| {
-        if c == 2 { Some(NavAreaId(1)) } else { Some(NavAreaId::WALKABLE) }
+        if c == 2 {
+            Some(NavAreaId(1))
+        } else {
+            Some(NavAreaId::WALKABLE)
+        }
     })]);
     w.set_area_cost(NavAreaId(1), f32::INFINITY).unwrap();
-    assert!(w.find_path(p(0.5, 0.5), p(4.5, 0.5), AgentClass(0)).is_none());
+    assert!(
+        w.find_path(p(0.5, 0.5), p(4.5, 0.5), AgentClass(0))
+            .is_none()
+    );
 }
 
 #[test]
 fn bad_costs_are_rejected() {
     let mut w = swamp_world();
-    assert_eq!(w.set_area_cost(NavAreaId(1), f32::NAN), Err(NavError::BadCost));
+    assert_eq!(
+        w.set_area_cost(NavAreaId(1), f32::NAN),
+        Err(NavError::BadCost)
+    );
     assert_eq!(w.set_area_cost(NavAreaId(1), -1.0), Err(NavError::BadCost));
     assert_eq!(w.set_area_cost(NavAreaId(1), 0.0), Err(NavError::BadCost));
 }
@@ -377,12 +410,21 @@ fn replacing_a_tile_changes_the_answer() {
     let left = grid_tile((0, 0), 0.0, 0.0, 3, 2, 1.0, walk);
     let right = grid_tile((1, 0), 3.0, 0.0, 3, 2, 1.0, walk);
     let mut w = world_of(vec![left, right.clone()]);
-    assert!(w.find_path(p(0.5, 1.0), p(5.5, 1.0), AgentClass(0)).is_some());
+    assert!(
+        w.find_path(p(0.5, 1.0), p(5.5, 1.0), AgentClass(0))
+            .is_some()
+    );
     assert!(w.remove_tile((1, 0)));
     assert!(!w.remove_tile((1, 0)), "removed twice");
-    assert!(w.find_path(p(0.5, 1.0), p(5.5, 1.0), AgentClass(0)).is_none());
+    assert!(
+        w.find_path(p(0.5, 1.0), p(5.5, 1.0), AgentClass(0))
+            .is_none()
+    );
     w.replace_tile(right).unwrap();
-    assert!(w.find_path(p(0.5, 1.0), p(5.5, 1.0), AgentClass(0)).is_some());
+    assert!(
+        w.find_path(p(0.5, 1.0), p(5.5, 1.0), AgentClass(0))
+            .is_some()
+    );
 }
 
 #[test]
@@ -399,7 +441,10 @@ fn raycast_stops_at_the_mesh_edge() {
     let w = world_of(vec![grid_tile((0, 0), 0.0, 0.0, 4, 4, 1.0, walk)]);
     let hit = w.raycast(p(2.0, 2.0), p(10.0, 2.0)).unwrap();
     assert!(hit.x > 3.5 && hit.x < 4.3, "{hit:?}");
-    assert!(w.raycast(p(1.0, 2.0), p(3.0, 2.0)).is_none(), "the whole segment is on the mesh");
+    assert!(
+        w.raycast(p(1.0, 2.0), p(3.0, 2.0)).is_none(),
+        "the whole segment is on the mesh"
+    );
 }
 
 #[test]
@@ -411,7 +456,9 @@ fn random_points_lie_on_the_mesh() {
         (state >> 8) as f32 / 16_777_216.0
     };
     for _ in 0..200 {
-        let q = w.random_point_in_radius(p(2.0, 2.0), 1.5, &mut rng).unwrap();
+        let q = w
+            .random_point_in_radius(p(2.0, 2.0), 1.5, &mut rng)
+            .unwrap();
         assert!(w.nearest_point(q, 0.05).is_some(), "{q:?} off the mesh");
         assert!((q - p(2.0, 2.0)).length() < 2.5);
     }
@@ -440,9 +487,14 @@ fn jump(bidirectional: bool, class_mask: u32) -> NavLink {
 #[test]
 fn a_link_lets_the_path_jump_a_gap() {
     let mut w = gap_world();
-    assert!(w.find_path(p(1.0, 1.5), p(7.0, 1.5), AgentClass(0)).is_none());
+    assert!(
+        w.find_path(p(1.0, 1.5), p(7.0, 1.5), AgentClass(0))
+            .is_none()
+    );
     w.add_link(jump(true, u32::MAX)).unwrap();
-    let path = w.find_path(p(1.0, 1.5), p(7.0, 1.5), AgentClass(0)).unwrap();
+    let path = w
+        .find_path(p(1.0, 1.5), p(7.0, 1.5), AgentClass(0))
+        .unwrap();
     assert!(path.iter().any(|q| q.x > 2.5 && q.x < 3.1), "{path:?}");
     assert!(path.iter().any(|q| q.x > 4.9 && q.x < 5.5), "{path:?}");
 }
@@ -451,16 +503,28 @@ fn a_link_lets_the_path_jump_a_gap() {
 fn a_one_way_link_is_not_used_backwards() {
     let mut w = gap_world();
     w.add_link(jump(false, u32::MAX)).unwrap();
-    assert!(w.find_path(p(1.0, 1.5), p(7.0, 1.5), AgentClass(0)).is_some());
-    assert!(w.find_path(p(7.0, 1.5), p(1.0, 1.5), AgentClass(0)).is_none());
+    assert!(
+        w.find_path(p(1.0, 1.5), p(7.0, 1.5), AgentClass(0))
+            .is_some()
+    );
+    assert!(
+        w.find_path(p(7.0, 1.5), p(1.0, 1.5), AgentClass(0))
+            .is_none()
+    );
 }
 
 #[test]
 fn class_mask_hides_the_link_from_other_classes() {
     let mut w = gap_world();
     w.add_link(jump(true, 0b1)).unwrap();
-    assert!(w.find_path(p(1.0, 1.5), p(7.0, 1.5), AgentClass(0)).is_some());
-    assert!(w.find_path(p(1.0, 1.5), p(7.0, 1.5), AgentClass(1)).is_none());
+    assert!(
+        w.find_path(p(1.0, 1.5), p(7.0, 1.5), AgentClass(0))
+            .is_some()
+    );
+    assert!(
+        w.find_path(p(1.0, 1.5), p(7.0, 1.5), AgentClass(1))
+            .is_none()
+    );
 }
 
 #[test]
@@ -480,7 +544,10 @@ fn removing_a_link_closes_the_gap_again() {
     let id = w.add_link(jump(true, u32::MAX)).unwrap();
     assert!(w.remove_link(id));
     assert!(!w.remove_link(id));
-    assert!(w.find_path(p(1.0, 1.5), p(7.0, 1.5), AgentClass(0)).is_none());
+    assert!(
+        w.find_path(p(1.0, 1.5), p(7.0, 1.5), AgentClass(0))
+            .is_none()
+    );
 }
 
 // ---------------------------------------------------------------- queue
@@ -514,10 +581,16 @@ fn a_blocker_cuts_the_route_and_removing_it_restores_it() {
     let mut w = world_of(vec![grid_tile((0, 0), 0.0, 0.0, 10, 2, 1.0, walk)]);
     let footprint = [p(4.0, -0.5), p(6.0, -0.5), p(6.0, 2.5), p(4.0, 2.5)];
     let id = w.add_blocker(&footprint, -1.0, 2.0).unwrap();
-    assert!(w.find_path(p(0.5, 1.0), p(9.5, 1.0), AgentClass(0)).is_none());
+    assert!(
+        w.find_path(p(0.5, 1.0), p(9.5, 1.0), AgentClass(0))
+            .is_none()
+    );
     assert!(w.remove_blocker(id));
     assert!(!w.remove_blocker(id));
-    assert!(w.find_path(p(0.5, 1.0), p(9.5, 1.0), AgentClass(0)).is_some());
+    assert!(
+        w.find_path(p(0.5, 1.0), p(9.5, 1.0), AgentClass(0))
+            .is_some()
+    );
 }
 
 #[test]
@@ -525,7 +598,9 @@ fn a_blocker_on_a_wide_floor_makes_a_detour() {
     let mut w = world_of(vec![grid_tile((0, 0), 0.0, 0.0, 12, 8, 1.0, walk)]);
     let footprint = [p(5.0, 2.0), p(7.0, 2.0), p(7.0, 6.0), p(5.0, 6.0)];
     w.add_blocker(&footprint, -1.0, 2.0).unwrap();
-    let path = w.find_path(p(0.5, 4.0), p(11.5, 4.0), AgentClass(0)).unwrap();
+    let path = w
+        .find_path(p(0.5, 4.0), p(11.5, 4.0), AgentClass(0))
+        .unwrap();
     assert!(path_length(&path) > 11.5, "{path:?}");
     for q in &path {
         let inside = q.x > 5.05 && q.x < 6.95 && q.z > 2.05 && q.z < 5.95;
@@ -551,7 +626,11 @@ fn open_floor() -> NavWorld {
 }
 
 /// Integrates agents with the desired velocity of the world for `seconds`.
-fn simulate(world: &mut NavWorld, agents: &mut [(redox_nav::NavAgentId, Vec3, Vec3)], seconds: f32) {
+fn simulate(
+    world: &mut NavWorld,
+    agents: &mut [(redox_nav::NavAgentId, Vec3, Vec3)],
+    seconds: f32,
+) {
     let dt = 1.0 / 60.0;
     for _ in 0..(seconds / dt) as usize {
         let desired = world.update_agents(dt, agents);
@@ -583,8 +662,16 @@ fn two_agents_head_on_pass_each_other() {
         closest = closest.min((agents[0].1 - agents[1].1).length());
     }
     assert!(closest > 0.8 * 0.72, "agents overlapped: closest {closest}");
-    assert!((agents[0].1 - p(27.0, 6.0)).length() < 1.5, "a at {:?}", agents[0].1);
-    assert!((agents[1].1 - p(3.0, 6.0)).length() < 1.5, "b at {:?}", agents[1].1);
+    assert!(
+        (agents[0].1 - p(27.0, 6.0)).length() < 1.5,
+        "a at {:?}",
+        agents[0].1
+    );
+    assert!(
+        (agents[1].1 - p(3.0, 6.0)).length() < 1.5,
+        "b at {:?}",
+        agents[1].1
+    );
 }
 
 #[test]
@@ -596,7 +683,11 @@ fn a_lone_agent_walks_straight_to_its_goal() {
     w.set_goal(a, Some(p(23.0, 6.0)));
     let mut agents = vec![(a, p(3.0, 6.0), Vec3::ZERO)];
     simulate(&mut w, &mut agents, 12.0);
-    assert!((agents[0].1 - p(23.0, 6.0)).length() < 1.0, "{:?}", agents[0].1);
+    assert!(
+        (agents[0].1 - p(23.0, 6.0)).length() < 1.0,
+        "{:?}",
+        agents[0].1
+    );
 }
 
 #[test]
@@ -620,7 +711,10 @@ fn removing_an_agent_forgets_it() {
     assert!(w.remove_agent(a));
     assert!(!w.remove_agent(a));
     assert_eq!(w.agent_count(), 0);
-    assert!(w.update_agents(0.016, &[(a, p(5.0, 6.0), Vec3::ZERO)]).is_empty());
+    assert!(
+        w.update_agents(0.016, &[(a, p(5.0, 6.0), Vec3::ZERO)])
+            .is_empty()
+    );
 }
 
 #[test]
@@ -659,10 +753,7 @@ fn a_crowd_of_a_hundred_reaches_the_goal_without_overlapping_deeply() {
         }
     }
     assert!(deepest < 0.5, "overlap {deepest}");
-    let arrived = agents
-        .iter()
-        .filter(|a| a.1.x > 23.0)
-        .count();
+    let arrived = agents.iter().filter(|a| a.1.x > 23.0).count();
     assert!(arrived >= 90, "only {arrived} of 100 arrived");
 }
 
@@ -673,7 +764,9 @@ fn avoidance_bench_two_hundred_agents() {
     let mut agents = Vec::new();
     for i in 0..200u16 {
         let start = p(1.5 + f32::from(i % 20) * 0.8, 1.0 + f32::from(i / 20));
-        let id = w.add_agent(start, 0.3, 2.0, AvoidanceParams::default()).unwrap();
+        let id = w
+            .add_agent(start, 0.3, 2.0, AvoidanceParams::default())
+            .unwrap();
         w.set_goal(id, Some(p(27.0, 6.0)));
         agents.push((id, start, Vec3::ZERO));
     }

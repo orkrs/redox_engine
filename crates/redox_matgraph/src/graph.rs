@@ -192,9 +192,7 @@ pub fn arity(kind: &NodeKind) -> usize {
 /// operand, whose type is joined with the other arithmetic operands (scalars broadcast).
 pub fn input_types(kind: &NodeKind) -> &'static [Option<Ty>] {
     match kind {
-        NodeKind::Add | NodeKind::Sub | NodeKind::Mul | NodeKind::Dot | NodeKind::Pow => {
-            ARITY_TWO
-        }
+        NodeKind::Add | NodeKind::Sub | NodeKind::Mul | NodeKind::Dot | NodeKind::Pow => ARITY_TWO,
         NodeKind::Lerp | NodeKind::Clamp => ARITY_THREE,
         NodeKind::Normalize | NodeKind::OneMinus => ARITY_ONE,
         NodeKind::SurfaceOutput => SURFACE_INPUTS,
@@ -210,9 +208,7 @@ pub fn output_type(kind: &NodeKind, inputs: &[Ty]) -> Ty {
             Ty::Vec3
         }
         NodeKind::VertexColor => Ty::Vec4,
-        NodeKind::Time | NodeKind::ConstF32(_) | NodeKind::Dot | NodeKind::SurfaceOutput => {
-            Ty::F32
-        }
+        NodeKind::Time | NodeKind::ConstF32(_) | NodeKind::Dot | NodeKind::SurfaceOutput => Ty::F32,
         NodeKind::Param { ty, .. } => *ty,
         NodeKind::Normalize | NodeKind::OneMinus => inputs.first().copied().unwrap_or(Ty::F32),
         NodeKind::Add

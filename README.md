@@ -9,7 +9,7 @@ This README documents the **current state** of the engine and serves as a starti
 
 ---
 
-## Status at a glance (2026-10-17)
+## Status at a glance (2026-10-29)
 
 RedOx is a **work in progress**: a solid, tested core with a modern renderer, and an editor that is
 still a viewer rather than a production tool. Everything below is what the code does today, no more.
@@ -23,7 +23,10 @@ still a viewer rather than a production tool. Everything below is what the code 
 | Physics, audio, input | **Working**: rapier 0.36 (layers from a file, shape casts, contact events, joints), kira 0.12 (sound cues with priorities), gamepads, key rebinding, text/IME input (gamepad and IME not checked on live hardware) |
 | Scripting | **Prototype**: WebAssembly (`wasmi`, optional `wasmtime`) with fuel, memory cap and permissions; small host API (named values, events), modules from folders or `.pak` ([ADR 0006](docs/adr/0006-wasm-runtime.md)) |
 | World and saves | **Working**: partitioned world, binary `world.bin`, save manager |
-| Animation | **Working**: clips, CPU skinning, two-bone IK, animation graph (state machines, blend trees, masked layers, root motion) |
+| Animation | **Working**: clips, CPU and GPU skinning, morph targets, two-bone IK, animation graph (state machines, blend trees, masked layers, root motion) |
+| Navigation | **New**: `redox_nav` - tiled navmesh bake (`redox_cook bake-navmesh`), paths, off-mesh links, blockers, ORCA avoidance. 200 agents cost ~9.5 ms per update (target 1 ms) |
+| Materials | **In progress**: `material_surface`, clear coat, anisotropy, wrap SSS, additive; graph core in `redox_matgraph` (not yet wired into the renderer) |
+| Virtual geometry | Flat meshlet LODs work; cluster DAG, page plan/pool and HLOD proxies exist as CPU code, the GPU traversal and streaming are not done |
 | Editor | **Early**: docking UI, outliner, inspector, asset browser, viewport; not a full authoring tool yet |
 | Platforms | Verified on Windows + Vulkan only. DX12 and Metal paths exist but were not exercised |
 
@@ -124,6 +127,12 @@ The repository is a Cargo workspace. Each domain lives in its own crate with a m
 
 ### `crates/redox_audio`
 - Handles audio playback (via `kira`), exposes debug hooks for visualisation, and stays independent of rendering.
+
+### `crates/redox_nav`
+- Navigation: baking (rerecast), `.nav` data, `NavWorld` queries, links, blockers, avoidance (landmass) and ECS agents. Backend types never leave the crate.
+
+### `crates/redox_matgraph`
+- Material graph core: RON format, validation, IR, WGSL generation. No GPU dependency.
 
 ### `crates/redox_ui`
 - Provides debug UI integration using `egui` and `egui_wgpu`. Optional at runtime, mostly used in examples.
