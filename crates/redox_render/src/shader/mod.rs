@@ -77,6 +77,14 @@ pub const VG_RESOLVE_WGSL: &str = include_str!("../../shaders/vg_resolve.wgsl");
 /// Source of `vg_shadow.wgsl`.
 pub const VG_SHADOW_WGSL: &str = include_str!("../../shaders/vg_shadow.wgsl");
 /// Source of `vg_cull.wgsl`.
+/// Shared culling helpers of the VG compute shaders (see `vg_common.wgsl`).
+pub const VG_COMMON_WGSL: &str = include_str!("../../shaders/vg_common.wgsl");
+
+/// Body of `vg_cull.wgsl`, without the shared helpers (hot-reload only).
+#[cfg(feature = "shader-hot-reload")]
+const VG_CULL_BODY_WGSL: &str = include_str!("../../shaders/vg_cull.wgsl");
+
+/// Source of `vg_cull.wgsl` with the shared helpers in front.
 pub const VG_CULL_WGSL: &str = concat!(
     include_str!("../../shaders/vg_common.wgsl"),
     include_str!("../../shaders/vg_cull.wgsl"),
@@ -269,6 +277,14 @@ pub fn load(name: &str) -> String {
         return [
             read_part("material_surface.wgsl", MATERIAL_SURFACE_WGSL),
             read_part("pbr.wgsl", PBR_BODY_WGSL),
+        ]
+        .join("\n");
+    }
+    if name == "vg_cull" {
+        // `vg_cull` needs the shared helpers in front of its body (see `VG_CULL_WGSL`).
+        return [
+            read_part("vg_common.wgsl", VG_COMMON_WGSL),
+            read_part("vg_cull.wgsl", VG_CULL_BODY_WGSL),
         ]
         .join("\n");
     }
