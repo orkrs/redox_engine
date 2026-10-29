@@ -37,6 +37,7 @@ pub mod commands;
 pub mod config;
 pub mod dispatcher;
 pub mod plugin;
+pub mod script_world;
 pub mod state;
 pub mod time;
 pub mod window;
