@@ -152,6 +152,11 @@ pub struct VgResolvePass {
     /// Render pipeline.
     pub pipeline: wgpu::RenderPipeline,
     resolve_bgl: wgpu::BindGroupLayout,
+    /// Layouts the pipeline was built with, kept for the graph variants (MAT-07 step 3).
+    frame_bgl: wgpu::BindGroupLayout,
+    scene_bgl: wgpu::BindGroupLayout,
+    hdr_format: wgpu::TextureFormat,
+    sample_count: u32,
 }
 
 impl VgResolvePass {
@@ -276,7 +281,57 @@ impl VgResolvePass {
         Self {
             pipeline,
             resolve_bgl,
+            frame_bgl: frame_bgl.clone(),
+            scene_bgl: scene_bgl.clone(),
+            hdr_format,
+            sample_count,
         }
+    }
+
+    /// Resolve pipeline of one graph material slot (MAT-07 step 3): the base layouts plus the
+    /// graph parameter group 3, the same target and blend as [`VgResolvePass::pipeline`].
+    /// `module` is the slot's module from `matgraph_passes::vg_resolve_source`.
+    pub(crate) fn graph_pipeline(
+        &self,
+        device: &wgpu::Device,
+        graph_bgl: &wgpu::BindGroupLayout,
+        module: &wgpu::ShaderModule,
+    ) -> wgpu::RenderPipeline {
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("vg_resolve_graph_pipeline_layout"),
+            bind_group_layouts: &[
+                Some(&self.frame_bgl),
+                Some(&self.scene_bgl),
+                Some(&self.resolve_bgl),
+                Some(graph_bgl),
+            ],
+            immediate_size: 0,
+        });
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: crate::pipeline_cache::get(),
+            label: Some("vg_resolve_graph_pipeline"),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState {
+                module,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: self.hdr_format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: multisample_state(self.sample_count),
+            multiview_mask: None,
+        })
     }
 
     /// Creates the bind group for the visibility targets.

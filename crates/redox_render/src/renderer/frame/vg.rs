@@ -3,7 +3,32 @@
 use super::super::*;
 use super::FrameState;
 
+/// Graph material slots drawn by the VG resolve. Further graph slots keep the base shading.
+const MAX_VG_GRAPH_MATERIALS: usize = 8;
+
 impl Renderer {
+    /// Builds the VG resolve pipelines of the graph slots (at most [`MAX_VG_GRAPH_MATERIALS`])
+    /// and returns the slots ready to draw. Slots beyond the limit are logged once.
+    fn prepare_vg_graph_pipelines(&mut self) -> Vec<usize> {
+        let slots = self.matgraphs.vg_graph_slots();
+        if slots.len() > MAX_VG_GRAPH_MATERIALS {
+            static WARNED: std::sync::Once = std::sync::Once::new();
+            WARNED.call_once(|| {
+                log::warn!(
+                    "VG resolve draws at most {MAX_VG_GRAPH_MATERIALS} graph materials; the rest keep the base shading"
+                );
+            });
+        }
+        slots
+            .into_iter()
+            .take(MAX_VG_GRAPH_MATERIALS)
+            .filter(|&slot| {
+                self.matgraphs
+                    .ensure_vg_pipeline(&self.device, slot, &self.vg_resolve_pass)
+            })
+            .collect()
+    }
+
     pub(super) fn pass_cluster_vg_cull(&mut self, f: &mut FrameState<'_>) {
         f.touch("hiz_prev");
         f.touch("vg_clusters");
@@ -92,6 +117,7 @@ impl Renderer {
                 if self.vg_bind_groups_dirty {
                     self.rebuild_vg_bind_groups();
                 }
+                let graph_slots = self.prepare_vg_graph_pipelines();
                 if let Some(vg) = &self.vg_system {
                     {
                         let mut vis_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -182,6 +208,17 @@ impl Renderer {
                             &self.scene_bind_group,
                             &self.vg_resolve_bind_group,
                         );
+                        // Graph slots: each redraws the full screen and keeps only its own pixels.
+                        for slot in &graph_slots {
+                            if let Some((pipeline, params)) = self.matgraphs.vg_binding(*slot) {
+                                resolve_pass.set_pipeline(pipeline);
+                                resolve_pass.set_bind_group(0, &self.frame_bind_group, &[]);
+                                resolve_pass.set_bind_group(1, &self.scene_bind_group, &[]);
+                                resolve_pass.set_bind_group(2, &self.vg_resolve_bind_group, &[]);
+                                resolve_pass.set_bind_group(3, params, &[]);
+                                resolve_pass.draw(0..3, 0..1);
+                            }
+                        }
                     }
                 }
             }
