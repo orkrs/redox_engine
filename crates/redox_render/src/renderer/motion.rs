@@ -76,6 +76,10 @@ impl ObjectMotion {
 impl super::Renderer {
     /// Works out which objects moved since the last frame and uploads their previous matrices.
     pub(super) fn update_object_motion(&mut self, objects: &[RenderObject]) {
+        // Captures keep last frame's motion history (see `renderer::capture_state`).
+        if self.probe_capture_active {
+            return;
+        }
         let ids = self.frame_object_ids.take();
         self.object_motion.update(objects, ids.as_deref());
         let bytes = bytemuck::cast_slice(&self.object_motion.prev_matrices).to_vec();

@@ -435,7 +435,8 @@ fn create_prev_depth_fallback_texture(
 
 /// Creates one of the two ping-pong TAA history textures.
 ///
-/// Format: `Rgba16Float`.  Usages: `RENDER_ATTACHMENT | TEXTURE_BINDING`.
+/// Format: `Rgba16Float`.  Usages: `RENDER_ATTACHMENT | TEXTURE_BINDING | COPY_SRC | COPY_DST`
+/// (the copies let a reflection probe capture save and restore the history).
 pub fn create_history_texture(
     device: &wgpu::Device,
     width: u32,
@@ -453,7 +454,10 @@ pub fn create_history_texture(
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
         format: wgpu::TextureFormat::Rgba16Float,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::COPY_SRC
+            | wgpu::TextureUsages::COPY_DST,
         view_formats: &[],
     });
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());

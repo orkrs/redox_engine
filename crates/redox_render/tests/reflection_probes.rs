@@ -554,3 +554,126 @@ fn outside_the_box_the_global_ibl_is_used() {
         max_channel_diff(&without, &with)
     );
 }
+
+#[test]
+fn the_frame_after_a_capture_equals_the_frame_without_one() {
+    let _guard = lock();
+    let Some(adapter) = common::adapter() else {
+        eprintln!("no GPU adapter, skipping");
+        return;
+    };
+    let Some(mut plain) = common::renderer(&adapter, SIZE) else {
+        eprintln!("no device, skipping");
+        return;
+    };
+    let Some(mut captured) = common::renderer(&adapter, SIZE) else {
+        eprintln!("no device, skipping");
+        return;
+    };
+    let plain_scene = scene(&mut plain);
+    let captured_scene = scene(&mut captured);
+    let (eye, forward) = reflection_view();
+
+    // Two identical renderers; only one of them captures. The probe stays disabled, so the
+    // capture's faces are the only thing that can differ between the two frames.
+    // ASSUMPTION: the VSM page feedback is read back asynchronously, so two renderers may
+    // harvest it at different frames and the bytes differ by a level or two. If this test is
+    // flaky, relax the assertion to `max_channel_diff <= 1` as the other frame tests do.
+    captured.set_reflection_probes(&[probe(Vec3::ZERO, 0)]);
+    captured
+        .capture_reflection_probe(0, &captured_scene.objects, &captured_scene.lights)
+        .expect("capture");
+
+    let without = render(&mut plain, &plain_scene, eye, forward);
+    let with = render(&mut captured, &captured_scene, eye, forward);
+
+    let differing = differing_bytes(&without, &with);
+    assert_eq!(
+        differing,
+        0,
+        "{differing} bytes differ, largest difference {}",
+        max_channel_diff(&without, &with)
+    );
+}
+
+/// Green minus red over the whole frame: it rises as the reflection turns from the red probe
+/// (A) to the green one (B).
+fn green_minus_red(frame: &[u8]) -> i64 {
+    frame
+        .chunks_exact(4)
+        .map(|px| i64::from(px[1]) - i64::from(px[0]))
+        .sum()
+}
+
+#[test]
+fn two_overlapping_probes_blend_monotonically_across_their_zone() {
+    let _guard = lock();
+    let Some(adapter) = common::adapter() else {
+        eprintln!("no GPU adapter, skipping");
+        return;
+    };
+    let Some(mut renderer) = common::renderer(&adapter, SIZE) else {
+        eprintln!("no device, skipping");
+        return;
+    };
+    let scene = scene(&mut renderer);
+    let (eye, forward) = reflection_view();
+    let green = renderer.add_material(Material::solid(Vec3::new(0.0, 1.0, 0.0)));
+    let mut green_objects = scene.objects.clone();
+    green_objects[1].material_index = green;
+
+    // Probe A: red wall, no parallax (huge box), higher priority, weight 1 everywhere.
+    let red_probe = ReflectionProbe {
+        center: Vec3::ZERO,
+        half_extent: Vec3::splat(1000.0),
+        blend_distance: 0.0,
+        priority: 1,
+    };
+    // Probe B: green wall, same capture centre. Its box grows around the centre, so its weight
+    // at the floor rises from 0 to 1 while the captured content stays valid.
+    let grown = |half: f32| ReflectionProbe {
+        center: Vec3::ZERO,
+        half_extent: Vec3::splat(half),
+        blend_distance: 4.0,
+        priority: 0,
+    };
+    renderer.set_reflection_probes(&[red_probe, grown(3.0)]);
+    renderer
+        .capture_reflection_probe(0, &scene.objects, &scene.lights)
+        .expect("capture red");
+    renderer
+        .capture_reflection_probe(1, &green_objects, &scene.lights)
+        .expect("capture green");
+    renderer.set_reflection_probes_enabled(true);
+
+    // ASSUMPTION: the sweep varies B's box, not the camera or B's centre (moving the centre
+    // without a new capture would be inconsistent). Parallax correction of B still depends on
+    // its box, so per-pixel colour is not strictly monotone; the tolerances below absorb that.
+    // ASSUMPTION: `set_reflection_probes` keeps the captured cube of slot 1 across calls.
+    const HALF_EXTENTS: [f32; 9] = [3.0, 3.75, 4.5, 5.25, 6.0, 6.75, 7.5, 8.25, 9.0];
+    let samples: Vec<i64> = HALF_EXTENTS
+        .iter()
+        .map(|&half| {
+            renderer.set_reflection_probes(&[red_probe, grown(half)]);
+            green_minus_red(&render(&mut renderer, &scene, eye, forward))
+        })
+        .collect();
+    eprintln!("blend samples (green - red): {samples:?}");
+
+    let first = samples[0];
+    let last = samples[samples.len() - 1];
+    let range = (last - first) as f64;
+    assert!(range > 0.0, "the probe must change the reflection: {samples:?}");
+    // A step may not exceed 2.5 times the even share of the total change; reversals are
+    // allowed only as frame noise (5 % of the total change).
+    let step_limit = 2.5 * range / (samples.len() - 1) as f64;
+    let noise = 0.05 * range;
+    for pair in samples.windows(2) {
+        let jump = (pair[1] - pair[0]) as f64;
+        assert!(jump >= -noise, "the blend reverses by {jump}: {samples:?}");
+        assert!(
+            jump <= step_limit,
+            "the blend jumps by {jump}, limit {step_limit}: {samples:?}"
+        );
+    }
+}

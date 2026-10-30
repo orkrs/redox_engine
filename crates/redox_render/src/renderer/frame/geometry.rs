@@ -24,7 +24,7 @@ impl Renderer {
         }
         // 2. Normal pass (normals + linear depth for SSAO)
         self.record_normal_pass(encoder, objects);
-        if self.vsm_enabled {
+        if self.vsm_enabled && !self.probe_capture_active {
             let view_proj = Mat4::from_cols_array_2d(&self.camera_uniform.view_proj);
             self.vsm_page_request.record(
                 &self.device,

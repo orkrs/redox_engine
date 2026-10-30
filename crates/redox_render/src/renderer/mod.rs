@@ -5,6 +5,7 @@ mod accessors;
 mod assets;
 mod attachments;
 mod batching;
+mod capture_state;
 mod contexts;
 mod create;
 mod debug_draw;
@@ -509,6 +510,10 @@ pub struct Renderer {
 
     /// Point lights for the current frame (shared between update_cluster_lights and render_frame_into).
     pub current_point_lights: Vec<crate::light::PointLight>,
+
+    /// True while a reflection probe capture renders its faces: the VSM clipmap, page feedback
+    /// and object motion history are then left as they were (see `renderer::capture_state`).
+    probe_capture_active: bool,
 
     /// Reused each frame — avoids `Vec<ModelUniform>` allocation in upload.
     model_uniform_scratch: Vec<ModelUniform>,

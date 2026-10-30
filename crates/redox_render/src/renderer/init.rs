@@ -948,6 +948,7 @@ impl Renderer {
             vsm_warm: false,
             prev_dynamic_poses: std::collections::HashMap::new(),
             prev_deform_poses: std::collections::HashMap::new(),
+            probe_capture_active: false,
             vsm_pages_array_view,
             vg_bind_groups_dirty: true,
             face_matrix_buffers,

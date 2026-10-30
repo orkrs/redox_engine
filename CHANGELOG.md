@@ -74,6 +74,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
   and `add_component` no longer double-drops when an old value's destructor panics.
 - ECS: aliasing `&mut` in `Query::iter_mut`, duplicate component types in `spawn_bundle`,
   ZST alignment (found by the unsafe audit).
+- Render (RFL-01): a reflection probe capture left the renderer's temporal state changed (TAA frame counter, history and previous depth, VSM screen-shadow history, VSM clipmap, page feedback, object motion), so frames after a capture differed from frames without one. The capture now saves and restores that state (`renderer::capture_state`). Not run in this session (no cargo, per the task); the bitwise test `the_frame_after_a_capture_equals_the_frame_without_one` is unverified.
 
 ### Changed
 - winit: the closure event loop now runs through `ApplicationHandler` (`redox_core::window::RunClosure`);
