@@ -28,8 +28,8 @@ pub use eval::{
     try_eval,
 };
 pub use graph::{
-    FORMAT_VERSION, GraphError, MaterialGraph, Node, NodeId, NodeKind, PortRef, Ty, arity,
-    input_types, output_type,
+    FORMAT_VERSION, GRAPH_TEXTURE_SLOTS, GraphError, MaterialGraph, Node, NodeId, NodeKind,
+    PortRef, Ty, arity, input_types, output_type,
 };
 pub use ir::{
     Ir, MathFn, Op, OpKind, ParamSlot, SamplerKind, SurfaceOutputs, lower, optimize, prune,

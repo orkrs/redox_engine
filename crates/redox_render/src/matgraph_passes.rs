@@ -8,7 +8,7 @@
 
 use redox_matgraph::{Generated, Pass};
 
-use crate::matgraph_cache::{GRAPH_PARAMS_GROUP, MaterialGraphs};
+use crate::matgraph_cache::{GRAPH_PARAMS_GROUP, MaterialGraphs, texture_decls_wgsl};
 use crate::mesh::CompressedVertex;
 use crate::pass::forward::DEPTH_FORMAT;
 use crate::pass::normal::SURFACE_FORMAT as NORMAL_SURFACE_FORMAT;
@@ -164,8 +164,9 @@ fn storage_entry(binding: u32, visibility: wgpu::ShaderStages) -> wgpu::BindGrou
 /// Module source of the depth variant: `normal.wgsl`'s outputs, with the graph parameters in
 /// group 1 and an alpha cut-out.
 pub fn depth_source(generated: &Generated) -> String {
+    let textures = texture_decls_wgsl(GraphPass::Depth.params_group());
     shader_with_vertex_decode(&format!(
-        "{MATERIAL_SURFACE_WGSL}\n{}\n{}\n{DEPTH_TEMPLATE}",
+        "{MATERIAL_SURFACE_WGSL}\n{}\n{}\n{textures}\n{DEPTH_TEMPLATE}",
         generated.uniform_wgsl, generated.wgsl
     ))
 }
@@ -173,8 +174,9 @@ pub fn depth_source(generated: &Generated) -> String {
 /// Module source of the shadow variant: depth only, graph parameters in group 2 and an alpha
 /// cut-out.
 pub fn shadow_source(generated: &Generated) -> String {
+    let textures = texture_decls_wgsl(GraphPass::Shadow.params_group());
     shader_with_vertex_decode(&format!(
-        "{MATERIAL_SURFACE_WGSL}\n{}\n{}\n{SHADOW_TEMPLATE}",
+        "{MATERIAL_SURFACE_WGSL}\n{}\n{}\n{textures}\n{SHADOW_TEMPLATE}",
         generated.uniform_wgsl, generated.wgsl
     ))
 }
@@ -182,8 +184,9 @@ pub fn shadow_source(generated: &Generated) -> String {
 /// Module source of the sun's shadow page variant: depth only, graph parameters in group 1,
 /// alpha cut-out and the vertex offset.
 pub fn vsm_source(generated: &Generated) -> String {
+    let textures = texture_decls_wgsl(GraphPass::VsmDepth.params_group());
     shader_with_vertex_decode(&format!(
-        "{MATERIAL_SURFACE_WGSL}\n{}\n{}\n{VSM_TEMPLATE}",
+        "{MATERIAL_SURFACE_WGSL}\n{}\n{}\n{textures}\n{VSM_TEMPLATE}",
         generated.uniform_wgsl, generated.wgsl
     ))
 }

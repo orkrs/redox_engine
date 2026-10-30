@@ -292,6 +292,7 @@ fn the_debug_copy_of_a_variant_is_written_once() {
             material,
             &colour_graph([0.0, 0.0, 1.0]),
             &[],
+            &[],
         )
         .unwrap();
     let file = dir.join(format!("{:016x}.wgsl", key.0));
@@ -346,6 +347,7 @@ fn a_disk_cache_file_is_reused_only_while_its_header_matches() {
             material,
             &graph,
             &[],
+            &[],
         )
         .unwrap();
     let file = dir.join(format!("{:016x}.wgsl", key.0));
@@ -373,6 +375,7 @@ fn a_disk_cache_file_is_reused_only_while_its_header_matches() {
             material,
             &graph,
             &[],
+            &[],
         )
         .unwrap();
     assert_eq!(
@@ -399,6 +402,7 @@ fn a_disk_cache_file_is_reused_only_while_its_header_matches() {
             &third.renderer.queue,
             material,
             &graph,
+            &[],
             &[],
         )
         .unwrap();
