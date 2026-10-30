@@ -352,6 +352,8 @@ impl Renderer {
                 tone_pipeline: &self.tone_mapping_pipeline,
                 tone_uniform: &self.tonemap_uniform_buffer,
                 sampler: &self.hdr_sampler,
+                vsm_info: &self.vsm_info_buffer,
+                vsm_pages: &self.vsm_pages_array_view,
             },
         );
         self.rebuild_sharp_bind_groups();

@@ -1,6 +1,8 @@
 pub mod bloom;
 /// Height fog (post effect, runs last in the chain).
 pub mod fog;
+/// Froxel fog volume: injected, integrated and composited fog with VSM sun shadows (PST-06 step 3).
+pub mod fog_froxel;
 /// Motion blur and depth of field, run between TAA and bloom.
 pub mod post_fx;
 /// Refraction offset and mip math for refractive materials (MAT-06).

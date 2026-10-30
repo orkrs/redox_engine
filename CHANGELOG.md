@@ -113,3 +113,4 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - Dependencies: wgpu 30, naga 30, winit 0.30, egui 0.36 (dock 0.21, plot 0.37), rapier3d 0.36, kira 0.12, glam 0.33; toolchain 1.96, MSRV 1.95; thiserror 2, image 0.25, ron 0.12, notify 8, git2 0.21, rand 0.10, pollster 1, flume 0.12, hashbrown 0.17.
 - CI: MSRV, Miri (ECS), docs (`-D warnings`), file-size check, weekly schedule; Dependabot.
 - Tests: ECS ownership/drop tests, proptest model test, editor CLI tests.
+- Render: froxel fog volume (PST-06 step 3): `set_fog_froxel`, 160x90x64 grid with VSM sun shadows, inject/integrate compute passes and a composite that replaces the analytic fog; not run on GPU yet.

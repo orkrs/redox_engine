@@ -185,6 +185,18 @@ impl Renderer {
         self.post_fx_settings.fog
     }
 
+    /// Switches fog to the froxel volume (PST-06 step 3). Sun in-scatter is then shadowed by the
+    /// VSM clipmap, so light shafts stop at occluders. The grid is approximate (slab sampling), and
+    /// shadows are off wherever VSM is off. Needs `set_fog(Some(..))` and TAA, like the analytic fog.
+    pub fn set_fog_froxel(&mut self, on: bool) {
+        self.post_fx_settings.fog_froxel = on;
+    }
+
+    /// Whether fog runs through the froxel volume.
+    pub fn fog_froxel(&self) -> bool {
+        self.post_fx_settings.fog_froxel
+    }
+
     /// Sets the exposure used by tone mapping.
     pub fn set_exposure(&mut self, exposure: f32) {
         self.exposure = exposure.max(0.0);
