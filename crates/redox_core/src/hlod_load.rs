@@ -226,6 +226,7 @@ mod tests {
             indices: &indices,
             transform: Mat4::IDENTITY,
             color: [1.0, 0.0, 0.0],
+            vertex_colors: None,
         };
         let params = HlodParams {
             target_triangles: 10,

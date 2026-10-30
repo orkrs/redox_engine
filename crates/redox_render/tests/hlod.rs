@@ -78,6 +78,7 @@ fn rig() -> Option<Rig> {
         indices: &cube.indices,
         transform,
         color: [0.8, 0.5, 0.3],
+        vertex_colors: None,
     };
     let params = HlodParams {
         target_triangles: 2000,

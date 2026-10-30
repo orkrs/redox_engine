@@ -65,7 +65,11 @@ pub struct HlodInput<'a> {
     /// Local-to-world transform applied to `positions`.
     pub transform: Mat4,
     /// Flat linear RGB colour of the source material, each channel in `0..=1`.
+    /// Used for every vertex when `vertex_colors` is `None`.
     pub color: [f32; 3],
+    /// Optional linear RGB colour per position (same length as `positions`), e.g. the
+    /// glTF `COLOR_0` attribute. Each triangle corner takes the colour of its vertex.
+    pub vertex_colors: Option<&'a [[f32; 3]]>,
 }
 
 /// Parameters of [`build_proxy`].
@@ -156,6 +160,12 @@ impl Welder {
         if !input.indices.len().is_multiple_of(3) {
             return Err(HlodError::Degenerate);
         }
+        if input
+            .vertex_colors
+            .is_some_and(|colors| colors.len() != input.positions.len())
+        {
+            return Err(HlodError::Degenerate);
+        }
         let world: Vec<Vec3> = input
             .positions
             .iter()
@@ -168,7 +178,7 @@ impl Welder {
             .iter()
             .map(|p| self.vertex(*p))
             .collect::<Result<_, _>>()?;
-        let colour = Vec3::from_array(input.color);
+        let flat = Vec3::from_array(input.color);
         for tri in input.indices.chunks_exact(3) {
             let (Some(&a), Some(&b), Some(&c)) = (
                 world.get(tri[0] as usize),
@@ -184,6 +194,12 @@ impl Welder {
                     .get(local as usize)
                     .copied()
                     .ok_or(HlodError::Degenerate)?;
+                let colour = match input.vertex_colors {
+                    Some(colors) => Vec3::from_array(
+                        *colors.get(local as usize).ok_or(HlodError::Degenerate)?,
+                    ),
+                    None => flat,
+                };
                 self.colour_sum[id as usize] += colour * weight;
                 self.area_sum[id as usize] += weight;
                 self.indices.push(id);

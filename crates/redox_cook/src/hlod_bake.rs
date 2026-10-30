@@ -59,10 +59,39 @@ pub fn parse_options(flags: &[&str]) -> Result<HlodOptions, String> {
     Ok(options)
 }
 
+/// Where the colour of a mesh primitive comes from.
+#[derive(Debug, Clone, PartialEq)]
+enum PartColour {
+    /// glTF `COLOR_0` per vertex, multiplied by the material base colour.
+    PerVertex(Vec<[f32; 3]>),
+    /// The material base colour (the primitive has no vertex colours).
+    Flat([f32; 3]),
+    /// Neither: the colour of the actor kind table.
+    Table,
+}
+
+/// Picks the colour source of a primitive from its vertex colours and its material.
+fn choose_colour(vertex_colors: Option<Vec<[f32; 3]>>, base: Option<[f32; 3]>) -> PartColour {
+    match (vertex_colors, base) {
+        (Some(colors), base) => {
+            let [r, g, b] = base.unwrap_or([1.0; 3]);
+            PartColour::PerVertex(
+                colors
+                    .into_iter()
+                    .map(|[cr, cg, cb]| [cr * r, cg * g, cb * b])
+                    .collect(),
+            )
+        }
+        (None, Some(base)) => PartColour::Flat(base),
+        (None, None) => PartColour::Table,
+    }
+}
+
 /// Triangles of one mesh primitive, in the mesh's local space.
 struct MeshPart {
     positions: Vec<[f32; 3]>,
     indices: Vec<u32>,
+    colour: PartColour,
 }
 
 /// Reads every triangle primitive of a glTF/GLB file (node transforms are ignored;
@@ -85,7 +114,23 @@ fn load_mesh_parts(path: &Path) -> Result<Vec<MeshPart>, String> {
                 Some(indices) => indices.into_u32().collect(),
                 None => (0..positions.len() as u32).collect(),
             };
-            parts.push(MeshPart { positions, indices });
+            let vertex_colors = reader
+                .read_colors(0)
+                .map(|colors| colors.into_rgb_f32().collect::<Vec<_>>());
+            // ASSUMPTION: a textured material contributes no flat colour; its primitives
+            // fall back to the kind table colour (textures are ignored by the proxy).
+            let material = primitive.material();
+            let pbr = material.pbr_metallic_roughness();
+            let base = (material.index().is_some() && pbr.base_color_texture().is_none()).then(|| {
+                let [r, g, b, _] = pbr.base_color_factor();
+                [r, g, b]
+            });
+            let colour = choose_colour(vertex_colors, base);
+            parts.push(MeshPart {
+                positions,
+                indices,
+                colour,
+            });
         }
     }
     if parts.is_empty() {
@@ -120,11 +165,17 @@ fn cell_inputs<'a>(
             .get(&instance.mesh)
             .ok_or_else(|| format!("mesh not loaded: {}", instance.mesh))?;
         for part in parts {
+            let (color, vertex_colors) = match &part.colour {
+                PartColour::PerVertex(colors) => (instance.color, Some(colors.as_slice())),
+                PartColour::Flat(flat) => (*flat, None),
+                PartColour::Table => (instance.color, None),
+            };
             inputs.push(HlodInput {
                 positions: &part.positions,
                 indices: &part.indices,
                 transform: instance.transform,
-                color: instance.color,
+                color,
+                vertex_colors,
             });
         }
     }
@@ -211,6 +262,29 @@ mod tests {
         assert_eq!(options.kinds, Some(PathBuf::from("k.ron")));
         let swapped = parse_options(&["--kinds", "k.ron", "--triangles", "500"]).unwrap();
         assert_eq!(swapped, options);
+    }
+
+    #[test]
+    fn vertex_colours_are_multiplied_by_the_material_colour() {
+        let colors = vec![[1.0, 1.0, 1.0], [0.5, 0.5, 0.5]];
+        let colour = choose_colour(Some(colors), Some([1.0, 0.0, 0.5]));
+        assert_eq!(
+            colour,
+            PartColour::PerVertex(vec![[1.0, 0.0, 0.5], [0.5, 0.0, 0.25]])
+        );
+    }
+
+    #[test]
+    fn a_material_without_vertex_colours_gives_a_flat_colour() {
+        assert_eq!(
+            choose_colour(None, Some([0.2, 0.4, 0.6])),
+            PartColour::Flat([0.2, 0.4, 0.6])
+        );
+    }
+
+    #[test]
+    fn a_primitive_without_colour_uses_the_kind_table() {
+        assert_eq!(choose_colour(None, None), PartColour::Table);
     }
 
     #[test]
