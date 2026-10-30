@@ -271,9 +271,7 @@ impl Transport for LoopbackTransport {
                 if state.connected.remove(&id) {
                     state.upstream.remove(&id);
                     state.downstream.remove(&id);
-                    state
-                        .server_events
-                        .push(NetEvent::Disconnected(id, reason));
+                    state.server_events.push(NetEvent::Disconnected(id, reason));
                 }
             }
         }

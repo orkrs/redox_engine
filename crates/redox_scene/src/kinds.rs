@@ -184,7 +184,11 @@ mod tests {
     fn to_instance_applies_position_yaw_and_scale() {
         let table = ActorKindTable::from_ron(TABLE).unwrap();
         let instance = table
-            .to_instance(&actor("crate", [3.0, 1.0, -4.0], std::f32::consts::FRAC_PI_2))
+            .to_instance(&actor(
+                "crate",
+                [3.0, 1.0, -4.0],
+                std::f32::consts::FRAC_PI_2,
+            ))
             .unwrap();
         let expected = Mat4::from_scale_rotation_translation(
             Vec3::splat(2.0),

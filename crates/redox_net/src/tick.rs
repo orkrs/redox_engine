@@ -89,7 +89,9 @@ mod tests {
             estimator.observe(tick, rtt);
         }
         // The last snapshot was taken at tick 59 and arrived 40 ms later, which is tick 60.2.
-        let estimate = estimator.estimate().expect("estimate exists after snapshots");
+        let estimate = estimator
+            .estimate()
+            .expect("estimate exists after snapshots");
         assert!(estimate.abs_diff(60) <= 1, "estimate was {estimate}");
     }
 }

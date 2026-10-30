@@ -74,7 +74,8 @@ impl FroxelVolume {
         let inject_texture = create_volume(device, "fog_froxel_inject");
         let integrated_texture = create_volume(device, "fog_froxel_integrated");
         let inject_view = inject_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let integrated_view = integrated_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let integrated_view =
+            integrated_texture.create_view(&wgpu::TextureViewDescriptor::default());
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("fog_froxel_uniform"),
             size: std::mem::size_of::<FogUniform>() as u64,
@@ -121,15 +122,14 @@ impl FroxelVolume {
             "cs_inject",
         );
 
-        let integrate_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("fog_froxel_integrate_bgl"),
-                entries: &[
-                    compute_entry(0, uniform_ty()),
-                    compute_entry(1, texture_ty(wgpu::TextureViewDimension::D3)),
-                    compute_entry(2, storage_volume_ty()),
-                ],
-            });
+        let integrate_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("fog_froxel_integrate_bgl"),
+            entries: &[
+                compute_entry(0, uniform_ty()),
+                compute_entry(1, texture_ty(wgpu::TextureViewDimension::D3)),
+                compute_entry(2, storage_volume_ty()),
+            ],
+        });
         let integrate_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("fog_froxel_integrate_bg"),
             layout: &integrate_layout,

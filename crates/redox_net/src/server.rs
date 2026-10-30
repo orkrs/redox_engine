@@ -78,7 +78,12 @@ impl<T: Transport> NetServer<T> {
     }
 
     /// Sends `data` to one client on `channel`.
-    pub fn send(&mut self, client: ClientId, channel: Channel, data: &[u8]) -> Result<(), NetError> {
+    pub fn send(
+        &mut self,
+        client: ClientId,
+        channel: Channel,
+        data: &[u8],
+    ) -> Result<(), NetError> {
         let tick = self.tick;
         let peer = self
             .peers

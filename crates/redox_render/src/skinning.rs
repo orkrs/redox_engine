@@ -237,7 +237,8 @@ impl SkinnedMeshBinding {
             return;
         }
         self.morph_weights = weights.to_vec();
-        self.pose.record(self.pose.skin_key, hash_weights(&self.morph_weights));
+        self.pose
+            .record(self.pose.skin_key, hash_weights(&self.morph_weights));
         if let Some(gpu) = &self.gpu {
             gpu.upload_morph_weights(renderer.queue(), weights);
         }
@@ -323,8 +324,10 @@ impl SkinnedMeshBinding {
     /// is kept. Returns `false` if the renderer rejected the update.
     pub fn update(&mut self, renderer: &Renderer, skin_matrices: &[Mat4]) -> bool {
         self.gpu_skinned = false;
-        self.pose
-            .record(hash_matrices(skin_matrices), hash_weights(&self.morph_weights));
+        self.pose.record(
+            hash_matrices(skin_matrices),
+            hash_weights(&self.morph_weights),
+        );
         self.previous_bounds = (!self.positions.is_empty()).then(|| self.deformed_bounds());
         self.geometry.deform_morphed_into(
             skin_matrices,

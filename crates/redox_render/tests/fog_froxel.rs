@@ -113,7 +113,11 @@ impl Rig {
 /// RGB of the centre pixel of a frame.
 fn centre_rgb(frame: &[u8]) -> [f32; 3] {
     let at = ((SIZE / 2 * SIZE + SIZE / 2) * 4) as usize;
-    [f32::from(frame[at]), f32::from(frame[at + 1]), f32::from(frame[at + 2])]
+    [
+        f32::from(frame[at]),
+        f32::from(frame[at + 1]),
+        f32::from(frame[at + 2]),
+    ]
 }
 
 fn distance_to_fog(rgb: [f32; 3]) -> f32 {

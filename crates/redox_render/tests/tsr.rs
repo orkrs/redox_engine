@@ -10,12 +10,12 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use redox_math::{Aabb, Mat4, Quat, Vec3};
-use redox_render::post::tsr;
 use redox_render::camera::Camera;
 use redox_render::frame::FrameView;
 use redox_render::light::{DirectionalLight, LightScene};
 use redox_render::material::Material;
 use redox_render::mesh::primitive::create_cube;
+use redox_render::post::tsr;
 use redox_render::resource::ibl::read_texture_ktx2;
 use redox_render::shadow::ShadowClass;
 use redox_render::systems::RenderObject;
@@ -41,7 +41,10 @@ fn halton_jitter_has_no_repeats_within_a_cycle_and_stays_in_range() {
         let mut seen = HashSet::new();
         for index in 0..phases {
             let j = tsr::jitter_sequence(index, scale);
-            assert!(j[0].abs() <= 0.5 && j[1].abs() <= 0.5, "{j:?} at scale {scale}");
+            assert!(
+                j[0].abs() <= 0.5 && j[1].abs() <= 0.5,
+                "{j:?} at scale {scale}"
+            );
             assert!(
                 seen.insert((j[0].to_bits(), j[1].to_bits())),
                 "repeat at index {index}, scale {scale}"
@@ -129,7 +132,6 @@ fn rig(taa: bool, scale: f32, size: u32) -> Option<Rig> {
         cube,
         camera,
         lights,
-        size,
     })
 }
 
@@ -180,7 +182,9 @@ impl Rig {
 
 /// Eight by eight alternating tiles on a plane below the view centre.
 fn checker_plane(rig: &mut Rig) -> Vec<RenderObject> {
-    let dark = rig.renderer.add_material(Material::solid(Vec3::splat(0.08)));
+    let dark = rig
+        .renderer
+        .add_material(Material::solid(Vec3::splat(0.08)));
     let light = rig.renderer.add_material(Material::solid(Vec3::splat(0.8)));
     let mut out = Vec::new();
     for j in 0..8u32 {
@@ -202,7 +206,9 @@ fn checker_plane(rig: &mut Rig) -> Vec<RenderObject> {
 
 /// One thin (about one pixel wide) vertical bar in front of the checker plane.
 fn line_scene(rig: &mut Rig) -> Vec<RenderObject> {
-    let bright = rig.renderer.add_material(Material::solid(Vec3::splat(0.95)));
+    let bright = rig
+        .renderer
+        .add_material(Material::solid(Vec3::splat(0.95)));
     vec![rig.object(
         bright,
         1,
@@ -243,12 +249,7 @@ fn edge_sharpness(frame: &[u8], width: u32, height: u32) -> f32 {
     for y in 1..height - 1 {
         for x in 1..width - 1 {
             let l = |dx: i32, dy: i32| {
-                lum_at(
-                    frame,
-                    width,
-                    (x as i32 + dx) as u32,
-                    (y as i32 + dy) as u32,
-                )
+                lum_at(frame, width, (x as i32 + dx) as u32, (y as i32 + dy) as u32)
             };
             let gx = (l(1, -1) + 2.0 * l(1, 0) + l(1, 1)) - (l(-1, -1) + 2.0 * l(-1, 0) + l(-1, 1));
             let gy = (l(-1, 1) + 2.0 * l(0, 1) + l(1, 1)) - (l(-1, -1) + 2.0 * l(0, -1) + l(1, -1));
@@ -277,9 +278,7 @@ fn read_taa_uniform(renderer: &Renderer) -> Vec<f32> {
     renderer.queue.submit(std::iter::once(encoder.finish()));
     let slice = staging.slice(..);
     slice.map_async(wgpu::MapMode::Read, |result| assert!(result.is_ok()));
-    let _ = renderer
-        .device
-        .poll(wgpu::PollType::wait_indefinitely());
+    let _ = renderer.device.poll(wgpu::PollType::wait_indefinitely());
     let values = {
         let data = slice.get_mapped_range().expect("mapped range");
         data.chunks_exact(4)
@@ -295,7 +294,9 @@ fn read_taa_uniform(renderer: &Renderer) -> Vec<f32> {
 #[test]
 fn the_jitter_matches_the_formula_in_the_uniform() {
     let _gpu = lock();
-    let Some(mut rig) = rig(true, UPSCALE, SIZE) else { return };
+    let Some(mut rig) = rig(true, UPSCALE, SIZE) else {
+        return;
+    };
     let objects = checker_plane(&mut rig);
     rig.settle(&objects, 5);
     let values = read_taa_uniform(&rig.renderer);
@@ -308,8 +309,16 @@ fn the_jitter_matches_the_formula_in_the_uniform() {
         rig.renderer.internal_height,
     );
     // jitter_uv sits at byte offset 24, inv_scale at 32.
-    assert!((values[6] - j[0] * 0.5).abs() < 1e-6, "jitter x {}", values[6]);
-    assert!((values[7] + j[1] * 0.5).abs() < 1e-6, "jitter y {}", values[7]);
+    assert!(
+        (values[6] - j[0] * 0.5).abs() < 1e-6,
+        "jitter x {}",
+        values[6]
+    );
+    assert!(
+        (values[7] + j[1] * 0.5).abs() < 1e-6,
+        "jitter y {}",
+        values[7]
+    );
     assert!((values[8] - tsr::inv_scale(UPSCALE)).abs() < 1e-6);
 }
 
@@ -318,10 +327,14 @@ fn scale_one_is_bitwise_unchanged() {
     // ASSUMPTION: there is no stored golden frame for the native TAA path, so this checks that
     // two native runs of the same scene are byte-identical (the native path is the legacy one).
     let _gpu = lock();
-    let Some(mut a) = rig(true, 1.0, SIZE) else { return };
+    let Some(mut a) = rig(true, 1.0, SIZE) else {
+        return;
+    };
     let objects = checker_plane(&mut a);
     let first = a.settle(&objects, 12);
-    let Some(mut b) = rig(true, 1.0, SIZE) else { return };
+    let Some(mut b) = rig(true, 1.0, SIZE) else {
+        return;
+    };
     let objects = checker_plane(&mut b);
     let second = b.settle(&objects, 12);
     assert!(first == second, "native frames differ");
@@ -330,10 +343,14 @@ fn scale_one_is_bitwise_unchanged() {
 #[test]
 fn upscaling_a_static_scene_converges_towards_the_native_taa_frame() {
     let _gpu = lock();
-    let Some(mut native) = rig(true, 1.0, SIZE) else { return };
+    let Some(mut native) = rig(true, 1.0, SIZE) else {
+        return;
+    };
     let objects = checker_plane(&mut native);
     let reference = native.settle(&objects, 64);
-    let Some(mut upscaled) = rig(true, UPSCALE, SIZE) else { return };
+    let Some(mut upscaled) = rig(true, UPSCALE, SIZE) else {
+        return;
+    };
     let objects = checker_plane(&mut upscaled);
     let frame = upscaled.settle(&objects, 64);
     let db = psnr(&frame, &reference);
@@ -343,10 +360,14 @@ fn upscaling_a_static_scene_converges_towards_the_native_taa_frame() {
 #[test]
 fn the_upscaled_frame_is_not_blurrier_than_70_percent_of_native_sharpness() {
     let _gpu = lock();
-    let Some(mut native) = rig(true, 1.0, SIZE) else { return };
+    let Some(mut native) = rig(true, 1.0, SIZE) else {
+        return;
+    };
     let objects = checker_plane(&mut native);
     let reference = native.settle(&objects, 64);
-    let Some(mut upscaled) = rig(true, UPSCALE, SIZE) else { return };
+    let Some(mut upscaled) = rig(true, UPSCALE, SIZE) else {
+        return;
+    };
     let objects = checker_plane(&mut upscaled);
     let frame = upscaled.settle(&objects, 64);
     let sharp_native = edge_sharpness(&reference, SIZE, SIZE);
@@ -360,10 +381,14 @@ fn the_upscaled_frame_is_not_blurrier_than_70_percent_of_native_sharpness() {
 #[test]
 fn the_sharpen_pass_raises_edge_sharpness_but_not_above_native_plus_20_percent() {
     let _gpu = lock();
-    let Some(mut native) = rig(true, 1.0, SIZE) else { return };
+    let Some(mut native) = rig(true, 1.0, SIZE) else {
+        return;
+    };
     let objects = checker_plane(&mut native);
     let reference = native.settle(&objects, 64);
-    let Some(mut upscaled) = rig(true, UPSCALE, SIZE) else { return };
+    let Some(mut upscaled) = rig(true, UPSCALE, SIZE) else {
+        return;
+    };
     let objects = checker_plane(&mut upscaled);
     let frame = upscaled.settle(&objects, 64);
     let sharp_native = edge_sharpness(&reference, SIZE, SIZE);
@@ -377,17 +402,20 @@ fn the_sharpen_pass_raises_edge_sharpness_but_not_above_native_plus_20_percent()
 #[test]
 fn no_ringing_on_a_single_pixel_line() {
     let _gpu = lock();
-    let Some(mut rig) = rig(true, UPSCALE, SIZE) else { return };
+    let Some(mut rig) = rig(true, UPSCALE, SIZE) else {
+        return;
+    };
     let objects = line_scene(&mut rig);
     let frame = rig.settle(&objects, 48);
     let row = SIZE / 2;
     let values: Vec<f32> = (0..SIZE).map(|x| lum_at(&frame, SIZE, x, row)).collect();
-    let (peak_x, peak) = values
-        .iter()
-        .enumerate()
-        .fold((0usize, f32::MIN), |best, (x, &v)| {
-            if v > best.1 { (x, v) } else { best }
-        });
+    let (peak_x, peak) =
+        values.iter().enumerate().fold(
+            (0usize, f32::MIN),
+            |best, (x, &v)| {
+                if v > best.1 { (x, v) } else { best }
+            },
+        );
     // Neighbours of the line must not overshoot the line's peak by more than 5%.
     for x in [peak_x - 1, peak_x + 1] {
         assert!(
@@ -401,15 +429,21 @@ fn no_ringing_on_a_single_pixel_line() {
 #[test]
 fn moving_object_leaves_no_ghost_at_067() {
     let _gpu = lock();
-    let Some(mut rig) = rig(true, UPSCALE, SIZE) else { return };
-    let bright = rig.renderer.add_material(Material::solid(Vec3::splat(0.95)));
+    let Some(mut rig) = rig(true, UPSCALE, SIZE) else {
+        return;
+    };
+    let bright = rig
+        .renderer
+        .add_material(Material::solid(Vec3::splat(0.95)));
     let mut last = Vec::new();
     for step in 0..40 {
         let x = -3.0 + step as f32 * 0.15;
         let objects = vec![rig.object(bright, 1, Vec3::new(x, 0.0, -5.0), Vec3::ONE)];
         last = rig.frame(&objects);
     }
-    let row: Vec<f32> = (0..SIZE).map(|x| lum_at(&last, SIZE, x, SIZE / 2)).collect();
+    let row: Vec<f32> = (0..SIZE)
+        .map(|x| lum_at(&last, SIZE, x, SIZE / 2))
+        .collect();
     let sky = row[1];
     let covered = row.iter().filter(|&&l| (l - sky).abs() > 25.0).count();
     // PST-04 tolerance was 29 + 8 pixels; allowed here is 1.5 times that.
@@ -423,7 +457,9 @@ fn bench() {
     for size in [1080u32, 2160] {
         let mut native: Option<Vec<u8>> = None;
         for scale in [1.0f32, 0.77, UPSCALE, 0.5] {
-            let Some(mut rig) = rig(true, scale, size) else { return };
+            let Some(mut rig) = rig(true, scale, size) else {
+                return;
+            };
             let objects = checker_plane(&mut rig);
             let frame = rig.settle(&objects, 32);
             let start = Instant::now();

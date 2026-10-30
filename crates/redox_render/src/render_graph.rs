@@ -595,10 +595,7 @@ impl RenderGraph {
 
     /// Greedy slot assignment: reuse a slot whose previous tenant is already dead and
     /// whose descriptor matches. Only owned textures are assigned.
-    fn assign_slots(
-        &self,
-        lifetimes: &[Option<(usize, usize)>],
-    ) -> (Vec<Option<usize>>, usize) {
+    fn assign_slots(&self, lifetimes: &[Option<(usize, usize)>]) -> (Vec<Option<usize>>, usize) {
         let res_count = self.resources.len();
         let mut by_first: Vec<usize> = (0..res_count)
             .filter(|&r| !self.resources[r].imported && lifetimes[r].is_some())
@@ -1077,7 +1074,10 @@ mod tests {
         });
         let c = g.compile().unwrap();
         assert_eq!(names(&c), ["cull", "shade"]);
-        assert!(c.barrier_plan.is_empty(), "first use of the buffer has no previous access");
+        assert!(
+            c.barrier_plan.is_empty(),
+            "first use of the buffer has no previous access"
+        );
         assert_eq!(c.lifetimes[clusters.0 as usize], Some((0, 1)));
         assert_eq!(c.required_buffer_usage(clusters), BufferUsages::STORAGE);
     }

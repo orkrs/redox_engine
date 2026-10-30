@@ -817,7 +817,9 @@ fn profile_update(count: u16, goal: bool, neighbour_distance: f32) -> f64 {
 #[test]
 #[ignore = "timing: run with --release -- --ignored --nocapture"]
 fn profile_update_agents() {
-    eprintln!("agents | full | no goal (avoidance only) | tiny neighbourhood (path only) | 2 m | 1 m");
+    eprintln!(
+        "agents | full | no goal (avoidance only) | tiny neighbourhood (path only) | 2 m | 1 m"
+    );
     for count in [50u16, 100, 200, 400] {
         eprintln!(
             "{count:6} | {:.3} | {:.3} | {:.3} | {:.3} | {:.3}",

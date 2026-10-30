@@ -30,7 +30,6 @@ pub use message::{Message, decode, encode, message_id};
 pub use rng::SplitMix64;
 pub use server::{CLIENT_TIMEOUT, MAX_PLAYERS, NetServer, RESEND_INTERVAL};
 pub use tick::{
-    MAX_TICKS_PER_POLL, SERVER_TICK_DURATION, SERVER_TICK_RATE_HZ, TickEstimator,
-    drain_fixed_ticks,
+    MAX_TICKS_PER_POLL, SERVER_TICK_DURATION, SERVER_TICK_RATE_HZ, TickEstimator, drain_fixed_ticks,
 };
 pub use transport::{Channel, ClientId, DisconnectReason, NetEvent, SERVER_PEER, Transport};

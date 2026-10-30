@@ -406,9 +406,7 @@ fn a_broken_graph_keeps_the_previous_shader() {
         .unwrap();
 
     let broken_key = redox_matgraph::ShaderKey(good.key.0.wrapping_add(1));
-    let result = cache.get_or_build(&device, broken_key, "broken", || {
-        "fn broken( {".to_string()
-    });
+    let result = cache.get_or_build(&device, broken_key, "broken", || "fn broken( {".to_string());
     assert!(result.is_err(), "naga must refuse the broken source");
     assert_eq!(cache.len(), 1);
     assert!(cache.contains(good.key));

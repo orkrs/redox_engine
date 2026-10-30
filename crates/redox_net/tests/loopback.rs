@@ -117,8 +117,15 @@ fn unreliable_messages_may_be_lost_but_never_duplicated_to_the_game() {
     }
 
     let unique: BTreeSet<u32> = received.iter().copied().collect();
-    assert_eq!(unique.len(), received.len(), "no payload reaches the game twice");
-    assert!(received.len() < 1000, "some datagrams are lost at 30 % loss");
+    assert_eq!(
+        unique.len(),
+        received.len(),
+        "no payload reaches the game twice"
+    );
+    assert!(
+        received.len() < 1000,
+        "some datagrams are lost at 30 % loss"
+    );
     assert!(!received.is_empty());
 }
 

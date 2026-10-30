@@ -59,7 +59,8 @@ impl<T: Transport> NetClient<T> {
             return events;
         }
         for bytes in self.peer.flush(self.now, RESEND_INTERVAL) {
-            self.transport.send(SERVER_PEER, Channel::Unreliable, &bytes);
+            self.transport
+                .send(SERVER_PEER, Channel::Unreliable, &bytes);
         }
         events
     }

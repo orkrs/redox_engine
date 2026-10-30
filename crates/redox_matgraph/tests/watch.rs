@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use redox_matgraph::{GraphReload, MaterialGraph, MatGraphWatcher, Node, NodeKind};
+use redox_matgraph::{GraphReload, MatGraphWatcher, MaterialGraph, Node, NodeKind};
 
 /// A valid graph (one constant colour to the output). `name` changes the file size.
 fn valid_text(name: &str) -> String {

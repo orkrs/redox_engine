@@ -1,7 +1,6 @@
 //! Wire framing. Every datagram starts with a kind byte and a `u32` sequence number.
 
 use crate::error::NetError;
-use crate::rng::SplitMix64;
 
 /// Largest datagram produced by the layer, below a typical 1500-byte Ethernet MTU.
 pub const MAX_PACKET_BYTES: usize = 1200;
@@ -103,9 +102,7 @@ impl Frame {
                 seq,
                 payload: body.to_vec(),
             }),
-            KIND_ACK if body.is_empty() => Ok(Frame::Ack {
-                next_expected: seq,
-            }),
+            KIND_ACK if body.is_empty() => Ok(Frame::Ack { next_expected: seq }),
             KIND_ACK => Err(NetError::Malformed("acknowledgement with a payload")),
             KIND_SNAPSHOT => {
                 let tick = read_u64(body)?;
@@ -145,6 +142,7 @@ fn read_u64(bytes: &[u8]) -> Result<u64, NetError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rng::SplitMix64;
 
     #[test]
     fn every_frame_kind_roundtrips() {

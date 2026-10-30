@@ -25,9 +25,7 @@ impl Renderer {
             // their pages, both where they were and where they are now.
             let dynamic: Vec<&RenderObject> = objects
                 .iter()
-                .filter(|o| {
-                    crate::shadow::is_dynamic_caster(o.shadow_class, &o.bounds, o.deforms)
-                })
+                .filter(|o| crate::shadow::is_dynamic_caster(o.shadow_class, &o.bounds, o.deforms))
                 .collect();
             let dynamic_poses: Vec<(u32, redox_math::Mat4, redox_math::Aabb)> = dynamic
                 .iter()

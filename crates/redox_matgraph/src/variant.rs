@@ -27,9 +27,5 @@ pub fn compile_variant(
     let ir = optimize(lower(graph)?);
     let key = variant_key(&ir, opts);
     let generated = generate(&ir, opts);
-    Ok(Variant {
-        key,
-        generated,
-        ir,
-    })
+    Ok(Variant { key, generated, ir })
 }

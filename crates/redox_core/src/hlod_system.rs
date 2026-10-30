@@ -87,12 +87,7 @@ impl HlodRuntime {
 
     /// Advances every baked cell and refreshes the detail opacity of the actors
     /// listed in `members` (entity ids grouped by cell).
-    pub fn update(
-        &mut self,
-        members: &HashMap<PartitionCell, Vec<u32>>,
-        viewer: Vec3,
-        dt: f32,
-    ) {
+    pub fn update(&mut self, members: &HashMap<PartitionCell, Vec<u32>>, viewer: Vec3, dt: f32) {
         self.detail_opacity.clear();
         let baked: Vec<PartitionCell> = self.baked.iter().copied().collect();
         for cell in baked {

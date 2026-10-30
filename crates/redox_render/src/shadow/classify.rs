@@ -178,7 +178,11 @@ mod tests {
     #[test]
     fn reordering_the_list_does_not_invalidate() {
         let a = pose(0.0);
-        let b = (2, Mat4::from_translation(Vec3::X * 5.0), cube(Vec3::X * 5.0, 0.5));
+        let b = (
+            2,
+            Mat4::from_translation(Vec3::X * 5.0),
+            cube(Vec3::X * 5.0, 0.5),
+        );
         let prev = next_shadow_poses(&HashMap::new(), &[a, b], SHADOW_MOVED_EPS);
         assert!(moved_shadow_bounds(&prev, &[b, a], SHADOW_MOVED_EPS).is_empty());
     }
@@ -202,7 +206,10 @@ mod tests {
     #[test]
     fn a_new_deforming_object_invalidates_its_bounds() {
         let b = cube(Vec3::ZERO, 1.0);
-        assert_eq!(deformed_shadow_bounds(&HashMap::new(), &[(9, 0, b)]), vec![b]);
+        assert_eq!(
+            deformed_shadow_bounds(&HashMap::new(), &[(9, 0, b)]),
+            vec![b]
+        );
     }
 }
 

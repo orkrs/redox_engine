@@ -164,8 +164,16 @@ impl TilePasses {
         let groups_x = targets.tiles_x.div_ceil(WORKGROUP_SIZE);
         let groups_y = targets.tiles_y.div_ceil(WORKGROUP_SIZE);
         let steps = [
-            ("motion_blur_tile_max", &self.tile_max, &targets.bind_groups[0]),
-            ("motion_blur_neighbor_max", &self.neighbor_max, &targets.bind_groups[1]),
+            (
+                "motion_blur_tile_max",
+                &self.tile_max,
+                &targets.bind_groups[0],
+            ),
+            (
+                "motion_blur_neighbor_max",
+                &self.neighbor_max,
+                &targets.bind_groups[1],
+            ),
         ];
         for (label, pipeline, bind_group) in steps {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -334,7 +342,10 @@ mod tests {
         for d in 1..=40 {
             let w = spread_weight([40.0, 0.0], d as f32, 1.0, 1.0, 1.0, SPREAD_SOFT_Z);
             assert!(w <= previous + 1e-6, "not monotone at {d}");
-            assert!(previous - w <= 0.15 + 1e-4, "jump at {d}: {previous} -> {w}");
+            assert!(
+                previous - w <= 0.15 + 1e-4,
+                "jump at {d}: {previous} -> {w}"
+            );
             previous = w;
         }
         assert_eq!(previous, 0.0);

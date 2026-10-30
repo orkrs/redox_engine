@@ -10,9 +10,9 @@
 use bytemuck::{Pod, Zeroable};
 
 use crate::camera::CameraUniform;
-use crate::post::motion_blur_tiles::{SPREAD_SOFT_Z, TilePasses, TileTargets};
 use crate::post::fog::{FOG_WGSL, FogSettings, FogUniform, fog_uniform};
 use crate::post::fog_froxel::{FROXEL_COMPOSITE_WGSL, FroxelVolume, volume_entry};
+use crate::post::motion_blur_tiles::{SPREAD_SOFT_Z, TilePasses, TileTargets};
 use crate::post::ssr::{SSR_WGSL, SsrSettings, ssr_uniform};
 use crate::post::tone_mapping::create_tonemap_bind_group;
 use crate::shader::create_shader_module;
@@ -557,8 +557,13 @@ impl PostFx {
         inputs: &PostFxInputs<'_>,
     ) {
         let (textures, views) = create_targets(device, width, height);
-        self.tiles =
-            TileTargets::new(device, &self.tile_passes, width, height, inputs.velocity_view);
+        self.tiles = TileTargets::new(
+            device,
+            &self.tile_passes,
+            width,
+            height,
+            inputs.velocity_view,
+        );
         let (tone_bgs, lanes) = build_bindings(
             device,
             &self.passes,

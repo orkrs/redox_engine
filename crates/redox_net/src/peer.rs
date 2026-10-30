@@ -4,9 +4,7 @@ use std::collections::VecDeque;
 use std::time::Duration;
 
 use crate::error::NetError;
-use crate::frame::{
-    Frame, MAX_RELIABLE_PAYLOAD, MAX_SNAPSHOT_PAYLOAD, MAX_UNRELIABLE_PAYLOAD,
-};
+use crate::frame::{Frame, MAX_RELIABLE_PAYLOAD, MAX_SNAPSHOT_PAYLOAD, MAX_UNRELIABLE_PAYLOAD};
 use crate::reliable::{ReliableReceiver, ReliableSender};
 use crate::sequence::{DuplicateFilter, LatestGate};
 use crate::transport::Channel;
@@ -52,7 +50,12 @@ impl Peer {
     }
 
     /// Queues an application payload on `channel`. `tick` is stamped on snapshots.
-    pub(crate) fn send(&mut self, channel: Channel, data: &[u8], tick: u64) -> Result<(), NetError> {
+    pub(crate) fn send(
+        &mut self,
+        channel: Channel,
+        data: &[u8],
+        tick: u64,
+    ) -> Result<(), NetError> {
         match channel {
             Channel::Reliable => {
                 check_len(data.len(), MAX_RELIABLE_PAYLOAD)?;

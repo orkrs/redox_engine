@@ -223,7 +223,10 @@ fn dag_bench_thousand_spheres() {
     eprintln!(
         "1000 spheres: {:.2} ms wall per frame, dag draws {}",
         wall.as_secs_f64() * 1000.0 / f64::from(frames),
-        renderer.vg_system.as_ref().map_or(0, |v| v.dag_draw_count())
+        renderer
+            .vg_system
+            .as_ref()
+            .map_or(0, |v| v.dag_draw_count())
     );
     eprintln!("{}", renderer.gpu_profiler.report());
 }
