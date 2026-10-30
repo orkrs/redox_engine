@@ -82,14 +82,22 @@ pub fn frame_graph(width: u32, height: u32) -> RenderGraph {
     g.add_pass("taa_tonemap_bloom_smaa", |p| {
         p.read(hdr_resolved)
             .read(normals)
-            .read(taa_history)
-            .write(taa_history)
+            .read_write(taa_history)
             .write(backbuffer);
     });
     g.add_pass("frame_tail", |p| {
         p.read(backbuffer).side_effects();
     });
     g
+}
+
+/// Human-readable report of the compiled frame for the given target size (passes, resources,
+/// slots, culled passes and access changes). See [`crate::render_graph::CompiledGraph::report`].
+pub fn frame_graph_report(width: u32, height: u32) -> String {
+    frame_graph(width, height)
+        .compile()
+        .expect("the frame graph is valid (checked by tests)")
+        .report()
 }
 
 /// Names of the frame's passes in execution order, taken from the compiled [`frame_graph`].
@@ -163,6 +171,14 @@ mod tests {
             transients,
             "every transient gets a slot"
         );
+    }
+
+    #[test]
+    fn the_frame_graph_declares_valid_usage_and_no_self_dependency() {
+        // compile() checks usage flags, read-before-write and self-dependencies; this also
+        // covers the in-place history update of the TAA pass.
+        assert!(frame_graph(1280, 720).compile().is_ok());
+        assert!(frame_graph_report(1280, 720).contains("taa_tonemap_bloom_smaa"));
     }
 
     #[test]
