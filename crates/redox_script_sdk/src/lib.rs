@@ -44,9 +44,9 @@ macro_rules! script {
     };
 }
 
-/// Address and length of a name or buffer in the module's memory, as the host expects them.
-pub(crate) fn addr<T>(value: &T) -> i32 {
-    core::ptr::from_ref(value) as usize as i32
+/// Address of a value the host writes into.
+pub(crate) fn addr_mut<T>(value: &mut T) -> i32 {
+    core::ptr::from_mut(value) as usize as i32
 }
 
 /// Address of the first element of a slice, as the host expects it.

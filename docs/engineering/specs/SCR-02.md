@@ -47,3 +47,4 @@ pub fn raycast(origin: [f32; 3], dir: [f32; 3], max: f32) -> Option<f32>;   // r
 
 - **Подготовка координатором:** `rustup target add wasm32-unknown-unknown` до запуска агента.
 - **Приёмка:** `redox_script_sdk` собирается под `wasm32-unknown-unknown`, пример-скрипт выполняется в `redox_script` и вызывает `sys.*` из SCR-04.
+- **Исход: ✅** (2026-10-30): `redox_script_sdk` собирается под wasm32, пример `coins` выполняется тестом `sdk_coins_example_takes_a_coin_once_and_spawns_a_sparkle`. `sdk_guard_example` не сделан — 📌 мелкий хвост, не блокирует.

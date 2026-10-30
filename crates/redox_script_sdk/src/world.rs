@@ -1,7 +1,7 @@
 //! Questions to the game world: entities by name or tag, positions, overlaps, values of other
 //! entities, and navigation paths. Every answer is limited by the host (see `redox_script`).
 
-use crate::{addr, addr_of_slice, host, len_of};
+use crate::{addr_mut, addr_of_slice, host, len_of};
 
 /// Id of an entity as scripts see it. It is not an ECS handle and is valid only as the host
 /// reports it.
@@ -60,7 +60,7 @@ pub fn raycast_entity(
             addr_of_slice(&origin),
             addr_of_slice(&direction),
             max_distance,
-            addr(&mut hit),
+            addr_mut(&mut hit),
         )
     };
     (found == 1).then_some((EntityId(hit.id), hit.distance))
@@ -110,7 +110,7 @@ pub fn get_value_of(id: EntityId, key: &str) -> Option<f32> {
             id.0 as i32,
             addr_of_slice(key.as_bytes()),
             len_of(key.as_bytes()),
-            addr(&mut value),
+            addr_mut(&mut value),
         )
     };
     (found == 1).then_some(value)

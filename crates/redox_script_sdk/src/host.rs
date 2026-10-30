@@ -15,8 +15,14 @@ unsafe extern "C" {
     pub(crate) fn find_by_tag(tag: i32, tag_len: i32, out: i32, out_cap: i32) -> i32;
     pub(crate) fn position_of(id: i32, out: i32) -> i32;
     pub(crate) fn raycast_entity(origin: i32, direction: i32, max: f32, out: i32) -> i32;
-    pub(crate) fn overlap_sphere(cx: f32, cy: f32, cz: f32, radius: f32, out: i32, out_cap: i32)
-    -> i32;
+    pub(crate) fn overlap_sphere(
+        cx: f32,
+        cy: f32,
+        cz: f32,
+        radius: f32,
+        out: i32,
+        out_cap: i32,
+    ) -> i32;
     pub(crate) fn overlap_box(
         cx: f32,
         cy: f32,

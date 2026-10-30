@@ -17,13 +17,25 @@ pub fn input(name: &str) -> f32 {
 /// Writes the output `name`; the host reads it back after the update. Invalid names are ignored.
 pub fn output(name: &str, value: f32) {
     // SAFETY: as in `input`.
-    unsafe { host::set_f32(addr_of_slice(name.as_bytes()), len_of(name.as_bytes()), value) }
+    unsafe {
+        host::set_f32(
+            addr_of_slice(name.as_bytes()),
+            len_of(name.as_bytes()),
+            value,
+        )
+    }
 }
 
 /// Emits the event `name` with `value`. The host collects events of this call (at most 256).
 pub fn emit(name: &str, value: f32) {
     // SAFETY: as in `input`.
-    unsafe { host::emit_event(addr_of_slice(name.as_bytes()), len_of(name.as_bytes()), value) }
+    unsafe {
+        host::emit_event(
+            addr_of_slice(name.as_bytes()),
+            len_of(name.as_bytes()),
+            value,
+        )
+    }
 }
 
 /// Emits the command `name` with three numbers. The host applies the commands after the call,
