@@ -11,6 +11,7 @@ use redox_render::camera::Camera;
 use redox_render::frame::FrameView;
 use redox_render::light::{DirectionalLight, LightScene};
 use redox_render::material::Material;
+use redox_render::matgraph_passes::GraphPass;
 use redox_render::mesh::primitive::create_cube;
 use redox_render::resource::ibl::read_texture_ktx2;
 use redox_render::systems::RenderObject;
@@ -214,8 +215,16 @@ fn two_instances_share_one_shader_with_different_params() {
         .unwrap();
 
     let matgraphs = &rig.renderer.matgraphs;
-    assert_eq!(matgraphs.shader_count(), 1, "one module for both slots");
-    assert_eq!(matgraphs.pipeline_count(), 1);
+    assert_eq!(
+        matgraphs.shader_count(),
+        3,
+        "one module per codegen pass (main, depth, shadow) for both slots"
+    );
+    assert_eq!(
+        matgraphs.pipeline_count(),
+        5,
+        "forward, alpha, additive, depth and shadow pipelines"
+    );
     assert_eq!(matgraphs.material_count(), 2);
 
     // Cubes left and right of the centre: about pixel 31 and 65 at this camera.
@@ -288,4 +297,205 @@ fn the_debug_copy_of_a_variant_is_written_once() {
     let file = dir.join(format!("{:016x}.wgsl", key.0));
     let text = std::fs::read_to_string(&file).expect("debug copy is written");
     assert!(text.contains("material_surface_graph_variant"));
+}
+
+#[test]
+fn a_graph_slot_has_a_pipeline_for_every_pass() {
+    let Some(mut rig) = rig() else {
+        eprintln!("no GPU adapter, skipping");
+        return;
+    };
+    let graphed = rig.renderer.add_material(Material::solid(Vec3::ONE));
+    let plain = rig.renderer.add_material(Material::solid(Vec3::ONE));
+    rig.renderer
+        .set_material_graph(graphed, &colour_graph([0.0, 1.0, 0.0]), &[])
+        .unwrap();
+    for pass in GraphPass::ALL {
+        assert!(
+            rig.renderer.matgraphs.pass_binding(graphed, pass).is_some(),
+            "graph slot has no {pass:?} pipeline"
+        );
+        assert!(
+            rig.renderer.matgraphs.pass_binding(plain, pass).is_none(),
+            "plain slot must keep the default {pass:?} pipeline"
+        );
+    }
+}
+
+#[test]
+fn a_disk_cache_file_is_reused_only_while_its_header_matches() {
+    use redox_render::matgraph_cache::{cache_text, graph_source_hash};
+
+    let Some(mut first) = rig() else {
+        eprintln!("no GPU adapter, skipping");
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("matgraph_reuse_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let graph = colour_graph([0.0, 0.5, 1.0]);
+    let hash = graph_source_hash(&graph);
+
+    first.renderer.matgraphs.set_disk_cache(Some(dir.clone()));
+    let material = first.renderer.add_material(Material::solid(Vec3::ONE));
+    let key = first
+        .renderer
+        .matgraphs
+        .set_material(
+            &first.renderer.device,
+            &first.renderer.queue,
+            material,
+            &graph,
+            &[],
+        )
+        .unwrap();
+    let file = dir.join(format!("{:016x}.wgsl", key.0));
+    let written = std::fs::read_to_string(&file).unwrap();
+    assert!(written.starts_with("// matgraph-cache v1 "), "header written");
+    let body = written.split_once('\n').unwrap().1;
+
+    // Matching header and body: a second renderer reads the file and does not rewrite it.
+    let reused = cache_text(hash, &format!("{body}// read back from cache\n"));
+    std::fs::write(&file, &reused).unwrap();
+    let Some(mut second) = rig() else {
+        return;
+    };
+    second.renderer.matgraphs.set_disk_cache(Some(dir.clone()));
+    let material = second.renderer.add_material(Material::solid(Vec3::ONE));
+    second
+        .renderer
+        .matgraphs
+        .set_material(
+            &second.renderer.device,
+            &second.renderer.queue,
+            material,
+            &graph,
+            &[],
+        )
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        reused,
+        "a matching cache file is read, not rewritten"
+    );
+
+    // A file of another cache version is refused: the WGSL is generated again and the file is
+    // rewritten with the current header.
+    let stale = format!("// matgraph-cache v0 format=1 source={hash:016x} body=0000000000000000\n{body}");
+    std::fs::write(&file, &stale).unwrap();
+    let Some(mut third) = rig() else {
+        return;
+    };
+    third.renderer.matgraphs.set_disk_cache(Some(dir.clone()));
+    let material = third.renderer.add_material(Material::solid(Vec3::ONE));
+    third
+        .renderer
+        .matgraphs
+        .set_material(
+            &third.renderer.device,
+            &third.renderer.queue,
+            material,
+            &graph,
+            &[],
+        )
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        written,
+        "a stale cache file is regenerated"
+    );
+}
+
+/// A `.matgraph` path unique to this test process and `name`.
+fn temp_graph_file(name: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("{name}_{}.matgraph", std::process::id()))
+}
+
+#[test]
+fn a_changed_graph_file_rebuilds_the_slot_without_a_restart() {
+    use redox_render::matgraph_cache::MaterialGraphHotReload;
+    use std::time::Duration;
+
+    let Some(mut rig) = rig() else {
+        eprintln!("no GPU adapter, skipping");
+        return;
+    };
+    let path = temp_graph_file("matgraph_reload_ok");
+    std::fs::write(&path, colour_graph([1.0, 0.0, 0.0]).to_ron()).unwrap();
+    let material = rig.renderer.add_material(Material::solid(Vec3::ONE));
+    rig.renderer
+        .set_material_graph(material, &colour_graph([1.0, 0.0, 0.0]), &[])
+        .unwrap();
+    let mut reload = MaterialGraphHotReload::with_interval(Duration::ZERO);
+    reload.watch(material, &path, Vec::new());
+    assert!(reload.update(&mut rig.renderer).is_empty(), "nothing changed yet");
+    let shaders_before = rig.renderer.matgraphs.shader_count();
+
+    // Other colour text: a different length, so the watcher sees the change.
+    std::fs::write(&path, colour_graph([0.123_456, 0.0, 0.0]).to_ron()).unwrap();
+    let failures = reload.update(&mut rig.renderer);
+    let _ = std::fs::remove_file(&path);
+    assert!(failures.is_empty(), "{failures:?}");
+    assert!(
+        rig.renderer.matgraphs.shader_count() > shaders_before,
+        "the changed graph built new variants"
+    );
+    assert!(rig.renderer.matgraphs.pass_binding(material, GraphPass::Forward).is_some());
+}
+
+#[test]
+fn a_broken_graph_file_is_reported_once_and_the_old_graph_stays() {
+    use redox_render::matgraph_cache::{MaterialGraphError, MaterialGraphHotReload};
+    use std::time::Duration;
+
+    let Some(mut rig) = rig() else {
+        eprintln!("no GPU adapter, skipping");
+        return;
+    };
+    let path = temp_graph_file("matgraph_reload_broken");
+    std::fs::write(&path, colour_graph([0.0, 1.0, 0.0]).to_ron()).unwrap();
+    let material = rig.renderer.add_material(Material::solid(Vec3::ONE));
+    rig.renderer
+        .set_material_graph(material, &colour_graph([0.0, 1.0, 0.0]), &[])
+        .unwrap();
+    let mut reload = MaterialGraphHotReload::with_interval(Duration::ZERO);
+    reload.watch(material, &path, Vec::new());
+    let shaders_before = rig.renderer.matgraphs.shader_count();
+
+    std::fs::write(&path, "(this is not a graph)").unwrap();
+    let failures = reload.update(&mut rig.renderer);
+    assert_eq!(failures.len(), 1, "one failure for the broken file");
+    assert_eq!(failures[0].material_index, material);
+    assert!(matches!(failures[0].error, MaterialGraphError::Graph(_)));
+    assert!(
+        reload.update(&mut rig.renderer).is_empty(),
+        "the same broken state is not reported again"
+    );
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(rig.renderer.matgraphs.shader_count(), shaders_before);
+    assert!(
+        rig.renderer.matgraphs.pass_binding(material, GraphPass::Forward).is_some(),
+        "the slot keeps its previous graph"
+    );
+}
+
+#[test]
+fn an_unchanged_graph_file_does_nothing() {
+    use redox_render::matgraph_cache::MaterialGraphHotReload;
+    use std::time::Duration;
+
+    let Some(mut rig) = rig() else {
+        eprintln!("no GPU adapter, skipping");
+        return;
+    };
+    let path = temp_graph_file("matgraph_reload_same");
+    std::fs::write(&path, colour_graph([0.0, 0.0, 1.0]).to_ron()).unwrap();
+    let material = rig.renderer.add_material(Material::solid(Vec3::ONE));
+    let mut reload = MaterialGraphHotReload::with_interval(Duration::ZERO);
+    reload.watch(material, &path, Vec::new());
+    let shaders_before = rig.renderer.matgraphs.shader_count();
+    assert!(reload.update(&mut rig.renderer).is_empty());
+    assert!(reload.update(&mut rig.renderer).is_empty());
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(rig.renderer.matgraphs.shader_count(), shaders_before);
+    assert_eq!(rig.renderer.matgraphs.material_count(), 0, "no graph was applied");
 }

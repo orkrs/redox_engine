@@ -1,6 +1,7 @@
 //! Self-contained render passes extracted from `render_frame_into`.
 
 use super::*;
+use crate::matgraph_passes::{GraphPass, batch_compatible};
 
 impl Renderer {
     /// Normal prepass (normals + linear depth for GTAO); skipped when pass recording is multi-threaded.
@@ -57,11 +58,37 @@ impl Renderer {
             });
             normal_render_pass.set_pipeline(&self.normal_pass.pipeline);
             normal_render_pass.set_bind_group(0, &self.normal_bind_group, &[]);
+            let graphs = Some(&self.matgraphs);
+            let mut on_graph = false;
             for run in batching::runs(
                 objects.len(),
                 |i| self.main_vis_scratch[i],
-                |a, b| objects[a].mesh_index == objects[b].mesh_index,
+                |a, b| {
+                    objects[a].mesh_index == objects[b].mesh_index
+                        && batch_compatible(
+                            graphs,
+                            objects[a].material_index,
+                            objects[b].material_index,
+                        )
+                },
             ) {
+                let material = objects[run.start as usize].material_index;
+                match graphs.and_then(|g| g.pass_binding(material, GraphPass::Depth)) {
+                    Some((pipeline, params)) => {
+                        normal_render_pass.set_pipeline(pipeline);
+                        normal_render_pass.set_bind_group(
+                            GraphPass::Depth.params_group(),
+                            params,
+                            &[],
+                        );
+                        on_graph = true;
+                    }
+                    None if on_graph => {
+                        normal_render_pass.set_pipeline(&self.normal_pass.pipeline);
+                        on_graph = false;
+                    }
+                    None => {}
+                }
                 if let Some(gpu_mesh) = self
                     .registry
                     .mesh_by_slot(objects[run.start as usize].mesh_index)

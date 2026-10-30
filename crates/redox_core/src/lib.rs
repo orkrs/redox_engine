@@ -37,6 +37,7 @@ pub mod commands;
 pub mod config;
 pub mod dispatcher;
 pub mod hlod_system;
+pub mod material_graph;
 pub mod net_plugin;
 pub mod plugin;
 pub mod ragdoll_system;
@@ -49,6 +50,7 @@ pub use app::AppBuilder;
 pub use commands::{SharedCommands, flush_commands};
 pub use config::{EngineConfig, LightingMode};
 pub use dispatcher::{Dispatcher, Stage, SystemMeta, access_compatible, parallel_layers};
+pub use material_graph::{GraphBinding, MaterialGraphBindings, MaterialGraphPlugin};
 pub use net_plugin::{NetMode, NetPlugin};
 pub use plugin::{
     App, AudioPlugin, CorePlugin, NavPlugin, PhysicsPlugin, Plugin, RenderPlugin, ScriptWorldPlugin,

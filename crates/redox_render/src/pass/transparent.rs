@@ -13,7 +13,7 @@ use crate::pass::shared_layouts::multisample_state;
 use crate::shader::{PBR_WGSL, create_shader_with_vertex_decode};
 
 /// Additive blend (MAT-06): `dst + src * alpha`, alpha itself is not added.
-const ADDITIVE_BLEND: wgpu::BlendState = wgpu::BlendState {
+pub(crate) const ADDITIVE_BLEND: wgpu::BlendState = wgpu::BlendState {
     color: wgpu::BlendComponent {
         src_factor: wgpu::BlendFactor::SrcAlpha,
         dst_factor: wgpu::BlendFactor::One,

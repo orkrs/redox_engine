@@ -328,6 +328,7 @@ impl Renderer {
             vg_shadow_pass: &self.vg_shadow_pass,
             vg_shadow_instances_bg: &self.vg_shadow_instances_bg,
             registry: &self.registry,
+            graphs: Some(&self.matgraphs),
         };
 
         // ── VSM production (directional; only when the mode is enabled) ──

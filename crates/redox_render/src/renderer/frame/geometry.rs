@@ -22,6 +22,7 @@ impl Renderer {
                 surface_view: &self.material_surface_view,
                 depth_view: &self.depth_view,
                 registry: &self.registry,
+                graphs: Some(&self.matgraphs),
             };
             let vis = self.main_vis_scratch.clone();
             let prepass_cmd = record_normal_prepass(&prepass_ctx, objects, &vis);

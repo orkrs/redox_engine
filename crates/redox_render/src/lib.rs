@@ -21,6 +21,7 @@ pub mod light;
 pub mod material;
 /// Shader modules of material graph variants (MAT-02 step 5).
 pub mod matgraph_cache;
+pub mod matgraph_passes;
 /// GPU memory bookkeeping by category (pure accounting, no GPU access).
 pub mod memory_budget;
 pub mod mesh;

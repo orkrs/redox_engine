@@ -4,20 +4,25 @@
 //! checked with naga before it reaches the device, so a broken graph is reported as an error and
 //! the modules already in the cache stay untouched.
 //!
-//! [`MaterialGraphs`] binds graph variants to material slots for the forward PBR pass: each slot
-//! gets its variant pipeline and its own parameter block (bind group 4). Slots without a graph
-//! are never touched and keep the default pipeline.
+//! [`MaterialGraphs`] binds graph variants to material slots: each slot gets one variant per
+//! pass (forward, alpha and additive transparent, depth prepass, shadow atlas) and its own
+//! parameter block. Slots without a graph are never touched and keep the default pipelines.
 
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::path::PathBuf;
 
 use redox_matgraph::{
-    CodegenOptions, Features, Generated, GraphError, MaterialGraph, Pass, ShaderKey,
-    compile_variant,
+    CodegenOptions, Features, Generated, GraphError, GraphReload, MatGraphWatcher, MaterialGraph,
+    ShaderKey, Variant, compile_variant,
 };
 
+use crate::matgraph_passes::{
+    GraphPass, PassBindLayouts, blended_pipeline, depth_pipeline, depth_source, shadow_pipeline,
+    shadow_source,
+};
 use crate::pass::pbr::{PbrPass, pbr_render_pipeline};
+use crate::pass::transparent::ADDITIVE_BLEND;
 use crate::shader::{PBR_WGSL, create_shader_module, shader_with_vertex_decode};
 
 /// Bind group index of the graph parameter block, after the four PBR groups.
@@ -103,6 +108,48 @@ pub fn graph_pass_source(base: &str, generated: &Generated) -> Result<String, Va
     )))
 }
 
+/// Version of the disk cache file layout. Bump it when the header or the file naming changes;
+/// files written by another version are regenerated.
+pub const DISK_CACHE_VERSION: u32 = 1;
+
+/// FNV-1a hash of `bytes`. Stable across runs and processes, unlike the randomly seeded std
+/// hasher, so it can be stored in cache files.
+pub fn fnv1a(bytes: &[u8]) -> u64 {
+    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+    bytes.iter().fold(OFFSET, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(PRIME)
+    })
+}
+
+/// Hash of a graph's source text (its canonical RON form). Cache files of a graph carry it.
+pub fn graph_source_hash(graph: &MaterialGraph) -> u64 {
+    fnv1a(graph.to_ron().as_bytes())
+}
+
+/// Text of a cache file: a header line with the cache version, the format version, the graph
+/// source hash and the hash of the body, then the body (the module source).
+pub fn cache_text(source_hash: u64, body: &str) -> String {
+    format!(
+        "// matgraph-cache v{DISK_CACHE_VERSION} format={} source={source_hash:016x} body={:016x}\n{body}",
+        redox_matgraph::FORMAT_VERSION,
+        fnv1a(body.as_bytes()),
+    )
+}
+
+/// The body of a cache file, if its header names this cache version, this format version and
+/// this graph source, and the body still hashes to the recorded value. `None` means the file
+/// must be regenerated.
+pub fn read_cached_body(text: &str, source_hash: u64) -> Option<&str> {
+    let (header, body) = text.split_once('\n')?;
+    let prefix = format!(
+        "// matgraph-cache v{DISK_CACHE_VERSION} format={} source={source_hash:016x} body=",
+        redox_matgraph::FORMAT_VERSION,
+    );
+    let recorded = u64::from_str_radix(header.strip_prefix(prefix.as_str())?, 16).ok()?;
+    (recorded == fnv1a(body.as_bytes())).then_some(body)
+}
+
 /// Checks WGSL with naga: parse, then validate with all capabilities.
 pub fn validate_wgsl(source: &str) -> Result<(), VariantError> {
     let module = naga::front::wgsl::parse_str(source)
@@ -169,24 +216,46 @@ impl MaterialShaderCache {
     }
 }
 
-/// Graph state of one material slot: its variant and its parameter block.
+/// Graph state of one material slot: the variant key of every pass and its parameter block.
 struct GraphMaterial {
+    /// Key of the forward module; the alpha and additive passes share it.
     key: ShaderKey,
-    /// Keeps the parameter block alive for the bind group.
+    /// Key of the depth prepass module.
+    depth_key: ShaderKey,
+    /// Key of the shadow atlas module.
+    shadow_key: ShaderKey,
+    /// Keeps the parameter block alive for the bind groups.
     _params_buffer: wgpu::Buffer,
     params: wgpu::BindGroup,
 }
 
-/// Graph-driven material slots of the forward PBR pass (MAT-02 step 5).
+impl GraphMaterial {
+    /// Module key used by `pass`.
+    fn key_for(&self, pass: GraphPass) -> ShaderKey {
+        match pass {
+            GraphPass::Forward | GraphPass::Alpha | GraphPass::Additive => self.key,
+            GraphPass::Depth => self.depth_key,
+            GraphPass::Shadow => self.shadow_key,
+        }
+    }
+}
+
+/// Graph-driven material slots of the forward, transparent, prepass and shadow passes
+/// (MAT-02 step 5).
 pub struct MaterialGraphs {
     surface_format: wgpu::TextureFormat,
     sample_count: u32,
     graph_bgl: wgpu::BindGroupLayout,
-    /// Pipeline layout: the four PBR groups followed by the graph parameter group.
-    /// `None` when the device allows fewer than five bind groups: graph materials are refused.
+    /// Forward and transparent layout: the four PBR groups followed by the graph parameter
+    /// group. `None` when the device allows fewer than five bind groups: graph materials are
+    /// refused.
     layout: Option<wgpu::PipelineLayout>,
+    /// Depth prepass layout: scene group 0 and the graph parameter group 1.
+    depth_layout: wgpu::PipelineLayout,
+    /// Shadow atlas layout: shadow matrix group 0, model group 1, graph parameter group 2.
+    shadow_layout: wgpu::PipelineLayout,
     cache: MaterialShaderCache,
-    pipelines: HashMap<ShaderKey, wgpu::RenderPipeline>,
+    pipelines: HashMap<(ShaderKey, GraphPass), wgpu::RenderPipeline>,
     materials: HashMap<usize, GraphMaterial>,
     /// Directory for debug copies of the generated WGSL, written once per variant.
     disk_cache: Option<PathBuf>,
@@ -214,11 +283,28 @@ impl MaterialGraphs {
             }],
         });
         let layout = graph_layout(device, pbr, &graph_bgl);
+        let bind_layouts = PassBindLayouts::new(device);
+        let depth_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("matgraph_depth_pipeline_layout"),
+            bind_group_layouts: &[Some(&bind_layouts.depth_scene), Some(&graph_bgl)],
+            immediate_size: 0,
+        });
+        let shadow_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("matgraph_shadow_pipeline_layout"),
+            bind_group_layouts: &[
+                Some(&bind_layouts.shadow_scene),
+                Some(&bind_layouts.shadow_model),
+                Some(&graph_bgl),
+            ],
+            immediate_size: 0,
+        });
         Self {
             surface_format,
             sample_count,
             graph_bgl,
             layout,
+            depth_layout,
+            shadow_layout,
             cache: MaterialShaderCache::new(),
             pipelines: HashMap::new(),
             materials: HashMap::new(),
@@ -236,7 +322,7 @@ impl MaterialGraphs {
         self.cache.len()
     }
 
-    /// Number of render pipelines (one per distinct variant in use).
+    /// Number of render pipelines (one per variant and pass in use).
     pub fn pipeline_count(&self) -> usize {
         self.pipelines.len()
     }
@@ -246,21 +332,36 @@ impl MaterialGraphs {
         self.materials.len()
     }
 
-    /// Pipeline and parameter bind group of a graph-driven material slot.
+    /// `true` when the material slot `material_index` is bound to a graph.
+    pub fn is_graph(&self, material_index: usize) -> bool {
+        self.materials.contains_key(&material_index)
+    }
+
+    /// Forward pipeline and parameter bind group of a graph-driven material slot.
     pub fn binding(
         &self,
         material_index: usize,
     ) -> Option<(&wgpu::RenderPipeline, &wgpu::BindGroup)> {
+        self.pass_binding(material_index, GraphPass::Forward)
+    }
+
+    /// Pipeline of `pass` and the parameter bind group of a graph-driven material slot. The
+    /// bind group belongs at [`GraphPass::params_group`] of that pass.
+    pub fn pass_binding(
+        &self,
+        material_index: usize,
+        pass: GraphPass,
+    ) -> Option<(&wgpu::RenderPipeline, &wgpu::BindGroup)> {
         let material = self.materials.get(&material_index)?;
-        let pipeline = self.pipelines.get(&material.key)?;
+        let pipeline = self.pipelines.get(&(material.key_for(pass), pass))?;
         Some((pipeline, &material.params))
     }
 
     /// Binds `graph` to the material slot `material_index`, with parameter values by slot
-    /// (missing entries use the slot default).
+    /// (missing entries use the slot default). Builds the variants of every pass.
     ///
-    /// On error nothing changes: the slot keeps the graph it had before, or the default pipeline
-    /// when it had none.
+    /// On error nothing changes for the slot: it keeps the graph it had before, or the default
+    /// pipelines when it had none.
     pub fn set_material(
         &mut self,
         device: &wgpu::Device,
@@ -274,25 +375,15 @@ impl MaterialGraphs {
                 "the device allows fewer than 5 bind groups".to_owned(),
             )));
         }
-        let options = CodegenOptions {
-            pass: Pass::Main,
-            features: Features::default(),
-        };
-        let variant = compile_variant(graph, &options).map_err(MaterialGraphError::Graph)?;
-        let key = variant.key;
-        let source =
-            graph_pass_source(PBR_WGSL, &variant.generated).map_err(MaterialGraphError::Wgsl)?;
-        if !self.cache.contains(key) {
-            self.write_disk_copy(key, &source);
-        }
-        self.cache
-            .get_or_build(device, key, "matgraph_variant", || source)
-            .map_err(MaterialGraphError::Wgsl)?;
-        if !self.pipelines.contains_key(&key) {
-            self.build_pipeline(device, key);
+        let source_hash = graph_source_hash(graph);
+        let (key, forward) = self.ensure_variant(device, graph, source_hash, GraphPass::Forward)?;
+        let (depth_key, _) = self.ensure_variant(device, graph, source_hash, GraphPass::Depth)?;
+        let (shadow_key, _) = self.ensure_variant(device, graph, source_hash, GraphPass::Shadow)?;
+        for pass in [GraphPass::Alpha, GraphPass::Additive] {
+            self.ensure_pipeline(device, key, pass);
         }
 
-        let values = slot_values(&variant.ir.params, params);
+        let values = slot_values(&forward.ir.params, params);
         let bytes = parameter_bytes(&values);
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("matgraph_params"),
@@ -313,6 +404,8 @@ impl MaterialGraphs {
             material_index,
             GraphMaterial {
                 key,
+                depth_key,
+                shadow_key,
                 _params_buffer: buffer,
                 params: params_bg,
             },
@@ -320,7 +413,49 @@ impl MaterialGraphs {
         Ok(key)
     }
 
-    /// Removes the graph of a material slot; the slot goes back to the default pipeline.
+    /// Compiles `graph` for `pass`, builds its module if missing and its pipeline if missing.
+    /// Returns the key and the compiled variant (the forward one carries the parameter layout).
+    /// A module missing from memory is taken from the disk cache when its file matches the
+    /// graph source and version; otherwise the WGSL is generated and the file rewritten.
+    fn ensure_variant(
+        &mut self,
+        device: &wgpu::Device,
+        graph: &MaterialGraph,
+        source_hash: u64,
+        pass: GraphPass,
+    ) -> Result<(ShaderKey, Variant), MaterialGraphError> {
+        let options = CodegenOptions {
+            pass: pass.codegen(),
+            features: Features::default(),
+        };
+        let variant = compile_variant(graph, &options).map_err(MaterialGraphError::Graph)?;
+        let key = variant.key;
+        if !self.cache.contains(key) {
+            let source = match self.read_disk_copy(key, source_hash) {
+                Some(body) => body,
+                None => {
+                    let body =
+                        variant_module(pass, &variant.generated).map_err(MaterialGraphError::Wgsl)?;
+                    self.write_disk_copy(key, source_hash, &body);
+                    body
+                }
+            };
+            self.cache
+                .get_or_build(device, key, "matgraph_variant", || source)
+                .map_err(MaterialGraphError::Wgsl)?;
+        }
+        self.ensure_pipeline(device, key, pass);
+        Ok((key, variant))
+    }
+
+    /// Builds the pipeline of (`key`, `pass`) unless it exists.
+    fn ensure_pipeline(&mut self, device: &wgpu::Device, key: ShaderKey, pass: GraphPass) {
+        if !self.pipelines.contains_key(&(key, pass)) {
+            self.build_pipeline(device, key, pass);
+        }
+    }
+
+    /// Removes the graph of a material slot; the slot goes back to the default pipelines.
     pub fn remove_material(&mut self, material_index: usize) -> bool {
         self.materials.remove(&material_index).is_some()
     }
@@ -330,43 +465,96 @@ impl MaterialGraphs {
     pub fn rebuild_pipelines(&mut self, device: &wgpu::Device, pbr: &PbrPass) {
         self.layout = graph_layout(device, pbr, &self.graph_bgl);
         self.pipelines.clear();
-        let keys: Vec<ShaderKey> = self.materials.values().map(|m| m.key).collect();
-        for key in keys {
-            if !self.pipelines.contains_key(&key) {
-                self.build_pipeline(device, key);
+        let mut jobs: Vec<(ShaderKey, GraphPass)> = Vec::new();
+        for material in self.materials.values() {
+            for pass in GraphPass::ALL {
+                jobs.push((material.key_for(pass), pass));
             }
+        }
+        for (key, pass) in jobs {
+            self.ensure_pipeline(device, key, pass);
         }
     }
 
-    /// Creates the pipeline of a variant whose module is already in the cache.
-    fn build_pipeline(&mut self, device: &wgpu::Device, key: ShaderKey) {
-        let (Some(module), Some(layout)) = (self.cache.module(key), self.layout.as_ref()) else {
+    /// Creates the pipeline of a variant whose module is already in the cache. Forward,
+    /// alpha and additive pipelines are skipped while the layout is unavailable.
+    fn build_pipeline(&mut self, device: &wgpu::Device, key: ShaderKey, pass: GraphPass) {
+        let Some(module) = self.cache.module(key) else {
             return;
         };
-        let pipeline = pbr_render_pipeline(
-            device,
-            layout,
-            module,
-            self.surface_format,
-            self.sample_count,
-            "matgraph_pipeline",
-        );
-        self.pipelines.insert(key, pipeline);
+        let pipeline = match pass {
+            GraphPass::Forward => {
+                let Some(layout) = self.layout.as_ref() else {
+                    return;
+                };
+                pbr_render_pipeline(
+                    device,
+                    layout,
+                    module,
+                    self.surface_format,
+                    self.sample_count,
+                    "matgraph_pipeline",
+                )
+            }
+            GraphPass::Alpha | GraphPass::Additive => {
+                let Some(layout) = self.layout.as_ref() else {
+                    return;
+                };
+                let (blend, label) = if pass == GraphPass::Alpha {
+                    (wgpu::BlendState::ALPHA_BLENDING, "matgraph_alpha_pipeline")
+                } else {
+                    (ADDITIVE_BLEND, "matgraph_additive_pipeline")
+                };
+                blended_pipeline(
+                    device,
+                    layout,
+                    module,
+                    self.surface_format,
+                    self.sample_count,
+                    blend,
+                    label,
+                )
+            }
+            GraphPass::Depth => depth_pipeline(device, &self.depth_layout, module),
+            GraphPass::Shadow => shadow_pipeline(device, &self.shadow_layout, module),
+        };
+        self.pipelines.insert((key, pass), pipeline);
     }
 
-    /// Writes the WGSL of a new variant to the debug directory. Failures are logged, not fatal.
-    fn write_disk_copy(&self, key: ShaderKey, source: &str) {
+    /// Writes the WGSL of a new variant to the disk cache with its header. Failures are logged,
+    /// not fatal.
+    fn write_disk_copy(&self, key: ShaderKey, source_hash: u64, body: &str) {
         let Some(dir) = &self.disk_cache else {
             return;
         };
+        let text = cache_text(source_hash, body);
         let result = std::fs::create_dir_all(dir)
-            .and_then(|()| std::fs::write(dir.join(format!("{:016x}.wgsl", key.0)), source));
+            .and_then(|()| std::fs::write(dir.join(format!("{:016x}.wgsl", key.0)), text));
         if let Err(error) = result {
             log::warn!(
                 "matgraph: could not write WGSL copy to {}: {error}",
                 dir.display()
             );
         }
+    }
+
+    /// The module body cached for `key`, if the disk cache holds a file that matches the graph
+    /// source and version. A missing, unreadable or stale file gives `None`.
+    fn read_disk_copy(&self, key: ShaderKey, source_hash: u64) -> Option<String> {
+        let dir = self.disk_cache.as_ref()?;
+        let text = std::fs::read_to_string(dir.join(format!("{:016x}.wgsl", key.0))).ok()?;
+        read_cached_body(&text, source_hash).map(str::to_owned)
+    }
+}
+
+/// Module source of `variant` for `pass`.
+fn variant_module(pass: GraphPass, generated: &Generated) -> Result<String, VariantError> {
+    match pass {
+        GraphPass::Forward | GraphPass::Alpha | GraphPass::Additive => {
+            graph_pass_source(PBR_WGSL, generated)
+        }
+        GraphPass::Depth => Ok(depth_source(generated)),
+        GraphPass::Shadow => Ok(shadow_source(generated)),
     }
 }
 
@@ -413,4 +601,171 @@ fn parameter_bytes(values: &[[f32; 4]]) -> Vec<u8> {
         return vec![0; 16];
     }
     bytemuck::cast_slice(values).to_vec()
+}
+
+/// Poll interval of [`MaterialGraphHotReload::new`].
+const GRAPH_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// A `.matgraph` file bound to a material slot.
+struct WatchedGraph {
+    material_index: usize,
+    params: Vec<[f32; 4]>,
+    watcher: MatGraphWatcher,
+}
+
+/// One failed reload of a material slot. The slot keeps the graph it had before.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphReloadFailure {
+    /// Material slot whose file failed.
+    pub material_index: usize,
+    /// Why the new graph was not applied.
+    pub error: MaterialGraphError,
+}
+
+/// Watches `.matgraph` files of material slots and rebuilds a slot's variants when its file
+/// changes, without a restart (MAT-02 step 6).
+///
+/// Call [`Self::update`] once per frame, as the shader hot reload is called. A
+/// file that does not parse, validate or compile is reported once per change; the slot keeps
+/// its previous graph and pipelines.
+pub struct MaterialGraphHotReload {
+    watched: Vec<WatchedGraph>,
+    interval: std::time::Duration,
+    last_poll: Option<std::time::Instant>,
+}
+
+impl Default for MaterialGraphHotReload {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MaterialGraphHotReload {
+    /// Polls at most twice a second.
+    pub fn new() -> Self {
+        Self::with_interval(GRAPH_POLL_INTERVAL)
+    }
+
+    /// Polls at most once per `interval` (`Duration::ZERO` polls on every call).
+    pub fn with_interval(interval: std::time::Duration) -> Self {
+        Self {
+            watched: Vec::new(),
+            interval,
+            last_poll: None,
+        }
+    }
+
+    /// Watches `path` for material slot `material_index`, whose parameter values are `params`.
+    /// The file's current state counts as loaded: only later changes reload.
+    pub fn watch(
+        &mut self,
+        material_index: usize,
+        path: impl Into<std::path::PathBuf>,
+        params: Vec<[f32; 4]>,
+    ) {
+        self.unwatch(material_index);
+        self.watched.push(WatchedGraph {
+            material_index,
+            params,
+            watcher: MatGraphWatcher::new(path),
+        });
+    }
+
+    /// Stops watching the slot. Its graph stays bound. Returns `true` if it was watched.
+    pub fn unwatch(&mut self, material_index: usize) -> bool {
+        let before = self.watched.len();
+        self.watched.retain(|w| w.material_index != material_index);
+        self.watched.len() != before
+    }
+
+    /// Number of watched files.
+    pub fn len(&self) -> usize {
+        self.watched.len()
+    }
+
+    /// `true` when no file is watched.
+    pub fn is_empty(&self) -> bool {
+        self.watched.is_empty()
+    }
+
+    /// Polls the watched files (at most once per interval) and rebuilds the slots whose files
+    /// changed and now compile. Returns the failures of this call; they are also logged.
+    pub fn update(&mut self, renderer: &mut crate::Renderer) -> Vec<GraphReloadFailure> {
+        if self
+            .last_poll
+            .is_some_and(|last| last.elapsed() < self.interval)
+        {
+            return Vec::new();
+        }
+        self.last_poll = Some(std::time::Instant::now());
+        let mut failures = Vec::new();
+        for watched in &mut self.watched {
+            for reload in watched.watcher.poll() {
+                let material_index = watched.material_index;
+                let result = match reload {
+                    GraphReload::Ready(graph) => renderer
+                        .matgraphs
+                        .set_material(
+                            &renderer.device,
+                            &renderer.queue,
+                            material_index,
+                            &graph,
+                            &watched.params,
+                        )
+                        .map(|_| ()),
+                    GraphReload::Failed(errors) => Err(MaterialGraphError::Graph(errors)),
+                };
+                if let Err(error) = result {
+                    log::warn!("material {material_index}: graph reload failed: {error}");
+                    failures.push(GraphReloadFailure {
+                        material_index,
+                        error,
+                    });
+                }
+            }
+        }
+        failures
+    }
+}
+
+#[cfg(test)]
+mod disk_cache_tests {
+    use super::*;
+
+    const SOURCE: u64 = 0x1234_5678_9abc_def0;
+    const BODY: &str = "fn material_surface_graph_variant() {}\n";
+
+    #[test]
+    fn a_cache_file_is_read_back_when_source_and_version_match() {
+        let text = cache_text(SOURCE, BODY);
+        assert_eq!(read_cached_body(&text, SOURCE), Some(BODY));
+    }
+
+    #[test]
+    fn a_cache_file_of_another_graph_source_is_rejected() {
+        let text = cache_text(SOURCE, BODY);
+        assert_eq!(read_cached_body(&text, SOURCE + 1), None);
+    }
+
+    #[test]
+    fn a_cache_file_with_an_edited_body_is_rejected() {
+        let text = cache_text(SOURCE, BODY).replace("{}", "{ }");
+        assert_eq!(read_cached_body(&text, SOURCE), None);
+    }
+
+    #[test]
+    fn a_cache_file_of_another_version_is_rejected() {
+        let old = format!(
+            "// matgraph-cache v{} format={} source={SOURCE:016x} body={:016x}\n{BODY}",
+            DISK_CACHE_VERSION + 1,
+            redox_matgraph::FORMAT_VERSION,
+            fnv1a(BODY.as_bytes()),
+        );
+        assert_eq!(read_cached_body(&old, SOURCE), None);
+    }
+
+    #[test]
+    fn a_file_without_a_header_is_rejected() {
+        assert_eq!(read_cached_body(BODY, SOURCE), None);
+    }
 }
