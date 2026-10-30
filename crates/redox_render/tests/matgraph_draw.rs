@@ -322,3 +322,86 @@ fn a_graph_slot_has_a_pipeline_for_every_pass() {
         );
     }
 }
+
+#[test]
+fn a_disk_cache_file_is_reused_only_while_its_header_matches() {
+    use redox_render::matgraph_cache::{cache_text, graph_source_hash};
+
+    let Some(mut first) = rig() else {
+        eprintln!("no GPU adapter, skipping");
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("matgraph_reuse_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let graph = colour_graph([0.0, 0.5, 1.0]);
+    let hash = graph_source_hash(&graph);
+
+    first.renderer.matgraphs.set_disk_cache(Some(dir.clone()));
+    let material = first.renderer.add_material(Material::solid(Vec3::ONE));
+    let key = first
+        .renderer
+        .matgraphs
+        .set_material(
+            &first.renderer.device,
+            &first.renderer.queue,
+            material,
+            &graph,
+            &[],
+        )
+        .unwrap();
+    let file = dir.join(format!("{:016x}.wgsl", key.0));
+    let written = std::fs::read_to_string(&file).unwrap();
+    assert!(written.starts_with("// matgraph-cache v1 "), "header written");
+    let body = written.split_once('\n').unwrap().1;
+
+    // Matching header and body: a second renderer reads the file and does not rewrite it.
+    let reused = cache_text(hash, &format!("{body}// read back from cache\n"));
+    std::fs::write(&file, &reused).unwrap();
+    let Some(mut second) = rig() else {
+        return;
+    };
+    second.renderer.matgraphs.set_disk_cache(Some(dir.clone()));
+    let material = second.renderer.add_material(Material::solid(Vec3::ONE));
+    second
+        .renderer
+        .matgraphs
+        .set_material(
+            &second.renderer.device,
+            &second.renderer.queue,
+            material,
+            &graph,
+            &[],
+        )
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        reused,
+        "a matching cache file is read, not rewritten"
+    );
+
+    // A file of another cache version is refused: the WGSL is generated again and the file is
+    // rewritten with the current header.
+    let stale = format!("// matgraph-cache v0 format=1 source={hash:016x} body=0000000000000000\n{body}");
+    std::fs::write(&file, &stale).unwrap();
+    let Some(mut third) = rig() else {
+        return;
+    };
+    third.renderer.matgraphs.set_disk_cache(Some(dir.clone()));
+    let material = third.renderer.add_material(Material::solid(Vec3::ONE));
+    third
+        .renderer
+        .matgraphs
+        .set_material(
+            &third.renderer.device,
+            &third.renderer.queue,
+            material,
+            &graph,
+            &[],
+        )
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        written,
+        "a stale cache file is regenerated"
+    );
+}

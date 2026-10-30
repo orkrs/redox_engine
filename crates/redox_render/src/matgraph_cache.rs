@@ -108,6 +108,48 @@ pub fn graph_pass_source(base: &str, generated: &Generated) -> Result<String, Va
     )))
 }
 
+/// Version of the disk cache file layout. Bump it when the header or the file naming changes;
+/// files written by another version are regenerated.
+pub const DISK_CACHE_VERSION: u32 = 1;
+
+/// FNV-1a hash of `bytes`. Stable across runs and processes, unlike the randomly seeded std
+/// hasher, so it can be stored in cache files.
+pub fn fnv1a(bytes: &[u8]) -> u64 {
+    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+    bytes.iter().fold(OFFSET, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(PRIME)
+    })
+}
+
+/// Hash of a graph's source text (its canonical RON form). Cache files of a graph carry it.
+pub fn graph_source_hash(graph: &MaterialGraph) -> u64 {
+    fnv1a(graph.to_ron().as_bytes())
+}
+
+/// Text of a cache file: a header line with the cache version, the format version, the graph
+/// source hash and the hash of the body, then the body (the module source).
+pub fn cache_text(source_hash: u64, body: &str) -> String {
+    format!(
+        "// matgraph-cache v{DISK_CACHE_VERSION} format={} source={source_hash:016x} body={:016x}\n{body}",
+        redox_matgraph::FORMAT_VERSION,
+        fnv1a(body.as_bytes()),
+    )
+}
+
+/// The body of a cache file, if its header names this cache version, this format version and
+/// this graph source, and the body still hashes to the recorded value. `None` means the file
+/// must be regenerated.
+pub fn read_cached_body(text: &str, source_hash: u64) -> Option<&str> {
+    let (header, body) = text.split_once('\n')?;
+    let prefix = format!(
+        "// matgraph-cache v{DISK_CACHE_VERSION} format={} source={source_hash:016x} body=",
+        redox_matgraph::FORMAT_VERSION,
+    );
+    let recorded = u64::from_str_radix(header.strip_prefix(prefix.as_str())?, 16).ok()?;
+    (recorded == fnv1a(body.as_bytes())).then_some(body)
+}
+
 /// Checks WGSL with naga: parse, then validate with all capabilities.
 pub fn validate_wgsl(source: &str) -> Result<(), VariantError> {
     let module = naga::front::wgsl::parse_str(source)
@@ -333,9 +375,10 @@ impl MaterialGraphs {
                 "the device allows fewer than 5 bind groups".to_owned(),
             )));
         }
-        let (key, forward) = self.ensure_variant(device, graph, GraphPass::Forward)?;
-        let (depth_key, _) = self.ensure_variant(device, graph, GraphPass::Depth)?;
-        let (shadow_key, _) = self.ensure_variant(device, graph, GraphPass::Shadow)?;
+        let source_hash = graph_source_hash(graph);
+        let (key, forward) = self.ensure_variant(device, graph, source_hash, GraphPass::Forward)?;
+        let (depth_key, _) = self.ensure_variant(device, graph, source_hash, GraphPass::Depth)?;
+        let (shadow_key, _) = self.ensure_variant(device, graph, source_hash, GraphPass::Shadow)?;
         for pass in [GraphPass::Alpha, GraphPass::Additive] {
             self.ensure_pipeline(device, key, pass);
         }
@@ -372,10 +415,13 @@ impl MaterialGraphs {
 
     /// Compiles `graph` for `pass`, builds its module if missing and its pipeline if missing.
     /// Returns the key and the compiled variant (the forward one carries the parameter layout).
+    /// A module missing from memory is taken from the disk cache when its file matches the
+    /// graph source and version; otherwise the WGSL is generated and the file rewritten.
     fn ensure_variant(
         &mut self,
         device: &wgpu::Device,
         graph: &MaterialGraph,
+        source_hash: u64,
         pass: GraphPass,
     ) -> Result<(ShaderKey, Variant), MaterialGraphError> {
         let options = CodegenOptions {
@@ -385,8 +431,15 @@ impl MaterialGraphs {
         let variant = compile_variant(graph, &options).map_err(MaterialGraphError::Graph)?;
         let key = variant.key;
         if !self.cache.contains(key) {
-            let source = variant_module(pass, &variant.generated).map_err(MaterialGraphError::Wgsl)?;
-            self.write_disk_copy(key, &source);
+            let source = match self.read_disk_copy(key, source_hash) {
+                Some(body) => body,
+                None => {
+                    let body =
+                        variant_module(pass, &variant.generated).map_err(MaterialGraphError::Wgsl)?;
+                    self.write_disk_copy(key, source_hash, &body);
+                    body
+                }
+            };
             self.cache
                 .get_or_build(device, key, "matgraph_variant", || source)
                 .map_err(MaterialGraphError::Wgsl)?;
@@ -468,19 +521,29 @@ impl MaterialGraphs {
         self.pipelines.insert((key, pass), pipeline);
     }
 
-    /// Writes the WGSL of a new variant to the debug directory. Failures are logged, not fatal.
-    fn write_disk_copy(&self, key: ShaderKey, source: &str) {
+    /// Writes the WGSL of a new variant to the disk cache with its header. Failures are logged,
+    /// not fatal.
+    fn write_disk_copy(&self, key: ShaderKey, source_hash: u64, body: &str) {
         let Some(dir) = &self.disk_cache else {
             return;
         };
+        let text = cache_text(source_hash, body);
         let result = std::fs::create_dir_all(dir)
-            .and_then(|()| std::fs::write(dir.join(format!("{:016x}.wgsl", key.0)), source));
+            .and_then(|()| std::fs::write(dir.join(format!("{:016x}.wgsl", key.0)), text));
         if let Err(error) = result {
             log::warn!(
                 "matgraph: could not write WGSL copy to {}: {error}",
                 dir.display()
             );
         }
+    }
+
+    /// The module body cached for `key`, if the disk cache holds a file that matches the graph
+    /// source and version. A missing, unreadable or stale file gives `None`.
+    fn read_disk_copy(&self, key: ShaderKey, source_hash: u64) -> Option<String> {
+        let dir = self.disk_cache.as_ref()?;
+        let text = std::fs::read_to_string(dir.join(format!("{:016x}.wgsl", key.0))).ok()?;
+        read_cached_body(&text, source_hash).map(str::to_owned)
     }
 }
 
@@ -538,4 +601,46 @@ fn parameter_bytes(values: &[[f32; 4]]) -> Vec<u8> {
         return vec![0; 16];
     }
     bytemuck::cast_slice(values).to_vec()
+}
+
+#[cfg(test)]
+mod disk_cache_tests {
+    use super::*;
+
+    const SOURCE: u64 = 0x1234_5678_9abc_def0;
+    const BODY: &str = "fn material_surface_graph_variant() {}\n";
+
+    #[test]
+    fn a_cache_file_is_read_back_when_source_and_version_match() {
+        let text = cache_text(SOURCE, BODY);
+        assert_eq!(read_cached_body(&text, SOURCE), Some(BODY));
+    }
+
+    #[test]
+    fn a_cache_file_of_another_graph_source_is_rejected() {
+        let text = cache_text(SOURCE, BODY);
+        assert_eq!(read_cached_body(&text, SOURCE + 1), None);
+    }
+
+    #[test]
+    fn a_cache_file_with_an_edited_body_is_rejected() {
+        let text = cache_text(SOURCE, BODY).replace("{}", "{ }");
+        assert_eq!(read_cached_body(&text, SOURCE), None);
+    }
+
+    #[test]
+    fn a_cache_file_of_another_version_is_rejected() {
+        let old = format!(
+            "// matgraph-cache v{} format={} source={SOURCE:016x} body={:016x}\n{BODY}",
+            DISK_CACHE_VERSION + 1,
+            redox_matgraph::FORMAT_VERSION,
+            fnv1a(BODY.as_bytes()),
+        );
+        assert_eq!(read_cached_body(&old, SOURCE), None);
+    }
+
+    #[test]
+    fn a_file_without_a_header_is_rejected() {
+        assert_eq!(read_cached_body(BODY, SOURCE), None);
+    }
 }
