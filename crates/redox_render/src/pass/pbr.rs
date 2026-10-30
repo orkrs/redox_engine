@@ -13,6 +13,56 @@ use crate::mesh::CompressedVertex;
 use crate::pass::shared_layouts::{DEPTH_FORMAT, multisample_state};
 use crate::shader::{PBR_WGSL, create_shader_with_vertex_decode};
 
+/// Render pipeline of the forward PBR pass for `shader` (`vs_main` / `fs_main`).
+///
+/// Shared by the default pass and by material graph variants (MAT-02), which differ only in
+/// the shader module and the pipeline layout.
+pub(crate) fn pbr_render_pipeline(
+    device: &wgpu::Device,
+    layout: &wgpu::PipelineLayout,
+    shader: &wgpu::ShaderModule,
+    surface_format: wgpu::TextureFormat,
+    sample_count: u32,
+    label: &str,
+) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        cache: crate::pipeline_cache::get(),
+        label: Some(label),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module: shader,
+            entry_point: Some("vs_main"),
+            buffers: &[Some(CompressedVertex::buffer_layout())],
+            compilation_options: Default::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: shader,
+            entry_point: Some("fs_main"),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: surface_format,
+                blend: Some(wgpu::BlendState::REPLACE),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: Default::default(),
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: Some(wgpu::Face::Back),
+            ..Default::default()
+        },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: DEPTH_FORMAT,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::LessEqual),
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
+        multisample: multisample_state(sample_count),
+        multiview_mask: None,
+    })
+}
+
 /// The main PBR render pass.
 pub struct PbrPass {
     /// Render pipeline.
@@ -429,42 +479,14 @@ impl PbrPass {
 
         let shader = create_shader_with_vertex_decode(device, "pbr_shader", PBR_WGSL);
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: crate::pipeline_cache::get(),
-            label: Some("pbr_pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[Some(CompressedVertex::buffer_layout())],
-                compilation_options: Default::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: surface_format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: Default::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: Some(true),
-                depth_compare: Some(wgpu::CompareFunction::LessEqual),
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: multisample_state(sample_count),
-            multiview_mask: None,
-        });
+        let pipeline = pbr_render_pipeline(
+            device,
+            &pipeline_layout,
+            &shader,
+            surface_format,
+            sample_count,
+            "pbr_pipeline",
+        );
 
         Self {
             pipeline,

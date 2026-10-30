@@ -146,6 +146,8 @@ pub struct Renderer {
     pub pbr_frame_layouts: PbrFrameLayouts,
     /// Main PBR forward pass.
     pub pbr_pass: PbrPass,
+    /// Graph-driven material slots of the forward pass (MAT-02).
+    pub matgraphs: crate::matgraph_cache::MaterialGraphs,
     /// Shadow depth pass.
     pub shadow_pass: ShadowPass,
     /// Pass that renders normals and depth.

@@ -127,6 +127,7 @@ impl Renderer {
                     self.pbr_pass = PbrPass::new(&self.device, hdr, msaa);
                     self.transparent_pass =
                         TransparentPass::new(&self.device, &self.pbr_pass, hdr, msaa);
+                    self.matgraphs.rebuild_pipelines(&self.device, &self.pbr_pass);
                 }
                 ReloadablePass::Shadow => self.shadow_pass = ShadowPass::new(&self.device),
                 ReloadablePass::Normal => {

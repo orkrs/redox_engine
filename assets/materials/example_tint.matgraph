@@ -1,0 +1,23 @@
+(
+    version: 1,
+    name: "example_tint",
+    nodes: [
+        (
+            id: 1,
+            kind: Param(name: "tint", ty: Vec3, default: (0.8, 0.4, 0.2, 0.0)),
+            inputs: [],
+        ),
+        (
+            id: 2,
+            kind: SurfaceOutput,
+            inputs: [
+                Some((node: 1, port: 0)),
+                None,
+                None,
+                None,
+                None,
+                None,
+            ],
+        ),
+    ],
+)
