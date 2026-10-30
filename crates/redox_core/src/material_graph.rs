@@ -1,7 +1,7 @@
 //! Material graph files bound to material slots, loaded and hot-reloaded from the app (MAT-02).
 //!
 //! [`MaterialGraphPlugin`] installs the [`MaterialGraphBindings`] resource and a system on
-//! [`Stage::Render`]. A binding is registered on the plugin, or later through the resource. Each
+//! [`Stage::RenderPrep`]. A binding is registered on the plugin, or later through the resource. Each
 //! frame the system loads the pending bindings into their slots and watches their files; changed
 //! files are rebuilt by [`MaterialGraphHotReload`]. Without bindings the system does nothing, so
 //! an app that never binds a graph renders exactly as before.
@@ -102,7 +102,9 @@ impl Plugin for MaterialGraphPlugin {
             }
             world.insert_resource(state);
         });
-        app.add_system_mut(Stage::Render, |world, renderer| {
+        // RenderPrep runs before the draw systems of Stage::Render, so a rebuilt variant is the
+        // one drawn in the same frame.
+        app.add_system_mut(Stage::RenderPrep, |world, renderer| {
             sync_material_graphs(world, renderer);
         });
     }

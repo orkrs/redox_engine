@@ -61,6 +61,8 @@ pub enum MaterialGraphError {
     Graph(Vec<GraphError>),
     /// The generated WGSL was refused.
     Wgsl(VariantError),
+    /// A material instance names a graph that is not registered.
+    UnknownGraph(crate::material::MaterialGraphId),
 }
 
 impl std::fmt::Display for MaterialGraphError {
@@ -71,6 +73,7 @@ impl std::fmt::Display for MaterialGraphError {
                 write!(f, "material graph is invalid: {}", text.join("; "))
             }
             Self::Wgsl(error) => write!(f, "{error}"),
+            Self::UnknownGraph(id) => write!(f, "unknown material graph {}", id.0),
         }
     }
 }
@@ -335,6 +338,11 @@ impl MaterialGraphs {
     /// `true` when the material slot `material_index` is bound to a graph.
     pub fn is_graph(&self, material_index: usize) -> bool {
         self.materials.contains_key(&material_index)
+    }
+
+    /// Returns the slot `material_index` to the default pipelines. `true` when it had a graph.
+    pub fn clear_material(&mut self, material_index: usize) -> bool {
+        self.materials.remove(&material_index).is_some()
     }
 
     /// Forward pipeline and parameter bind group of a graph-driven material slot.
