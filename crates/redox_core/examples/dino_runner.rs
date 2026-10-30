@@ -466,6 +466,8 @@ fn extract_objects(world: &World, ctx: &RenderContext) -> Vec<RenderObject> {
         out.push(RenderObject {
             id: out.len() as u32,
             shadow_class: redox_render::shadow::ShadowClass::Auto,
+            deforms: false,
+            pose_version: 0,
             model_matrix: matrix,
             color: [1.0; 4],
             mesh_index: r.mesh_index,

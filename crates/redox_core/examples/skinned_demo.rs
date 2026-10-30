@@ -194,6 +194,8 @@ impl DemoScene {
             out.push(RenderObject {
                 id: out.len() as u32,
                 shadow_class: redox_render::shadow::ShadowClass::Auto,
+                deforms: false,
+                pose_version: 0,
                 model_matrix: model,
                 color: [1.0, 1.0, 1.0, 1.0],
                 mesh_index: rig.binding.mesh_slot,
@@ -249,6 +251,8 @@ fn object(r: &Renderer, model: Mat4, mesh: usize, material: usize) -> RenderObje
     RenderObject {
         id: 0,
         shadow_class: redox_render::shadow::ShadowClass::Auto,
+        deforms: false,
+        pose_version: 0,
         model_matrix: model,
         color: [1.0; 4],
         mesh_index: mesh,

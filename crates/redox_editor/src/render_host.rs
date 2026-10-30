@@ -497,6 +497,8 @@ fn push_ground(out: &mut Vec<RenderObject>, mesh: usize, mat: usize) {
     out.push(RenderObject {
         id: out.len() as u32,
         shadow_class: redox_render::shadow::ShadowClass::Auto,
+        deforms: false,
+        pose_version: 0,
         model_matrix: model,
         color: [1.0, 1.0, 1.0, 1.0],
         mesh_index: mesh,
@@ -524,6 +526,8 @@ fn push_entities(
         out.push(RenderObject {
             id: out.len() as u32,
             shadow_class: redox_render::shadow::ShadowClass::Auto,
+            deforms: false,
+            pose_version: 0,
             model_matrix: model,
             color: [1.0, 1.0, 1.0, 1.0],
             mesh_index: mesh,

@@ -30,7 +30,8 @@ fn bounds(size: [f32; 3]) -> Aabb {
 fn static_is_never_dynamic_even_when_small() {
     assert!(!is_dynamic_caster(
         ShadowClass::Static,
-        &bounds([1.0, 1.0, 1.0])
+        &bounds([1.0, 1.0, 1.0]),
+        false
     ));
 }
 
@@ -38,7 +39,8 @@ fn static_is_never_dynamic_even_when_small() {
 fn dynamic_is_dynamic_even_when_large() {
     assert!(is_dynamic_caster(
         ShadowClass::Dynamic,
-        &bounds([20.0, 1.0, 20.0])
+        &bounds([20.0, 1.0, 20.0]),
+        false
     ));
 }
 
@@ -50,21 +52,24 @@ fn auto_keeps_the_size_rule() {
         &Aabb {
             min: Vec3::new(-10.0, 0.0, -10.0),
             max: Vec3::new(10.0, 0.3, 10.0),
-        }
+        },
+        false
     ));
     assert!(is_dynamic_caster(
         ShadowClass::Auto,
         &Aabb {
             min: Vec3::splat(-0.5),
             max: Vec3::splat(0.5),
-        }
+        },
+        false
     ));
     assert!(!is_dynamic_caster(
         ShadowClass::Auto,
         &Aabb {
             min: Vec3::new(-3.5, 0.0, -1.0),
             max: Vec3::new(3.5, 2.0, 1.0),
-        }
+        },
+        false
     ));
 }
 

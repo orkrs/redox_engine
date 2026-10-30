@@ -2,12 +2,58 @@
 //! an ordinary mesh slot, so every existing pass (PBR, VSM / point shadows, normal
 //! prepass, GTAO, TAA) draws it unchanged.
 
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
 use redox_anim::SkinnedGeometry;
 use redox_math::{Aabb, Mat4, Vec3};
 
 use crate::mesh::{Mesh, Vertex};
 use crate::renderer::Renderer;
 use crate::skinning_gpu::{GpuSkin, run_batch};
+
+/// Counts the pose changes of a skinned mesh. Its `version` only moves when the matrices or the
+/// morph weights written by a call differ from the previous ones, so a paused animation keeps the
+/// same version and its shadow pages are left alone.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct PoseTracker {
+    skin_key: u64,
+    morph_key: u64,
+    version: u32,
+}
+
+impl PoseTracker {
+    /// Records the keys of the pose written by one call; bumps the version if either changed.
+    fn record(&mut self, skin_key: u64, morph_key: u64) {
+        if (skin_key, morph_key) != (self.skin_key, self.morph_key) {
+            self.skin_key = skin_key;
+            self.morph_key = morph_key;
+            self.version = self.version.wrapping_add(1);
+        }
+    }
+}
+
+/// Hash of the skin matrices' bit patterns.
+fn hash_matrices(matrices: &[Mat4]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    for matrix in matrices {
+        for column in matrix.to_cols_array_2d() {
+            for value in column {
+                value.to_bits().hash(&mut hasher);
+            }
+        }
+    }
+    hasher.finish()
+}
+
+/// Hash of the morph weights' bit patterns.
+fn hash_weights(weights: &[f32]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    for weight in weights {
+        weight.to_bits().hash(&mut hasher);
+    }
+    hasher.finish()
+}
 
 /// Tangent used for vertices of geometry that carries no tangents (`SkinnedGeometry::tangents`
 /// empty). Such geometry gets a fixed direction, which normal maps cannot use meaningfully.
@@ -103,6 +149,8 @@ pub struct SkinnedMeshBinding {
     morph_weights: Vec<f32>,
     /// Requested skinning path; `Auto` is resolved per frame by [`Self::resolved_mode`].
     mode: SkinningMode,
+    /// Pose version for the shadow code; see [`Self::pose_version`].
+    pose: PoseTracker,
 }
 
 impl SkinnedMeshBinding {
@@ -149,7 +197,15 @@ impl SkinnedMeshBinding {
             gpu_skinned: false,
             morph_weights: Vec::new(),
             mode: SkinningMode::Auto,
+            pose: PoseTracker::default(),
         }
+    }
+
+    /// Version of the deformed pose: bumped by a skin or morph write that changes the pose, and
+    /// left alone by a write of the same pose. Put it into `RenderObject::pose_version`, so the
+    /// shadow pages under a running animation refresh and a paused one does not.
+    pub fn pose_version(&self) -> u32 {
+        self.pose.version
     }
 
     /// The requested skinning path (default [`SkinningMode::Auto`]).
@@ -181,6 +237,7 @@ impl SkinnedMeshBinding {
             return;
         }
         self.morph_weights = weights.to_vec();
+        self.pose.record(self.pose.skin_key, hash_weights(&self.morph_weights));
         if let Some(gpu) = &self.gpu {
             gpu.upload_morph_weights(renderer.queue(), weights);
         }
@@ -208,6 +265,10 @@ impl SkinnedMeshBinding {
             self.gpu_skinned = true;
             self.positions.clear();
             self.previous_bounds = None;
+            self.pose.record(
+                hash_matrices(skin_matrices),
+                hash_weights(&self.morph_weights),
+            );
         }
         ran
     }
@@ -243,11 +304,15 @@ impl SkinnedMeshBinding {
             &jobs,
         );
         drop(jobs);
-        for ((binding, _), ok) in items.iter_mut().zip(accepted) {
+        for ((binding, matrices), ok) in items.iter_mut().zip(accepted) {
             if ok {
                 binding.gpu_skinned = true;
                 binding.positions.clear();
                 binding.previous_bounds = None;
+                binding.pose.record(
+                    hash_matrices(*matrices),
+                    hash_weights(&binding.morph_weights),
+                );
             }
         }
         skinned
@@ -258,6 +323,8 @@ impl SkinnedMeshBinding {
     /// is kept. Returns `false` if the renderer rejected the update.
     pub fn update(&mut self, renderer: &Renderer, skin_matrices: &[Mat4]) -> bool {
         self.gpu_skinned = false;
+        self.pose
+            .record(hash_matrices(skin_matrices), hash_weights(&self.morph_weights));
         self.previous_bounds = (!self.positions.is_empty()).then(|| self.deformed_bounds());
         self.geometry.deform_morphed_into(
             skin_matrices,
@@ -351,6 +418,34 @@ mod tests {
     use super::*;
     use redox_anim::Pose;
     use redox_anim::procedural::chain_model;
+
+    #[test]
+    fn a_repeated_pose_keeps_the_pose_version() {
+        let matrices = [Mat4::IDENTITY, Mat4::from_translation(Vec3::X)];
+        let mut tracker = PoseTracker::default();
+        tracker.record(hash_matrices(&matrices), hash_weights(&[]));
+        let version = tracker.version;
+        tracker.record(hash_matrices(&matrices), hash_weights(&[]));
+        assert_eq!(tracker.version, version);
+    }
+
+    #[test]
+    fn a_changed_skin_pose_bumps_the_pose_version() {
+        let mut tracker = PoseTracker::default();
+        tracker.record(hash_matrices(&[Mat4::IDENTITY]), 0);
+        let version = tracker.version;
+        tracker.record(hash_matrices(&[Mat4::from_translation(Vec3::Y)]), 0);
+        assert_ne!(tracker.version, version);
+    }
+
+    #[test]
+    fn a_morph_weight_change_bumps_the_pose_version() {
+        let mut tracker = PoseTracker::default();
+        tracker.record(0, hash_weights(&[0.0, 1.0]));
+        let version = tracker.version;
+        tracker.record(0, hash_weights(&[0.5, 1.0]));
+        assert_ne!(tracker.version, version);
+    }
 
     #[test]
     fn bind_vertices_copy_geometry() {

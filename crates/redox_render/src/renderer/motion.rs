@@ -135,6 +135,8 @@ mod tests {
         RenderObject {
             id: 0,
             shadow_class: crate::shadow::ShadowClass::Auto,
+            deforms: false,
+            pose_version: 0,
             model_matrix: Mat4::from_translation(Vec3::new(x, 0.0, 0.0)),
             color: [1.0; 4],
             mesh_index: mesh,

@@ -95,6 +95,8 @@ impl Rig {
         RenderObject {
             id,
             shadow_class: ShadowClass::Auto,
+            deforms: false,
+            pose_version: 0,
             model_matrix: Mat4::from_scale_rotation_translation(scale, Quat::IDENTITY, center),
             color: [1.0; 4],
             mesh_index: mesh,
@@ -512,6 +514,8 @@ impl CloneObject for RenderObject {
         RenderObject {
             id: self.id,
             shadow_class: self.shadow_class,
+            deforms: self.deforms,
+            pose_version: self.pose_version,
             model_matrix: self.model_matrix,
             color: self.color,
             mesh_index: self.mesh_index,

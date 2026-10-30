@@ -95,6 +95,8 @@ fn check(mode: Mode) {
     let cube = RenderObject {
         id: 0,
         shadow_class: redox_render::shadow::ShadowClass::Auto,
+        deforms: false,
+        pose_version: 0,
         model_matrix: Mat4::IDENTITY,
         color: [1.0; 4],
         mesh_index: mesh,

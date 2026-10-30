@@ -123,6 +123,8 @@ fn object(mesh: usize, material: usize, id: u32, center: Vec3, scale: Vec3) -> R
     RenderObject {
         id,
         shadow_class: ShadowClass::Auto,
+        deforms: false,
+        pose_version: 0,
         model_matrix: Mat4::from_scale_rotation_translation(scale, Quat::IDENTITY, center),
         color: [1.0; 4],
         mesh_index: mesh,

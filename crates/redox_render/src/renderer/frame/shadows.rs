@@ -23,12 +23,17 @@ impl Renderer {
             // Only dynamic casters are tracked; each is matched by its id, so list order does
             // not matter. Only the objects that actually moved (or appeared/vanished) refresh
             // their pages, both where they were and where they are now.
-            let dynamic_poses: Vec<(u32, redox_math::Mat4, redox_math::Aabb)> = objects
+            let dynamic: Vec<&RenderObject> = objects
                 .iter()
-                .filter(|o| crate::shadow::is_dynamic_caster(o.shadow_class, &o.bounds))
+                .filter(|o| {
+                    crate::shadow::is_dynamic_caster(o.shadow_class, &o.bounds, o.deforms)
+                })
+                .collect();
+            let dynamic_poses: Vec<(u32, redox_math::Mat4, redox_math::Aabb)> = dynamic
+                .iter()
                 .map(|o| (o.id, o.model_matrix, o.bounds))
                 .collect();
-            let moved_aabbs = crate::shadow::moved_shadow_bounds(
+            let mut moved_aabbs = crate::shadow::moved_shadow_bounds(
                 &self.prev_dynamic_poses,
                 &dynamic_poses,
                 crate::shadow::SHADOW_MOVED_EPS,
@@ -38,6 +43,21 @@ impl Renderer {
                 &dynamic_poses,
                 crate::shadow::SHADOW_MOVED_EPS,
             );
+            // Deforming casters (skinning, morphs, WPO) can change shape without moving: their
+            // pages refresh whenever the pose version changes, against last frame's bounds.
+            let deforming: Vec<(u32, u32, redox_math::Aabb)> = dynamic
+                .iter()
+                .filter(|o| o.deforms)
+                .map(|o| (o.id, o.pose_version, o.bounds))
+                .collect();
+            moved_aabbs.extend(crate::shadow::deformed_shadow_bounds(
+                &self.prev_deform_poses,
+                &deforming,
+            ));
+            self.prev_deform_poses = deforming
+                .iter()
+                .map(|&(id, version, bounds)| (id, (version, bounds)))
+                .collect();
             self.vsm_clipmap.invalidate_aabbs(&moved_aabbs);
             // Fine pages come from the screen feedback (what the pixels actually see); the
             // two coarsest levels are requested for the scene bounds as a safety net while
