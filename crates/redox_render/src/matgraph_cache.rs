@@ -414,13 +414,14 @@ impl MaterialGraphs {
         self.materials.len()
     }
 
-    /// Sets the frame time (seconds) every graph material reads as `time`; call once per frame
-    /// so the vertex and fragment stages of all passes see the same value.
-    pub fn set_time(&self, queue: &wgpu::Queue, seconds: f32) {
+    /// Sets the frame time and the previous frame's time (seconds). Graph materials read
+    /// `seconds` (x) as `time`; the velocity pass reads `prev_seconds` (y) for the previous
+    /// frame's vertex offset. Call once per frame so all stages see the same values.
+    pub fn set_time(&self, queue: &wgpu::Queue, seconds: f32, prev_seconds: f32) {
         queue.write_buffer(
             &self.time_buffer,
             0,
-            bytemuck::cast_slice(&[seconds, 0.0, 0.0, 0.0]),
+            bytemuck::cast_slice(&[seconds, prev_seconds, 0.0, 0.0]),
         );
     }
 
