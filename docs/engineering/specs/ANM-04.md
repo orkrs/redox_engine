@@ -55,3 +55,10 @@ pub fn validate_binding(graph: &AnimGraph, skeleton: &Skeleton, clips_len: usize
 
 ## Для исполнителя
 `git merge --ff-only main`; `Cargo.lock` из main. Ассет для Courier не добавляй без указания координатора (по умолчанию — лиса из Foxfire). Пороги в `choose_skinning_mode` бери только из таблицы замера, не угадывай.
+
+## Закрытие (финальная волна)
+
+Исход обязателен: ✅ / ⛔ / 📌 (`../FINAL_WAVE.md` §1). Агенту разрешён `cargo check -p <крейт> --all-targets` в своём worktree; тесты, clippy и замеры — у координатора. Шаг, у которого приёмочный тест после доработки красный, не остаётся «частично»: агент сообщает измеренное число, исход назначает координатор.
+
+- **Осталось:** снять `threshold_bench`, заменить временные `GPU_SKIN_MIN_VERTICES` / `GPU_BATCH_MIN_MESHES` измеренными, вызвать `resolved_mode` из Courier.
+- **Приёмка:** константы с обоснованием числом в `BENCHMARKS.md`.
