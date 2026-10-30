@@ -119,7 +119,11 @@ fn trace(
     bytes
         .chunks_exact(16)
         .map(|record| {
-            let f = |i: usize| f32::from_le_bytes(record[i * 4..i * 4 + 4].try_into().unwrap());
+            let f = |i: usize| {
+                f32::from_le_bytes(
+                    <[u8; 4]>::try_from(&record[i * 4..i * 4 + 4]).unwrap_or_default(),
+                )
+            };
             [f(0), f(1), f(2), f(3)]
         })
         .collect()
@@ -271,7 +275,8 @@ fn the_sky_is_returned_for_rays_that_escape() {
         &queue,
         &sdf,
         &sky,
-        probe_at(Vec3::new(0.0, 0.1, 0.0), 64, 0, Vec3::ZERO),
+        // Well above the floor: a probe within half a voxel (0.31 m) of it counts as inside.
+        probe_at(Vec3::new(0.0, 3.0, 0.0), 64, 0, Vec3::ZERO),
     );
     // Misses report the trace limit (40 m) as their distance.
     let escaped: Vec<_> = rays.iter().filter(|r| r[3] >= 39.0).collect();

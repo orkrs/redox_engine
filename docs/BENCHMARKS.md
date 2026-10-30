@@ -78,3 +78,14 @@ Cost of the two tile compute passes and the spreading blur, `tests/motion_blur_s
 ## TSR upscale (PST-07)
 
 Bench: `cargo test -p redox_render --test tsr -- --ignored --nocapture` (1080 and 2160 square targets, scales 1.0 / 0.77 / 0.67 / 0.5, wall-clock ms per frame including readback, PSNR to the native frame). Numbers are not recorded yet; the coordinator fills this table after the first run.
+
+## VG-04: HLOD, 4000 объектов в 40 ячейках (2026-10-30)
+
+Тест `four_thousand_objects_in_forty_cells_seen_from_300m` (`crates/redox_core/tests/hlod_measure.rs`, `--release -- --ignored --nocapture`). Камера на ~300 м.
+
+| Режим | Вызовов отрисовки | `hlod_frame`, CPU |
+|---|---:|---:|
+| без HLOD | 4000 | 92 мкс |
+| с HLOD | 40 | 152 мкс |
+
+Число вызовов падает в 100 раз; GPU-время кадра не измерено (нужна сцена с загруженными прокси, загрузка `.hlod` при старте игры не подключена).

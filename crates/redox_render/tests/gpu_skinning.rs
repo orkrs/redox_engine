@@ -39,9 +39,38 @@ use redox_render::mesh::compress::CompressedVertex;
 use redox_render::skinning::SkinningMode;
 use redox_render::{Renderer, SkinnedMeshBinding};
 
-fn renderer() -> Option<Renderer> {
+static GPU: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// A renderer that holds the test lock for its lifetime: the tests allocate large GPU buffers and
+/// run out of device memory when they run side by side.
+struct LockedRenderer {
+    renderer: Renderer,
+    _guard: std::sync::MutexGuard<'static, ()>,
+}
+
+impl std::ops::Deref for LockedRenderer {
+    type Target = Renderer;
+    fn deref(&self) -> &Renderer {
+        &self.renderer
+    }
+}
+
+impl std::ops::DerefMut for LockedRenderer {
+    fn deref_mut(&mut self) -> &mut Renderer {
+        &mut self.renderer
+    }
+}
+
+fn renderer() -> Option<LockedRenderer> {
+    let guard = GPU
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let adapter = common::adapter()?;
-    common::renderer(&adapter, 64)
+    let renderer = common::renderer(&adapter, 64)?;
+    Some(LockedRenderer {
+        renderer,
+        _guard: guard,
+    })
 }
 
 fn vertices(r: &Renderer, slot: usize) -> Vec<CompressedVertex> {

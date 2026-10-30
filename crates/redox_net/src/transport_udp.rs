@@ -302,10 +302,10 @@ impl UdpTransport {
     fn send_datagram(&self, addr: SocketAddr, datagram: &[u8]) {
         // Unreliable by design: a full socket buffer drops the datagram, and the layer above resends
         // reliable frames. Only real errors are logged.
-        if let Err(error) = self.socket.send_to(datagram, addr) {
-            if error.kind() != ErrorKind::WouldBlock {
-                log::warn!("udp send to {addr} failed: {error}");
-            }
+        if let Err(error) = self.socket.send_to(datagram, addr)
+            && error.kind() != ErrorKind::WouldBlock
+        {
+            log::warn!("udp send to {addr} failed: {error}");
         }
     }
 }

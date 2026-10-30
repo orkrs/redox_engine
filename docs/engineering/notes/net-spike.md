@@ -26,3 +26,15 @@ dependency, MTU/fragmentation behaviour of renet unverified.
 - Delivery of 1000 unreliable 100 B and 100 reliable messages under 10 % loss (loopback covers the
   logic; real sockets are unmeasured).
 - Whether a 2 KB reliable message is needed: v1 limits payloads to 1195 bytes.
+
+## Замер UDP-транспорта (2026-10-30)
+
+Тест `udp_spike` (`crates/redox_net/tests/udp_spike.rs`, `--release -- --ignored --nocapture`), 127.0.0.1, потери не вносились, одна машина:
+
+| Что | Результат |
+|---|---|
+| RTT (PING/PONG) | 1,68 мс |
+| Ненадёжные 100 Б × 1000 одной пачкой | доставлено 619 из 1000 (сокет без пейсинга теряет при всплеске; для игры отправка идёт по тикам) |
+| Надёжные 1100 Б × 100 | доставлено 100 из 100 за 167 мс |
+
+Не измерено: потери 10 % на реальном UDP (только через `LoopbackWire` в тестах), MTU, работа между разными машинами. ADR 0008 остаётся «proposed» до подтверждения владельцем.
