@@ -101,7 +101,7 @@ fn platform_carry(
 
 /// Moves every [`CharacterController`] this step: gravity, wall slide, autostep, moving platforms.
 pub fn move_character_controllers(world: &mut World, dt: f32) {
-    let Some(physics) = world.remove_resource::<PhysicsContext>() else {
+    let Some(mut physics) = world.remove_resource::<PhysicsContext>() else {
         return;
     };
     let entities: Vec<_> = world
@@ -157,7 +157,9 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
             ground_pose,
             transform.translation,
         );
-        let mut wish = desired + carry;
+        // The platform drags the character; the controller only handles the character's own motion
+        // from the carried position, so the drag cannot be clipped away by the platform's own collider.
+        let mut wish = desired;
         wish.y += vy * dt;
         let yaw = if settings.inherit_platform_yaw {
             yaw_of(platform_turn)
@@ -165,7 +167,7 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
             0.0
         };
 
-        let iso = Pose::from_parts(transform.translation, transform.rotation);
+        let iso = Pose::from_parts(transform.translation + carry, transform.rotation);
         let filter = QueryFilter::default().exclude_rigid_body(body_handle);
         let step_len = (wish.x * wish.x + wish.z * wish.z).sqrt();
         let kcc = build_kcc(&settings, vertical, step_len);
@@ -185,7 +187,7 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
                 floor = Some(collision.handle);
             }
         });
-        let delta = movement.translation;
+        let delta = carry + movement.translation;
         let grounded = movement.grounded;
         let ground_collider = if grounded { floor } else { None };
         let next_ground_pose = ground_collider.and_then(|handle| {

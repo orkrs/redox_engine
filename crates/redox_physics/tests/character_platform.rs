@@ -215,13 +215,11 @@ fn the_character_stays_at_the_same_point_of_the_platform_in_its_local_frame() {
         }
     }
     let drift = (local_point(&world, platform, player) - start).length();
-    // PHY-06: the one-tick carry lag is fixed (see `a_platform_turn_is_carried_in_the_same_tick`).
-    // The earlier measurement (0.16 m after 1.5 s, 0.26 m after 3 s at radius 2 m and 1 rad/s) was
-    // taken before that fix and has not been re-measured; the remaining ~4-5 % proportional loss is
-    // not explained yet. The bound below stops drift growing unnoticed; the 5 cm of the spec is open.
-    assert!(drift <= 0.35, "drifted {drift} in the platform frame");
+    // PHY-06: the carry is applied outside the controller's collision response (Rapier's controller
+    // clipped it against the platform's own collider on some ticks, ~5 % of the turn). The spec asks for 5 cm.
+    assert!(drift <= 0.05, "drifted {drift} in the platform frame");
     assert!(
-        drift - drift_at_half <= 0.15,
+        drift - drift_at_half <= 0.02,
         "the drift grows faster than measured: {drift_at_half} after 1.5 s, {drift} after 3 s"
     );
 }
