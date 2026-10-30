@@ -1,10 +1,8 @@
 //! GPU probe ray trace against the global SDF (`shaders/gi_trace.wgsl`).
 //!
 //! Each probe casts `rays` rays; results land in `ray_data` as `(radiance, hit distance)`
-//! at index `probe * rays + ray`. The bounce term from the previous frame's probes is added
-//! once the probe atlas exists (GI-01 step 4); for now the trace is direct light and emission.
-//! ASSUMPTION: the bounce term is deferred to step 4, so the red-wall bounce test of step 3
-//! is not written here.
+//! at index `probe * rays + ray`. A hit is shaded with emission, direct sun and the bounce term:
+//! last frame's irradiance atlas at the hit point, times albedo / pi.
 
 use bytemuck::{Pod, Zeroable};
 use redox_math::Vec3;
@@ -63,6 +61,20 @@ pub struct GiTraceParams {
 /// Number of parameter slots: one per cascade, so each dispatch reads its own uniform.
 pub const TRACE_SLOTS: usize = 2;
 
+/// Resources a trace reads besides its parameters.
+pub struct TraceInputs<'a> {
+    /// Global SDF the rays march through.
+    pub sdf: &'a GlobalSdfGpu,
+    /// Environment cube sampled by rays that escape the volume.
+    pub sky: &'a wgpu::TextureView,
+    /// Probe grid of the previous frame, matching `prev_irradiance` (`GiGridGpu`).
+    pub prev_grid: &'a wgpu::Buffer,
+    /// Irradiance atlas of the previous frame (stable copy).
+    pub prev_irradiance: &'a wgpu::TextureView,
+    /// Relocated probe offsets, one `vec4` per atlas index.
+    pub probe_offset: &'a wgpu::Buffer,
+}
+
 /// Compute pipeline and buffers for the probe ray trace.
 pub struct GiTracer {
     pipeline: wgpu::ComputePipeline,
@@ -101,6 +113,27 @@ impl GiTracer {
                     count: None,
                 },
                 uniform_entry(6),
+                uniform_entry(7),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 8,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 9,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -160,19 +193,16 @@ impl GiTracer {
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         params: &GiTraceParams,
-        sdf: &GlobalSdfGpu,
-        sky: &wgpu::TextureView,
+        inputs: &TraceInputs<'_>,
     ) {
-        self.record_slot(device, queue, encoder, params, 0, sdf, sky);
+        self.record_slot(device, queue, encoder, params, 0, inputs);
     }
 
-    /// Records one dispatch with parameter slot `slot` (`< TRACE_SLOTS`). `sky` is the
-    /// environment cube sampled by missed rays.
+    /// Records one dispatch with parameter slot `slot` (`< TRACE_SLOTS`).
     ///
     /// Each dispatch of one frame needs its own slot: `queue.write_buffer` takes effect before
     /// the whole encoder runs, so dispatches sharing one uniform would all read the last write.
     /// Ray records go to `(probe_base + probe) * rays + ray`.
-    #[allow(clippy::too_many_arguments)]
     pub fn record_slot(
         &self,
         device: &wgpu::Device,
@@ -180,8 +210,7 @@ impl GiTracer {
         encoder: &mut wgpu::CommandEncoder,
         params: &GiTraceParams,
         slot: usize,
-        sdf: &GlobalSdfGpu,
-        sky: &wgpu::TextureView,
+        inputs: &TraceInputs<'_>,
     ) {
         let probes = params.dims[0] * params.dims[1] * params.dims[2];
         debug_assert!(
@@ -220,11 +249,11 @@ impl GiTracer {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&sdf.distance_view),
+                    resource: wgpu::BindingResource::TextureView(&inputs.sdf.distance_view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&sdf.albedo_view),
+                    resource: wgpu::BindingResource::TextureView(&inputs.sdf.albedo_view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 3,
@@ -232,7 +261,7 @@ impl GiTracer {
                 },
                 wgpu::BindGroupEntry {
                     binding: 4,
-                    resource: wgpu::BindingResource::TextureView(sky),
+                    resource: wgpu::BindingResource::TextureView(inputs.sky),
                 },
                 wgpu::BindGroupEntry {
                     binding: 5,
@@ -240,7 +269,19 @@ impl GiTracer {
                 },
                 wgpu::BindGroupEntry {
                     binding: 6,
-                    resource: sdf.info.as_entire_binding(),
+                    resource: inputs.sdf.info.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: inputs.prev_grid.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::TextureView(inputs.prev_irradiance),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: inputs.probe_offset.as_entire_binding(),
                 },
             ],
         });

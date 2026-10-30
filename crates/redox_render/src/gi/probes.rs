@@ -10,7 +10,7 @@ use redox_math::Vec3;
 use super::atlas::{AtlasUpdate, ProbeAtlas, hysteresis_after_change};
 use super::cascade::ProbeCascade;
 use super::grid_gpu::{GI_CASCADE_COUNT, GiGridGpu};
-use super::trace::{GiTraceParams, GiTracer, TRACE_SLOTS};
+use super::trace::{GiTraceParams, GiTracer, TRACE_SLOTS, TraceInputs};
 use crate::sdf::global_gpu::GlobalSdfGpu;
 
 /// Probes per cascade along each axis.
@@ -46,6 +46,11 @@ pub struct GiProbes {
     atlas: ProbeAtlas,
     tracer: GiTracer,
     grid_buffer: wgpu::Buffer,
+    /// Grid of the previous frame, matching the stable atlas the trace reads (bounce term).
+    prev_grid: GiGridGpu,
+    prev_grid_buffer: wgpu::Buffer,
+    /// Relocated probe offsets, one `vec4` per atlas index.
+    probe_offset: wgpu::Buffer,
     irradiance: wgpu::Texture,
     irradiance_view: wgpu::TextureView,
     visibility: wgpu::Texture,
@@ -73,6 +78,18 @@ impl GiProbes {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let prev_grid_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("gi_prev_grid_uniform"),
+            size: std::mem::size_of::<GiGridGpu>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let probe_offset = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("gi_probe_offset"),
+            size: u64::from(total) * 16,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         Self {
             cascades: [
                 ProbeCascade::new(Vec3::ZERO, FINE_SPACING, CASCADE_DIMS),
@@ -81,6 +98,9 @@ impl GiProbes {
             tracer: GiTracer::new(device, total),
             atlas,
             grid_buffer,
+            prev_grid: GiGridGpu::default(),
+            prev_grid_buffer,
+            probe_offset,
             irradiance_view: irradiance.create_view(&Default::default()),
             irradiance,
             visibility_view: visibility.create_view(&Default::default()),
@@ -118,6 +138,11 @@ impl GiProbes {
         &self.visibility_view
     }
 
+    /// Relocated probe offsets (`vec4` per atlas index), read by the shading and the trace.
+    pub fn probe_offset(&self) -> &wgpu::Buffer {
+        &self.probe_offset
+    }
+
     /// Current cascades, fine first.
     pub fn cascades(&self) -> &[ProbeCascade; GI_CASCADE_COUNT] {
         &self.cascades
@@ -130,6 +155,9 @@ impl GiProbes {
 
     /// Moves the cascades to the camera, traces, updates the atlases and refreshes the stable
     /// textures and the grid uniform. Records into `encoder`.
+    ///
+    /// The trace reads last frame's grid and stable atlas (the bounce term), so `prev_grid` is
+    /// uploaded before this frame's grid replaces it.
     pub fn update(
         &mut self,
         device: &wgpu::Device,
@@ -137,10 +165,12 @@ impl GiProbes {
         encoder: &mut wgpu::CommandEncoder,
         frame: &GiFrame<'_>,
     ) {
+        queue.write_buffer(&self.prev_grid_buffer, 0, bytemuck::bytes_of(&self.prev_grid));
+        let layout = self.atlas.irradiance_layout();
         if !self.enabled {
-            let layout = self.atlas.irradiance_layout();
             let grid = GiGridGpu::new(&self.cascades, layout.probes_per_row, false);
             queue.write_buffer(&self.grid_buffer, 0, bytemuck::bytes_of(&grid));
+            self.prev_grid = grid;
             return;
         }
         if self.snap_cascades(frame.camera_pos) {
@@ -149,10 +179,16 @@ impl GiProbes {
         let hysteresis = hysteresis_after_change(self.frames_since_change);
         self.frames_since_change = self.frames_since_change.saturating_add(1);
 
-        let layout = self.atlas.irradiance_layout();
         let grid = GiGridGpu::new(&self.cascades, layout.probes_per_row, true);
         queue.write_buffer(&self.grid_buffer, 0, bytemuck::bytes_of(&grid));
 
+        let inputs = TraceInputs {
+            sdf: frame.sdf,
+            sky: frame.sky,
+            prev_grid: &self.prev_grid_buffer,
+            prev_irradiance: &self.irradiance_view,
+            probe_offset: &self.probe_offset,
+        };
         for (slot, cascade) in self.cascades.iter().enumerate() {
             let params = GiTraceParams {
                 grid_origin: cascade.origin,
@@ -166,7 +202,7 @@ impl GiProbes {
                 probe_base: slot as u32 * PROBES_PER_CASCADE,
             };
             self.tracer
-                .record_slot(device, queue, encoder, &params, slot, frame.sdf, frame.sky);
+                .record_slot(device, queue, encoder, &params, slot, &inputs);
         }
 
         self.atlas.record_update(
@@ -183,6 +219,7 @@ impl GiProbes {
         );
         self.copy_readable_atlases(encoder);
         self.frame_index = self.frame_index.wrapping_add(1);
+        self.prev_grid = grid;
     }
 
     /// Re-centres both cascades on `camera_pos`. Returns true when any cascade moved.

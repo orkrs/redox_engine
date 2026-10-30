@@ -74,8 +74,8 @@ struct GiGridGpu {
     cascades: array<GiCascadeGpu, 2>,
     probes_per_row: u32,
     enabled: u32,
+    cascade_count: u32,
     _pad0: u32,
-    _pad1: u32,
 }
 @group(1) @binding(16) var<uniform> gi_grid: GiGridGpu;
 @group(1) @binding(17) var t_gi_irradiance: texture_2d<f32>;
@@ -319,7 +319,7 @@ fn gi_irradiance(world_pos: vec3<f32>, n: vec3<f32>, v: vec3<f32>) -> vec3<f32> 
     let coarse_edge = max_component(abs(world_pos - (coarse_min + coarse_size * 0.5)) / (coarse_size * 0.5));
 
     let fine_inside = fine_edge < 1.0;
-    let coarse_inside = coarse_edge < 1.0;
+    let coarse_inside = gi_grid.cascade_count > 1u && coarse_edge < 1.0;
     var f_sum = vec4<f32>(0.0);
     if (fine_inside) {
         f_sum = gi_sample_cascade(0u, world_pos, n, v);
@@ -1145,7 +1145,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Combine IBL with DDGI diffuse bounce (bent normal) — single ambient source.
     // Constant ambient (light_u.ambient.xyz) is small 0.02×albedo fallback when IBL/DDGI missing, not triple.
     let ddgi = gi_irradiance(in.world_pos, bent_n, v);
-    let ambient_base = (w_base * (kD_ibl * diffuse_ibl + specular_ibl) + substrate_ibl + ddgi * albedo + light_u.ambient.xyz * albedo) * ambient_factor * ao;
+    let ambient_base = (w_base * (kD_ibl * diffuse_ibl + specular_ibl) + substrate_ibl + ddgi * albedo / PI + light_u.ambient.xyz * albedo) * ambient_factor * ao;
     // MAT-04: the clearcoat attenuates the base ambient and adds its own reflection.
     var ambient = ambient_base;
     if ((material.flags & MAT_FLAG_COAT) != 0u && shader_debug.ibl_enabled != 0u) {

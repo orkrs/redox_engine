@@ -181,8 +181,8 @@ struct GiGridGpu {
     cascades: array<GiCascadeGpu, 2>,
     probes_per_row: u32,
     enabled: u32,
+    cascade_count: u32,
     _pad0: u32,
-    _pad1: u32,
 }
 struct SdfBrickPageGpu {
     world_min: vec4<f32>,
@@ -815,7 +815,7 @@ fn gi_irradiance(world_pos: vec3<f32>, n: vec3<f32>, v: vec3<f32>) -> vec3<f32> 
     let coarse_edge = max_component(abs(world_pos - (coarse_min + coarse_size * 0.5)) / (coarse_size * 0.5));
 
     let fine_inside = fine_edge < 1.0;
-    let coarse_inside = coarse_edge < 1.0;
+    let coarse_inside = gi_grid.cascade_count > 1u && coarse_edge < 1.0;
     var f_sum = vec4<f32>(0.0);
     if (fine_inside) {
         f_sum = gi_sample_cascade(0u, world_pos, n, v);
@@ -1027,7 +1027,7 @@ fn fs_main(in: FsInput) -> @location(0) vec4<f32> {
     }
     let w_base = max(1.0 - w0 - w1, 0.0);
 
-    let gi_diffuse = gi_irradiance(world_pos, n, v) * albedo;
+    let gi_diffuse = gi_irradiance(world_pos, n, v) * albedo / PI;
     let ambient = (w_base * (kD_ibl * diffuse_ibl + specular_ibl) + substrate_ibl + gi_diffuse) * ambient_factor * ao + light_u.ambient.xyz * albedo * ao;
     let color = ambient + lo + mat.emissive.rgb;
     return vec4<f32>(sanitize_hdr(color), mat.base_color.a);

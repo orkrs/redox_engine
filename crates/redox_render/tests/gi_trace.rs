@@ -5,7 +5,8 @@ mod common;
 
 use redox_math::{Aabb, Vec3};
 use redox_render::gi::sdf_ref::cornell_box;
-use redox_render::gi::trace::{GiTraceParams, GiTracer};
+use redox_render::gi::grid_gpu::GiGridGpu;
+use redox_render::gi::trace::{GiTraceParams, GiTracer, TraceInputs};
 use redox_render::sdf::global::{GLOBAL_SDF_DIMS, GlobalSdf, SdfBox};
 use redox_render::sdf::global_gpu::GlobalSdfGpu;
 
@@ -107,8 +108,43 @@ fn trace(
     gpu_sdf.upload(device, queue, sdf);
     let probes: u32 = params.dims.iter().product();
     let tracer = GiTracer::new(device, probes);
+    // No previous frame: the grid is zeroed (GI off), so the bounce term is zero.
+    let prev_grid = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("test_prev_grid"),
+        size: std::mem::size_of::<GiGridGpu>() as u64,
+        usage: wgpu::BufferUsages::UNIFORM,
+        mapped_at_creation: false,
+    });
+    let prev_atlas = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("test_prev_atlas"),
+        size: wgpu::Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba16Float,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    });
+    let prev_view = prev_atlas.create_view(&Default::default());
+    let offsets = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("test_probe_offset"),
+        size: u64::from(probes.max(1)) * 16,
+        usage: wgpu::BufferUsages::STORAGE,
+        mapped_at_creation: false,
+    });
+    let inputs = TraceInputs {
+        sdf: &gpu_sdf,
+        sky,
+        prev_grid: &prev_grid,
+        prev_irradiance: &prev_view,
+        probe_offset: &offsets,
+    };
     let mut encoder = device.create_command_encoder(&Default::default());
-    tracer.record(device, queue, &mut encoder, &params, &gpu_sdf, sky);
+    tracer.record(device, queue, &mut encoder, &params, &inputs);
     queue.submit(Some(encoder.finish()));
     let bytes = read_bytes(
         device,

@@ -147,7 +147,6 @@ fn render_view(
 }
 
 #[test]
-#[ignore = "GI-01 5b: needs the bounce term in gi_trace.wgsl"]
 fn the_white_floor_next_to_the_red_wall_is_tinted_red() {
     let Some(adapter) = common::adapter() else {
         eprintln!("no GPU adapter, skipping");

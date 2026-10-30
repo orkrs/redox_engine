@@ -2,7 +2,7 @@
 //! `vg_resolve.wgsl` (`@group(1) @binding(16)`).
 //!
 //! Layout (WGSL uniform rules, 112 bytes): two `GiCascadeGpu` of 48 bytes each, then
-//! `probes_per_row`, `enabled` and two words of padding.
+//! `probes_per_row`, `enabled`, `cascade_count` and one word of padding.
 
 use bytemuck::{Pod, Zeroable};
 
@@ -33,8 +33,10 @@ pub struct GiGridGpu {
     pub probes_per_row: u32,
     /// Non-zero when GI lighting is applied.
     pub enabled: u32,
+    /// Number of cascades in use (1 or 2); the coarse one is skipped below 2.
+    pub cascade_count: u32,
     /// Padding to a multiple of 16 bytes.
-    pub _pad: [u32; 2],
+    pub _pad: u32,
 }
 
 impl GiGridGpu {
@@ -52,6 +54,7 @@ impl GiGridGpu {
         let mut out = Self {
             probes_per_row,
             enabled: u32::from(enabled),
+            cascade_count: GI_CASCADE_COUNT as u32,
             ..Self::default()
         };
         for (c, cascade) in cascades.iter().enumerate() {
@@ -97,6 +100,7 @@ mod tests {
         assert_eq!(std::mem::offset_of!(GiGridGpu, cascades), 0);
         assert_eq!(std::mem::offset_of!(GiGridGpu, probes_per_row), 96);
         assert_eq!(std::mem::offset_of!(GiGridGpu, enabled), 100);
+        assert_eq!(std::mem::offset_of!(GiGridGpu, cascade_count), 104);
         assert_eq!(std::mem::offset_of!(GiCascadeGpu, origin), 0);
         assert_eq!(std::mem::offset_of!(GiCascadeGpu, dims), 16);
         assert_eq!(std::mem::offset_of!(GiCascadeGpu, scroll), 32);
