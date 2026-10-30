@@ -19,6 +19,7 @@ impl Renderer {
         let boxes = boxes.to_vec();
         self.gi
             .spawn_rebuild(move || GlobalSdf::from_boxes(&boxes, bounds, GLOBAL_SDF_DIMS));
+        self.gi_probes.notify_lighting_changed();
     }
 
     /// Rebuilds the GI volume from baked SDF bricks, each with colour `[r, g, b, emission]`.
@@ -36,6 +37,7 @@ impl Renderer {
         let bricks = bricks.to_vec();
         self.gi
             .spawn_rebuild(move || GlobalSdf::from_bricks(&bricks, bounds, GLOBAL_SDF_DIMS));
+        self.gi_probes.notify_lighting_changed();
     }
 }
 

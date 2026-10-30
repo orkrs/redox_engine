@@ -171,19 +171,18 @@ struct ShaderDebugUniform {
 @group(1) @binding(14) var s_vsm: sampler;
 @group(1) @binding(15) var<storage, read> vsm_info: VsmGpuInfo;
 
-struct DdgiGridGpu {
-    origin: vec4<f32>,
-    spacing: f32,
-    dims_x: u32,
-    dims_y: u32,
-    dims_z: u32,
+// GI probe cascades (GI-01 step 5a): mirror of pbr.wgsl and src/gi/grid_gpu.rs.
+struct GiCascadeGpu {
+    origin: vec4<f32>,   // xyz origin, w probe spacing
+    dims: vec4<u32>,     // xyz probe counts, w atlas index of the first probe
+    scroll: vec4<i32>,   // xyz lowest world cell of the window
+}
+struct GiGridGpu {
+    cascades: array<GiCascadeGpu, 2>,
+    probes_per_row: u32,
     enabled: u32,
     _pad0: u32,
     _pad1: u32,
-    _pad2: u32,
-}
-struct DdgiProbeGpu {
-    samples: array<vec4<f32>, 8>,
 }
 struct SdfBrickPageGpu {
     world_min: vec4<f32>,
@@ -196,8 +195,9 @@ struct SdfSceneGpu {
     world_bounds_max_texel: vec4<f32>,
     pages: array<SdfBrickPageGpu, 8>,
 }
-@group(1) @binding(16) var<uniform> ddgi_grid: DdgiGridGpu;
-@group(1) @binding(17) var<storage, read> ddgi_probes: array<DdgiProbeGpu>;
+@group(1) @binding(16) var<uniform> gi_grid: GiGridGpu;
+@group(1) @binding(17) var t_gi_irradiance: texture_2d<f32>;
+@group(1) @binding(23) var t_gi_visibility: texture_2d<f32>;
 @group(1) @binding(18) var<uniform> sdf_scene: SdfSceneGpu;
 @group(1) @binding(19) var t_sdf_bricks: texture_3d<f32>;
 @group(1) @binding(20) var s_sdf_bricks: sampler;
@@ -701,6 +701,146 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> FsInput {
 
 // ── Resolve fragment ──────────────────────────────────────────────────────
 
+// ── GI probe sampling (GI-01 step 5a): same algorithm as pbr.wgsl ────────
+// Mirror of gi::oct::oct_encode.
+fn oct_encode(n: vec3<f32>) -> vec2<f32> {
+    var v = n / max(abs(n.x) + abs(n.y) + abs(n.z), 1.0e-6);
+    if (v.y < 0.0) {
+        let ox = v.x;
+        v.x = (1.0 - abs(v.z)) * select(-1.0, 1.0, ox >= 0.0);
+        v.z = (1.0 - abs(ox)) * select(-1.0, 1.0, v.z >= 0.0);
+    }
+    return clamp(v.xz * 0.5 + 0.5, vec2<f32>(0.0), vec2<f32>(1.0));
+}
+
+const GI_INNER_IRR: f32 = 8.0;
+const GI_STRIDE_IRR: u32 = 10u;
+const GI_INNER_VIS: f32 = 16.0;
+const GI_STRIDE_VIS: u32 = 18u;
+
+fn gi_cascade(c: u32) -> GiCascadeGpu {
+    if (c == 0u) {
+        return gi_grid.cascades[0];
+    }
+    return gi_grid.cascades[1];
+}
+
+fn gi_visibility_bound(moments: vec2<f32>, d: f32) -> f32 {
+    if (d <= moments.x) {
+        return 1.0;
+    }
+    let variance = max(moments.y - moments.x * moments.x, 1.0e-4);
+    let diff = d - moments.x;
+    return variance / (variance + diff * diff);
+}
+
+fn gi_tile_fetch(tex: texture_2d<f32>, probe: u32, dir: vec3<f32>, stride: u32, inner: f32) -> vec4<f32> {
+    let ppr = gi_grid.probes_per_row;
+    let tile = vec2<f32>(f32(probe % ppr), f32(probe / ppr)) * f32(stride);
+    let p = tile + 1.0 + oct_encode(dir) * inner - 0.5;
+    let i0 = floor(p);
+    let f = p - i0;
+    let c = vec2<i32>(i0);
+    let a = textureLoad(tex, c, 0);
+    let b = textureLoad(tex, c + vec2<i32>(1, 0), 0);
+    let d = textureLoad(tex, c + vec2<i32>(0, 1), 0);
+    let e = textureLoad(tex, c + vec2<i32>(1, 1), 0);
+    return mix(mix(a, b, f.x), mix(d, e, f.x), f.y);
+}
+
+fn gi_sample_cascade(c: u32, world_pos: vec3<f32>, n: vec3<f32>, v: vec3<f32>) -> vec4<f32> {
+    let casc = gi_cascade(c);
+    let spacing = casc.origin.w;
+    let normal_bias = 0.2 * spacing;
+    let biased = world_pos + n * normal_bias + v * (0.8 * normal_bias);
+    let g = (biased - casc.origin.xyz) / spacing;
+    let base = floor(g);
+    let frac = g - base;
+    let base_cell = vec3<i32>(base);
+    let scroll = casc.scroll.xyz;
+    let dims = vec3<i32>(casc.dims.xyz);
+    let dims_u = casc.dims.xyz;
+    var accum = vec3<f32>(0.0);
+    var wsum = 0.0;
+    for (var dz = 0; dz < 2; dz = dz + 1) {
+        for (var dy = 0; dy < 2; dy = dy + 1) {
+            for (var dx = 0; dx < 2; dx = dx + 1) {
+                let cell = base_cell + vec3<i32>(dx, dy, dz);
+                let rel = cell - scroll;
+                if (any(rel < vec3<i32>(0)) || any(rel >= dims)) {
+                    continue;
+                }
+                let slot = ((cell % dims) + dims) % dims;
+                let su = vec3<u32>(slot);
+                let index = casc.dims.w + su.x + su.y * dims_u.x + su.z * dims_u.x * dims_u.y;
+                let probe_pos = casc.origin.xyz + vec3<f32>(cell) * spacing;
+                let wx = select(frac.x, 1.0 - frac.x, dx == 0);
+                let wy = select(frac.y, 1.0 - frac.y, dy == 0);
+                let wz = select(frac.z, 1.0 - frac.z, dz == 0);
+                let trilinear = wx * wy * wz;
+                let to_probe = probe_pos - world_pos;
+                let dir_to_probe = to_probe / max(length(to_probe), 1.0e-5);
+                let facing = (dot(dir_to_probe, n) + 1.0) * 0.5;
+                let backface = facing * facing + 0.2;
+                let to_point = biased - probe_pos;
+                let dist = length(to_point);
+                let vis_dir = to_point / max(dist, 1.0e-5);
+                let moments = gi_tile_fetch(t_gi_visibility, index, vis_dir, GI_STRIDE_VIS, GI_INNER_VIS).rg;
+                let visibility = gi_visibility_bound(moments, dist);
+                let w = trilinear * backface * max(visibility, 1.0e-3);
+                let stored = gi_tile_fetch(t_gi_irradiance, index, n, GI_STRIDE_IRR, GI_INNER_IRR).rgb;
+                accum = accum + pow(max(stored, vec3<f32>(0.0)), vec3<f32>(5.0)) * w;
+                wsum = wsum + w;
+            }
+        }
+    }
+    return vec4<f32>(accum, wsum);
+}
+
+fn max_component(v: vec3<f32>) -> f32 {
+    return max(v.x, max(v.y, v.z));
+}
+
+fn gi_irradiance(world_pos: vec3<f32>, n: vec3<f32>, v: vec3<f32>) -> vec3<f32> {
+    if (gi_grid.enabled == 0u) {
+        return vec3<f32>(0.0);
+    }
+    let fine = gi_cascade(0u);
+    let coarse = gi_cascade(1u);
+    let fine_size = vec3<f32>(fine.dims.xyz) * fine.origin.w;
+    let fine_min = fine.origin.xyz + vec3<f32>(fine.scroll.xyz) * fine.origin.w;
+    let fine_edge = max_component(abs(world_pos - (fine_min + fine_size * 0.5)) / (fine_size * 0.5));
+    let coarse_size = vec3<f32>(coarse.dims.xyz) * coarse.origin.w;
+    let coarse_min = coarse.origin.xyz + vec3<f32>(coarse.scroll.xyz) * coarse.origin.w;
+    let coarse_edge = max_component(abs(world_pos - (coarse_min + coarse_size * 0.5)) / (coarse_size * 0.5));
+
+    let fine_inside = fine_edge < 1.0;
+    let coarse_inside = coarse_edge < 1.0;
+    var f_sum = vec4<f32>(0.0);
+    if (fine_inside) {
+        f_sum = gi_sample_cascade(0u, world_pos, n, v);
+    }
+    var c_sum = vec4<f32>(0.0);
+    if (coarse_inside) {
+        c_sum = gi_sample_cascade(1u, world_pos, n, v);
+    }
+    let f_ok = fine_inside && f_sum.w > 1.0e-5;
+    let c_ok = coarse_inside && c_sum.w > 1.0e-5;
+    var fade = 1.0;
+    if (f_ok) {
+        fade = clamp((fine_edge - 0.85) / 0.15, 0.0, 1.0);
+    }
+    let w_f = select(0.0, 1.0 - fade, f_ok);
+    let w_c = select(0.0, fade, c_ok);
+    let total = w_f + w_c;
+    if (total < 1.0e-5) {
+        return vec3<f32>(0.0);
+    }
+    let fa = select(vec3<f32>(0.0), f_sum.rgb / max(f_sum.w, 1.0e-5), f_ok);
+    let ca = select(vec3<f32>(0.0), c_sum.rgb / max(c_sum.w, 1.0e-5), c_ok);
+    return (fa * w_f + ca * w_c) / total;
+}
+
 @fragment
 fn fs_main(in: FsInput) -> @location(0) vec4<f32> {
     let dims = vec2<i32>(textureDimensions(t_vis_id));
@@ -887,7 +1027,8 @@ fn fs_main(in: FsInput) -> @location(0) vec4<f32> {
     }
     let w_base = max(1.0 - w0 - w1, 0.0);
 
-    let ambient = (w_base * (kD_ibl * diffuse_ibl + specular_ibl) + substrate_ibl) * ambient_factor * ao + light_u.ambient.xyz * albedo * ao;
+    let gi_diffuse = gi_irradiance(world_pos, n, v) * albedo;
+    let ambient = (w_base * (kD_ibl * diffuse_ibl + specular_ibl) + substrate_ibl + gi_diffuse) * ambient_factor * ao + light_u.ambient.xyz * albedo * ao;
     let color = ambient + lo + mat.emissive.rgb;
     return vec4<f32>(sanitize_hdr(color), mat.base_color.a);
 }

@@ -5,6 +5,8 @@ pub mod atlas;
 pub mod cascade;
 pub mod ddgi;
 pub mod ddgi_gpu;
+pub mod grid_gpu;
+pub mod probes;
 pub mod oct;
 pub mod reference;
 pub mod sdf_ref;

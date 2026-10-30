@@ -578,6 +578,7 @@ impl Renderer {
         // painted sliding blobs that don't match the real scene casters).
         let ddgi_gpu = crate::gi::DdgiGpu::new_default(&device);
         let gi = crate::gi::state::GiState::new(&device, &queue);
+        let gi_probes = crate::gi::probes::GiProbes::new(&device);
         let sdf_gpu = crate::sdf::SdfGpuAtlas::new(&device, &queue);
         let (blue_noise_texture, blue_noise_view, blue_noise_sampler) =
             crate::resource::blue_noise::create_blue_noise_texture(&device, &queue);
@@ -658,8 +659,9 @@ impl Renderer {
             &vsm_pages_array_view,
             &vsm_sampler,
             &vsm_info_buffer,
-            &ddgi_gpu.grid_buffer,
-            &ddgi_gpu.probe_buffer,
+            gi_probes.grid_buffer(),
+            gi_probes.irradiance_view(),
+            gi_probes.visibility_view(),
             &sdf_gpu.scene_buffer,
             &sdf_gpu.view,
             &sdf_gpu.sampler,
@@ -875,6 +877,7 @@ impl Renderer {
             bloom_composite_bg,
             ddgi_gpu,
             gi,
+            gi_probes,
             sdf_gpu,
             blue_noise_texture,
             blue_noise_view,

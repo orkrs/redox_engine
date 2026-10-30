@@ -339,14 +339,14 @@ impl PbrPass {
                     },
                     count: None,
                 },
-                // 17: DDGI probes
+                // 17: GI irradiance atlas (octahedral tiles, perceptual encoding)
                 wgpu::BindGroupLayoutEntry {
                     binding: 17,
                     visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
                     },
                     count: None,
                 },
@@ -395,6 +395,17 @@ impl PbrPass {
                     binding: 22,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                // 23: GI visibility atlas (mean and mean-square distance per octahedral tile)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 23,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    },
                     count: None,
                 },
             ],
@@ -577,8 +588,9 @@ impl PbrPass {
         vsm_pages_view: &wgpu::TextureView,
         vsm_sampler: &wgpu::Sampler,
         vsm_info_buffer: &wgpu::Buffer,
-        ddgi_grid_buffer: &wgpu::Buffer,
-        ddgi_probe_buffer: &wgpu::Buffer,
+        gi_grid_buffer: &wgpu::Buffer,
+        gi_irradiance_view: &wgpu::TextureView,
+        gi_visibility_view: &wgpu::TextureView,
         sdf_scene_buffer: &wgpu::Buffer,
         sdf_texture_view: &wgpu::TextureView,
         sdf_sampler: &wgpu::Sampler,
@@ -643,11 +655,11 @@ impl PbrPass {
                 },
                 wgpu::BindGroupEntry {
                     binding: 16,
-                    resource: ddgi_grid_buffer.as_entire_binding(),
+                    resource: gi_grid_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 17,
-                    resource: ddgi_probe_buffer.as_entire_binding(),
+                    resource: wgpu::BindingResource::TextureView(gi_irradiance_view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 18,
@@ -668,6 +680,10 @@ impl PbrPass {
                 wgpu::BindGroupEntry {
                     binding: 22,
                     resource: wgpu::BindingResource::Sampler(vsm_shadow_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 23,
+                    resource: wgpu::BindingResource::TextureView(gi_visibility_view),
                 },
             ],
         })

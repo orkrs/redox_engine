@@ -29,11 +29,13 @@ pub struct GiTraceParamsGpu {
     pub sun_dir: [f32; 4],
     /// Sun radiance (xyz).
     pub sun_rad: [f32; 4],
-    /// Frame index (x) and probe count (y).
+    /// Frame index (x), probes in this dispatch (y), first probe of the atlas (z).
     pub frame: [u32; 4],
+    /// Lowest world cell of the cascade window (xyz).
+    pub scroll: [i32; 4],
 }
 
-const _: () = assert!(std::mem::size_of::<GiTraceParamsGpu>() == 80);
+const _: () = assert!(std::mem::size_of::<GiTraceParamsGpu>() == 96);
 
 /// Per-dispatch inputs in CPU form.
 #[derive(Clone, Copy, Debug)]
@@ -52,13 +54,20 @@ pub struct GiTraceParams {
     pub sun_dir: Vec3,
     /// Sun radiance.
     pub sun_radiance: Vec3,
+    /// Lowest world cell of the cascade window (see `ProbeCascade::scroll`).
+    pub scroll: [i32; 3],
+    /// Atlas index of this dispatch's first probe; ray records start at `probe_base * rays`.
+    pub probe_base: u32,
 }
+
+/// Number of parameter slots: one per cascade, so each dispatch reads its own uniform.
+pub const TRACE_SLOTS: usize = 2;
 
 /// Compute pipeline and buffers for the probe ray trace.
 pub struct GiTracer {
     pipeline: wgpu::ComputePipeline,
     bgl: wgpu::BindGroupLayout,
-    params: wgpu::Buffer,
+    params: [wgpu::Buffer; TRACE_SLOTS],
     sampler: wgpu::Sampler,
     /// `vec4<f32>` per ray, `max_probes * MAX_RAYS_PER_PROBE` records.
     pub ray_data: wgpu::Buffer,
@@ -108,11 +117,13 @@ impl GiTracer {
             entry_point: Some("main"),
             compilation_options: Default::default(),
         });
-        let params = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("gi_trace_params"),
-            size: std::mem::size_of::<GiTraceParamsGpu>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
+        let params = std::array::from_fn(|_| {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("gi_trace_params"),
+                size: std::mem::size_of::<GiTraceParamsGpu>() as u64,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
         });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("gi_trace_sampler"),
@@ -139,7 +150,7 @@ impl GiTracer {
         }
     }
 
-    /// Records the trace for one frame. `sky` is the environment cube sampled by missed rays.
+    /// Records the trace for one frame in parameter slot 0. See [`Self::record_slot`].
     ///
     /// The probe count `dims.x * dims.y * dims.z` must not exceed the `max_probes` given to
     /// [`Self::new`].
@@ -152,9 +163,29 @@ impl GiTracer {
         sdf: &GlobalSdfGpu,
         sky: &wgpu::TextureView,
     ) {
+        self.record_slot(device, queue, encoder, params, 0, sdf, sky);
+    }
+
+    /// Records one dispatch with parameter slot `slot` (`< TRACE_SLOTS`). `sky` is the
+    /// environment cube sampled by missed rays.
+    ///
+    /// Each dispatch of one frame needs its own slot: `queue.write_buffer` takes effect before
+    /// the whole encoder runs, so dispatches sharing one uniform would all read the last write.
+    /// Ray records go to `(probe_base + probe) * rays + ray`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_slot(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        params: &GiTraceParams,
+        slot: usize,
+        sdf: &GlobalSdfGpu,
+        sky: &wgpu::TextureView,
+    ) {
         let probes = params.dims[0] * params.dims[1] * params.dims[2];
         debug_assert!(
-            probes <= self.max_probes,
+            params.probe_base + probes <= self.max_probes,
             "more probes than the ray buffer holds"
         );
         let rays = params.rays.clamp(1, MAX_RAYS_PER_PROBE);
@@ -173,9 +204,11 @@ impl GiTracer {
                 params.sun_radiance.z,
                 0.0,
             ],
-            frame: [params.frame_index, probes, 0, 0],
+            frame: [params.frame_index, probes, params.probe_base, 0],
+            scroll: [params.scroll[0], params.scroll[1], params.scroll[2], 0],
         };
-        queue.write_buffer(&self.params, 0, bytemuck::bytes_of(&gpu));
+        let buffer = &self.params[slot.min(TRACE_SLOTS - 1)];
+        queue.write_buffer(buffer, 0, bytemuck::bytes_of(&gpu));
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("gi_trace_bg"),
@@ -183,7 +216,7 @@ impl GiTracer {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: self.params.as_entire_binding(),
+                    resource: buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,

@@ -10,7 +10,8 @@ struct TraceParams {
     grid_dims: vec4<u32>,    // probe counts per axis (xyz), rays per probe (w)
     sun_dir: vec4<f32>,      // unit direction towards the sun (xyz)
     sun_rad: vec4<f32>,      // sun radiance (xyz)
-    frame: vec4<u32>,        // frame index (x), probe count (y)
+    frame: vec4<u32>,        // frame index (x), probe count of this dispatch (y), first atlas probe (z)
+    scroll: vec4<i32>,       // lowest world cell of the cascade window (xyz)
 };
 
 struct SdfInfo {
@@ -126,12 +127,17 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let probe = index / rays;
     let ray = index % rays;
     let dims = params.grid_dims.xyz;
-    let cell = vec3<f32>(
-        f32(probe % dims.x),
-        f32((probe / dims.x) % dims.y),
-        f32(probe / (dims.x * dims.y)),
+    // Ring slot of the probe, then the world cell that slot holds in the current window:
+    // cell = scroll + ((slot - scroll) mod dims), the inverse of ProbeCascade::storage_index.
+    let slot = vec3<i32>(
+        i32(probe % dims.x),
+        i32((probe / dims.x) % dims.y),
+        i32(probe / (dims.x * dims.y)),
     );
-    let origin = params.grid_origin.xyz + cell * params.grid_origin.w;
+    let d = vec3<i32>(dims);
+    let rel = slot - params.scroll.xyz;
+    let cell = params.scroll.xyz + ((rel % d) + d) % d;
+    let origin = params.grid_origin.xyz + vec3<f32>(cell) * params.grid_origin.w;
     let q = random_rotation(hash_u32(params.frame.x));
     let dir = rotate(q, fib_dir(ray, rays));
 
@@ -153,5 +159,5 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     } else {
         radiance = textureSampleLevel(t_sky, s_linear, dir, SKY_LOD).rgb;
     }
-    ray_data[index] = vec4<f32>(radiance, hit_t);
+    ray_data[(params.frame.z + probe) * rays + ray] = vec4<f32>(radiance, hit_t);
 }
