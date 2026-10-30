@@ -757,6 +757,56 @@ fn a_crowd_of_a_hundred_reaches_the_goal_without_overlapping_deeply() {
     assert!(arrived >= 90, "only {arrived} of 100 arrived");
 }
 
+/// Two groups walk through a 20 m corridor in opposite directions, two lanes each. Counts the
+/// pairs of agents whose centres are closer than the sum of their radii (0.6 m), summed over
+/// every frame of `seconds`.
+fn corridor_overlaps(neighbour_distance: f32, seconds: f32) -> u32 {
+    let mut w = world_of(vec![grid_tile((0, 0), 0.0, 0.0, 20, 3, 1.0, walk)]);
+    let params = AvoidanceParams {
+        neighbour_distance,
+        ..AvoidanceParams::default()
+    };
+    let routes = [
+        (p(1.0, 1.0), p(19.0, 1.0)),
+        (p(1.0, 2.0), p(19.0, 2.0)),
+        (p(19.0, 1.0), p(1.0, 1.0)),
+        (p(19.0, 2.0), p(1.0, 2.0)),
+    ];
+    let mut agents = Vec::new();
+    for (start, goal) in routes {
+        let id = w.add_agent(start, 0.3, 2.0, params).unwrap();
+        w.set_goal(id, Some(goal));
+        agents.push((id, start, Vec3::ZERO));
+    }
+    let dt = 1.0 / 60.0;
+    let mut overlaps = 0;
+    for _ in 0..(seconds / dt) as usize {
+        let desired = w.update_agents(dt, &agents);
+        for (slot, (_, v)) in agents.iter_mut().zip(desired) {
+            slot.2 = v;
+            slot.1 += v * dt;
+        }
+        for i in 0..agents.len() {
+            for j in (i + 1)..agents.len() {
+                if (agents[i].1 - agents[j].1).length() < 0.6 {
+                    overlaps += 1;
+                }
+            }
+        }
+    }
+    overlaps
+}
+
+#[test]
+fn the_reduced_neighbourhood_does_not_cause_collisions_in_a_corridor() {
+    let wide = corridor_overlaps(5.0, 20.0);
+    let narrow = corridor_overlaps(2.0, 20.0);
+    assert!(
+        f64::from(narrow) <= f64::from(wide) * 1.1 + 1.0,
+        "overlapping pairs per run: 2 m neighbourhood {narrow}, 5 m neighbourhood {wide}"
+    );
+}
+
 #[test]
 #[ignore = "timing: run with --release -- --ignored --nocapture"]
 fn avoidance_bench_two_hundred_agents() {

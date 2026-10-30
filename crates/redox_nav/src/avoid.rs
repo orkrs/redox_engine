@@ -26,7 +26,9 @@ pub struct AvoidanceParams {
 impl Default for AvoidanceParams {
     fn default() -> Self {
         Self {
-            neighbour_distance: 5.0,
+            // NAV-05: 2 m instead of 5 m. Cost grows with the neighbours in range, and the
+            // profile in notes/nav-spike.md shows x4.3 at 200 agents for this change.
+            neighbour_distance: 2.0,
             max_neighbours: 10,
             time_horizon: 2.0,
             obstacle_time_horizon: 1.0,
