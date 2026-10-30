@@ -14,6 +14,7 @@ use redox_render::frame::FrameView;
 use redox_render::light::{DirectionalLight, LightScene};
 use redox_render::material::Material;
 use redox_render::mesh::primitive::{create_cube, create_sphere};
+use redox_render::mesh::{Mesh, Vertex};
 use redox_render::post::fog::FogSettings;
 use redox_render::post::ssr::SsrSettings;
 use redox_render::resource::ibl::read_texture_ktx2;
@@ -523,6 +524,111 @@ impl CloneObject for RenderObject {
             bounds: self.bounds,
         }
     }
+}
+
+/// Vertices of a box whose top half bends sideways by `bend` (a stand-in for a raised arm).
+/// The two unused vertices at x = ±1.5 make the uploaded bounds wide enough for the bend.
+fn arm_vertices(bend: f32) -> Vec<Vertex> {
+    let mut vertices: Vec<Vertex> = create_cube()
+        .vertices
+        .iter()
+        .map(|v| {
+            let [x, y, z] = v.position;
+            let x = if y > 0.0 { x + 0.8 * bend * (y / 0.5) } else { x };
+            Vertex {
+                position: [x, y, z],
+                normal: v.normal,
+                uv: v.uv,
+                tangent: v.tangent,
+            }
+        })
+        .collect();
+    for x in [-1.5, 1.5] {
+        vertices.push(Vertex {
+            position: [x, 0.0, 0.0],
+            normal: [0.0, 1.0, 0.0],
+            uv: [0.0; 2],
+            tangent: [1.0, 0.0, 0.0],
+        });
+    }
+    vertices
+}
+
+fn arm_mesh(bend: f32) -> Mesh {
+    Mesh::new(arm_vertices(bend), create_cube().indices)
+}
+
+/// The deforming arm object at `pose`: the shadow code refreshes it when the pose version changes.
+fn arm(mesh: usize, material: usize, pose: u32) -> RenderObject {
+    let center = Vec3::new(0.0, 0.0, -6.0);
+    RenderObject {
+        id: 2,
+        shadow_class: ShadowClass::Auto,
+        deforms: true,
+        pose_version: pose,
+        model_matrix: Mat4::from_translation(center),
+        color: [1.0; 4],
+        mesh_index: mesh,
+        material_index: material,
+        bounds: Aabb::from_center_size(center, Vec3::new(3.0, 2.0, 2.0)),
+    }
+}
+
+/// RND-08 step 4: a bent arm (vertices rewritten in place, pose version bumped per step) must
+/// update its shadow pages, and the cached result must match a fresh render of the same pose.
+/// The deformation goes through `update_mesh_vertices`, the path skinning uses, without a rig.
+#[test]
+fn a_waving_arm_updates_its_shadow_and_matches_a_fresh_render() {
+    let _gpu = lock();
+    let (Some(mut cached), Some(mut fresh)) = (rig(false), rig(false)) else {
+        return;
+    };
+    if !cached.renderer.vsm_enabled {
+        return;
+    }
+    let ground_mat_c = cached.renderer.add_material(Material::solid(Vec3::splat(0.7)));
+    let arm_mat_c = cached.renderer.add_material(Material::solid(Vec3::new(0.8, 0.3, 0.2)));
+    let arm_slot_c = cached.renderer.upload_mesh(&arm_mesh(0.0));
+    let ground_c = cached.object(
+        cached.cube,
+        ground_mat_c,
+        1,
+        Vec3::new(0.0, -1.0, -8.0),
+        Vec3::new(40.0, 0.2, 40.0),
+    );
+
+    let ground_mat_f = fresh.renderer.add_material(Material::solid(Vec3::splat(0.7)));
+    let arm_mat_f = fresh.renderer.add_material(Material::solid(Vec3::new(0.8, 0.3, 0.2)));
+    let arm_slot_f = fresh.renderer.upload_mesh(&arm_mesh(1.0));
+    let ground_f = fresh.object(
+        fresh.cube,
+        ground_mat_f,
+        1,
+        Vec3::new(0.0, -1.0, -8.0),
+        Vec3::new(40.0, 0.2, 40.0),
+    );
+
+    let rest = cached.settle(&[ground_c.clone_object(), arm(arm_slot_c, arm_mat_c, 0)], 8);
+    for step in 1..=10u32 {
+        let bend = step as f32 / 10.0;
+        assert!(
+            cached
+                .renderer
+                .update_mesh_vertices(arm_slot_c, &arm_vertices(bend)),
+            "the arm mesh slot must accept the bent vertices"
+        );
+        cached.frame(&[ground_c.clone_object(), arm(arm_slot_c, arm_mat_c, step)]);
+    }
+    let cached_frame = cached.settle(
+        &[ground_c.clone_object(), arm(arm_slot_c, arm_mat_c, 10)],
+        16,
+    );
+    let fresh_frame = fresh.settle(&[ground_f.clone_object(), arm(arm_slot_f, arm_mat_f, 10)], 16);
+
+    let moved = max_diff(&rest, &fresh_frame);
+    assert!(moved > 8, "the bent arm did not move its shadow (diff {moved})");
+    let diff = max_diff(&cached_frame, &fresh_frame);
+    assert!(diff <= 1, "cached shadow differs from a fresh render by {diff}/255");
 }
 
 /// RND-08 gate measurement: a walking "hero" over a static scene. Run with
