@@ -408,6 +408,17 @@ impl PbrPass {
                     },
                     count: None,
                 },
+                // 24: GI relocated probe offsets (one vec4 per atlas index)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 24,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -591,6 +602,7 @@ impl PbrPass {
         gi_grid_buffer: &wgpu::Buffer,
         gi_irradiance_view: &wgpu::TextureView,
         gi_visibility_view: &wgpu::TextureView,
+        gi_probe_offset_buffer: &wgpu::Buffer,
         sdf_scene_buffer: &wgpu::Buffer,
         sdf_texture_view: &wgpu::TextureView,
         sdf_sampler: &wgpu::Sampler,
@@ -684,6 +696,10 @@ impl PbrPass {
                 wgpu::BindGroupEntry {
                     binding: 23,
                     resource: wgpu::BindingResource::TextureView(gi_visibility_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 24,
+                    resource: gi_probe_offset_buffer.as_entire_binding(),
                 },
             ],
         })

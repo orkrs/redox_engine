@@ -662,6 +662,7 @@ impl Renderer {
             gi_probes.grid_buffer(),
             gi_probes.irradiance_view(),
             gi_probes.visibility_view(),
+            gi_probes.probe_offset(),
             &sdf_gpu.scene_buffer,
             &sdf_gpu.view,
             &sdf_gpu.sampler,

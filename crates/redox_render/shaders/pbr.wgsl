@@ -80,6 +80,8 @@ struct GiGridGpu {
 @group(1) @binding(16) var<uniform> gi_grid: GiGridGpu;
 @group(1) @binding(17) var t_gi_irradiance: texture_2d<f32>;
 @group(1) @binding(23) var t_gi_visibility: texture_2d<f32>;
+// Relocated probe offsets (gi_relocate.wgsl), one vec4 per atlas index.
+@group(1) @binding(24) var<storage, read> gi_probe_offset: array<vec4<f32>>;
 
 // ── SDF brick atlas (Phase 5) ───────────────────────────────────────────
 struct SdfBrickPageGpu {
@@ -277,7 +279,7 @@ fn gi_sample_cascade(c: u32, world_pos: vec3<f32>, n: vec3<f32>, v: vec3<f32>) -
                 let slot = ((cell % dims) + dims) % dims;
                 let su = vec3<u32>(slot);
                 let index = casc.dims.w + su.x + su.y * dims_u.x + su.z * dims_u.x * dims_u.y;
-                let probe_pos = casc.origin.xyz + vec3<f32>(cell) * spacing;
+                let probe_pos = casc.origin.xyz + vec3<f32>(cell) * spacing + gi_probe_offset[index].xyz;
                 let wx = select(frac.x, 1.0 - frac.x, dx == 0);
                 let wy = select(frac.y, 1.0 - frac.y, dy == 0);
                 let wz = select(frac.z, 1.0 - frac.z, dz == 0);

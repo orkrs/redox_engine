@@ -10,6 +10,7 @@ use redox_math::Vec3;
 use super::atlas::{AtlasUpdate, ProbeAtlas, hysteresis_after_change};
 use super::cascade::ProbeCascade;
 use super::grid_gpu::{GI_CASCADE_COUNT, GiGridGpu};
+use super::relocate::GiRelocator;
 use super::trace::{GiTraceParams, GiTracer, TRACE_SLOTS, TraceInputs};
 use crate::sdf::global_gpu::GlobalSdfGpu;
 
@@ -45,6 +46,7 @@ pub struct GiProbes {
     cascades: [ProbeCascade; GI_CASCADE_COUNT],
     atlas: ProbeAtlas,
     tracer: GiTracer,
+    relocator: GiRelocator,
     grid_buffer: wgpu::Buffer,
     /// Grid of the previous frame, matching the stable atlas the trace reads (bounce term).
     prev_grid: GiGridGpu,
@@ -96,6 +98,7 @@ impl GiProbes {
                 ProbeCascade::new(Vec3::ZERO, COARSE_SPACING, CASCADE_DIMS),
             ],
             tracer: GiTracer::new(device, total),
+            relocator: GiRelocator::new(device),
             atlas,
             grid_buffer,
             prev_grid: GiGridGpu::default(),
@@ -181,6 +184,14 @@ impl GiProbes {
 
         let grid = GiGridGpu::new(&self.cascades, layout.probes_per_row, true);
         queue.write_buffer(&self.grid_buffer, 0, bytemuck::bytes_of(&grid));
+        self.relocator.record(
+            device,
+            encoder,
+            &self.grid_buffer,
+            frame.sdf,
+            &self.probe_offset,
+            PROBES_PER_CASCADE * GI_CASCADE_COUNT as u32,
+        );
 
         let inputs = TraceInputs {
             sdf: frame.sdf,

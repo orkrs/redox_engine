@@ -8,6 +8,7 @@ pub mod ddgi_gpu;
 pub mod grid_gpu;
 pub mod oct;
 pub mod probes;
+pub mod relocate;
 pub mod reference;
 pub mod sdf_ref;
 pub mod state;

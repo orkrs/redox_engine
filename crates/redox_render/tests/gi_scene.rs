@@ -186,7 +186,6 @@ fn the_white_floor_next_to_the_red_wall_is_tinted_red() {
 }
 
 #[test]
-#[ignore = "GI-01 5b: needs probe relocation (measured: dark room 14.9 vs lit 77.8, limit 5 %)"]
 fn light_does_not_leak_through_a_thin_wall() {
     let Some(adapter) = common::adapter() else {
         eprintln!("no GPU adapter, skipping");
