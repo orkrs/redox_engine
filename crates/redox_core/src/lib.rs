@@ -36,6 +36,7 @@ pub mod app;
 pub mod commands;
 pub mod config;
 pub mod dispatcher;
+pub mod hlod_system;
 pub mod plugin;
 pub mod ragdoll_system;
 pub mod script_world;

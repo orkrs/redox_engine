@@ -10,8 +10,8 @@
 //!                                          encode images to KTX2 (UASTC or ETC1S, with mips)
 //! redox_cook texture-info <file.ktx2>      print format, size, mips, layers, faces, compression
 //! redox_cook bake-ibl <sky.hdr> <out-dir>  bake IBL maps to KTX2 (build with --features bake)
-//! redox_cook bake-hlod <world.bin> <out-dir> [--triangles 2000]
-//!                                          per-cell HLOD proxies (not yet possible: see hlod_bake)
+//! redox_cook bake-hlod <world.bin> <out-dir> [--triangles 2000] [--kinds actor_kinds.ron]
+//!                                          per-cell HLOD proxies (`.hlod`, one file per cell)
 //! redox_cook bake-navmesh <in.glb|gltf> <out.nav> [--tile 16] [--radius 0.4] [--height 1.8]
 //!                                          [--step 0.4] [--slope 45]
 //!                                          bake walkable tiles for one agent to a .nav file
@@ -37,7 +37,7 @@ use std::process::ExitCode;
 
 use redox_asset::{AssetRegistry, PakReader, PakWriter};
 
-const USAGE: &str = "usage:\n  redox_cook scan <assets-dir>\n  redox_cook pack <assets-dir> <out.pak> [--compress] [--incremental] [--textures]\n  redox_cook texture <out.ktx2> <images...> [--etc1s] [--linear] [--no-mips] [--no-zstd] [--array|--cube]\n  redox_cook list <file.pak>\n  redox_cook verify <file.pak>\n  redox_cook texture-info <file.ktx2>\n  redox_cook bake-ibl <sky.hdr> <out-dir>\n  redox_cook bake-hlod <world.bin> <out-dir> [--triangles 2000]
+const USAGE: &str = "usage:\n  redox_cook scan <assets-dir>\n  redox_cook pack <assets-dir> <out.pak> [--compress] [--incremental] [--textures]\n  redox_cook texture <out.ktx2> <images...> [--etc1s] [--linear] [--no-mips] [--no-zstd] [--array|--cube]\n  redox_cook list <file.pak>\n  redox_cook verify <file.pak>\n  redox_cook texture-info <file.ktx2>\n  redox_cook bake-ibl <sky.hdr> <out-dir>\n  redox_cook bake-hlod <world.bin> <out-dir> [--triangles 2000] [--kinds actor_kinds.ron]
   redox_cook bake-navmesh <in.glb> <out.nav> [--tile 16] [--radius 0.4] [--height 1.8] [--step 0.4] [--slope 45]\n  redox_cook audio-check <assets-dir> [--cues cues.ron] [--target-lufs -16] [--target-lufs-sfx -18] [--tolerance 3] [--json]";
 
 /// A parsed command line.
@@ -64,7 +64,7 @@ enum Command {
     BakeHlod {
         world: PathBuf,
         out: PathBuf,
-        triangles: usize,
+        options: hlod_bake::HlodOptions,
     },
 }
 
@@ -110,7 +110,7 @@ fn parse(args: &[String]) -> Result<Command, String> {
         ["bake-hlod", world, out, flags @ ..] => Ok(Command::BakeHlod {
             world: world.into(),
             out: out.into(),
-            triangles: hlod_bake::parse_triangles(flags)?,
+            options: hlod_bake::parse_options(flags)?,
         }),
         ["bake-navmesh", args @ ..] => nav::parse_bake_navmesh(args).map(Command::BakeNavmesh),
         ["audio-check", args @ ..] => audio_check::parse_audio_check(args).map(Command::AudioCheck),
@@ -207,8 +207,10 @@ fn run(command: Command) -> Result<(), String> {
         Command::BakeHlod {
             world,
             out,
-            triangles,
-        } => hlod_bake::bake_hlod(&world, &out, triangles),
+            options,
+        } => hlod_bake::bake_hlod(&world, &out, &options).map(|written| {
+            println!("wrote {written} HLOD proxies to {}", out.display());
+        }),
         Command::BakeNavmesh(job) => nav::run(&job),
         Command::AudioCheck(job) => audio_check::run(&job),
         Command::Verify(pak) => {
