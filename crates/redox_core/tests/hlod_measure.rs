@@ -1,7 +1,12 @@
 //! VG-04 step 5: CPU cost and draw-call count of HLOD for a scene of 4000 small
 //! objects in 40 cells, seen from about 300 m. Ignored by default; run with
 //! `cargo test -p redox_core --test hlod_measure -- --ignored --nocapture`.
-//! GPU frame timings (`FrameCpuTimings::total_ms`) are not measured here.
+//!
+//! The `hlod_frame` cost is measured on the CPU. When a GPU adapter exists the
+//! same scene is also rendered headless and the renderer's `FrameCpuTimings`
+//! (prepare, record, submit) are printed. Without an adapter that part is skipped.
+//! ASSUMPTION: the proxies are drawn with the cube mesh as a stand-in, so the GPU
+//! numbers measure the draw path, not the proxy geometry.
 
 #![allow(clippy::unwrap_used)]
 
@@ -9,9 +14,16 @@ use std::time::Instant;
 
 use redox_core::hlod_system::{HlodRuntime, hlod_frame};
 use redox_ecs::{Entity, World};
-use redox_math::{Aabb, Mat4, Vec3};
+use redox_math::{Aabb, Mat4, Quat, Vec3};
+use redox_render::Renderer;
+use redox_render::camera::Camera;
+use redox_render::frame::FrameView;
 use redox_render::hlod::HlodConfig;
 use redox_render::hlod_gpu::ProxyGpu;
+use redox_render::light::{DirectionalLight, LightScene};
+use redox_render::material::Material;
+use redox_render::mesh::primitive::create_cube;
+use redox_render::renderer::FrameCpuTimings;
 use redox_render::shadow::ShadowClass;
 use redox_render::systems::RenderObject;
 use redox_scene::{ActorKindTable, PartitionCell, StreamedActor};
@@ -23,8 +35,10 @@ const PER_CELL: usize = 100;
 const CELL_SIZE: f32 = 50.0;
 const WARMUP_FRAMES: usize = 30;
 const TIMED_FRAMES: usize = 100;
+const GPU_SIZE: u32 = 128;
+const GPU_FRAMES: usize = 5;
 
-fn detail_object(id: u32) -> RenderObject {
+fn detail_object(id: u32, mesh: usize, material: usize) -> RenderObject {
     RenderObject {
         id,
         shadow_class: ShadowClass::Auto,
@@ -32,8 +46,8 @@ fn detail_object(id: u32) -> RenderObject {
         pose_version: 0,
         model_matrix: Mat4::IDENTITY,
         color: [1.0; 4],
-        mesh_index: 0,
-        material_index: 0,
+        mesh_index: mesh,
+        material_index: material,
         bounds: Aabb::empty(),
     }
 }
@@ -70,7 +84,7 @@ fn time_frames(
     let mut count = 0;
     for _ in 0..frames {
         let mut objects: Vec<RenderObject> =
-            entities.iter().map(|e| detail_object(e.id())).collect();
+            entities.iter().map(|e| detail_object(e.id(), 0, 0)).collect();
         let start = Instant::now();
         hlod_frame(world, viewer, dt, &mut objects);
         total += start.elapsed().as_secs_f64() * 1e6;
@@ -79,9 +93,104 @@ fn time_frames(
     (total / frames as f64, count)
 }
 
+/// Headless renderer with one cube mesh and one material, or None without an adapter.
+struct GpuRig {
+    renderer: Renderer,
+    target: wgpu::TextureView,
+    camera: Camera,
+    lights: LightScene,
+    cube: usize,
+    material: usize,
+}
+
+fn gpu_rig() -> Option<GpuRig> {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let adapter =
+        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+            .ok()?;
+    let limits = if adapter.get_info().backend == wgpu::Backend::Vulkan {
+        redox_render::renderer::required_device_limits(&adapter.limits())
+    } else {
+        wgpu::Limits::default()
+    };
+    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        required_limits: limits,
+        ..Default::default()
+    }))
+    .ok()?;
+    let config = wgpu::SurfaceConfiguration {
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        width: GPU_SIZE,
+        height: GPU_SIZE,
+        present_mode: wgpu::PresentMode::Fifo,
+        alpha_mode: wgpu::CompositeAlphaMode::Auto,
+        view_formats: vec![],
+        desired_maximum_frame_latency: 2,
+        color_space: Default::default(),
+    };
+    let mut renderer = Renderer::from_shared_device(device, queue, &adapter, None, config);
+    let cube = renderer.upload_mesh(&create_cube());
+    let material = renderer.add_material(Material::solid(Vec3::new(0.8, 0.5, 0.3)));
+    let camera = Camera::new(0.9, 1.0, 0.1, 500.0);
+    renderer
+        .camera_uniform
+        .update(&camera, Vec3::new(0.0, 0.0, 40.0), Quat::IDENTITY);
+    renderer.update_camera_buffer();
+    let target = renderer
+        .device
+        .create_texture(&wgpu::TextureDescriptor {
+            label: Some("hlod_measure_target"),
+            size: wgpu::Extent3d {
+                width: GPU_SIZE,
+                height: GPU_SIZE,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        })
+        .create_view(&Default::default());
+    let lights = LightScene::new(DirectionalLight::new(
+        Vec3::new(0.3, -0.5, -1.0),
+        Vec3::ONE,
+        2.0,
+    ));
+    Some(GpuRig {
+        renderer,
+        target,
+        camera,
+        lights,
+        cube,
+        material,
+    })
+}
+
+/// Renders `GPU_FRAMES` frames of `objects` and returns the timings of the median frame.
+fn gpu_median(rig: &mut GpuRig, objects: &[RenderObject]) -> FrameCpuTimings {
+    let mut all = Vec::new();
+    for _ in 0..GPU_FRAMES {
+        let view = FrameView::new(&rig.camera, objects, &rig.lights);
+        rig.renderer.render_frame_view(&view, &rig.target).unwrap();
+        all.push(rig.renderer.last_frame_cpu_timings());
+        let _ = rig
+            .renderer
+            .device
+            .poll(wgpu::PollType::wait_indefinitely());
+    }
+    all.sort_by(|a, b| a.total_ms().total_cmp(&b.total_ms()));
+    all[all.len() / 2]
+}
+
 #[test]
 #[ignore = "measurement: run with --ignored --nocapture"]
 fn four_thousand_objects_in_forty_cells_seen_from_300m() {
+    let mut gpu = gpu_rig();
+    let (cube, material) = gpu.as_ref().map_or((0, 0), |rig| (rig.cube, rig.material));
+
     let mut world = World::new();
     world.insert_resource(ActorKindTable::from_ron(KINDS).unwrap());
     let entities = spawn_scene(&mut world);
@@ -103,8 +212,8 @@ fn four_thousand_objects_in_forty_cells_seen_from_300m() {
         runtime.register_proxy(
             *cell,
             ProxyGpu {
-                mesh_slot: 0,
-                material_slot: 0,
+                mesh_slot: cube,
+                material_slot: material,
                 bounds: Aabb::empty(),
             },
         );
@@ -121,4 +230,34 @@ fn four_thousand_objects_in_forty_cells_seen_from_300m() {
         CELLS_X as usize * CELLS_Y as usize * PER_CELL
     );
     assert_eq!(with_draws, CELLS_X as usize * CELLS_Y as usize);
+
+    let Some(rig) = gpu.as_mut() else {
+        eprintln!("no GPU adapter: renderer timings skipped");
+        return;
+    };
+    let without_objects: Vec<RenderObject> = entities
+        .iter()
+        .map(|e| detail_object(e.id(), cube, material))
+        .collect();
+    let mut with_objects: Vec<RenderObject> = entities
+        .iter()
+        .map(|e| detail_object(e.id(), cube, material))
+        .collect();
+    hlod_frame(&mut world, viewer, 0.0, &mut with_objects);
+    let without = gpu_median(rig, &without_objects);
+    let with = gpu_median(rig, &with_objects);
+    println!(
+        "  renderer CPU per frame, without HLOD: {:.3} ms (prepare {:.3}, record {:.3}, submit {:.3})",
+        without.total_ms(),
+        without.prepare_ms,
+        without.record_ms,
+        without.submit_ms
+    );
+    println!(
+        "  renderer CPU per frame, with HLOD:    {:.3} ms (prepare {:.3}, record {:.3}, submit {:.3})",
+        with.total_ms(),
+        with.prepare_ms,
+        with.record_ms,
+        with.submit_ms
+    );
 }
