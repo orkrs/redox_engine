@@ -56,6 +56,8 @@ fn cube_at(mesh: usize, material: usize, x: f32, y: f32) -> RenderObject {
     RenderObject {
         id: 0,
         shadow_class: redox_render::shadow::ShadowClass::Auto,
+        deforms: false,
+        pose_version: 0,
         model_matrix: Mat4::from_scale_rotation_translation(
             Vec3::splat(0.8),
             Quat::from_rotation_y(0.4 + x * 0.1),

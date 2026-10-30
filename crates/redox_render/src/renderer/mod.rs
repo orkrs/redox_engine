@@ -478,6 +478,9 @@ pub struct Renderer {
     /// Dynamic casters' poses (and AABBs) at their last shadow invalidation, keyed by
     /// `RenderObject::id`. An object refreshes its pages once it has drifted past the threshold.
     prev_dynamic_poses: std::collections::HashMap<u32, crate::shadow::ShadowPose>,
+    /// Deforming casters' pose versions and AABBs as of the previous frame, keyed by
+    /// `RenderObject::id`. Their pages refresh every frame their pose version changes.
+    prev_deform_poses: std::collections::HashMap<u32, crate::shadow::DeformPose>,
     /// Cached D2Array view for VSM pages (avoid per-frame view alloc).
     vsm_pages_array_view: wgpu::TextureView,
     vg_bind_groups_dirty: bool,

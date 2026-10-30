@@ -935,6 +935,7 @@ impl Renderer {
             vsm_shadow_temporal_alpha: 0.15,
             vsm_warm: false,
             prev_dynamic_poses: std::collections::HashMap::new(),
+            prev_deform_poses: std::collections::HashMap::new(),
             vsm_pages_array_view,
             vg_bind_groups_dirty: true,
             face_matrix_buffers,

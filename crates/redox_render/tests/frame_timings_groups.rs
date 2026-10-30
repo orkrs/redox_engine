@@ -84,6 +84,8 @@ impl Rig {
                 RenderObject {
                     id: i as u32,
                     shadow_class: ShadowClass::Static,
+                    deforms: false,
+                    pose_version: 0,
                     model_matrix: Mat4::from_scale_rotation_translation(
                         Vec3::splat(0.4),
                         Quat::IDENTITY,

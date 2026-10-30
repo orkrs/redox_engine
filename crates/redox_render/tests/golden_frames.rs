@@ -67,6 +67,8 @@ fn scene(
         object: RenderObject {
             id: 0,
             shadow_class: redox_render::shadow::ShadowClass::Auto,
+            deforms: false,
+            pose_version: 0,
             model_matrix: Mat4::from_quat(Quat::from_rotation_y(0.6)),
             color: [1.0; 4],
             mesh_index,
@@ -96,6 +98,8 @@ fn draw(renderer: &mut Renderer, scene: &Scene, material: usize) -> Vec<u8> {
     let objects = [RenderObject {
         id: 0,
         shadow_class: redox_render::shadow::ShadowClass::Auto,
+        deforms: false,
+        pose_version: 0,
         material_index: material,
         ..scene.object.clone()
     }];

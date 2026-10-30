@@ -137,6 +137,8 @@ fn object(r: &Renderer, model: Mat4, mesh: usize, material: usize) -> RenderObje
     RenderObject {
         id: 0,
         shadow_class: redox_render::shadow::ShadowClass::Auto,
+        deforms: false,
+        pose_version: 0,
         model_matrix: model,
         color: [1.0; 4],
         mesh_index: mesh,
@@ -263,6 +265,8 @@ impl Scene {
         out.push(RenderObject {
             id: out.len() as u32,
             shadow_class: redox_render::shadow::ShadowClass::Auto,
+            deforms: true,
+            pose_version: self.hero.pose_version(),
             model_matrix: hero,
             color: [1.0; 4],
             mesh_index: self.hero.mesh_slot,

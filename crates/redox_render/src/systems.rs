@@ -65,6 +65,12 @@ pub struct RenderObject {
     pub id: u32,
     /// How the object's shadow is cached by the virtual shadow map.
     pub shadow_class: crate::shadow::ShadowClass,
+    /// True when the geometry deforms (skinning, morph targets, WPO) without necessarily moving
+    /// its model matrix. Its shadow pages are refreshed while the deformation changes.
+    pub deforms: bool,
+    /// Version of the deformation (see `SkinnedMeshBinding::pose_version`); bumped whenever the
+    /// pose changes. Only read when `deforms` is set.
+    pub pose_version: u32,
     /// Model matrix of the object.
     pub model_matrix: Mat4,
     /// Object color (rgba).
@@ -133,6 +139,8 @@ pub fn extract_render_objects_into(
         out.push(RenderObject {
             id: entity.id(),
             shadow_class: crate::shadow::ShadowClass::Auto,
+            deforms: false,
+            pose_version: 0,
             model_matrix,
             mesh_index,
             material_index,

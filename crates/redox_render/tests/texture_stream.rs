@@ -288,6 +288,8 @@ fn on_screen_size_picks_the_mip_and_materials_follow_the_new_texture() {
     let object_at = |z: f32| RenderObject {
         id: 0,
         shadow_class: redox_render::shadow::ShadowClass::Auto,
+        deforms: false,
+        pose_version: 0,
         model_matrix: Mat4::from_translation(Vec3::new(0.0, 0.0, -z)),
         color: [1.0; 4],
         mesh_index,

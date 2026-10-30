@@ -31,18 +31,178 @@ pub const SHADOW_MOVED_EPS: f32 = 0.05;
 /// shadow pages were last invalidated.
 pub type ShadowPose = (Mat4, Aabb);
 
-/// True when the object's shadow should be refreshed as it moves.
+/// True when the object's shadow should be refreshed as it moves or deforms.
 ///
-/// `Auto` uses the legacy size rule (not ground, and small in x/z and y).
-pub fn is_dynamic_caster(class: ShadowClass, bounds: &Aabb) -> bool {
+/// `Auto` uses the legacy size rule (not ground, and small in x/z and y), except that a
+/// deforming object is always dynamic. An explicit `Static` wins over deformation: the game
+/// has decided that the shadow does not change.
+pub fn is_dynamic_caster(class: ShadowClass, bounds: &Aabb, deforms: bool) -> bool {
     match class {
         ShadowClass::Static => false,
         ShadowClass::Dynamic => true,
         ShadowClass::Auto => {
+            if deforms {
+                return true;
+            }
             let ext = bounds.max - bounds.min;
             !(ext.y < 0.6 && ext.x > 8.0 && ext.z > 8.0) // ground
                 && ext.x < 6.0 && ext.z < 6.0 && ext.y < 4.0 // small dynamic
         }
+    }
+}
+
+/// Last-frame state of a deforming caster: its pose version and world AABB.
+pub type DeformPose = (u32, Aabb);
+
+/// AABBs whose shadow pages must be refreshed because a deforming caster changed its pose.
+///
+/// Unlike [`moved_shadow_bounds`], this compares against the previous frame, not a snapshot:
+/// an animation that is running changes the pose every frame, so its old and new bounds are
+/// both invalidated every frame. An object whose version is unchanged (paused animation,
+/// same weights) invalidates nothing. A new object invalidates its current bounds. Objects
+/// that vanished are handled by [`moved_shadow_bounds`], which already tracks them.
+pub fn deformed_shadow_bounds(
+    prev: &HashMap<u32, DeformPose>,
+    cur: &[(u32, u32, Aabb)],
+) -> Vec<Aabb> {
+    let mut out = Vec::new();
+    for (id, version, bounds) in cur {
+        match prev.get(id) {
+            None => out.push(*bounds),
+            Some((prev_version, prev_bounds)) if prev_version != version => {
+                out.push(*prev_bounds);
+                out.push(*bounds);
+            }
+            Some(_) => {}
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cube(center: Vec3, half: f32) -> Aabb {
+        Aabb::from_center_size(center, Vec3::splat(half))
+    }
+
+    fn pose(x: f32) -> (u32, Mat4, Aabb) {
+        let center = Vec3::new(x, 0.5, 0.0);
+        (1, Mat4::from_translation(center), cube(center, 0.5))
+    }
+
+    #[test]
+    fn static_is_never_dynamic_even_when_small() {
+        let small = cube(Vec3::ZERO, 0.5);
+        assert!(!is_dynamic_caster(ShadowClass::Static, &small, false));
+        assert!(!is_dynamic_caster(ShadowClass::Static, &small, true));
+    }
+
+    #[test]
+    fn dynamic_is_dynamic_even_when_large() {
+        let large = cube(Vec3::ZERO, 10.0);
+        assert!(is_dynamic_caster(ShadowClass::Dynamic, &large, false));
+    }
+
+    #[test]
+    fn auto_keeps_the_size_rule() {
+        let ground = Aabb {
+            min: Vec3::new(-10.0, 0.0, -10.0),
+            max: Vec3::new(10.0, 0.3, 10.0),
+        };
+        let crate_box = cube(Vec3::ZERO, 0.5);
+        let wide = Aabb {
+            min: Vec3::new(-3.5, 0.0, -1.0),
+            max: Vec3::new(3.5, 2.0, 1.0),
+        };
+        assert!(!is_dynamic_caster(ShadowClass::Auto, &ground, false));
+        assert!(is_dynamic_caster(ShadowClass::Auto, &crate_box, false));
+        assert!(!is_dynamic_caster(ShadowClass::Auto, &wide, false));
+    }
+
+    #[test]
+    fn a_deforming_object_is_dynamic_regardless_of_size() {
+        let large = cube(Vec3::ZERO, 10.0);
+        assert!(is_dynamic_caster(ShadowClass::Auto, &large, true));
+    }
+
+    #[test]
+    fn a_static_class_overrides_deformation() {
+        let small = cube(Vec3::ZERO, 0.5);
+        assert!(!is_dynamic_caster(ShadowClass::Static, &small, true));
+    }
+
+    #[test]
+    fn an_unmoved_object_invalidates_nothing() {
+        let (id, m, b) = pose(0.0);
+        let prev = next_shadow_poses(&HashMap::new(), &[(id, m, b)], SHADOW_MOVED_EPS);
+        assert!(moved_shadow_bounds(&prev, &[(id, m, b)], SHADOW_MOVED_EPS).is_empty());
+    }
+
+    #[test]
+    fn a_moved_object_invalidates_old_and_new_bounds() {
+        let (id, m0, b0) = pose(0.0);
+        let prev = next_shadow_poses(&HashMap::new(), &[(id, m0, b0)], SHADOW_MOVED_EPS);
+        let (_, m1, b1) = pose(3.0);
+        let out = moved_shadow_bounds(&prev, &[(id, m1, b1)], SHADOW_MOVED_EPS);
+        assert_eq!(out.len(), 2);
+        assert!(out.contains(&b0));
+        assert!(out.contains(&b1));
+    }
+
+    #[test]
+    fn slow_drift_accumulates_until_it_exceeds_the_threshold() {
+        let (id, m0, b0) = pose(0.0);
+        let mut prev = next_shadow_poses(&HashMap::new(), &[(id, m0, b0)], SHADOW_MOVED_EPS);
+        let mut invalidations = Vec::new();
+        for step in 1..=10 {
+            let (_, m, b) = pose(0.01 * step as f32);
+            let cur = [(id, m, b)];
+            if !moved_shadow_bounds(&prev, &cur, 0.05).is_empty() {
+                invalidations.push(step);
+            }
+            prev = next_shadow_poses(&prev, &cur, 0.05);
+        }
+        assert_eq!(invalidations, vec![6]);
+    }
+
+    #[test]
+    fn a_removed_object_invalidates_its_last_bounds() {
+        let (id, m, b) = pose(0.0);
+        let prev = next_shadow_poses(&HashMap::new(), &[(id, m, b)], SHADOW_MOVED_EPS);
+        let out = moved_shadow_bounds(&prev, &[], SHADOW_MOVED_EPS);
+        assert_eq!(out, vec![b]);
+    }
+
+    #[test]
+    fn reordering_the_list_does_not_invalidate() {
+        let a = pose(0.0);
+        let b = (2, Mat4::from_translation(Vec3::X * 5.0), cube(Vec3::X * 5.0, 0.5));
+        let prev = next_shadow_poses(&HashMap::new(), &[a, b], SHADOW_MOVED_EPS);
+        assert!(moved_shadow_bounds(&prev, &[b, a], SHADOW_MOVED_EPS).is_empty());
+    }
+
+    #[test]
+    fn an_unchanged_deform_version_invalidates_nothing() {
+        let b = cube(Vec3::ZERO, 1.0);
+        let prev: HashMap<u32, DeformPose> = [(7, (3, b))].into_iter().collect();
+        assert!(deformed_shadow_bounds(&prev, &[(7, 3, b)]).is_empty());
+    }
+
+    #[test]
+    fn a_changed_pose_invalidates_the_union_of_old_and_new_bounds() {
+        let old = cube(Vec3::ZERO, 1.0);
+        let new = cube(Vec3::new(0.5, 0.0, 0.0), 1.0);
+        let prev: HashMap<u32, DeformPose> = [(7, (3, old))].into_iter().collect();
+        let out = deformed_shadow_bounds(&prev, &[(7, 4, new)]);
+        assert_eq!(out, vec![old, new]);
+    }
+
+    #[test]
+    fn a_new_deforming_object_invalidates_its_bounds() {
+        let b = cube(Vec3::ZERO, 1.0);
+        assert_eq!(deformed_shadow_bounds(&HashMap::new(), &[(9, 0, b)]), vec![b]);
     }
 }
 

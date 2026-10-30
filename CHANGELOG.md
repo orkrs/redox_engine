@@ -114,3 +114,4 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - CI: MSRV, Miri (ECS), docs (`-D warnings`), file-size check, weekly schedule; Dependabot.
 - Tests: ECS ownership/drop tests, proptest model test, editor CLI tests.
 - Render: render graph gains access kinds, buffers, usage-flag checks (`MissingUsage`), self-dependency errors (`read_write` marker), barrier plan, critical path, usage verification (`UsageLog`) and `CompiledGraph::report`; the frame's TAA history pass now declares `read_write`. Not yet used by the renderer (transient pool and pass migration pending).
+- Render: RND-08 step 4: deforming casters (`RenderObject::deforms`, `pose_version` from `SkinnedMeshBinding::pose_version`) refresh their VSM pages every frame their pose changes, against last frame bounds; a paused animation leaves its pages alone.
