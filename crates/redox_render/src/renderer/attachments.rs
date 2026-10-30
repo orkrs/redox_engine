@@ -144,6 +144,7 @@ impl Renderer {
             &self.pbr_pass.scene_bgl,
             sc,
         );
+        self.matgraphs.clear_vg_pipelines();
         if let Some(sb) = &mut self.skybox_pass {
             *sb = SkyboxPass::new(
                 &self.device,

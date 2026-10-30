@@ -169,6 +169,7 @@ impl Renderer {
                         &self.pbr_pass.scene_bgl,
                         msaa,
                     );
+                    self.matgraphs.clear_vg_pipelines();
                     self.vg_shadow_pass = VgShadowPass::new(&self.device, SHADOW_FORMAT);
                 }
                 ReloadablePass::DebugLines => {

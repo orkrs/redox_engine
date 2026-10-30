@@ -480,6 +480,46 @@ impl MaterialGraphs {
         Some((pipeline, &material.params))
     }
 
+    /// Material slots bound to a graph, in ascending order. The VG resolve draws each of them.
+    pub fn vg_graph_slots(&self) -> Vec<usize> {
+        let mut slots: Vec<usize> = self.materials.keys().copied().collect();
+        slots.sort_unstable();
+        slots
+    }
+
+    /// Builds the VG resolve pipeline of the graph slot `slot` unless it exists. `false` when
+    /// the slot has no graph or its module is missing.
+    pub(crate) fn ensure_vg_pipeline(
+        &mut self,
+        device: &wgpu::Device,
+        slot: usize,
+        resolve: &crate::pass::vg_resolve::VgResolvePass,
+    ) -> bool {
+        if self.vg_pipelines.contains_key(&slot) {
+            return true;
+        }
+        let Some(material) = self.materials.get(&slot) else {
+            return false;
+        };
+        let Some(module) = self.cache.module(material.vg_key) else {
+            return false;
+        };
+        let pipeline = resolve.graph_pipeline(device, &self.graph_bgl, module);
+        self.vg_pipelines.insert(slot, pipeline);
+        true
+    }
+
+    /// VG resolve pipeline and parameter bind group of a graph slot, if the pipeline was built
+    /// by [`MaterialGraphs::ensure_vg_pipeline`]. The bind group belongs at group 3.
+    pub(crate) fn vg_binding(
+        &self,
+        slot: usize,
+    ) -> Option<(&wgpu::RenderPipeline, &wgpu::BindGroup)> {
+        let pipeline = self.vg_pipelines.get(&slot)?;
+        let material = self.materials.get(&slot)?;
+        Some((pipeline, &material.params))
+    }
+
     /// Binds `graph` to the material slot `material_index`, with parameter values by slot
     /// (missing entries use the slot default). Builds the variants of every pass.
     ///
