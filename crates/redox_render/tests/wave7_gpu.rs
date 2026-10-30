@@ -524,3 +524,50 @@ impl CloneObject for RenderObject {
         }
     }
 }
+
+/// RND-08 gate measurement: a walking "hero" over a static scene. Run with
+/// `cargo test -p redox_render --release --test wave7_gpu shadow_gate -- --ignored --nocapture`.
+#[test]
+#[ignore = "measurement"]
+fn shadow_gate_walking_hero_cost() {
+    let _gpu = lock();
+    let Some(mut rig) = rig(false) else { return };
+    if !rig.renderer.vsm_enabled {
+        return;
+    }
+    let material = rig.renderer.add_material(Material::solid(Vec3::splat(0.7)));
+    let mut scene = vec![rig.object(
+        rig.cube,
+        material,
+        1,
+        Vec3::new(0.0, -1.0, -8.0),
+        Vec3::new(40.0, 0.2, 40.0),
+    )];
+    for i in 0..40u32 {
+        let x = (i % 8) as f32 * 3.0 - 10.0;
+        let z = -6.0 - (i / 8) as f32 * 3.0;
+        scene.push(rig.object(rig.cube, material, 10 + i, Vec3::new(x, 0.5, z), Vec3::ONE));
+    }
+    rig.settle(&scene, 8);
+    let frames = 120;
+    let (mut pages, mut shadow_ms, mut samples) = (0u64, 0.0f32, 0u32);
+    for f in 0..frames {
+        let x = -4.0 + f as f32 * 0.05;
+        let mut objects: Vec<RenderObject> = scene.iter().map(CloneObject::clone_object).collect();
+        objects.push(rig.object(rig.cube, material, 999, Vec3::new(x, 0.0, -5.0), Vec3::new(0.5, 1.8, 0.5)));
+        rig.frame(&objects);
+        pages += u64::from(rig.renderer.vsm_dirty_pages_last_frame);
+        for t in rig.renderer.gpu_profiler.timings() {
+            if t.label.contains("shadow") {
+                shadow_ms += t.ms;
+                samples += 1;
+            }
+        }
+    }
+    println!(
+        "RND-08 gate: mean dirty pages {:.2}/frame, shadow passes {:.3} ms/frame ({} samples)",
+        pages as f64 / f64::from(frames),
+        shadow_ms / frames as f32,
+        samples
+    );
+}
