@@ -35,6 +35,29 @@ impl Renderer {
         })
     }
 
+    /// Binds a material graph to the material slot `material_index` (MAT-02).
+    ///
+    /// On error the slot keeps its previous graph (or the default pipeline) and the error is
+    /// logged. `params` gives parameter values by slot; missing entries use the slot defaults.
+    pub fn set_material_graph(
+        &mut self,
+        material_index: usize,
+        graph: &redox_matgraph::MaterialGraph,
+        params: &[[f32; 4]],
+    ) -> Result<(), crate::matgraph_cache::MaterialGraphError> {
+        let result = self.matgraphs.set_material(
+            &self.device,
+            &self.queue,
+            material_index,
+            graph,
+            params,
+        );
+        if let Err(error) = &result {
+            log::warn!("material {material_index}: graph not applied: {error}");
+        }
+        result.map(|_| ())
+    }
+
     /// Records the draw call for one object into `pass`.
     pub fn record_draw<'a>(
         &'a self,
@@ -49,6 +72,8 @@ impl Renderer {
         render_pass.set_bind_group(3, &self.model_bind_group, &[]);
 
         let mut calls = 0u32;
+        // True while the pass is bound to a graph variant pipeline (MAT-02).
+        let mut on_graph = false;
         let same = |a: usize, b: usize| {
             objects[a].mesh_index == objects[b].mesh_index
                 && objects[a].material_index == objects[b].material_index
@@ -59,6 +84,20 @@ impl Renderer {
             same,
         ) {
             let obj = &objects[run.start as usize];
+            // Graph-driven material: its variant pipeline and parameter block. Other slots keep
+            // the default pipeline and nothing else changes for them.
+            if let Some((pipeline, params_bg)) = self.matgraphs.binding(obj.material_index) {
+                render_pass.set_pipeline(pipeline);
+                render_pass.set_bind_group(
+                    crate::matgraph_cache::GRAPH_PARAMS_GROUP,
+                    params_bg,
+                    &[],
+                );
+                on_graph = true;
+            } else if on_graph {
+                render_pass.set_pipeline(&self.pbr_pass.pipeline);
+                on_graph = false;
+            }
             // Material bind group (Group 2)
             let material_bg = self
                 .registry

@@ -49,6 +49,12 @@ impl Renderer {
         let shared_layouts = SharedLayouts::new(&device);
         let pbr_frame_layouts = PbrFrameLayouts::new(&device);
         let pbr_pass = PbrPass::new(&device, hdr_format, msaa_sample_count);
+        let matgraphs = crate::matgraph_cache::MaterialGraphs::new(
+            &device,
+            &pbr_pass,
+            hdr_format,
+            msaa_sample_count,
+        );
         let transparent_pass =
             TransparentPass::new(&device, &pbr_pass, hdr_format, msaa_sample_count);
         let shadow_pass = ShadowPass::new(&device);
@@ -771,6 +777,7 @@ impl Renderer {
             shared_layouts,
             pbr_frame_layouts,
             pbr_pass,
+            matgraphs,
             shadow_pass,
             normal_pass,
             ssao_pass,
