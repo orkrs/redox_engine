@@ -1,0 +1,19 @@
+[package]
+name = "redox_net"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Message codec (same postcard setup as redox_scene; `world.bin` uses it too).
+postcard = { version = "1", default-features = false, features = ["use-std"] }
+serde = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }

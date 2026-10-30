@@ -50,6 +50,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - Audio (B8): streaming music through kira (`register_music`, looped streaming voices on the Music bus, `KiraMusicVoice`, `MusicVoices`).
 - Courier (B9): settings screen (volume and effect switches, saved between runs).
 - Render (PST-03): motion blur spreads beyond object edges. Velocity tile maxima (20×20, 3×3 neighbourhood) in `post/motion_blur_tiles.rs` and `shaders/motion_blur_tiles.wgsl`; `MotionBlurSettings::spread_beyond_edges` (off by default; off leaves the frame unchanged).
+- Networking (NET-01): new crate `redox_net` with the `Transport` seam, a deterministic `LoopbackWire` (latency, jitter, loss, duplication), `NetServer`/`NetClient` with a 16-player limit, reliable and ordered channel, deduplicated unreliable channel, newest-wins snapshots, `Message` codec (u16 id + postcard) and a server tick estimator; decision in ADR 0008 (proposed). No UDP adapter, `NetPlugin` or example yet.
 
 ### Removed
 - Old examples `showcase`, `prism_vault`, `ball_score`, `shadow_lab` (kept: `skinned_demo`, `dino_runner`, `dino_game`).
