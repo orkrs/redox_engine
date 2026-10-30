@@ -12,7 +12,7 @@ use redox_render::Renderer;
 use redox_render::asset_types::BlendMode;
 use redox_render::camera::Camera;
 use redox_render::frame::FrameView;
-use redox_render::light::{DirectionalLight, LightScene};
+use redox_render::light::{DirectionalLight, LightScene, PointLight};
 use redox_render::material::Material;
 use redox_render::mesh::primitive::{create_cube, create_sphere};
 use redox_render::resource::ibl::read_texture_ktx2;
@@ -20,6 +20,10 @@ use redox_render::shadow::ShadowClass;
 use redox_render::systems::RenderObject;
 
 const SIZE: u32 = 128;
+/// Point light of the atlas test: brightness of the ground at the caster's shadow.
+const POINT_LIGHT_INTENSITY: f32 = 40.0;
+/// Radius of the test point light; it reaches the ground and the caster.
+const POINT_LIGHT_RADIUS: f32 = 12.0;
 
 static GPU: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -194,6 +198,66 @@ fn masked_shadows_work_in_vsm_pages() {
     assert!(
         holes > 8,
         "a see-through masked caster still casts its shadow (diff {holes})"
+    );
+}
+
+/// The same scene as [`masked_shadow_frame`], lit by one shadow-casting point light above the
+/// caster instead of the sun. The sun is off; the light sits about 3 m above the cube.
+fn masked_point_shadow_frame(masked: bool, alpha: f32) -> Option<Vec<u8>> {
+    let mut rig = rig(false)?;
+    rig.lights.directional.intensity = 0.0;
+    rig.lights.ambient = Vec3::splat(0.02);
+    let mut light = PointLight::new(
+        Vec3::new(0.0, 3.5, -6.0),
+        Vec3::ONE,
+        POINT_LIGHT_INTENSITY,
+        POINT_LIGHT_RADIUS,
+    );
+    light.cast_shadows = true;
+    rig.lights.points.push(light);
+    let ground_mat = rig.renderer.add_material(Material::solid(Vec3::splat(0.7)));
+    let caster_mat = rig
+        .renderer
+        .add_material(Material::solid(Vec3::new(0.8, 0.3, 0.2)).masked(masked));
+    let ground = rig.object(
+        rig.cube,
+        ground_mat,
+        1,
+        Vec3::new(0.0, -1.0, -8.0),
+        Vec3::new(40.0, 0.2, 40.0),
+    );
+    let mut caster = rig.object(
+        rig.cube,
+        caster_mat,
+        2,
+        Vec3::new(0.0, 0.5, -6.0),
+        Vec3::ONE,
+    );
+    caster.color = [1.0, 1.0, 1.0, alpha];
+    Some(rig.settle(&[ground, caster], 10))
+}
+
+/// Point-light atlas: a masked caster with full alpha casts exactly the shadow of a plain one,
+/// and a see-through masked caster casts none.
+#[test]
+fn masked_shadows_work_in_the_point_light_atlas() {
+    let _gpu = lock();
+    let (Some(plain), Some(masked_opaque), Some(masked_clear)) = (
+        masked_point_shadow_frame(false, 1.0),
+        masked_point_shadow_frame(true, 1.0),
+        masked_point_shadow_frame(true, 0.2),
+    ) else {
+        return;
+    };
+    let same = max_diff(&plain, &masked_opaque);
+    assert!(
+        same <= 2,
+        "an opaque masked caster differs from a plain one by {same} under a point light"
+    );
+    let holes = max_diff(&plain, &masked_clear);
+    assert!(
+        holes > 8,
+        "a see-through masked caster still casts its point-light shadow (diff {holes})"
     );
 }
 
