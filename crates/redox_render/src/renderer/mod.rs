@@ -345,10 +345,12 @@ pub struct Renderer {
     bloom_composite_bg: wgpu::BindGroup,
 
     // --- Phase 5 GI / SDF ---
-    /// GPU side of the DDGI probe grid.
+    /// GPU side of the old DDGI probe grid. Not bound by the shaders any more (GI-01 step 5a).
     pub ddgi_gpu: crate::gi::DdgiGpu,
     /// Global SDF volume for GI and its background rebuilds (GI-01).
     pub gi: crate::gi::state::GiState,
+    /// Two camera-following probe cascades with their irradiance and visibility atlases (GI-01 5a).
+    pub gi_probes: crate::gi::probes::GiProbes,
     /// GPU signed distance field atlas.
     pub sdf_gpu: crate::sdf::SdfGpuAtlas,
     #[allow(dead_code)]

@@ -61,26 +61,25 @@ struct Model {
 @group(1) @binding(14) var s_vsm: sampler;
 @group(1) @binding(15) var<storage, read> vsm_info: VsmGpuInfo;
 
-// ── DDGI probe grid (Phase 5) ───────────────────────────────────────────
-// Real: trilinear 8-probe blend + octahedral irradiance lookup.
-// Missing: GPU ray-tracing / probe visibility (CPU fills samples).
-struct DdgiGridGpu {
-    origin: vec4<f32>,
-    spacing: f32,
-    dims_x: u32,
-    dims_y: u32,
-    dims_z: u32,
+// ── GI probe cascades (GI-01 step 5a) ───────────────────────────────────
+// Mirrors `GiGridGpu` in src/gi/grid_gpu.rs (112 bytes). Two cascades; the atlases hold
+// octahedral tiles: irradiance 8x8 + 1 border (stride 10, stored as acc^(1/5)) and visibility
+// 16x16 + 1 border (stride 18, (mean t, mean t^2)).
+struct GiCascadeGpu {
+    origin: vec4<f32>,   // xyz origin, w probe spacing
+    dims: vec4<u32>,     // xyz probe counts, w atlas index of the first probe
+    scroll: vec4<i32>,   // xyz lowest world cell of the window
+}
+struct GiGridGpu {
+    cascades: array<GiCascadeGpu, 2>,
+    probes_per_row: u32,
     enabled: u32,
     _pad0: u32,
     _pad1: u32,
-    _pad2: u32,
 }
-struct DdgiProbeGpu {
-    // 8 octahedral irradiance samples; validity in samples[0].w
-    samples: array<vec4<f32>, 8>,
-}
-@group(1) @binding(16) var<uniform> ddgi_grid: DdgiGridGpu;
-@group(1) @binding(17) var<storage, read> ddgi_probes: array<DdgiProbeGpu>;
+@group(1) @binding(16) var<uniform> gi_grid: GiGridGpu;
+@group(1) @binding(17) var t_gi_irradiance: texture_2d<f32>;
+@group(1) @binding(23) var t_gi_visibility: texture_2d<f32>;
 
 // ── SDF brick atlas (Phase 5) ───────────────────────────────────────────
 struct SdfBrickPageGpu {
@@ -208,85 +207,147 @@ fn oct_encode(n: vec3<f32>) -> vec2<f32> {
     return clamp(v.xz * 0.5 + 0.5, vec2<f32>(0.0), vec2<f32>(1.0));
 }
 
-fn ddgi_sample_at(probe: DdgiProbeGpu, idx: u32) -> vec3<f32> {
-    // Naga rejects dynamic indexing into uniform/struct arrays — unroll.
-    switch idx {
-        case 0u: { return probe.samples[0].xyz; }
-        case 1u: { return probe.samples[1].xyz; }
-        case 2u: { return probe.samples[2].xyz; }
-        case 3u: { return probe.samples[3].xyz; }
-        case 4u: { return probe.samples[4].xyz; }
-        case 5u: { return probe.samples[5].xyz; }
-        case 6u: { return probe.samples[6].xyz; }
-        default: { return probe.samples[7].xyz; }
+// Tile geometry of the atlases (CPU: gi::atlas::{IRRADIANCE_INNER, VISIBILITY_INNER, TILE_BORDER}).
+const GI_INNER_IRR: f32 = 8.0;
+const GI_STRIDE_IRR: u32 = 10u;
+const GI_INNER_VIS: f32 = 16.0;
+const GI_STRIDE_VIS: u32 = 18u;
+
+// Cascade `c` of the grid (constant indices only: no dynamic indexing of the uniform array).
+fn gi_cascade(c: u32) -> GiCascadeGpu {
+    if (c == 0u) {
+        return gi_grid.cascades[0];
     }
+    return gi_grid.cascades[1];
 }
 
-fn ddgi_probe_oct(probe: DdgiProbeGpu, n: vec3<f32>) -> vec3<f32> {
-    // 2×4 octahedral atlas bilinear sample.
-    let uv = oct_encode(n);
-    let fx = uv.x * 2.0 - 0.5;
-    let fy = uv.y * 4.0 - 0.5;
-    let x0 = u32(clamp(floor(fx), 0.0, 1.0));
-    let y0 = u32(clamp(floor(fy), 0.0, 3.0));
-    let x1 = min(x0 + 1u, 1u);
-    let y1 = min(y0 + 1u, 3u);
-    let tx = fract(fx);
-    let ty = fract(fy);
-    let s00 = ddgi_sample_at(probe, y0 * 2u + x0);
-    let s10 = ddgi_sample_at(probe, y0 * 2u + x1);
-    let s01 = ddgi_sample_at(probe, y1 * 2u + x0);
-    let s11 = ddgi_sample_at(probe, y1 * 2u + x1);
-    return mix(mix(s00, s10, tx), mix(s01, s11, tx), ty);
+// Chebyshev bound on P(distance > d) from the stored (mean t, mean t^2) of a probe direction.
+fn gi_visibility_bound(moments: vec2<f32>, d: f32) -> f32 {
+    if (d <= moments.x) {
+        return 1.0;
+    }
+    let variance = max(moments.y - moments.x * moments.x, 1.0e-4);
+    let diff = d - moments.x;
+    return variance / (variance + diff * diff);
 }
 
-fn ddgi_probe_index(x: i32, y: i32, z: i32) -> u32 {
-    return u32(z) * ddgi_grid.dims_x * ddgi_grid.dims_y
-        + u32(y) * ddgi_grid.dims_x
-        + u32(x);
+// Bilinear fetch inside one octahedral tile. The tile has a one-texel border, so the four
+// texels of a fetch never leave the tile for directions inside it.
+fn gi_tile_fetch(tex: texture_2d<f32>, probe: u32, dir: vec3<f32>, stride: u32, inner: f32) -> vec4<f32> {
+    let ppr = gi_grid.probes_per_row;
+    let tile = vec2<f32>(f32(probe % ppr), f32(probe / ppr)) * f32(stride);
+    let p = tile + 1.0 + oct_encode(dir) * inner - 0.5;
+    let i0 = floor(p);
+    let f = p - i0;
+    let c = vec2<i32>(i0);
+    let a = textureLoad(tex, c, 0);
+    let b = textureLoad(tex, c + vec2<i32>(1, 0), 0);
+    let d = textureLoad(tex, c + vec2<i32>(0, 1), 0);
+    let e = textureLoad(tex, c + vec2<i32>(1, 1), 0);
+    return mix(mix(a, b, f.x), mix(d, e, f.x), f.y);
 }
 
-fn ddgi_sample_irradiance(world_pos: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
-    if (ddgi_grid.enabled == 0u) {
-        return vec3(0.0);
-    }
-    let dims = vec3<i32>(
-        i32(ddgi_grid.dims_x),
-        i32(ddgi_grid.dims_y),
-        i32(ddgi_grid.dims_z),
-    );
-    if (any(dims <= vec3<i32>(0)) || ddgi_grid.spacing <= 0.0) {
-        return vec3(0.0);
-    }
-    let local = (world_pos - ddgi_grid.origin.xyz) / ddgi_grid.spacing;
-    let base = floor(local);
-    let frac = local - base;
+// DDGI blend inside one cascade. Returns (weighted irradiance sum, total weight); the caller
+// divides. Eight probes around the biased point, weighted by trilinear position, a smooth
+// backface term and the Chebyshev visibility test.
+fn gi_sample_cascade(c: u32, world_pos: vec3<f32>, n: vec3<f32>, v: vec3<f32>) -> vec4<f32> {
+    let casc = gi_cascade(c);
+    let spacing = casc.origin.w;
+    let normal_bias = 0.2 * spacing;
+    // Surface point moved along the normal (0.2 spacing) and towards the viewer (0.8 normal bias).
+    let biased = world_pos + n * normal_bias + v * (0.8 * normal_bias);
+    let g = (biased - casc.origin.xyz) / spacing;
+    let base = floor(g);
+    let frac = g - base;
+    let base_cell = vec3<i32>(base);
+    let scroll = casc.scroll.xyz;
+    let dims = vec3<i32>(casc.dims.xyz);
+    let dims_u = casc.dims.xyz;
     var accum = vec3<f32>(0.0);
     var wsum = 0.0;
     for (var dz = 0; dz < 2; dz = dz + 1) {
         for (var dy = 0; dy < 2; dy = dy + 1) {
             for (var dx = 0; dx < 2; dx = dx + 1) {
-                let ix = i32(base.x) + dx;
-                let iy = i32(base.y) + dy;
-                let iz = i32(base.z) + dz;
-                if (ix < 0 || iy < 0 || iz < 0 || ix >= dims.x || iy >= dims.y || iz >= dims.z) {
+                let cell = base_cell + vec3<i32>(dx, dy, dz);
+                let rel = cell - scroll;
+                if (any(rel < vec3<i32>(0)) || any(rel >= dims)) {
                     continue;
                 }
-                let probe = ddgi_probes[ddgi_probe_index(ix, iy, iz)];
-                let validity = probe.samples[0].w;
+                // Ring slot of the cell (ProbeCascade::storage_index) and its atlas index.
+                let slot = ((cell % dims) + dims) % dims;
+                let su = vec3<u32>(slot);
+                let index = casc.dims.w + su.x + su.y * dims_u.x + su.z * dims_u.x * dims_u.y;
+                let probe_pos = casc.origin.xyz + vec3<f32>(cell) * spacing;
                 let wx = select(frac.x, 1.0 - frac.x, dx == 0);
                 let wy = select(frac.y, 1.0 - frac.y, dy == 0);
                 let wz = select(frac.z, 1.0 - frac.z, dz == 0);
-                let w = wx * wy * wz * validity;
-                accum = accum + ddgi_probe_oct(probe, n) * w;
+                let trilinear = wx * wy * wz;
+                // Backface: probes behind the surface contribute less, but not zero.
+                let to_probe = probe_pos - world_pos;
+                let dir_to_probe = to_probe / max(length(to_probe), 1.0e-5);
+                let facing = (dot(dir_to_probe, n) + 1.0) * 0.5;
+                let backface = facing * facing + 0.2;
+                // Visibility from the probe towards the biased point.
+                let to_point = biased - probe_pos;
+                let dist = length(to_point);
+                let vis_dir = to_point / max(dist, 1.0e-5);
+                let moments = gi_tile_fetch(t_gi_visibility, index, vis_dir, GI_STRIDE_VIS, GI_INNER_VIS).rg;
+                let visibility = gi_visibility_bound(moments, dist);
+                let w = trilinear * backface * max(visibility, 1.0e-3);
+                let stored = gi_tile_fetch(t_gi_irradiance, index, n, GI_STRIDE_IRR, GI_INNER_IRR).rgb;
+                accum = accum + pow(max(stored, vec3<f32>(0.0)), vec3<f32>(5.0)) * w;
                 wsum = wsum + w;
             }
         }
     }
-    if (wsum > 1.0e-5) {
-        return accum / wsum;
+    return vec4<f32>(accum, wsum);
+}
+
+// Irradiance at a surface point: cascade blend with a soft hand-over to the coarse cascade
+// over the outer 15% of the fine window.
+fn gi_irradiance(world_pos: vec3<f32>, n: vec3<f32>, v: vec3<f32>) -> vec3<f32> {
+    if (gi_grid.enabled == 0u) {
+        return vec3<f32>(0.0);
     }
-    return vec3(0.0);
+    let fine = gi_cascade(0u);
+    let coarse = gi_cascade(1u);
+    let fine_size = vec3<f32>(fine.dims.xyz) * fine.origin.w;
+    let fine_min = fine.origin.xyz + vec3<f32>(fine.scroll.xyz) * fine.origin.w;
+    let fine_edge = max_component(abs(world_pos - (fine_min + fine_size * 0.5)) / (fine_size * 0.5));
+    let coarse_size = vec3<f32>(coarse.dims.xyz) * coarse.origin.w;
+    let coarse_min = coarse.origin.xyz + vec3<f32>(coarse.scroll.xyz) * coarse.origin.w;
+    let coarse_edge = max_component(abs(world_pos - (coarse_min + coarse_size * 0.5)) / (coarse_size * 0.5));
+
+    let fine_inside = fine_edge < 1.0;
+    let coarse_inside = coarse_edge < 1.0;
+    var f_sum = vec4<f32>(0.0);
+    if (fine_inside) {
+        f_sum = gi_sample_cascade(0u, world_pos, n, v);
+    }
+    var c_sum = vec4<f32>(0.0);
+    if (coarse_inside) {
+        c_sum = gi_sample_cascade(1u, world_pos, n, v);
+    }
+    let f_ok = fine_inside && f_sum.w > 1.0e-5;
+    let c_ok = coarse_inside && c_sum.w > 1.0e-5;
+    // Fade to the coarse cascade across the outer 15% of the fine window.
+    var fade = 1.0;
+    if (f_ok) {
+        fade = clamp((fine_edge - 0.85) / 0.15, 0.0, 1.0);
+    }
+    let w_f = select(0.0, 1.0 - fade, f_ok);
+    let w_c = select(0.0, fade, c_ok);
+    let total = w_f + w_c;
+    if (total < 1.0e-5) {
+        return vec3<f32>(0.0);
+    }
+    let fa = select(vec3<f32>(0.0), f_sum.rgb / max(f_sum.w, 1.0e-5), f_ok);
+    let ca = select(vec3<f32>(0.0), c_sum.rgb / max(c_sum.w, 1.0e-5), c_ok);
+    return (fa * w_f + ca * w_c) / total;
+}
+
+fn max_component(v: vec3<f32>) -> f32 {
+    return max(v.x, max(v.y, v.z));
 }
 
 const SDF_CONE_APERTURE: f32 = 0.25;
@@ -1083,7 +1144,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // Combine IBL with DDGI diffuse bounce (bent normal) — single ambient source.
     // Constant ambient (light_u.ambient.xyz) is small 0.02×albedo fallback when IBL/DDGI missing, not triple.
-    let ddgi = ddgi_sample_irradiance(in.world_pos, bent_n);
+    let ddgi = gi_irradiance(in.world_pos, bent_n, v);
     let ambient_base = (w_base * (kD_ibl * diffuse_ibl + specular_ibl) + substrate_ibl + ddgi * albedo + light_u.ambient.xyz * albedo) * ambient_factor * ao;
     // MAT-04: the clearcoat attenuates the base ambient and adds its own reflection.
     var ambient = ambient_base;

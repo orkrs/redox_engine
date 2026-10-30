@@ -187,21 +187,8 @@ impl Renderer {
         objects: &'a [RenderObject],
         surface_view: &'a wgpu::TextureView,
     ) -> FrameState<'a> {
-        self.ddgi_gpu.update(
-            &self.queue,
-            1.0 / 60.0,
-            -Vec3::from_array([
-                self.light_uniform.dir_direction[0],
-                self.light_uniform.dir_direction[1],
-                self.light_uniform.dir_direction[2],
-            ]),
-            Vec3::from_array([
-                self.light_uniform.dir_color[0],
-                self.light_uniform.dir_color[1],
-                self.light_uniform.dir_color[2],
-            ]),
-            self.light_uniform.dir_color[3],
-        );
+        // ASSUMPTION (GI-01 5a): the old DDGI grid is no longer bound by any shader, so its
+        // per-frame update and AABB fill are skipped; `gi_probes` replaces it. Removed in 5b.
 
         self.gpu_profiler.begin_frame(&self.device);
         if self.vsm_enabled && !self.probe_capture_active {

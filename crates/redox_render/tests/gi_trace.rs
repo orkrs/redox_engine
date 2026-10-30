@@ -138,6 +138,8 @@ fn probe_at(position: Vec3, rays: u32, frame_index: u32, sun_dir: Vec3) -> GiTra
         frame_index,
         sun_dir,
         sun_radiance: Vec3::ZERO,
+        scroll: [0; 3],
+        probe_base: 0,
     }
 }
 
