@@ -33,6 +33,7 @@ fn input<'a>(
             at,
         ),
         color,
+        vertex_colors: None,
     }
 }
 
@@ -104,6 +105,41 @@ fn the_colour_is_the_area_weighted_mean() {
         .expect("the shared vertex is welded into one");
     let c = proxy.colors[shared];
     assert!(c[0] > 0.9 && c[2] < 0.1, "{c:?}");
+}
+
+#[test]
+fn per_vertex_colours_are_kept_on_their_vertices() {
+    // One triangle with a colour per corner: each welded vertex keeps its own colour.
+    let positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+    let colors = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let tri = [0u32, 1, 2];
+    let input = HlodInput {
+        positions: &positions,
+        indices: &tri,
+        transform: Mat4::IDENTITY,
+        color: [0.5, 0.5, 0.5],
+        vertex_colors: Some(&colors),
+    };
+    let proxy = build_proxy(&[input], &params(1000)).unwrap();
+    assert_eq!(proxy.colors, colors.to_vec());
+}
+
+#[test]
+fn a_vertex_colour_list_of_the_wrong_length_is_an_error() {
+    let positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+    let colors = [[1.0, 0.0, 0.0]];
+    let tri = [0u32, 1, 2];
+    let input = HlodInput {
+        positions: &positions,
+        indices: &tri,
+        transform: Mat4::IDENTITY,
+        color: [0.5, 0.5, 0.5],
+        vertex_colors: Some(&colors),
+    };
+    assert_eq!(
+        build_proxy(&[input], &params(1000)),
+        Err(HlodError::Degenerate)
+    );
 }
 
 #[test]

@@ -11,11 +11,15 @@
 use std::collections::{HashMap, HashSet};
 
 use redox_ecs::{Entity, World};
-use redox_math::Vec3;
+use redox_math::{GlobalTransform, Vec3};
 use redox_render::RenderObject;
+use redox_render::camera::ActiveCamera;
 use redox_render::hlod::{CellLod, HlodConfig, opacities, step_cell_lod};
 use redox_render::hlod_gpu::{ProxyGpu, proxy_render_object};
+use redox_render::systems::FrameRenderObjects;
 use redox_scene::{ActorKindTable, PartitionCell, StreamedActor};
+
+use crate::time::Time;
 
 /// Render-object ids of proxies start here, away from entity ids.
 ///
@@ -114,11 +118,60 @@ impl HlodRuntime {
         self.detail_opacity.clear();
         let baked: Vec<PartitionCell> = self.baked.iter().copied().collect();
         for cell in baked {
+            // Only cells with an uploaded proxy fade; the others keep their detail objects.
+            if !self.proxies.contains_key(&cell) {
+                continue;
+            }
             let (detail, _) = self.advance(cell, viewer, dt);
             for &id in members.get(&cell).into_iter().flatten() {
                 self.detail_opacity.insert(id, detail);
             }
         }
+    }
+}
+
+/// Whether the HLOD frame step runs. Inserted by [`crate::hlod_load::HlodPlugin`];
+/// with `enabled: false` the frame is left unchanged even when proxies exist.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HlodSettings {
+    /// Runs the HLOD step when true.
+    pub enabled: bool,
+}
+
+/// World position of the entity of [`ActiveCamera`], if both exist.
+fn active_camera_position(world: &World) -> Option<Vec3> {
+    let camera = world.get_resource::<ActiveCamera>()?.0;
+    let matrix = world.get_component::<GlobalTransform>(camera)?.matrix;
+    Some(Vec3::new(matrix.w_axis.x, matrix.w_axis.y, matrix.w_axis.z))
+}
+
+/// Frame step of HLOD: runs [`hlod_frame`] on the frame's render objects
+/// (`FrameRenderObjects`, filled by extraction earlier in the frame) for the
+/// active camera.
+///
+/// Does nothing unless [`HlodSettings`] is enabled, an [`HlodRuntime`] with at
+/// least one proxy exists, and an active camera and frame objects are present.
+pub fn hlod_frame_system(world: &mut World) {
+    if !world.get_resource::<HlodSettings>().is_some_and(|s| s.enabled) {
+        return;
+    }
+    if !world
+        .get_resource::<HlodRuntime>()
+        .is_some_and(|runtime| !runtime.proxies.is_empty())
+    {
+        return;
+    }
+    let Some(viewer) = active_camera_position(world) else {
+        return;
+    };
+    let dt = world.get_resource::<Time>().map_or(0.0, |t| t.delta_time);
+    let Some(frame) = world.get_resource_mut::<FrameRenderObjects>() else {
+        return;
+    };
+    let mut objects = std::mem::take(&mut frame.0);
+    hlod_frame(world, viewer, dt, &mut objects);
+    if let Some(frame) = world.get_resource_mut::<FrameRenderObjects>() {
+        frame.0 = objects;
     }
 }
 
@@ -230,6 +283,7 @@ mod tests {
     fn update_sets_the_detail_opacity_of_member_actors() {
         let mut rt = runtime();
         let far = PartitionCell { x: 20, y: 0 };
+        rt.register_proxy(far, dummy_gpu());
         let members = HashMap::from([(far, vec![7_u32, 8])]);
         for _ in 0..10 {
             rt.update(&members, Vec3::ZERO, 0.1);
@@ -237,5 +291,104 @@ mod tests {
         assert_eq!(rt.detail_opacity(7), Some(0.0));
         assert_eq!(rt.detail_opacity(8), Some(0.0));
         assert_eq!(rt.detail_opacity(9), None);
+    }
+
+    fn dummy_gpu() -> ProxyGpu {
+        ProxyGpu {
+            mesh_slot: 0,
+            material_slot: 0,
+            bounds: redox_math::Aabb::empty(),
+        }
+    }
+
+    #[test]
+    fn a_cell_without_a_proxy_keeps_its_detail_objects() {
+        let mut rt = runtime();
+        let far = PartitionCell { x: 20, y: 0 };
+        let members = HashMap::from([(far, vec![7_u32])]);
+        for _ in 0..10 {
+            rt.update(&members, Vec3::ZERO, 0.1);
+        }
+        assert_eq!(rt.detail_opacity(7), None);
+        assert_eq!(rt.state(far), CellLod::Detail);
+    }
+
+    /// World with a crate kind, an active camera at the origin and one far cell
+    /// (20, 0) that has a proxy. Returns the world and the ids of its two actors.
+    fn far_cell_world(enabled: bool, with_proxy: bool) -> (World, Vec<u32>) {
+        let mut world = World::new();
+        world.insert_resource(ActorKindTable::from_ron(
+            r#"(kinds: { "crate": (mesh: "c.glb", color: (0.5, 0.5, 0.5)) })"#,
+        )
+        .unwrap());
+        let far = PartitionCell { x: 20, y: 0 };
+        let mut ids = Vec::new();
+        for n in 0..2 {
+            let entity = world.spawn_bundle((StreamedActor {
+                cell: far,
+                id: format!("c{n}"),
+                kind: "crate".into(),
+            },));
+            ids.push(entity.id());
+        }
+        let camera = world.spawn_bundle((GlobalTransform::IDENTITY,));
+        world.insert_resource(ActiveCamera(camera));
+        world.insert_resource(Time::new(1.0 / 60.0));
+        let mut runtime = HlodRuntime::new(HlodConfig::default(), 50.0, Vec3::ZERO, [far]);
+        if with_proxy {
+            runtime.register_proxy(far, dummy_gpu());
+        }
+        world.insert_resource(runtime);
+        world.insert_resource(HlodSettings { enabled });
+        let objects = ids.iter().map(|id| detail_object(*id)).collect();
+        world.insert_resource(FrameRenderObjects(objects));
+        (world, ids)
+    }
+
+    fn detail_object(id: u32) -> RenderObject {
+        RenderObject {
+            id,
+            shadow_class: redox_render::shadow::ShadowClass::Auto,
+            deforms: false,
+            pose_version: 0,
+            model_matrix: redox_math::Mat4::IDENTITY,
+            color: [1.0; 4],
+            mesh_index: 0,
+            material_index: 0,
+            bounds: redox_math::Aabb::empty(),
+        }
+    }
+
+    fn frame_len(world: &World) -> usize {
+        world.get_resource::<FrameRenderObjects>().unwrap().0.len()
+    }
+
+    #[test]
+    fn the_frame_step_does_nothing_when_disabled() {
+        let (mut world, _) = far_cell_world(false, true);
+        hlod_frame_system(&mut world);
+        assert_eq!(frame_len(&world), 2);
+    }
+
+    #[test]
+    fn the_frame_step_does_nothing_without_a_proxy() {
+        let (mut world, _) = far_cell_world(true, false);
+        for _ in 0..10 {
+            hlod_frame_system(&mut world);
+        }
+        assert_eq!(frame_len(&world), 2);
+    }
+
+    #[test]
+    fn a_far_cell_is_replaced_by_its_proxy_in_the_frame() {
+        let (mut world, _) = far_cell_world(true, true);
+        for _ in 0..10 {
+            world.get_resource_mut::<Time>().unwrap().delta_time = 0.1;
+            hlod_frame_system(&mut world);
+        }
+        let objects = &world.get_resource::<FrameRenderObjects>().unwrap().0;
+        assert_eq!(objects.len(), 1);
+        assert_eq!(objects[0].id, PROXY_ID_BASE);
+        assert_eq!(objects[0].color[3], 1.0);
     }
 }
