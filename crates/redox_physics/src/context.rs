@@ -281,6 +281,20 @@ impl PhysicsContext {
     }
 
     /// Retrieves the rigid body handle associated with the entity.
+    /// Enables or disables every collider of `entity`'s body. A disabled collider takes part in
+    /// neither contacts nor queries. Returns `false` when the entity has no body.
+    pub fn set_entity_colliders_enabled(&mut self, entity: Entity, enabled: bool) -> bool {
+        let Some((_, handles)) = self.entity_to_body.get(&entity) else {
+            return false;
+        };
+        for handle in handles {
+            if let Some(collider) = self.colliders.get_mut(*handle) {
+                collider.set_enabled(enabled);
+            }
+        }
+        true
+    }
+
     pub fn get_body_handle(&self, entity: Entity) -> Option<RigidBodyHandle> {
         self.entity_to_body.get(&entity).map(|(h, _)| *h)
     }
