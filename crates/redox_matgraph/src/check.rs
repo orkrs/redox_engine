@@ -4,8 +4,8 @@ use std::collections::{HashMap, HashSet};
 
 use crate::custom;
 use crate::graph::{
-    FORMAT_VERSION, GraphError, MaterialGraph, Node, NodeId, NodeKind, Ty, arity, input_types,
-    output_type,
+    FORMAT_VERSION, GRAPH_TEXTURE_SLOTS, GraphError, MaterialGraph, Node, NodeId, NodeKind, Ty,
+    arity, input_types, output_type,
 };
 
 /// Output type of every node of a valid graph.
@@ -122,6 +122,7 @@ impl<'a> Checker<'a> {
                 self.fail(Some(node.id), "лишние входы");
             }
             self.check_kind_values(node, &mut names);
+            self.check_texture_slot(node);
             if matches!(node.kind, NodeKind::SurfaceOutput) {
                 surfaces.push(node.id);
             }
@@ -130,6 +131,23 @@ impl<'a> Checker<'a> {
             0 => self.fail(None, "нет узла SurfaceOutput"),
             1 => {}
             n => self.fail(None, format!("узлов SurfaceOutput {n}, ожидался один")),
+        }
+    }
+
+    /// A texture node must address one of the bound texture slots.
+    fn check_texture_slot(&mut self, node: &Node) {
+        let slot = match node.kind {
+            NodeKind::Texture2d { slot }
+            | NodeKind::TextureSample { slot, .. }
+            | NodeKind::NormalMap { slot }
+            | NodeKind::Triplanar { slot, .. } => slot,
+            _ => return,
+        };
+        if slot >= GRAPH_TEXTURE_SLOTS {
+            self.fail(
+                Some(node.id),
+                format!("слот текстуры {slot} вне 0..{GRAPH_TEXTURE_SLOTS}"),
+            );
         }
     }
 

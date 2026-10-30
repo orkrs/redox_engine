@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 /// Format version accepted by validation.
 pub const FORMAT_VERSION: u32 = 1;
 
+/// Texture slots a graph may reference (`tex0..tex3` in generated code).
+pub const GRAPH_TEXTURE_SLOTS: u8 = 4;
+
 /// Names of the six inputs of [`NodeKind::SurfaceOutput`], in port order.
 pub const SURFACE_PORT_NAMES: [&str; 6] = [
     "base_color",

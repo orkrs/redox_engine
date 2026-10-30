@@ -3,8 +3,8 @@
 #![allow(clippy::unwrap_used)]
 
 use redox_matgraph::{
-    CodegenOptions, EvalInputs, Features, MaterialGraph, Node, NodeKind, Pass, PortRef, Ty, eval,
-    generate, lower, optimize, variant_key,
+    CodegenOptions, EvalInputs, Features, GRAPH_TEXTURE_SLOTS, MaterialGraph, Node, NodeKind, Pass,
+    PortRef, Ty, eval, generate, lower, optimize, variant_key,
 };
 
 fn link(node: u32) -> Option<PortRef> {
@@ -98,6 +98,33 @@ fn a_type_mismatch_names_the_node() {
     ]);
     let errors = g.validate();
     assert!(errors.iter().any(|e| e.node == Some(2)), "{errors:?}");
+}
+
+#[test]
+fn a_texture_slot_beyond_the_limit_is_rejected() {
+    let g = graph(vec![
+        node(1, NodeKind::Uv, vec![]),
+        node(
+            2,
+            NodeKind::Texture2d {
+                slot: GRAPH_TEXTURE_SLOTS,
+            },
+            vec![link(1)],
+        ),
+        node(3, NodeKind::Split { component: 0 }, vec![link(2)]),
+        node(4, NodeKind::Merge, vec![link(3), link(3), link(3)]),
+        node(
+            5,
+            NodeKind::SurfaceOutput,
+            vec![link(4), None, None, None, None, None],
+        ),
+    ]);
+    let errors = g.validate();
+    assert!(errors.iter().any(|e| e.node == Some(2)), "{errors:?}");
+    assert!(
+        errors.iter().any(|e| e.message.contains("вне 0..4")),
+        "{errors:?}"
+    );
 }
 
 #[test]
