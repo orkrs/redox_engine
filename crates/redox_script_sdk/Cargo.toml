@@ -1,0 +1,19 @@
+[package]
+name = "redox_script_sdk"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+# The example is the reference gameplay script. `cargo build -p redox_script_sdk --example coins
+# --target wasm32-unknown-unknown --release` writes `coins.wasm` for `redox_script` to load.
+[[example]]
+name = "coins"
+path = "examples/coins.rs"
+crate-type = ["cdylib"]

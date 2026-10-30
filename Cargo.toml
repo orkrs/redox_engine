@@ -21,6 +21,7 @@ members = [
     "crates/redox_anim",
     "crates/redox_matgraph",
     "crates/redox_script",
+    "crates/redox_script_sdk",
     "crates/redox_editor_core",
     "crates/redox_editor_ui",
     "crates/redox_editor",
