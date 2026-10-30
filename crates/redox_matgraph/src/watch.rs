@@ -13,7 +13,7 @@ use crate::graph::{GraphError, MaterialGraph};
 type FileStamp = (SystemTime, u64);
 
 /// Outcome of one changed file.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum GraphReload {
     /// The file parsed and validated; the caller rebuilds the variants from this graph.
     Ready(MaterialGraph),

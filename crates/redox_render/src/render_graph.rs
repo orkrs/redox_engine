@@ -720,7 +720,7 @@ impl CompiledGraph {
         self.required_usage
             .get(tex.0 as usize)
             .copied()
-            .unwrap_or_default()
+            .unwrap_or(wgpu::TextureUsages::empty())
     }
 
     /// Usage flags the passes need for a buffer (union over all declared passes).
@@ -728,7 +728,7 @@ impl CompiledGraph {
         self.required_buffer_usage
             .get(buf.0 as usize)
             .copied()
-            .unwrap_or_default()
+            .unwrap_or(wgpu::BufferUsages::empty())
     }
 
     /// Name of a pass.
