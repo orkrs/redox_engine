@@ -77,8 +77,9 @@ impl RagdollRig {
 /// Puts `entity` into ragdoll mode at the given pose, with the bodies starting at `model_world`.
 ///
 /// `model_world` holds the character's bone matrices in world space, in skeleton order, so the
-/// first ragdoll frame matches the last animated frame. The character controller is removed; the
-/// character's own kinematic body is not removed here, so it stays in the physics world.
+/// first ragdoll frame matches the last animated frame. The character controller is removed. The
+/// character's own body stays in the physics world, but its colliders are disabled until
+/// [`exit_ragdoll`], so they cannot push the ragdoll bodies.
 ///
 /// # Errors
 /// Returns the template or physics error when the ragdoll cannot be spawned, or
@@ -104,6 +105,10 @@ pub fn enter_ragdoll(
         })
         .collect::<Result<Vec<usize>, RagdollError>>()?;
     let ragdoll = physics.spawn_ragdoll(world, template, &poses, root_velocity, group)?;
+    // The character's own colliders sit inside the figure it just became: left enabled they push the
+    // bodies that spawn in them out by about a metre (ASSUMPTION: the cause of the activation jump,
+    // not reproduced by running it). They are disabled while ragdolled and re-enabled on exit.
+    physics.set_entity_colliders_enabled(entity, false);
     let saved_controller = world.get_component::<CharacterController>(entity).cloned();
     world.remove_component::<CharacterController>(entity);
     let rig = RagdollRig {
@@ -127,6 +132,7 @@ pub fn exit_ragdoll(physics: &mut PhysicsContext, world: &mut World, entity: Ent
         return;
     };
     physics.remove_ragdoll(&rig.ragdoll);
+    physics.set_entity_colliders_enabled(entity, true);
     for body in rig.ragdoll.bodies() {
         world.remove_component::<RagdollBody>(*body);
     }
