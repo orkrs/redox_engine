@@ -223,6 +223,9 @@ impl VGSystem {
         pixels_per_unit: f32,
         threshold_px: f32,
     ) {
+        if !self.config.dag_traverse {
+            return;
+        }
         // The vis pass reads the transform of every instance: upload them even when the host does
         // not call `prepare_frame` (scenes with DAG assets only).
         if self.instances_dirty && !self.instance_data.is_empty() {
@@ -272,7 +275,7 @@ impl VGSystem {
         camera_pos: redox_math::Vec3,
         hiz: &crate::virtual_geometry::hiz::HiZPyramid,
     ) {
-        if self.dag.instances.is_empty() {
+        if !self.config.dag_traverse || self.dag.instances.is_empty() {
             return;
         }
         let cull = self.cull_params(view_proj, camera_pos, hiz, 1);
@@ -293,7 +296,7 @@ impl VGSystem {
         vis: &'a crate::pass::vg_resolve::VgVisPass,
         frame_bg: &'a wgpu::BindGroup,
     ) {
-        if self.dag.indirect.count == 0 {
+        if !self.config.dag_traverse || self.dag.indirect.count == 0 {
             return;
         }
         crate::pass::vg_resolve::bind_vis_draw_state(

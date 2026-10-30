@@ -21,6 +21,11 @@ pub struct VGConfig {
     pub lod_config: LodChainConfig,
     /// When true, culling runs on GPU via `vg_cull.wgsl` (CPU fallback otherwise).
     pub gpu_cull: bool,
+    /// When true, DAG assets are traversed on the GPU each frame (VG-02). Off by default: DAG
+    /// instances are then registered but not drawn.
+    pub dag_traverse: bool,
+    /// Screen-space error (pixels) below which a DAG cluster is precise enough to draw.
+    pub error_threshold_px: f32,
 }
 
 impl Default for VGConfig {
@@ -33,6 +38,8 @@ impl Default for VGConfig {
             max_visible_commands: MAX_VISIBLE_COMMANDS,
             lod_config: LodChainConfig::default(),
             gpu_cull: false,
+            dag_traverse: false,
+            error_threshold_px: 1.0,
         }
     }
 }

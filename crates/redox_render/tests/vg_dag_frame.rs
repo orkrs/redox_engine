@@ -45,10 +45,21 @@ fn target(renderer: &Renderer) -> Target {
     Target { texture, view }
 }
 
-/// Renders 8 frames of the scene and returns the last one. With `sphere`, a DAG sphere (radius 1)
-/// is placed at that position; the camera is on +Z looking towards -Z. `None` is skipped without
-/// a GPU.
-fn frame(sphere: Option<Vec3>) -> Option<Vec<u8>> {
+/// How the sphere of a test scene is registered.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Path {
+    /// DAG asset with `VGConfig::dag_traverse` on.
+    DagOn,
+    /// DAG asset with the default config (flag off): registered but not drawn.
+    DagOffDefault,
+    /// The same sphere as a flat (meshlet) VG asset: the path that existed before DAG.
+    Flat,
+}
+
+/// Renders 8 frames of the scene and returns the last one. With `sphere`, a sphere (radius 1) is
+/// placed at that position on the given path; the camera is on +Z looking towards -Z. `None` is
+/// skipped without a GPU.
+fn frame_with(sphere: Option<Vec3>, path: Path) -> Option<Vec<u8>> {
     let _guard = lock();
     let Some(adapter) = common::adapter() else {
         eprintln!("no GPU adapter, skipping");
@@ -60,17 +71,34 @@ fn frame(sphere: Option<Vec3>) -> Option<Vec<u8>> {
     };
     // The resolve pass reads the material table: it needs at least the material of the asset.
     let material = renderer.add_material(Material::solid(Vec3::new(0.8, 0.3, 0.2)));
-    renderer.init_virtual_geometry(VGConfig::default());
+    let config = match path {
+        Path::DagOn => VGConfig {
+            dag_traverse: true,
+            ..VGConfig::default()
+        },
+        Path::DagOffDefault | Path::Flat => VGConfig::default(),
+    };
+    renderer.init_virtual_geometry(config);
     if let Some(at) = sphere {
         let mesh = create_sphere(1.0, 48);
-        let asset =
-            build_vg_dag_asset(&mesh, &DagParams::default(), material as u32).expect("dag asset");
-        let vg = renderer.vg_system.as_mut().expect("vg");
-        let id = vg
-            .register_dag_asset(asset, &renderer.queue)
-            .expect("register");
         let transform = Mat4::from_translation(at).to_cols_array_2d();
-        vg.spawn_dag_instance(id, transform).expect("spawn");
+        let vg = renderer.vg_system.as_mut().expect("vg");
+        match path {
+            Path::DagOn | Path::DagOffDefault => {
+                let asset = build_vg_dag_asset(&mesh, &DagParams::default(), material as u32)
+                    .expect("dag asset");
+                let id = vg
+                    .register_dag_asset(asset, &renderer.queue)
+                    .expect("register");
+                vg.spawn_dag_instance(id, transform).expect("spawn");
+            }
+            Path::Flat => {
+                let id = vg
+                    .register_mesh(&mesh, material as u32, &renderer.queue)
+                    .expect("register flat");
+                vg.spawn_instance(id, transform).expect("spawn flat");
+            }
+        }
     }
 
     let target = target(&renderer);
@@ -105,6 +133,11 @@ fn frame(sphere: Option<Vec3>) -> Option<Vec<u8>> {
         );
     }
     Some(last)
+}
+
+/// Shorthand: the DAG path with the flag on.
+fn frame(sphere: Option<Vec3>) -> Option<Vec<u8>> {
+    frame_with(sphere, Path::DagOn)
 }
 
 /// Pixels whose colour differs clearly between two frames.
@@ -145,8 +178,50 @@ fn a_dag_sphere_outside_the_view_is_not_drawn() {
     );
 }
 
+/// With the flag off (the default) a DAG sphere in front of the camera is not drawn.
+#[test]
+fn the_dag_path_is_off_by_default() {
+    let (Some(empty), Some(with)) = (
+        frame_with(None, Path::DagOffDefault),
+        frame_with(Some(Vec3::ZERO), Path::DagOffDefault),
+    ) else {
+        return;
+    };
+    let covered = differing_pixels(&empty, &with);
+    assert!(
+        covered < 20,
+        "with the flag off the DAG sphere changed {covered} pixels"
+    );
+}
+
+/// The DAG frame (flag on) covers about as many pixels as the flat path frame of the same sphere.
+/// Tolerance: 10 % of the larger count; the flat path picks its own LOD, so the silhouettes are
+/// not identical pixel by pixel.
+#[test]
+fn the_dag_frame_matches_the_flat_path_within_tolerance() {
+    let (Some(empty), Some(dag), Some(flat)) = (
+        frame_with(None, Path::Flat),
+        frame_with(Some(Vec3::ZERO), Path::DagOn),
+        frame_with(Some(Vec3::ZERO), Path::Flat),
+    ) else {
+        return;
+    };
+    let covered_dag = differing_pixels(&empty, &dag);
+    let covered_flat = differing_pixels(&empty, &flat);
+    eprintln!("dag {covered_dag} px, flat {covered_flat} px");
+    assert!(covered_dag > 600, "DAG sphere covers {covered_dag} px");
+    assert!(covered_flat > 600, "flat sphere covers {covered_flat} px");
+    let larger = covered_dag.max(covered_flat);
+    assert!(
+        covered_dag.abs_diff(covered_flat) * 10 <= larger,
+        "DAG {covered_dag} px vs flat {covered_flat} px differ by more than 10 %"
+    );
+}
+
 /// VG-02 benchmark: 1000 instances of a sphere of about 100k triangles. Prints the GPU time of
-/// the passes (when the adapter has timestamps) and the wall time of a frame.
+/// the passes (when the adapter has timestamps) and the wall time of a frame. Target: the
+/// traversal pass (`cluster_vg_cull`) at most 1 ms; the coordinator records the number in
+/// `docs/BENCHMARKS.md`.
 #[test]
 #[ignore = "timing: run with --release -- --ignored --nocapture"]
 fn dag_bench_thousand_spheres() {
@@ -163,6 +238,7 @@ fn dag_bench_thousand_spheres() {
         max_vertices: 1 << 20,
         max_indices: 1 << 22,
         max_meshlets: 1 << 18,
+        dag_traverse: true,
         ..VGConfig::default()
     });
     let mesh = create_sphere(1.0, 316);
@@ -229,4 +305,7 @@ fn dag_bench_thousand_spheres() {
             .map_or(0, |v| v.dag_draw_count())
     );
     eprintln!("{}", renderer.gpu_profiler.report());
+    if let Some(vg) = renderer.vg_system.as_ref() {
+        eprintln!("vg gpu bytes (capacity): {}", vg.gpu_bytes());
+    }
 }
