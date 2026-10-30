@@ -3,6 +3,9 @@
 use super::super::*;
 use super::FrameState;
 
+/// Screen-space error (pixels) below which a cluster of a DAG asset is precise enough.
+const DAG_ERROR_THRESHOLD_PX: f32 = 1.0;
+
 impl Renderer {
     pub(super) fn pass_cluster_vg_cull(&mut self, f: &mut FrameState<'_>) {
         let encoder = &mut f.encoder;
@@ -46,6 +49,27 @@ impl Renderer {
                 );
             } else {
                 vg.upload_meshlets_if_dirty(&self.queue);
+            }
+            // Hierarchical (DAG) assets: select the clusters of this frame on the GPU.
+            if vg.dag_instance_count() > 0 {
+                let cam_pos = Vec3::new(
+                    self.camera_uniform.camera_pos[0],
+                    self.camera_uniform.camera_pos[1],
+                    self.camera_uniform.camera_pos[2],
+                );
+                // Pixels per unit at 1 m: half the height in pixels times cot(fov / 2).
+                let pixels_per_unit =
+                    self.internal_height as f32 * 0.5 * self.camera_uniform.proj[1][1];
+                vg.record_dag_traverse(
+                    &self.device,
+                    &self.queue,
+                    encoder,
+                    &self.camera_uniform.view_proj,
+                    cam_pos,
+                    &self.hiz,
+                    pixels_per_unit,
+                    DAG_ERROR_THRESHOLD_PX,
+                );
             }
         }
     }
@@ -121,6 +145,11 @@ impl Renderer {
                             multiview_mask: None,
                         });
                         vg.draw_vis_indirect(
+                            &mut vis_pass,
+                            &self.vg_vis_pass,
+                            &self.frame_bind_group,
+                        );
+                        vg.draw_dag_vis_indirect(
                             &mut vis_pass,
                             &self.vg_vis_pass,
                             &self.frame_bind_group,

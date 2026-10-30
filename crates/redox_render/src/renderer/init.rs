@@ -17,6 +17,8 @@ impl Renderer {
     ) -> Self {
         // Before any pipeline is built, so they all pick the cache up.
         crate::pipeline_cache::install(&device, &adapter.get_info());
+        // Pipelines cached by earlier devices of this process are not valid for this one.
+        crate::resource::texture::clear_blit_cache();
 
         let staging_ring =
             crate::resource::StagingRing::new(&device, crate::resource::DEFAULT_RING_CAPACITY);

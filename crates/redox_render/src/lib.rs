@@ -59,7 +59,7 @@ pub use memory_budget::{
 pub use mesh::{Mesh, Vertex};
 pub use profiler::{GpuProfiler, GpuTiming, PROFILER_FEATURES};
 pub use renderer::{Renderer, RendererError, pick_hdr_msaa_sample_count};
-pub use skinning::SkinnedMeshBinding;
+pub use skinning::{SkinnedMeshBinding, SkinningMode};
 pub use surface::{SurfaceError, acquire_surface_texture};
 pub use systems::{
     FrameRenderObjects, MaterialHandle, MeshHandle, PreviousTransform, RenderObject, Transform,

@@ -27,17 +27,23 @@ pub enum SkinningMode {
 }
 
 /// Vertex count from which one skinned mesh goes to the GPU on its own.
-/// Provisional value; to be replaced with the measured threshold (`threshold_bench`,
-/// `docs/BENCHMARKS.md`) by the coordinator.
-pub const GPU_SKIN_MIN_VERTICES: usize = 4096; // TODO: заменить по таблице замера координатора
+///
+/// Measured with `threshold_bench` (release, RTX 4060 Ti, 2026-10-30, `docs/BENCHMARKS.md`): at
+/// 500 vertices one mesh costs the same on both paths (0.076 ms CPU, 0.071 ms GPU with its own
+/// submit); at 2000 the GPU is 3.7 times faster (0.099 against 0.027 ms).
+pub const GPU_SKIN_MIN_VERTICES: usize = 1024;
 
 /// Number of skinned meshes in a frame from which every one of them goes to the GPU batch.
-/// Provisional value; to be replaced with the measured threshold by the coordinator.
-pub const GPU_BATCH_MIN_MESHES: usize = 8; // TODO: заменить по таблице замера координатора
+///
+/// Measured: 500-vertex meshes in one batch cost 0.036 ms for 1, 0.068 ms for 10 and 0.24 ms for
+/// 100, against 0.076, 0.26 and 2.5 ms on the CPU; one submit per mesh is slower than the CPU
+/// there (0.38 against 0.26 ms for 10), so this only pays when the meshes are skinned together
+/// with `SkinnedMeshBinding::update_gpu_batch`.
+pub const GPU_BATCH_MIN_MESHES: usize = 4;
 
 /// Cost of a mesh with morph targets relative to one without (the morph pass reads every target).
-/// Provisional value; to be replaced with the measured factor by the coordinator.
-pub const MORPH_COST_FACTOR: usize = 2; // TODO: заменить по таблице замера координатора
+/// An estimate, not a measurement (`threshold_bench` has no morph case yet).
+pub const MORPH_COST_FACTOR: usize = 2;
 
 /// The `Auto` choice: GPU when the (morph-weighted) vertex count alone reaches
 /// [`GPU_SKIN_MIN_VERTICES`], or the frame has at least [`GPU_BATCH_MIN_MESHES`] skinned meshes.

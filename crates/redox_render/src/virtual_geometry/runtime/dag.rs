@@ -194,6 +194,16 @@ impl VGSystem {
         Some(handle)
     }
 
+    /// Draw commands the DAG traversal of the last frame produced (read back one frame late).
+    pub fn dag_draw_count(&self) -> u32 {
+        self.dag.indirect.count
+    }
+
+    /// Number of live DAG instances (the frame runs the traversal only when there are some).
+    pub fn dag_instance_count(&self) -> usize {
+        self.dag.instances.len()
+    }
+
     /// Frees the DAG bookkeeping of an instance (called by `despawn_instance`).
     pub(super) fn forget_dag_instance(&mut self, handle: VGInstanceHandle) {
         self.dag.instances.remove(&handle);
@@ -213,6 +223,16 @@ impl VGSystem {
         pixels_per_unit: f32,
         threshold_px: f32,
     ) {
+        // The vis pass reads the transform of every instance: upload them even when the host does
+        // not call `prepare_frame` (scenes with DAG assets only).
+        if self.instances_dirty && !self.instance_data.is_empty() {
+            queue.write_buffer(
+                &self.instance_buffer,
+                0,
+                bytemuck::cast_slice(&self.instance_data),
+            );
+            self.instances_dirty = false;
+        }
         if let Some(count) = self.dag.traversal.poll_command_count(device) {
             self.dag.indirect.count = (count as usize).min(self.dag.indirect.capacity) as u32;
         }

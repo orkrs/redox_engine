@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use redox_ecs::{Entity, Events, World};
+use redox_ecs::{Entity, Events, Inactive, World};
 use redox_math::{Transform, Vec3};
 use redox_physics::CharacterController;
 
@@ -76,6 +76,9 @@ fn submit_requests(world: &World, queue: &mut PathQueue) {
         .map(|(entity, agent, target, transform)| (entity, *agent, target.0, transform.translation))
         .collect();
     for (entity, agent, goal, position) in agents {
+        if world.get_component::<Inactive>(entity).is_some() {
+            continue;
+        }
         let has_path = world
             .get_component::<NavPath>(entity)
             .is_some_and(|path| path.goal == goal);
@@ -110,6 +113,9 @@ pub fn nav_follow_system(world: &mut World, dt: f32) {
         .collect();
     let mut reached = Vec::new();
     for (entity, agent, path, position) in movers {
+        if world.get_component::<Inactive>(entity).is_some() {
+            continue;
+        }
         if !is_current_target(world, entity, path.goal) {
             continue;
         }
@@ -278,6 +284,7 @@ fn avoidance_entries(world: &World) -> Vec<(Entity, NavAgentId, (Vec3, Vec3))> {
     world
         .query::<(Entity, &NavHandle, &Transform)>()
         .iter(world)
+        .filter(|(entity, _, _)| world.get_component::<Inactive>(*entity).is_none())
         .map(|(entity, handle, transform)| {
             let velocity = world
                 .get_component::<NavVelocity>(entity)
@@ -355,6 +362,9 @@ fn plan_moves(world: &World, dt: f32) -> Vec<Move> {
         .collect();
     let mut plan = Vec::new();
     for (entity, velocity) in desired {
+        if world.get_component::<Inactive>(entity).is_some() {
+            continue;
+        }
         let Some(translation) = world
             .get_component::<Transform>(entity)
             .map(|t| t.translation)

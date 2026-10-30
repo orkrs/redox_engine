@@ -104,6 +104,9 @@ pub fn extract_render_objects_into(
         .map(|(e, t, mesh, material)| (e, *t, *mesh, *material))
         .collect();
     for (entity, transform, mesh, material) in rows {
+        if world.get_component::<redox_ecs::Inactive>(entity).is_some() {
+            continue;
+        }
         let mesh_index = match render_context.get_mesh_index(mesh.0) {
             Some(i) => i,
             None => continue,

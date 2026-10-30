@@ -61,6 +61,23 @@ impl Renderer {
                 &self.hiz,
             );
         }
+        if let Some(vg) = self.vg_system.as_mut()
+            && vg.dag_instance_count() > 0
+        {
+            let cam_pos = Vec3::new(
+                self.camera_uniform.camera_pos[0],
+                self.camera_uniform.camera_pos[1],
+                self.camera_uniform.camera_pos[2],
+            );
+            vg.record_dag_phase2(
+                &self.queue,
+                &self.device,
+                encoder,
+                &self.camera_uniform.view_proj,
+                cam_pos,
+                &self.hiz,
+            );
+        }
     }
 
     pub(super) fn pass_forward(&mut self, f: &mut FrameState<'_>) {

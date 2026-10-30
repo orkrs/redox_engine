@@ -7,6 +7,7 @@ use rapier3d::prelude::{ColliderBuilder, RigidBodyBuilder};
 use redox_core::script_world::{ScriptInactive, ScriptPrefabs, ScriptValues, run_script_update};
 use redox_ecs::{Entity, World};
 use redox_math::{Quat, Transform, Vec3};
+use redox_nav::{AgentParams, NavAreaId, NavData, NavPolygon, NavTile, NavWorld};
 use redox_physics::PhysicsContext;
 use redox_scene::{Name, Tag};
 use redox_script::{ApiPermissions, InstanceId, ScriptConfig, ScriptRuntime};
@@ -374,4 +375,67 @@ fn tags_are_visible_to_scripts_through_the_snapshot() {
         .unwrap();
     run(&mut world, &mut rt, id);
     assert_eq!(rt.read_output(id, "count"), Some(1.0));
+}
+
+/// One tile of `cols` x 2 cells (1 m each) along +X, baked as navigation data.
+fn corridor(cols: u16) -> NavData {
+    let mut vertices = Vec::new();
+    for r in 0..=1u16 {
+        for c in 0..=cols {
+            vertices.push([f32::from(c), 0.0, f32::from(r)]);
+        }
+    }
+    let stride = cols + 1;
+    let polygons = (0..cols)
+        .map(|c| NavPolygon {
+            indices: vec![c, stride + c, stride + c + 1, c + 1],
+            area: NavAreaId::WALKABLE,
+        })
+        .collect();
+    NavData {
+        agent: AgentParams::default(),
+        tile_size: 16.0,
+        tiles: vec![NavTile {
+            coord: (0, 0),
+            vertices,
+            polygons,
+        }],
+    }
+}
+
+#[test]
+fn nav_path_returns_a_polyline_on_a_baked_navmesh() {
+    let mut world = physics_world();
+    world.insert_resource(NavWorld::from_data(&corridor(8)).unwrap());
+    let mut rt = ScriptRuntime::new(ScriptConfig::default());
+    let id = rt
+        .instantiate(&module(
+            r#"(module
+  (import "env" "nav_path" (func $path (param i32 i32 i32 i32) (result i32)))
+  (import "env" "set_f32" (func $set (param i32 i32 f32)))
+  (memory (export "memory") 1)
+  (data (i32.const 0) "count")
+  (data (i32.const 16) "last_x")
+  (func (export "on_update") (param f32) (local $n i32)
+    ;; from (0.5, 0, 0.5) at 600, to (7.5, 0, 0.5) at 612
+    (f32.store (i32.const 600) (f32.const 0.5))
+    (f32.store (i32.const 604) (f32.const 0))
+    (f32.store (i32.const 608) (f32.const 0.5))
+    (f32.store (i32.const 612) (f32.const 7.5))
+    (f32.store (i32.const 616) (f32.const 0))
+    (f32.store (i32.const 620) (f32.const 0.5))
+    (local.set $n (call $path (i32.const 600) (i32.const 612) (i32.const 700) (i32.const 8)))
+    (call $set (i32.const 0) (i32.const 5) (f32.convert_i32_s (local.get $n)))
+    (call $set (i32.const 16) (i32.const 6)
+      (f32.load (i32.add (i32.const 700) (i32.mul (i32.sub (local.get $n) (i32.const 1)) (i32.const 12)))))))"#,
+        ))
+        .unwrap();
+    run(&mut world, &mut rt, id);
+    let count = rt.read_output(id, "count").unwrap();
+    assert!(count >= 2.0, "a path of at least two points, got {count}");
+    let last_x = rt.read_output(id, "last_x").unwrap();
+    assert!(
+        (last_x - 7.5).abs() < 0.1,
+        "the path ends at the goal, got {last_x}"
+    );
 }

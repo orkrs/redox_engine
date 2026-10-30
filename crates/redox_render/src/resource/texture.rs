@@ -582,10 +582,23 @@ struct Out { @location(0) color: vec4<f32> };
 }
 "#;
 
+type BlitCache = Mutex<HashMap<wgpu::TextureFormat, Arc<wgpu::RenderPipeline>>>;
+
+/// Mip-generation pipelines, shared by every texture upload of the process. They belong to one
+/// device, so [`clear_blit_cache`] empties the cache when a new renderer (device) is created:
+/// handles of another device (or instance) must never be reused.
+fn blit_cache() -> &'static BlitCache {
+    static CACHE: LazyLock<BlitCache> = LazyLock::new(|| Mutex::new(HashMap::new()));
+    &CACHE
+}
+
+/// Forgets the cached mip-generation pipelines (see [`blit_cache`]).
+pub(crate) fn clear_blit_cache() {
+    blit_cache().lock().clear();
+}
+
 fn blit_pipeline(device: &wgpu::Device, format: wgpu::TextureFormat) -> Arc<wgpu::RenderPipeline> {
-    static CACHE: LazyLock<Mutex<HashMap<wgpu::TextureFormat, Arc<wgpu::RenderPipeline>>>> =
-        LazyLock::new(|| Mutex::new(HashMap::new()));
-    let mut guard = CACHE.lock();
+    let mut guard = blit_cache().lock();
     let key = format;
     if let Some(p) = guard.get(&key) {
         return p.clone();

@@ -36,4 +36,21 @@ Textures: `cargo bench -p redox_asset --bench ktx2` (RGBA8 KTX2 file, whole file
 
 ## GPU/CPU skinning threshold (ANM-04)
 
-Not measured yet. Run `cargo test --release -p redox_render --test gpu_skinning threshold_bench -- --ignored --nocapture` and paste the table here (ms per frame for 500 / 2k / 10k / 50k vertices x 1 / 10 / 100 characters: CPU, GPU single submits, GPU one batch). Then set `GPU_SKIN_MIN_VERTICES`, `GPU_BATCH_MIN_MESHES` and `MORPH_COST_FACTOR` in `crates/redox_render/src/skinning.rs` from it, and write the values and the date in its doc comments.
+Measured 2026-10-30, release, RTX 4060 Ti (`cargo test --release -p redox_render --test gpu_skinning threshold_bench -- --ignored --nocapture`). Milliseconds per frame:
+
+| vertices | characters | CPU | GPU, one submit each | GPU, one batch |
+|---:|---:|---:|---:|---:|
+| 500 | 1 | 0.076 | 0.071 | 0.036 |
+| 500 | 10 | 0.256 | 0.377 | 0.068 |
+| 500 | 100 | 2.479 | 2.666 | 0.238 |
+| 2 000 | 1 | 0.099 | 0.027 | 0.023 |
+| 2 000 | 10 | 0.907 | 0.367 | 0.063 |
+| 2 000 | 100 | 11.738 | 3.635 | 0.305 |
+| 10 000 | 1 | 0.501 | 0.034 | 0.030 |
+| 10 000 | 10 | 4.987 | 0.287 | 0.054 |
+| 10 000 | 100 | 51.608 | 3.245 | 0.566 |
+| 50 000 | 1 | 2.982 | 0.049 | 0.050 |
+| 50 000 | 10 | 31.230 | 0.402 | 0.227 |
+| 50 000 | 100 | 262.608 | 3.800 | 2.134 |
+
+Reading: at 500 vertices one mesh costs the same on both paths; from about 1 000 vertices the GPU wins even with a submit per mesh; for small meshes the GPU only wins when they are skinned together in one batch (`update_gpu_batch`). Hence `GPU_SKIN_MIN_VERTICES = 1024` and `GPU_BATCH_MIN_MESHES = 4`; `MORPH_COST_FACTOR = 2` is an estimate (the benchmark has no morph case).

@@ -2,7 +2,7 @@
 
 #![allow(clippy::unwrap_used)]
 
-use redox_ecs::{Entity, Events, World};
+use redox_ecs::{Entity, Events, Inactive, World};
 use redox_math::{Transform, Vec3};
 use redox_nav::{
     AgentClass, AgentParams, NavAgent, NavAreaId, NavData, NavPath, NavPolygon, NavTarget, NavTile,
@@ -153,4 +153,24 @@ fn systems_do_nothing_without_the_resources() {
     nav_path_system(&mut world);
     nav_follow_system(&mut world, 0.016);
     assert!(world.get_component::<NavTarget>(e).is_some());
+}
+
+#[test]
+fn an_inactive_agent_gets_no_path_until_it_is_activated() {
+    let mut world = world(8);
+    let e = agent(
+        &mut world,
+        Vec3::new(0.5, 0.0, 0.5),
+        Some(Vec3::new(7.5, 0.0, 0.5)),
+    );
+    world.add_component(e, Inactive);
+    nav_path_system(&mut world);
+    assert!(world.get_component::<NavPath>(e).is_none());
+    // Following skips it too.
+    nav_follow_system(&mut world, 0.1);
+    assert!((position(&world, e) - Vec3::new(0.5, 0.0, 0.5)).length() < 1e-6);
+
+    world.remove_component::<Inactive>(e);
+    nav_path_system(&mut world);
+    assert!(world.get_component::<NavPath>(e).is_some());
 }

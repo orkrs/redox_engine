@@ -54,7 +54,7 @@ use redox_render::light::{DirectionalLight, LightScene};
 use redox_render::material::Material;
 use redox_render::mesh::primitive;
 use redox_render::resource::texture_stream::{StreamConfig, TextureStreamer};
-use redox_render::{RenderObject, Renderer, SkinnedMeshBinding};
+use redox_render::{RenderObject, Renderer, SkinnedMeshBinding, SkinningMode};
 use redox_ui::UiContext;
 use redox_ui::game::paint::{egui_measure, paint};
 use redox_ui::game::{Direction, Focus, ScreenStack, UiScale, layout_localized};
@@ -548,7 +548,10 @@ fn main() {
                             }
                             let skin = Pose::from_local(&model.skeleton, &step.output.pose)
                                 .skin_matrices(&model.skeleton);
-                            if !scene.hero.update(&ctx, &skin) {
+                            // `Auto` picks the path by the measured threshold (docs/BENCHMARKS.md).
+                            let on_gpu = scene.hero.resolved_mode(1) == SkinningMode::Gpu
+                                && scene.hero.update_gpu(&ctx, &skin);
+                            if !on_gpu && !scene.hero.update(&ctx, &skin) {
                                 log::warn!("skinned mesh update rejected");
                             }
                         }

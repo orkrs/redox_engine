@@ -35,7 +35,7 @@ pub mod query;
 pub mod world;
 
 pub use commands::{CommandQueue, Commands};
-pub use component::Component;
+pub use component::{Component, Inactive};
 pub use entity::{Entity, EntityAllocator};
 pub use event::{EventReader, Events};
 pub use hierarchy::{Children, Parent, set_parent, transform_hierarchy_system};

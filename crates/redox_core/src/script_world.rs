@@ -33,9 +33,9 @@ pub const SYSTEM_COMMAND_PREFIX: &str = "sys.";
 #[derive(Clone, Debug, Default)]
 pub struct ScriptValues(pub HashMap<String, f32>);
 
-/// Marker added by `sys.set_active.<id>` with argument 0. Game systems skip entities carrying it.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct ScriptInactive;
+/// Marker added by `sys.set_active.<id>` with argument 0: [`redox_ecs::Inactive`], which the
+/// renderer's extraction and the navigation systems skip.
+pub use redox_ecs::Inactive as ScriptInactive;
 
 /// Builds one prefab at the given position and returns the new entity.
 pub type PrefabSpawn = Box<dyn Fn(&mut World, Vec3) -> Entity + Send + Sync>;

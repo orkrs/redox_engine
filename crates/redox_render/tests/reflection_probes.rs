@@ -10,7 +10,8 @@ use redox_render::light::{DirectionalLight, LightScene};
 use redox_render::material::Material;
 use redox_render::mesh::primitive::create_cube;
 use redox_render::reflection::{MAX_PROBES, ReflectionProbe, ReflectionProbeSet};
-use redox_render::resource::ibl::read_texture_ktx2;
+use redox_render::resource::ibl::{IBLProcessor, IBLResource, read_texture_ktx2};
+use redox_render::resource::texture::Texture;
 use redox_render::shadow::ShadowClass;
 use redox_render::systems::RenderObject;
 
@@ -131,6 +132,20 @@ fn object(mesh: usize, material: usize, id: u32, center: Vec3, scale: Vec3) -> R
 }
 
 fn scene(renderer: &mut Renderer) -> Scene {
+    // The shader skips all image-based lighting (probes included) while the IBL is the dummy one,
+    // so the scene gets a real, uniform, dark-blue sky.
+    let sky = image::RgbaImage::from_pixel(64, 32, image::Rgba([40, 50, 80, 255]));
+    let equirect = Texture::from_image(
+        &renderer.device,
+        &renderer.queue,
+        &image::DynamicImage::ImageRgba8(sky),
+        "test_sky",
+        wgpu::TextureFormat::Rgba8Unorm,
+    )
+    .expect("sky texture");
+    let processor = IBLProcessor::new(&renderer.device);
+    let ibl = IBLResource::from_equirect(&renderer.device, &renderer.queue, &processor, &equirect);
+    renderer.set_ibl_resource(ibl);
     let cube = renderer.upload_mesh(&create_cube());
     let floor_material = renderer.add_material(
         Material::solid(Vec3::splat(0.6))
@@ -222,10 +237,10 @@ fn max_channel_diff(a: &[u8], b: &[u8]) -> u8 {
         .unwrap_or(0)
 }
 
-/// Eye and look direction that see the floor reflecting the +X wall.
+/// Eye and look direction that see the red wall (x = 3..5, y = -1..1) straight ahead and, below
+/// it, its mirror image in the glossy floor (floor top at y = -0.95).
 fn reflection_view() -> (Vec3, Vec3) {
-    let eye = Vec3::new(-2.0, 1.0, 0.0);
-    (eye, Vec3::new(3.0, -1.9, 0.0))
+    (Vec3::new(-1.0, 0.0, 0.0), Vec3::new(1.0, -0.15, 0.0))
 }
 
 #[test]
@@ -393,8 +408,13 @@ fn a_glossy_floor_reflects_the_probe_wall_instead_of_the_sky() {
     );
 }
 
+/// Number of bytes that differ between two frames.
+fn differing_bytes(a: &[u8], b: &[u8]) -> usize {
+    a.iter().zip(b).filter(|(x, y)| x != y).count()
+}
+
 #[test]
-fn parallax_moves_the_reflection_with_the_viewer() {
+fn parallax_correction_changes_the_reflection_of_an_off_centre_viewer() {
     let _guard = lock();
     let Some(adapter) = common::adapter() else {
         eprintln!("no GPU adapter, skipping");
@@ -405,19 +425,94 @@ fn parallax_moves_the_reflection_with_the_viewer() {
         return;
     };
     let scene = scene(&mut renderer);
-    renderer.set_reflection_probes(&[probe(Vec3::ZERO, 0)]);
+    let (eye, forward) = reflection_view();
+
+    // Same capture, two boxes. A huge box leaves the ray direction as it is (no correction); a
+    // box whose +X face is the wall (x = 3) maps the ray to the point of the wall it really hits.
+    let unbounded = ReflectionProbe {
+        center: Vec3::ZERO,
+        half_extent: Vec3::splat(1000.0),
+        blend_distance: 0.0,
+        priority: 0,
+    };
+    let fitted = ReflectionProbe {
+        center: Vec3::ZERO,
+        half_extent: Vec3::new(3.0, 5.0, 10.0),
+        blend_distance: 0.0,
+        priority: 0,
+    };
+    renderer.set_reflection_probes(&[unbounded]);
     renderer
         .capture_reflection_probe(0, &scene.objects, &scene.lights)
         .expect("capture");
     renderer.set_reflection_probes_enabled(true);
+    let without_correction = render(&mut renderer, &scene, eye, forward);
+    renderer.set_reflection_probes(&[fitted]);
+    let with_correction = render(&mut renderer, &scene, eye, forward);
 
+    let differing = differing_bytes(&without_correction, &with_correction);
+    eprintln!(
+        "parallax: {differing} of {} bytes differ, red {} vs {}",
+        with_correction.len(),
+        red_sum(&without_correction),
+        red_sum(&with_correction)
+    );
+    assert!(
+        differing * 100 >= with_correction.len(),
+        "the corrected reflection must differ from the uncorrected one (only {differing} bytes do)"
+    );
+
+    // The corrected reflection is also stable: the same box renders (nearly) the same frame again
+    // (temporal filtering leaves a little noise; the effect of the correction is far larger).
+    let again = render(&mut renderer, &scene, eye, forward);
+    let noise = differing_bytes(&with_correction, &again);
+    eprintln!("parallax: re-render noise {noise} bytes");
+    assert!(
+        noise * 20 <= again.len(),
+        "the same box must render the same frame again ({noise} bytes differ)"
+    );
+}
+
+#[test]
+fn two_overlapping_probes_with_equal_weights_average_their_reflections() {
+    let _guard = lock();
+    let Some(adapter) = common::adapter() else {
+        eprintln!("no GPU adapter, skipping");
+        return;
+    };
+    let Some(mut renderer) = common::renderer(&adapter, SIZE) else {
+        eprintln!("no device, skipping");
+        return;
+    };
+    let scene = scene(&mut renderer);
     let (eye, forward) = reflection_view();
-    let first = render(&mut renderer, &scene, eye, forward);
-    let moved_eye = eye + Vec3::new(0.0, 0.0, 1.0);
-    let second = render(&mut renderer, &scene, moved_eye, forward);
 
-    // Weak check: the reflected wall edge moves with the viewer, so the frames differ.
-    assert_ne!(first, second);
+    // Probe 0 captured with the red wall, probe 1 with a green wall in the same place.
+    let green = renderer.add_material(Material::solid(Vec3::new(0.0, 1.0, 0.0)));
+    let mut green_objects = scene.objects.clone();
+    green_objects[1].material_index = green;
+    renderer.set_reflection_probes(&[probe(Vec3::ZERO, 0), probe(Vec3::ZERO, 0)]);
+    renderer
+        .capture_reflection_probe(0, &scene.objects, &scene.lights)
+        .expect("capture red");
+    renderer
+        .capture_reflection_probe(1, &green_objects, &scene.lights)
+        .expect("capture green");
+    renderer.set_reflection_probes_enabled(true);
+
+    let both = render(&mut renderer, &scene, eye, forward);
+    renderer.set_reflection_probes(&[probe(Vec3::ZERO, 0)]);
+    let red_only = render(&mut renderer, &scene, eye, forward);
+
+    let green_sum =
+        |frame: &[u8]| -> u64 { frame.chunks_exact(4).map(|px| u64::from(px[1])).sum() };
+    let (r_both, r_red) = (red_sum(&both), red_sum(&red_only));
+    let (g_both, g_red) = (green_sum(&both), green_sum(&red_only));
+    eprintln!("blend: red {r_red} -> {r_both}, green {g_red} -> {g_both}");
+    // Half of the reflection is now green: red falls, green rises, and neither jumps to the
+    // other probe's value (no popping at equal weights).
+    assert!(r_both < r_red, "red must fall: {r_red} -> {r_both}");
+    assert!(g_both > g_red, "green must rise: {g_red} -> {g_both}");
 }
 
 #[test]

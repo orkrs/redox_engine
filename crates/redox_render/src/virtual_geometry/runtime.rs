@@ -663,6 +663,6 @@ impl VGSystem {
 
     /// Returns `true` if any instances are registered.
     pub fn has_content(&self) -> bool {
-        self.indirect.count > 0
+        self.indirect.count > 0 || self.dag_draw_count() > 0
     }
 }

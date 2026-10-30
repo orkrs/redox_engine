@@ -69,3 +69,8 @@ impl ComponentInfo {
         }
     }
 }
+
+/// Marker: the entity is switched off for game systems (rendering, navigation, ...). The entity
+/// and its other components stay in the world; systems that honour the marker skip it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Inactive;
