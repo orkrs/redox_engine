@@ -28,20 +28,6 @@ fn perpendicular(normal: [f32; 3]) -> [f32; 3] {
     n.cross(axis).normalize_or_zero().to_array()
 }
 
-/// Mean of the vertex colours, used as the base colour of the proxy material.
-///
-/// ASSUMPTION: the renderer has no per-vertex colour, so the proxy is drawn with one
-/// flat colour per cell (the area-weighted mean from the bake), not per-vertex colours.
-fn mean_colour(colors: &[[f32; 3]]) -> Vec3 {
-    if colors.is_empty() {
-        return Vec3::ONE;
-    }
-    let sum = colors
-        .iter()
-        .fold(Vec3::ZERO, |acc, c| acc + Vec3::from_array(*c));
-    sum / colors.len() as f32
-}
-
 /// The proxy as a CPU mesh (world space, UVs zero).
 pub fn proxy_mesh(proxy: &HlodProxy) -> Mesh {
     let vertices = proxy
@@ -58,12 +44,15 @@ pub fn proxy_mesh(proxy: &HlodProxy) -> Mesh {
     Mesh::new(vertices, proxy.indices.clone())
 }
 
-/// Uploads a proxy mesh and a flat material for its cell.
+/// Uploads a proxy mesh and a flat material for its cell. The material colour is the
+/// cell's mean colour ([`HlodProxy::mean_colour`]): one colour per cell, variant (b).
 pub fn upload_proxy(renderer: &mut Renderer, proxy: &HlodProxy) -> ProxyGpu {
     let mesh = proxy_mesh(proxy);
     let bounds = mesh.aabb;
     let mesh_slot = renderer.upload_mesh(&mesh);
-    let material_slot = renderer.add_material(Material::solid(mean_colour(&proxy.colors)));
+    let material_slot = renderer.add_material(Material::solid(Vec3::from_array(
+        proxy.mean_colour(),
+    )));
     ProxyGpu {
         mesh_slot,
         material_slot,
@@ -94,7 +83,14 @@ mod tests {
 
     #[test]
     fn the_mean_colour_is_the_average_of_the_vertex_colours() {
-        let mean = mean_colour(&[[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
+        let proxy = HlodProxy {
+            vertices: Vec::new(),
+            normals: Vec::new(),
+            colors: vec![[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]],
+            indices: Vec::new(),
+            source_triangles: 0,
+        };
+        let mean = Vec3::from_array(proxy.mean_colour());
         assert!(mean.abs_diff_eq(Vec3::new(0.5, 0.0, 0.5), 1e-6));
     }
 

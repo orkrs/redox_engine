@@ -207,6 +207,97 @@ fn a_mid_fade_frame_shows_both_without_black_holes() {
     );
 }
 
+/// Two cubes of different flat colours (red and blue, not touching) merged into one proxy.
+/// Returns the CPU proxy; its mean colour is the expected cell colour.
+fn red_and_blue_proxy() -> redox_render::hlod::HlodProxy {
+    let cube = create_cube();
+    let positions: Vec<[f32; 3]> = cube.vertices.iter().map(|v| v.position).collect();
+    let red = HlodInput {
+        positions: &positions,
+        indices: &cube.indices,
+        transform: Mat4::from_translation(Vec3::new(-1.0, 0.0, -10.0)),
+        color: [1.0, 0.0, 0.0],
+        vertex_colors: None,
+    };
+    let blue = HlodInput {
+        transform: Mat4::from_translation(Vec3::new(1.0, 0.0, -10.0)),
+        color: [0.0, 0.0, 1.0],
+        ..red
+    };
+    let params = HlodParams {
+        target_triangles: 2000,
+        max_error: 0.05,
+        weld_epsilon: 1e-4,
+    };
+    build_proxy(&[red, blue], &params).unwrap()
+}
+
+#[test]
+fn the_proxy_colour_is_the_mean_colour_of_its_sources() {
+    let proxy = red_and_blue_proxy();
+    let mean = proxy.mean_colour();
+    // Equal numbers of red and blue vertices: the mean is half red, half blue, within 1/255.
+    for (got, want) in mean.iter().zip([0.5, 0.0, 0.5]) {
+        assert!((got - want).abs() <= 1.0 / 255.0, "mean {mean:?}");
+    }
+}
+
+#[test]
+fn an_uploaded_proxy_is_drawn_with_its_mean_colour() {
+    let Some(adapter) = common::adapter() else {
+        return;
+    };
+    let Some(mut renderer) = common::renderer(&adapter, SIZE) else {
+        return;
+    };
+    let proxy_cpu = red_and_blue_proxy();
+    let proxy = upload_proxy(&mut renderer, &proxy_cpu);
+    let target = renderer.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("hlod_upload_target"),
+        size: wgpu::Extent3d {
+            width: SIZE,
+            height: SIZE,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let view = target.create_view(&Default::default());
+    let camera = Camera::new(0.9, 1.0, 0.1, 200.0);
+    renderer
+        .camera_uniform
+        .update(&camera, Vec3::ZERO, Quat::IDENTITY);
+    renderer.update_camera_buffer();
+    let mut lights = LightScene::new(DirectionalLight::new(
+        Vec3::new(0.0, -0.3, -1.0),
+        Vec3::ONE,
+        3.0,
+    ));
+    lights.ambient = Vec3::splat(0.6);
+    let objects = [proxy_render_object(&proxy, 1, 1.0)];
+    let frame_view = FrameView::new(&camera, &objects, &lights);
+    renderer
+        .render_frame_view(&frame_view, &view)
+        .expect("frame");
+    let _ = renderer
+        .device
+        .poll(wgpu::PollType::wait_indefinitely());
+    let frame = read_texture_ktx2(&renderer.device, &renderer.queue, &target, false)
+        .unwrap()
+        .levels
+        .swap_remove(0);
+    // Centre pixel: the proxy is in front of the camera. Its colour mixes red and blue, so
+    // red and blue are lit and green is the smallest channel (specular adds the same white to all).
+    let at = ((SIZE / 2 * SIZE + SIZE / 2) * 4) as usize;
+    let (r, g, b) = (frame[at], frame[at + 1], frame[at + 2]);
+    assert!(r > 0 && b > 0, "centre pixel ({r}, {g}, {b}) is not lit");
+    assert!(g < r && g < b, "centre pixel ({r}, {g}, {b}) is not red and blue");
+}
+
 #[test]
 fn no_flash_at_the_switch() {
     let Some(mut rig) = rig() else {
