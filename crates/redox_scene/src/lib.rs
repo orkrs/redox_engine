@@ -11,6 +11,7 @@ use std::io;
 use redox_ecs::component::ComponentInfo;
 use serde::{Deserialize, Serialize};
 
+pub mod kinds;
 pub mod ofpa;
 pub mod partition;
 pub mod pcg;
@@ -23,6 +24,7 @@ pub use ofpa::{
     write_atomic, write_world,
 };
 
+pub use kinds::{ActorKindEntry, ActorKindTable, HlodInstance, KindTableError};
 pub use partition::{
     StreamedActor, StreamingBudget, StreamingConfig, StreamingReport, WorldPartition,
     tick_streaming,

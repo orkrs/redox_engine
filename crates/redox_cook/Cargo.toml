@@ -10,7 +10,7 @@ workspace = true
 
 [features]
 # `bake-ibl`: GPU convolution of an HDR sky into KTX2 maps.
-bake = ["dep:redox_render", "dep:wgpu", "dep:pollster"]
+bake = ["dep:wgpu", "dep:pollster"]
 
 [dependencies]
 redox_asset = { path = "../redox_asset", features = ["encode"] }
@@ -20,7 +20,7 @@ redox_nav = { path = "../redox_nav" }
 gltf = { workspace = true }
 image = { workspace = true }
 ktx2 = "0.5"
-redox_render = { path = "../redox_render", optional = true }
+redox_render = { path = "../redox_render" }
 # World cells for `bake-hlod`.
 redox_scene = { path = "../redox_scene" }
 wgpu = { workspace = true, optional = true }
