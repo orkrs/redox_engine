@@ -6,6 +6,8 @@
 use std::sync::Mutex;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
+use super::card_atlas::{CARD_ATLAS_SIZE, CardAtlas};
+use super::card_capture::ObjectCards;
 use crate::sdf::global::{GLOBAL_SDF_DIMS, GlobalSdf};
 use crate::sdf::global_gpu::GlobalSdfGpu;
 
@@ -13,6 +15,8 @@ use crate::sdf::global_gpu::GlobalSdfGpu;
 pub struct GiState {
     /// The volume currently used by GI.
     pub global_sdf: GlobalSdfGpu,
+    /// Captured surface cards of the static objects (GI-02); `None` until `set_cards` is called.
+    pub cards: Option<CardAtlas>,
     // A mutex only to make the renderer `Sync`; `Receiver` is not.
     pending: Option<Mutex<Receiver<GlobalSdf>>>,
 }
@@ -22,6 +26,7 @@ impl GiState {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         Self {
             global_sdf: GlobalSdfGpu::new(device, queue, GLOBAL_SDF_DIMS),
+            cards: None,
             pending: None,
         }
     }
@@ -53,6 +58,20 @@ impl GiState {
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => self.pending = None,
         }
+    }
+
+    /// Replaces the surface cards with `objects` (captured faces and their object ids). The
+    /// atlas is created on first use at [`CARD_ATLAS_SIZE`]. Object ids index the trace's table.
+    pub fn set_cards(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        objects: &[(ObjectCards, u32)],
+    ) {
+        let atlas = self
+            .cards
+            .get_or_insert_with(|| CardAtlas::new(device, CARD_ATLAS_SIZE));
+        atlas.set_objects(device, queue, objects);
     }
 
     /// True while a rebuild is running or waiting for upload.

@@ -43,6 +43,13 @@ impl Renderer {
         self.gi_probes.notify_lighting_changed();
     }
 
+    /// Replaces the surface cards of the static objects (GI-02). `objects` pairs each object's
+    /// captured cards (`gi::card_capture::capture_object`) with its id; ids index the trace table
+    /// and should match the slice given to [`Self::set_gi_static_geometry`] or its bricks.
+    pub fn set_gi_cards(&mut self, objects: &[(crate::gi::card_capture::ObjectCards, u32)]) {
+        self.gi.set_cards(&self.device, &self.queue, objects);
+    }
+
     /// Switches global illumination on or off. Off, the frame is as before GI: no probes are
     /// traced and the light from them is not added. Probes are on after a static scene is given.
     pub fn set_gi_enabled(&mut self, enabled: bool) {

@@ -8,6 +8,8 @@
 use redox_math::Vec3;
 
 use super::atlas::{AtlasUpdate, ProbeAtlas, hysteresis_after_change};
+use super::card_atlas::CardAtlas;
+use super::card_light::{CardLightInputs, CardLighter, CardPointGpu};
 use super::cascade::ProbeCascade;
 use super::grid_gpu::{GI_CASCADE_COUNT, GiGridGpu};
 use super::relocate::GiRelocator;
@@ -87,6 +89,10 @@ pub struct GiFrame<'a> {
     pub sky: &'a wgpu::TextureView,
     /// Global SDF the rays march through.
     pub sdf: &'a GlobalSdfGpu,
+    /// Surface cards to light this frame, when set (GI-02).
+    pub cards: Option<&'a CardAtlas>,
+    /// Point lights for the card lighting, from the light uniform.
+    pub points: &'a [CardPointGpu],
 }
 
 /// Both probe cascades with their atlases, trace and the stable textures the shader reads.
@@ -95,6 +101,7 @@ pub struct GiProbes {
     atlas: ProbeAtlas,
     tracer: GiTracer,
     relocator: GiRelocator,
+    card_light: CardLighter,
     grid_buffer: wgpu::Buffer,
     /// Grid of the previous frame, matching the stable atlas the trace reads (bounce term).
     prev_grid: GiGridGpu,
@@ -154,6 +161,7 @@ impl GiProbes {
                 ProbeCascade::new(Vec3::ZERO, COARSE_SPACING, CASCADE_DIMS),
             ],
             tracer: GiTracer::new(device, total),
+            card_light: CardLighter::new(device),
             relocator: GiRelocator::new(device),
             atlas,
             grid_buffer,
@@ -316,6 +324,26 @@ impl GiProbes {
             &self.probe_offset,
             PROBES_PER_CASCADE * cascade_count,
         );
+
+        if let Some(cards) = frame.cards {
+            // Reads last frame's grid and atlas, like the trace: lit before this frame's update.
+            self.card_light.record(
+                device,
+                queue,
+                encoder,
+                cards,
+                &CardLightInputs {
+                    sdf: frame.sdf,
+                    prev_grid: &self.prev_grid_buffer,
+                    prev_irradiance: &self.irradiance_view,
+                    probe_offset: &self.probe_offset,
+                    sun_dir: frame.sun_dir,
+                    sun_radiance: frame.sun_radiance,
+                    points: frame.points,
+                    frame_index: self.frame_index,
+                },
+            );
+        }
 
         let rays = self.quality.rays();
         let inputs = TraceInputs {

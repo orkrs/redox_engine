@@ -2,7 +2,9 @@
 //! the analytic CPU reference, the renderer-side SDF state, and the GPU probe ray trace.
 
 pub mod atlas;
+pub mod card_atlas;
 pub mod card_capture;
+pub mod card_light;
 pub mod cards;
 pub mod cascade;
 pub mod grid_gpu;

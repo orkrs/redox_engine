@@ -128,8 +128,23 @@ pub const PARTICLE_SIM_WGSL: &str = include_str!("../../shaders/particle_sim.wgs
 pub const PARTICLE_BILLBOARD_WGSL: &str = include_str!("../../shaders/particle_billboard.wgsl");
 /// Source of `skin_compute.wgsl`.
 pub const SKIN_COMPUTE_WGSL: &str = include_str!("../../shaders/skin_compute.wgsl");
-/// Source of `gi_trace.wgsl` (global SDF probe ray trace).
-pub const GI_TRACE_WGSL: &str = include_str!("../../shaders/gi_trace.wgsl");
+/// Source of `gi_card_light.wgsl` (surface card lighting, GI-02), with `gi_common.wgsl` in front.
+pub const GI_CARD_LIGHT_WGSL: &str = concat!(
+    include_str!("../../shaders/gi_common.wgsl"),
+    include_str!("../../shaders/gi_card_light.wgsl"),
+);
+/// Source of `gi_trace.wgsl` (global SDF probe ray trace), with the shared `gi_common.wgsl` in front.
+pub const GI_TRACE_WGSL: &str = concat!(
+    include_str!("../../shaders/gi_common.wgsl"),
+    include_str!("../../shaders/gi_trace.wgsl"),
+);
+/// Shared GI helpers (previous-frame irradiance, card projection), in front of GI shaders.
+#[cfg_attr(not(feature = "shader-hot-reload"), allow(dead_code))]
+const GI_COMMON_WGSL: &str = include_str!("../../shaders/gi_common.wgsl");
+#[cfg_attr(not(feature = "shader-hot-reload"), allow(dead_code))]
+const GI_TRACE_BODY_WGSL: &str = include_str!("../../shaders/gi_trace.wgsl");
+#[cfg_attr(not(feature = "shader-hot-reload"), allow(dead_code))]
+const GI_CARD_LIGHT_BODY_WGSL: &str = include_str!("../../shaders/gi_card_light.wgsl");
 /// Source of `gi_relocate.wgsl` (probe relocation out of geometry).
 pub const GI_RELOCATE_WGSL: &str = include_str!("../../shaders/gi_relocate.wgsl");
 /// Source of `gi_update.wgsl` (probe atlas irradiance and visibility update).
@@ -229,6 +244,7 @@ const EMBEDDED: &[(&str, &str, &str)] = &[
     ),
     ("skin_compute", "skin_compute.wgsl", SKIN_COMPUTE_WGSL),
     ("gi_trace", "gi_trace.wgsl", GI_TRACE_WGSL),
+    ("gi_card_light", "gi_card_light.wgsl", GI_CARD_LIGHT_WGSL),
     ("gi_update", "gi_update.wgsl", GI_UPDATE_WGSL),
     ("gi_relocate", "gi_relocate.wgsl", GI_RELOCATE_WGSL),
     ("smaa_edge", "smaa/edge.wgsl", SMAA_EDGE_WGSL),
@@ -298,6 +314,16 @@ pub fn load(name: &str) -> String {
             read_part("pbr.wgsl", PBR_BODY_WGSL),
         ]
         .join("\n");
+    }
+    if name == "gi_trace" || name == "gi_card_light" {
+        // GI shaders are built from the shared GI helpers and their body; see [`GI_TRACE_WGSL`].
+        let body = if name == "gi_trace" {
+            read_part("gi_trace.wgsl", GI_TRACE_BODY_WGSL)
+        } else {
+            read_part("gi_card_light.wgsl", GI_CARD_LIGHT_BODY_WGSL)
+        };
+        return [read_part("gi_common.wgsl", GI_COMMON_WGSL), body].join("
+");
     }
     if name == "vg_cull" {
         // `vg_cull` needs the shared helpers in front of its body (see `VG_CULL_WGSL`).
@@ -469,6 +495,7 @@ mod tests {
             ("particle_billboard", super::PARTICLE_BILLBOARD_WGSL),
             ("skin_compute", super::SKIN_COMPUTE_WGSL),
             ("gi_trace", super::GI_TRACE_WGSL),
+            ("gi_card_light", super::GI_CARD_LIGHT_WGSL),
             ("gi_update", super::GI_UPDATE_WGSL),
             ("gi_relocate", super::GI_RELOCATE_WGSL),
             ("smaa_edge", super::SMAA_EDGE_WGSL),
