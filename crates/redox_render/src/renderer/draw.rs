@@ -55,6 +55,31 @@ impl Renderer {
         result.map(|_| ())
     }
 
+    /// Selects the surface of material slot `material_index` from `instance.graph` (MAT-02
+    /// step 5). `Some(id)` binds the graph registered under `id` in `graphs`; `None` returns the
+    /// slot to the default pipelines. An unknown id is an error and the slot keeps its binding.
+    pub fn set_material_instance(
+        &mut self,
+        material_index: usize,
+        instance: &crate::material::MaterialInstance,
+        graphs: &std::collections::HashMap<
+            crate::material::MaterialGraphId,
+            redox_matgraph::MaterialGraph,
+        >,
+        params: &[[f32; 4]],
+    ) -> Result<(), crate::matgraph_cache::MaterialGraphError> {
+        let Some(id) = instance.graph else {
+            self.matgraphs.clear_material(material_index);
+            return Ok(());
+        };
+        let Some(graph) = graphs.get(&id) else {
+            let error = crate::matgraph_cache::MaterialGraphError::UnknownGraph(id);
+            log::warn!("material {material_index}: {error}");
+            return Err(error);
+        };
+        self.set_material_graph(material_index, graph, params)
+    }
+
     /// Records the draw call for one object into `pass`.
     pub fn record_draw<'a>(
         &'a self,
