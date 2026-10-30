@@ -46,9 +46,31 @@ impl Renderer {
         graph: &redox_matgraph::MaterialGraph,
         params: &[[f32; 4]],
     ) -> Result<(), crate::matgraph_cache::MaterialGraphError> {
-        let result =
-            self.matgraphs
-                .set_material(&self.device, &self.queue, material_index, graph, params);
+        self.set_material_graph_with_textures(material_index, graph, params, &[])
+    }
+
+    /// Binds `graph` like [`Self::set_material_graph`] and binds the texture uploaded at
+    /// registry index `texture_indices[i]` to `tex<i>` (MAT-03 step 1). A slot without an index,
+    /// or with an index that names no texture, samples white.
+    pub fn set_material_graph_with_textures(
+        &mut self,
+        material_index: usize,
+        graph: &redox_matgraph::MaterialGraph,
+        params: &[[f32; 4]],
+        texture_indices: &[usize],
+    ) -> Result<(), crate::matgraph_cache::MaterialGraphError> {
+        let views: Vec<Option<&wgpu::TextureView>> = texture_indices
+            .iter()
+            .map(|&idx| self.registry.legacy_texture(idx).map(|t| &t.view))
+            .collect();
+        let result = self.matgraphs.set_material(
+            &self.device,
+            &self.queue,
+            material_index,
+            graph,
+            params,
+            &views,
+        );
         if let Err(error) = &result {
             log::warn!("material {material_index}: graph not applied: {error}");
         }

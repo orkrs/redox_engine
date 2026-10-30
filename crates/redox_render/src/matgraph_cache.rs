@@ -461,6 +461,8 @@ impl MaterialGraphs {
     /// Binds `graph` to the material slot `material_index`, with parameter values by slot
     /// (missing entries use the slot default). Builds the variants of every pass.
     ///
+    /// `textures[i]` is bound to `tex<i>`; a missing or `None` entry binds the white texture.
+    ///
     /// On error nothing changes for the slot: it keeps the graph it had before, or the default
     /// pipelines when it had none.
     pub fn set_material(
@@ -470,6 +472,7 @@ impl MaterialGraphs {
         material_index: usize,
         graph: &MaterialGraph,
         params: &[[f32; 4]],
+        textures: &[Option<&wgpu::TextureView>],
     ) -> Result<ShaderKey, MaterialGraphError> {
         if self.layout.is_none() {
             return Err(MaterialGraphError::Wgsl(VariantError::InvalidWgsl(
@@ -494,20 +497,7 @@ impl MaterialGraphs {
             mapped_at_creation: false,
         });
         queue.write_buffer(&buffer, 0, &bytes);
-        let params_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("matgraph_params_bg"),
-            layout: &self.graph_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: self.time_buffer.as_entire_binding(),
-                },
-            ],
-        });
+        let params_bg = self.params_bind_group(device, &buffer, textures);
         self.materials.insert(
             material_index,
             GraphMaterial {
@@ -521,6 +511,52 @@ impl MaterialGraphs {
             },
         );
         Ok(key)
+    }
+
+    /// Parameter bind group: the parameter block, the frame time, the texture slots (white for
+    /// the missing ones, at most [`GRAPH_TEXTURE_SLOTS`]) and the three samplers.
+    fn params_bind_group(
+        &self,
+        device: &wgpu::Device,
+        buffer: &wgpu::Buffer,
+        textures: &[Option<&wgpu::TextureView>],
+    ) -> wgpu::BindGroup {
+        let views: Vec<&wgpu::TextureView> = (0..GRAPH_TEXTURE_SLOTS as usize)
+            .map(|slot| textures.get(slot).copied().flatten().unwrap_or(&self.white))
+            .collect();
+        let mut entries = vec![
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: self.time_buffer.as_entire_binding(),
+            },
+        ];
+        entries.extend(
+            views
+                .into_iter()
+                .enumerate()
+                .map(|(slot, view)| wgpu::BindGroupEntry {
+                    binding: GRAPH_TEXTURE_BINDING + slot as u32,
+                    resource: wgpu::BindingResource::TextureView(view),
+                }),
+        );
+        entries.extend(
+            self.samplers
+                .iter()
+                .enumerate()
+                .map(|(i, sampler)| wgpu::BindGroupEntry {
+                    binding: GRAPH_SAMPLER_BINDING + i as u32,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                }),
+        );
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("matgraph_params_bg"),
+            layout: &self.graph_bgl,
+            entries: &entries,
+        })
     }
 
     /// Compiles `graph` for `pass`, builds its module if missing and its pipeline if missing.
@@ -922,6 +958,7 @@ impl MaterialGraphHotReload {
                             material_index,
                             &graph,
                             &watched.params,
+                            &[],
                         )
                         .map(|_| ()),
                     GraphReload::Failed(errors) => Err(MaterialGraphError::Graph(errors)),
