@@ -3,6 +3,8 @@ pub mod bloom;
 pub mod fog;
 /// Velocity tile maxima and the math of motion blur spreading beyond object edges (PST-03).
 pub mod motion_blur_tiles;
+/// Froxel fog volume: injected, integrated and composited fog with VSM sun shadows (PST-06 step 3).
+pub mod fog_froxel;
 /// Motion blur and depth of field, run between TAA and bloom.
 pub mod post_fx;
 /// Refraction offset and mip math for refractive materials (MAT-06).

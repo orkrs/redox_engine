@@ -12,6 +12,8 @@ use bytemuck::{Pod, Zeroable};
 use crate::camera::CameraUniform;
 use crate::post::fog::{FOG_WGSL, FogSettings, fog_uniform};
 use crate::post::motion_blur_tiles::{SPREAD_SOFT_Z, TilePasses, TileTargets};
+use crate::post::fog::{FOG_WGSL, FogSettings, FogUniform, fog_uniform};
+use crate::post::fog_froxel::{FROXEL_COMPOSITE_WGSL, FroxelVolume, volume_entry};
 use crate::post::ssr::{SSR_WGSL, SsrSettings, ssr_uniform};
 use crate::post::tone_mapping::create_tonemap_bind_group;
 use crate::shader::create_shader_module;
@@ -165,6 +167,8 @@ pub struct PostFxSettings {
     pub ssr: Option<SsrSettings>,
     /// Height fog, or `None` when off. Runs last in the chain.
     pub fog: Option<FogSettings>,
+    /// Fog through the froxel volume (step 3) instead of the analytic integral. Only with `fog` on.
+    pub fog_froxel: bool,
 }
 
 /// Per-frame camera and sun data the effects read.
@@ -437,6 +441,10 @@ pub(crate) struct PostFxInputs<'a> {
     pub tone_uniform: &'a wgpu::Buffer,
     /// Sampler shared with tone mapping.
     pub sampler: &'a wgpu::Sampler,
+    /// VSM info block the froxel fog reads for sun shadows (used at creation only).
+    pub vsm_info: &'a wgpu::Buffer,
+    /// VSM page array the froxel fog reads for sun shadows (used at creation only).
+    pub vsm_pages: &'a wgpu::TextureView,
 }
 
 /// Passes of the chain. Each owns its pipeline, sampler and uniform buffer.
@@ -445,6 +453,7 @@ struct EffectPasses {
     motion_blur: EffectPass,
     dof: EffectPass,
     fog: EffectPass,
+    fog_froxel: EffectPass,
 }
 
 /// Bind groups of one effect. `history[s]` reads TAA history slot `s`; `target[i]` reads
@@ -460,6 +469,7 @@ struct EffectLanes {
     motion_blur: Lanes,
     dof: Lanes,
     fog: Lanes,
+    fog_froxel: Lanes,
 }
 
 /// Where the chain's current image lives: a TAA history slot, or effect target `i`.
@@ -502,6 +512,8 @@ pub(crate) struct PostFx {
     tile_passes: TilePasses,
     /// Tile maxima the spreading pass reads, rebuilt on resize.
     tiles: TileTargets,
+    /// Froxel fog grids and compute passes (PST-06 step 3).
+    froxel: FroxelVolume,
 }
 
 impl PostFx {
@@ -518,6 +530,9 @@ impl PostFx {
         let tiles = TileTargets::new(device, &tile_passes, width, height, inputs.velocity_view);
         let (tone_bgs, lanes) =
             build_bindings(device, &passes, &views, tiles.neighbor_view(), inputs);
+        let froxel = FroxelVolume::new(device, inputs.vsm_info, inputs.vsm_pages);
+        let (tone_bgs, lanes) =
+            build_bindings(device, &passes, &views, inputs, &froxel.integrated_view);
         Self {
             _textures: textures,
             views,
@@ -526,6 +541,7 @@ impl PostFx {
             lanes,
             tile_passes,
             tiles,
+            froxel,
         }
     }
 
@@ -542,6 +558,13 @@ impl PostFx {
             TileTargets::new(device, &self.tile_passes, width, height, inputs.velocity_view);
         let (tone_bgs, lanes) =
             build_bindings(device, &self.passes, &views, self.tiles.neighbor_view(), inputs);
+        let (tone_bgs, lanes) = build_bindings(
+            device,
+            &self.passes,
+            &views,
+            inputs,
+            &self.froxel.integrated_view,
+        );
         self._textures = textures;
         self.views = views;
         self.tone_bgs = tone_bgs;
@@ -604,10 +627,21 @@ impl PostFx {
         }
         if let Some(fog) = settings.fog {
             let dst = source.next_target();
-            self.passes.fog.write(queue, &fog_uniform(&fog, frame));
-            self.passes
-                .fog
-                .record(encoder, self.lanes.fog.get(source), &self.views[dst]);
+            let uniform = fog_uniform(&fog, frame);
+            if settings.fog_froxel {
+                self.froxel.record(encoder, queue, &uniform);
+                self.passes.fog_froxel.write(queue, &uniform);
+                self.passes.fog_froxel.record(
+                    encoder,
+                    self.lanes.fog_froxel.get(source),
+                    &self.views[dst],
+                );
+            } else {
+                self.passes.fog.write(queue, &uniform);
+                self.passes
+                    .fog
+                    .record(encoder, self.lanes.fog.get(source), &self.views[dst]);
+            }
             source = Source::Target(dst);
         }
         match source {
@@ -699,11 +733,25 @@ fn create_passes(device: &wgpu::Device) -> EffectPasses {
         ],
         std::mem::size_of::<crate::post::fog::FogUniform>() as u64,
     );
+    let fog_froxel = EffectPass::new(
+        device,
+        "fog_froxel_composite",
+        FROXEL_COMPOSITE_WGSL,
+        &[
+            texture_entry(0, FILTERABLE),
+            texture_entry(1, wgpu::TextureSampleType::Depth),
+            volume_entry(2),
+            sampler_entry(3),
+            uniform_entry(4),
+        ],
+        std::mem::size_of::<FogUniform>() as u64,
+    );
     EffectPasses {
         ssr,
         motion_blur,
         dof,
         fog,
+        fog_froxel,
     }
 }
 
@@ -735,6 +783,7 @@ fn build_bindings(
     views: &[wgpu::TextureView; 2],
     neighbor_view: &wgpu::TextureView,
     inputs: &PostFxInputs<'_>,
+    volume_view: &wgpu::TextureView,
 ) -> ([wgpu::BindGroup; 2], EffectLanes) {
     let tone = |view: &wgpu::TextureView| {
         create_tonemap_bind_group(
@@ -764,6 +813,13 @@ fn build_bindings(
         ),
         dof: lane_bindings(device, &passes.dof, history, views, &[inputs.depth_view]),
         fog: lane_bindings(device, &passes.fog, history, views, &[inputs.depth_view]),
+        fog_froxel: lane_bindings(
+            device,
+            &passes.fog_froxel,
+            history,
+            views,
+            &[inputs.depth_view, volume_view],
+        ),
     };
     ([tone(&views[0]), tone(&views[1])], lanes)
 }

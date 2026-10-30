@@ -494,24 +494,6 @@ impl Renderer {
             make_tone_bg(&taa_history_view1),
         ];
 
-        // --- Post effects (motion blur, DoF): targets and bind groups over TAA history ---
-        let post_fx = PostFx::new(
-            &device,
-            config.width,
-            config.height,
-            &PostFxInputs {
-                history_views: [&taa_history_view0, &taa_history_view1],
-                velocity_view: &taa_velocity_view,
-                depth_view: &depth_view,
-                normal_view: &normal_view,
-                surface_view: &material_surface_view,
-                bloom_view: &bloom_mip_views[0],
-                tone_pipeline: &tone_mapping_pipeline,
-                tone_uniform: &tonemap_uniform_buffer,
-                sampler: &hdr_sampler,
-            },
-        );
-
         // --- IBL ---
         let ibl_processor = IBLProcessor::new(&device);
         let ibl_resource = IBLResource::dummy(&device, &queue);
@@ -599,6 +581,27 @@ impl Renderer {
             dimension: Some(wgpu::TextureViewDimension::D2Array),
             ..Default::default()
         });
+
+        // --- Post effects (motion blur, DoF, fog): targets and bind groups over TAA history.
+        // Created after the VSM buffers, which the froxel fog reads for sun shadows. ---
+        let post_fx = PostFx::new(
+            &device,
+            config.width,
+            config.height,
+            &PostFxInputs {
+                history_views: [&taa_history_view0, &taa_history_view1],
+                velocity_view: &taa_velocity_view,
+                depth_view: &depth_view,
+                normal_view: &normal_view,
+                surface_view: &material_surface_view,
+                bloom_view: &bloom_mip_views[0],
+                tone_pipeline: &tone_mapping_pipeline,
+                tone_uniform: &tonemap_uniform_buffer,
+                sampler: &hdr_sampler,
+                vsm_info: &vsm_info_buffer,
+                vsm_pages: &vsm_pages_array_view,
+            },
+        );
 
         let vsm_shadow_trace_bind_group = vsm_shadow_pass.create_trace_bind_group(
             &device,
