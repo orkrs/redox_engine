@@ -50,9 +50,8 @@ pub fn upload_proxy(renderer: &mut Renderer, proxy: &HlodProxy) -> ProxyGpu {
     let mesh = proxy_mesh(proxy);
     let bounds = mesh.aabb;
     let mesh_slot = renderer.upload_mesh(&mesh);
-    let material_slot = renderer.add_material(Material::solid(Vec3::from_array(
-        proxy.mean_colour(),
-    )));
+    let material_slot =
+        renderer.add_material(Material::solid(Vec3::from_array(proxy.mean_colour())));
     ProxyGpu {
         mesh_slot,
         material_slot,

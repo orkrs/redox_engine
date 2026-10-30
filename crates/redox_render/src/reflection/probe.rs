@@ -92,11 +92,7 @@ pub fn select_probes(probes: &[ReflectionProbe], pos: Vec3) -> [(usize, f32); 2]
         })
         .collect();
     // Priority first, then weight, then the lower probe index: the choice does not depend on sort stability.
-    candidates.sort_by(|a, b| {
-        b.1.cmp(&a.1)
-            .then(b.2.total_cmp(&a.2))
-            .then(a.0.cmp(&b.0))
-    });
+    candidates.sort_by(|a, b| b.1.cmp(&a.1).then(b.2.total_cmp(&a.2)).then(a.0.cmp(&b.0)));
 
     let mut slots = [(0usize, 0.0f32); 2];
     for (slot, &(index, _, weight)) in slots.iter_mut().zip(candidates.iter().take(2)) {

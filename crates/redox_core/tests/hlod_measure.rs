@@ -80,7 +80,11 @@ fn build_cell_proxy(cell: PartitionCell) -> HlodProxy {
     let origin = Vec3::new(cell.x as f32 * CELL_SIZE, 0.0, cell.y as f32 * CELL_SIZE);
     let transforms: Vec<Mat4> = (0..PER_CELL)
         .map(|i| {
-            let offset = Vec3::new((i % 10) as f32 * 4.0 + 1.0, 0.5, (i / 10) as f32 * 4.0 + 1.0);
+            let offset = Vec3::new(
+                (i % 10) as f32 * 4.0 + 1.0,
+                0.5,
+                (i / 10) as f32 * 4.0 + 1.0,
+            );
             Mat4::from_translation(origin + offset)
         })
         .collect();

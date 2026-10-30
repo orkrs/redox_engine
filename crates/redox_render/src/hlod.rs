@@ -395,10 +395,9 @@ impl HlodProxy {
         if self.colors.is_empty() {
             return [1.0; 3];
         }
-        let sum = self
-            .colors
-            .iter()
-            .fold([0.0_f32; 3], |acc, c| [acc[0] + c[0], acc[1] + c[1], acc[2] + c[2]]);
+        let sum = self.colors.iter().fold([0.0_f32; 3], |acc, c| {
+            [acc[0] + c[0], acc[1] + c[1], acc[2] + c[2]]
+        });
         let n = self.colors.len() as f32;
         sum.map(|s| s / n)
     }

@@ -534,7 +534,11 @@ fn arm_vertices(bend: f32) -> Vec<Vertex> {
         .iter()
         .map(|v| {
             let [x, y, z] = v.position;
-            let x = if y > 0.0 { x + 0.8 * bend * (y / 0.5) } else { x };
+            let x = if y > 0.0 {
+                x + 0.8 * bend * (y / 0.5)
+            } else {
+                x
+            };
             Vertex {
                 position: [x, y, z],
                 normal: v.normal,
@@ -586,8 +590,12 @@ fn a_waving_arm_updates_its_shadow_and_matches_a_fresh_render() {
     if !cached.renderer.vsm_enabled {
         return;
     }
-    let ground_mat_c = cached.renderer.add_material(Material::solid(Vec3::splat(0.7)));
-    let arm_mat_c = cached.renderer.add_material(Material::solid(Vec3::new(0.8, 0.3, 0.2)));
+    let ground_mat_c = cached
+        .renderer
+        .add_material(Material::solid(Vec3::splat(0.7)));
+    let arm_mat_c = cached
+        .renderer
+        .add_material(Material::solid(Vec3::new(0.8, 0.3, 0.2)));
     let arm_slot_c = cached.renderer.upload_mesh(&arm_mesh(0.0));
     let ground_c = cached.object(
         cached.cube,
@@ -597,8 +605,12 @@ fn a_waving_arm_updates_its_shadow_and_matches_a_fresh_render() {
         Vec3::new(40.0, 0.2, 40.0),
     );
 
-    let ground_mat_f = fresh.renderer.add_material(Material::solid(Vec3::splat(0.7)));
-    let arm_mat_f = fresh.renderer.add_material(Material::solid(Vec3::new(0.8, 0.3, 0.2)));
+    let ground_mat_f = fresh
+        .renderer
+        .add_material(Material::solid(Vec3::splat(0.7)));
+    let arm_mat_f = fresh
+        .renderer
+        .add_material(Material::solid(Vec3::new(0.8, 0.3, 0.2)));
     let arm_slot_f = fresh.renderer.upload_mesh(&arm_mesh(1.0));
     let ground_f = fresh.object(
         fresh.cube,
@@ -623,12 +635,21 @@ fn a_waving_arm_updates_its_shadow_and_matches_a_fresh_render() {
         &[ground_c.clone_object(), arm(arm_slot_c, arm_mat_c, 10)],
         16,
     );
-    let fresh_frame = fresh.settle(&[ground_f.clone_object(), arm(arm_slot_f, arm_mat_f, 10)], 16);
+    let fresh_frame = fresh.settle(
+        &[ground_f.clone_object(), arm(arm_slot_f, arm_mat_f, 10)],
+        16,
+    );
 
     let moved = max_diff(&rest, &fresh_frame);
-    assert!(moved > 8, "the bent arm did not move its shadow (diff {moved})");
+    assert!(
+        moved > 8,
+        "the bent arm did not move its shadow (diff {moved})"
+    );
     let diff = max_diff(&cached_frame, &fresh_frame);
-    assert!(diff <= 1, "cached shadow differs from a fresh render by {diff}/255");
+    assert!(
+        diff <= 1,
+        "cached shadow differs from a fresh render by {diff}/255"
+    );
 }
 
 /// RND-08 gate measurement: a walking "hero" over a static scene. Run with

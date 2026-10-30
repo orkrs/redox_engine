@@ -278,24 +278,41 @@ fn an_uploaded_proxy_is_drawn_with_its_mean_colour() {
         3.0,
     ));
     lights.ambient = Vec3::splat(0.6);
-    let objects = [proxy_render_object(&proxy, 1, 1.0)];
-    let frame_view = FrameView::new(&camera, &objects, &lights);
-    renderer
-        .render_frame_view(&frame_view, &view)
-        .expect("frame");
-    let _ = renderer
-        .device
-        .poll(wgpu::PollType::wait_indefinitely());
-    let frame = read_texture_ktx2(&renderer.device, &renderer.queue, &target, false)
-        .unwrap()
-        .levels
-        .swap_remove(0);
-    // Centre pixel: the proxy is in front of the camera. Its colour mixes red and blue, so
-    // red and blue are lit and green is the smallest channel (specular adds the same white to all).
-    let at = ((SIZE / 2 * SIZE + SIZE / 2) * 4) as usize;
-    let (r, g, b) = (frame[at], frame[at + 1], frame[at + 2]);
-    assert!(r > 0 && b > 0, "centre pixel ({r}, {g}, {b}) is not lit");
-    assert!(g < r && g < b, "centre pixel ({r}, {g}, {b}) is not red and blue");
+    let mut render = |objects: &[_]| {
+        let frame_view = FrameView::new(&camera, objects, &lights);
+        renderer
+            .render_frame_view(&frame_view, &view)
+            .expect("frame");
+        let _ = renderer.device.poll(wgpu::PollType::wait_indefinitely());
+        read_texture_ktx2(&renderer.device, &renderer.queue, &target, false)
+            .unwrap()
+            .levels
+            .swap_remove(0)
+    };
+    let background = render(&[]);
+    let frame = render(&[proxy_render_object(&proxy, 1, 1.0)]);
+    // Pixels the proxy changed: its two cubes sit left and right of the centre. Their mean colour
+    // is a red-blue mix, so green must be the smallest channel on average.
+    let (mut covered, mut sum) = (0u32, [0u64; 3]);
+    for (px, bg) in frame.chunks_exact(4).zip(background.chunks_exact(4)) {
+        if px[..3]
+            .iter()
+            .zip(&bg[..3])
+            .any(|(a, b)| a.abs_diff(*b) > 8)
+        {
+            covered += 1;
+            for c in 0..3 {
+                sum[c] += u64::from(px[c]);
+            }
+        }
+    }
+    assert!(covered > 20, "the proxy covers only {covered} pixels");
+    let n = u64::from(covered);
+    let (r, g, b) = (sum[0] / n, sum[1] / n, sum[2] / n);
+    assert!(
+        g < r && g < b,
+        "mean colour of the proxy ({r}, {g}, {b}) is not red and blue"
+    );
 }
 
 #[test]
