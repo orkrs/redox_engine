@@ -1,4 +1,6 @@
-// Probe ray trace against the global SDF (GI-01 step 3).
+// Probe ray trace against the global SDF (GI-01 step 3), with surface cards (GI-02 step 4).
+// gi_common.wgsl is concatenated in front of this file (shader/mod.rs): PI, the GiGridGpu mirror
+// and the previous-frame irradiance helpers come from there.
 //
 // One invocation traces one probe ray. Directions are a Fibonacci sphere rotated by a random
 // quaternion per frame (CPU mirror: gi::oct::fibonacci_sphere). A hit is shaded with emission,
@@ -20,24 +22,15 @@ struct SdfInfo {
     dims: vec4<u32>,         // voxel counts (xyz)
 };
 
+// x: 1 when cards are read, y: number of table entries (object ids below y have cards).
+struct CardTraceParams {
+    enabled: vec4<u32>,
+}
+
 struct March {
     t: f32,
     hit: bool,
 };
-
-// Mirror of pbr.wgsl GiCascadeGpu / GiGridGpu (src/gi/grid_gpu.rs), for the previous frame.
-struct GiCascadeGpu {
-    origin: vec4<f32>,   // xyz origin, w probe spacing
-    dims: vec4<u32>,     // xyz probe counts, w atlas index of the first probe
-    scroll: vec4<i32>,   // xyz lowest world cell of the window
-}
-struct GiGridGpu {
-    cascades: array<GiCascadeGpu, 2>,
-    probes_per_row: u32,
-    enabled: u32,
-    cascade_count: u32,
-    _pad: u32,
-}
 
 @group(0) @binding(0) var<uniform> params: TraceParams;
 @group(0) @binding(1) var t_distance: texture_3d<f32>;
@@ -51,18 +44,19 @@ struct GiGridGpu {
 @group(0) @binding(8) var t_prev_irradiance: texture_2d<f32>;
 // Relocated probe positions (offset from the lattice point), indexed by atlas index.
 @group(0) @binding(9) var<storage, read> probe_offset: array<vec4<f32>>;
+// Surface cards (GI-02 step 4): radiance and normal/depth atlases, the object table and the
+// object id volume. Bindings 10-14 come after the probe bindings.
+@group(0) @binding(10) var t_card_radiance: texture_2d<f32>;
+@group(0) @binding(11) var t_card_nd: texture_2d<f32>;
+@group(0) @binding(12) var<storage, read> cards: array<CardObjectGpu>;
+@group(0) @binding(13) var t_object_id: texture_3d<u32>;
+@group(0) @binding(14) var<uniform> card_params: CardTraceParams;
 
-const PI: f32 = 3.14159265;
 const GOLDEN_ANGLE: f32 = 2.39996323;
 const MAX_TRACE_DISTANCE: f32 = 40.0;
 const MAX_STEPS: u32 = 48u;
 const EMISSION_SCALE: f32 = 16.0;
 const SKY_LOD: f32 = 4.0;
-// Irradiance tile geometry (CPU: gi::atlas::{IRRADIANCE_INNER, TILE_BORDER}).
-const GI_INNER_IRR: f32 = 8.0;
-const GI_STRIDE_IRR: u32 = 10u;
-// Shading point pushed off the surface along the normal, in cascade spacings.
-const BOUNCE_NORMAL_BIAS: f32 = 0.2;
 
 fn sdf_uvw(p: vec3<f32>) -> vec3<f32> {
     let extent = vec3<f32>(sdf.dims.xyz) * sdf.origin_voxel.w;
@@ -142,103 +136,85 @@ fn fib_dir(i: u32, n: u32) -> vec3<f32> {
     return vec3<f32>(r * cos(phi), r * sin(phi), z);
 }
 
-// Mirror of pbr.wgsl oct_encode.
-fn oct_encode(n: vec3<f32>) -> vec2<f32> {
-    var v = n / max(abs(n.x) + abs(n.y) + abs(n.z), 1.0e-6);
-    if (v.y < 0.0) {
-        let ox = v.x;
-        v.x = (1.0 - abs(v.z)) * select(-1.0, 1.0, ox >= 0.0);
-        v.z = (1.0 - abs(ox)) * select(-1.0, 1.0, v.z >= 0.0);
+// Card depth tolerance as a fraction of the object AABB (a card from behind a wall is rejected).
+const CARD_DEPTH_TOLERANCE: f32 = 0.06;
+// Faces blended at a hit point (the three with the largest face weight).
+const CARD_FACES_BLENDED: u32 = 3u;
+
+// Object id of the voxel nearest to `p` (0xFFFF = none).
+fn object_at(p: vec3<f32>) -> u32 {
+    let v = clamp(
+        vec3<i32>(floor((p - sdf.origin_voxel.xyz) / sdf.origin_voxel.w)),
+        vec3<i32>(0),
+        vec3<i32>(sdf.dims.xyz) - vec3<i32>(1),
+    );
+    return textureLoad(t_object_id, v, 0).r;
+}
+
+// Radiance seen on one face of a card at `p`: rgb, and w = 1 when the card is accepted (it has
+// texels here and its depth matches the point within CARD_DEPTH_TOLERANCE).
+fn card_face_sample(card: CardObjectGpu, face: u32, p: vec3<f32>) -> vec4<f32> {
+    let rect = card.rects[face];
+    if (rect.z == 0u || rect.w == 0u) {
+        return vec4<f32>(0.0);
     }
-    return clamp(v.xz * 0.5 + 0.5, vec2<f32>(0.0), vec2<f32>(1.0));
+    let proj = card_project(face, card.aabb_min.xyz, card.aabb_max.xyz, p);
+    if (any(proj.xy < vec2<f32>(0.0)) || any(proj.xy > vec2<f32>(1.0))) {
+        return vec4<f32>(0.0);
+    }
+    let size = vec2<f32>(f32(rect.z), f32(rect.w));
+    let local = min(vec2<u32>(proj.xy * size), vec2<u32>(rect.z - 1u, rect.w - 1u));
+    let texel = vec2<i32>(i32(rect.x + local.x), i32(rect.y + local.y));
+    let nd = textureLoad(t_card_nd, texel, 0);
+    let code = u32(round(nd.a * 255.0));
+    if (code >= 255u) {
+        return vec4<f32>(0.0);
+    }
+    let card_depth = f32(code) / 254.0;
+    if (abs(card_depth - proj.z) >= CARD_DEPTH_TOLERANCE) {
+        return vec4<f32>(0.0);
+    }
+    // Bilinear radiance, sampled inside the rectangle so the footprint stays on the card.
+    let atlas = vec2<f32>(textureDimensions(t_card_radiance));
+    let inside = clamp(proj.xy * size, vec2<f32>(0.5), size - vec2<f32>(0.5));
+    let uv = (vec2<f32>(rect.xy) + inside) / atlas;
+    return vec4<f32>(textureSampleLevel(t_card_radiance, s_linear, uv, 0.0).rgb, 1.0);
 }
 
-// Previous frame's irradiance E in the direction `dir` of atlas probe `probe`, bilinear inside
-// its tile (the stored value is E^(1/5); see gi::atlas).
-fn prev_tile_irradiance(probe: u32, dir: vec3<f32>) -> vec3<f32> {
-    let ppr = prev_grid.probes_per_row;
-    let tile = vec2<f32>(f32(probe % ppr), f32(probe / ppr)) * f32(GI_STRIDE_IRR);
-    let p = tile + 1.0 + oct_encode(dir) * GI_INNER_IRR - 0.5;
-    let i0 = floor(p);
-    let f = p - i0;
-    let c = vec2<i32>(i0);
-    let a = textureLoad(t_prev_irradiance, c, 0).rgb;
-    let b = textureLoad(t_prev_irradiance, c + vec2<i32>(1, 0), 0).rgb;
-    let d = textureLoad(t_prev_irradiance, c + vec2<i32>(0, 1), 0).rgb;
-    let e = textureLoad(t_prev_irradiance, c + vec2<i32>(1, 1), 0).rgb;
-    let stored = mix(mix(a, b, f.x), mix(d, e, f.x), f.y);
-    return pow(max(stored, vec3<f32>(0.0)), vec3<f32>(5.0));
-}
-
-// Trilinear blend of the eight probes around `p` in one cascade, without the visibility test
-// (the bounce term is cheap by design). Returns (weighted E sum, total weight).
-fn prev_sample_cascade(casc: GiCascadeGpu, p: vec3<f32>, n: vec3<f32>) -> vec4<f32> {
-    let spacing = casc.origin.w;
-    let biased = p + n * (BOUNCE_NORMAL_BIAS * spacing);
-    let g = (biased - casc.origin.xyz) / spacing;
-    let base = floor(g);
-    let frac = g - base;
-    let base_cell = vec3<i32>(base);
-    let scroll = casc.scroll.xyz;
-    let dims = vec3<i32>(casc.dims.xyz);
-    var accum = vec3<f32>(0.0);
+// Card radiance at a hit point: the mean over the accepted faces among the CARD_FACES_BLENDED
+// with the largest face weights. w = 0 when no face is accepted (the probe path is used).
+fn card_radiance(p: vec3<f32>, n: vec3<f32>, object: u32) -> vec4<f32> {
+    if (card_params.enabled.x == 0u || object >= card_params.enabled.y) {
+        return vec4<f32>(0.0);
+    }
+    let card = cards[object];
+    var weights = card_face_weights(n);
+    var taken = 0u;
+    var acc = vec3<f32>(0.0);
     var wsum = 0.0;
-    for (var dz = 0; dz < 2; dz = dz + 1) {
-        for (var dy = 0; dy < 2; dy = dy + 1) {
-            for (var dx = 0; dx < 2; dx = dx + 1) {
-                let cell = base_cell + vec3<i32>(dx, dy, dz);
-                let rel = cell - scroll;
-                if (any(rel < vec3<i32>(0)) || any(rel >= dims)) {
-                    continue;
-                }
-                let slot = ((cell % dims) + dims) % dims;
-                let su = vec3<u32>(slot);
-                let index = casc.dims.w + su.x + su.y * casc.dims.x + su.z * casc.dims.x * casc.dims.y;
-                let probe_pos = casc.origin.xyz + vec3<f32>(cell) * spacing + probe_offset[index].xyz;
-                let wx = select(frac.x, 1.0 - frac.x, dx == 0);
-                let wy = select(frac.y, 1.0 - frac.y, dy == 0);
-                let wz = select(frac.z, 1.0 - frac.z, dz == 0);
-                // Backface term as in pbr.wgsl: probes behind the surface count less, not zero.
-                let to_probe = probe_pos - p;
-                let dir_to_probe = to_probe / max(length(to_probe), 1.0e-5);
-                let facing = (dot(dir_to_probe, n) + 1.0) * 0.5;
-                let w = wx * wy * wz * (facing * facing + 0.2);
-                accum = accum + prev_tile_irradiance(index, n) * w;
-                wsum = wsum + w;
+    for (var k = 0u; k < CARD_FACES_BLENDED; k = k + 1u) {
+        var best = 6u;
+        var best_w = 0.0;
+        for (var f = 0u; f < 6u; f = f + 1u) {
+            if (((taken >> f) & 1u) == 0u && weights[f] > best_w) {
+                best = f;
+                best_w = weights[f];
             }
         }
-    }
-    return vec4<f32>(accum, wsum);
-}
-
-// True when `p` lies inside the world window of cascade `casc`.
-fn prev_cascade_contains(casc: GiCascadeGpu, p: vec3<f32>) -> bool {
-    let lo = casc.origin.xyz + vec3<f32>(casc.scroll.xyz) * casc.origin.w;
-    let hi = lo + vec3<f32>(casc.dims.xyz) * casc.origin.w;
-    return all(p >= lo) && all(p <= hi);
-}
-
-// Irradiance E of the previous frame at a hit point: the fine cascade when the point is in its
-// window, else the coarse one. Zero when GI is off or the point is outside both.
-fn prev_irradiance(p: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
-    if (prev_grid.enabled == 0u) {
-        return vec3<f32>(0.0);
-    }
-    let fine = prev_grid.cascades[0];
-    if (prev_cascade_contains(fine, p)) {
-        let s = prev_sample_cascade(fine, p, n);
-        if (s.w > 1.0e-5) {
-            return s.rgb / s.w;
+        if (best == 6u) {
+            break;
+        }
+        taken = taken | (1u << best);
+        let s = card_face_sample(card, best, p);
+        if (s.w > 0.5) {
+            acc = acc + s.rgb * best_w;
+            wsum = wsum + best_w;
         }
     }
-    let coarse = prev_grid.cascades[1];
-    if (prev_grid.cascade_count > 1u && prev_cascade_contains(coarse, p)) {
-        let s = prev_sample_cascade(coarse, p, n);
-        if (s.w > 1.0e-5) {
-            return s.rgb / s.w;
-        }
+    if (wsum <= 0.0) {
+        return vec4<f32>(0.0);
     }
-    return vec3<f32>(0.0);
+    return vec4<f32>(acc / wsum, 1.0);
 }
 
 @compute @workgroup_size(64)
@@ -271,17 +247,23 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (m.hit) {
         let p = origin + dir * m.t;
         let n = sdf_normal(p);
-        let surface = textureSampleLevel(t_albedo, s_linear, sdf_uvw(p), 0.0);
-        radiance = surface.rgb * surface.a * EMISSION_SCALE;
-        // Direct sun, with a shadow ray that starts one voxel off the surface.
-        let sun = params.sun_dir.xyz;
-        let ndl = max(dot(n, sun), 0.0);
-        if (ndl > 0.0 && !march(p + n * sdf.origin_voxel.w, sun).hit) {
-            radiance = radiance + params.sun_rad.xyz * ndl * surface.rgb / PI;
+        let carded = card_radiance(p, n, object_at(p));
+        if (carded.w > 0.5) {
+            // Lit by the card light pass (sun, points, previous-frame irradiance).
+            radiance = carded.rgb;
+        } else {
+            let surface = textureSampleLevel(t_albedo, s_linear, sdf_uvw(p), 0.0);
+            radiance = surface.rgb * surface.a * EMISSION_SCALE;
+            // Direct sun, with a shadow ray that starts one voxel off the surface.
+            let sun = params.sun_dir.xyz;
+            let ndl = max(dot(n, sun), 0.0);
+            if (ndl > 0.0 && !march(p + n * sdf.origin_voxel.w, sun).hit) {
+                radiance = radiance + params.sun_rad.xyz * ndl * surface.rgb / PI;
+            }
+            // Bounce: last frame's irradiance at the hit point. Albedo over pi (Lambert BRDF), so the
+            // loop gain per bounce is the albedo, not albedo * pi.
+            radiance = radiance + surface.rgb * prev_irradiance(p, n) / PI;
         }
-        // Bounce: last frame's irradiance at the hit point. Albedo over pi (Lambert BRDF), so the
-        // loop gain per bounce is the albedo, not albedo * pi.
-        radiance = radiance + surface.rgb * prev_irradiance(p, n) / PI;
         hit_t = m.t;
     } else {
         radiance = textureSampleLevel(t_sky, s_linear, dir, SKY_LOD).rgb;

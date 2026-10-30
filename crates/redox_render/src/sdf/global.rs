@@ -20,6 +20,8 @@ pub const MAX_DISTANCE: f32 = 8.0;
 pub const GLOBAL_SDF_DIMS: [u32; 3] = [128, 128, 128];
 /// Emission scale stored in the alpha channel: `a = 1` means 16 radiance units.
 pub const EMISSION_SCALE: f32 = 16.0;
+/// Object id of voxels with no nearby object (GI-02 `object_id` volume).
+pub const NO_OBJECT: u16 = 0xFFFF;
 
 /// Axis-aligned box with albedo and emission: the input of the analytic scene builders.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -55,6 +57,9 @@ pub struct GlobalSdf {
     pub distance: Vec<f32>,
     /// Material per voxel: `rgb` albedo, `a` emission scale (see module docs).
     pub albedo: Vec<[u8; 4]>,
+    /// Id of the nearest object per voxel, `NO_OBJECT` where none. Boxes and bricks take their id
+    /// from their position in the slice given to the builder (GI-02 card table index).
+    pub object_id: Vec<u16>,
 }
 
 /// Best surface candidate seen so far for one voxel.
@@ -64,6 +69,7 @@ struct Candidate {
     /// True when the voxel centre lies inside the brick's own domain (preferred).
     contained: bool,
     color: [f32; 4],
+    id: u16,
 }
 
 impl Candidate {
@@ -71,6 +77,7 @@ impl Candidate {
         dist: MAX_DISTANCE,
         contained: false,
         color: [0.0; 4],
+        id: NO_OBJECT,
     };
 
     fn beats(&self, other: &Self) -> bool {
@@ -80,6 +87,12 @@ impl Candidate {
 }
 
 impl GlobalSdf {
+    /// Index of the voxel containing world position `p` (clamped to the volume).
+    pub fn index_of_world(&self, p: Vec3) -> usize {
+        let c = ((p - self.origin) / self.voxel).floor().to_array();
+        self.clamped_index(c[0] as i32, c[1] as i32, c[2] as i32)
+    }
+
     /// Index of voxel `(x, y, z)` in the x-fastest layout used by `distance` and `albedo`.
     pub fn index(dims: [u32; 3], x: u32, y: u32, z: u32) -> usize {
         (x + y * dims[0] + z * dims[0] * dims[1]) as usize
@@ -103,9 +116,10 @@ impl GlobalSdf {
                     let nearest = nearest_box(boxes, p);
                     sdf.distance[i] = nearest.0.clamp(-MAX_DISTANCE, MAX_DISTANCE);
                     sdf.albedo[i] = match nearest.1 {
-                        Some(b) => encode_box_material(b.albedo, b.emissive),
+                        Some((_, b)) => encode_box_material(b.albedo, b.emissive),
                         None => [0; 4],
                     };
+                    sdf.object_id[i] = nearest.1.map_or(NO_OBJECT, |(k, _)| k as u16);
                 }
             }
         }
@@ -121,7 +135,7 @@ impl GlobalSdf {
         let mut sdf = Self::unset(bounds, dims);
         let n = sdf.distance.len();
         let mut best = vec![Candidate::NONE; n];
-        for (brick, color) in bricks {
+        for (k, (brick, color)) in bricks.iter().enumerate() {
             let half = brick.half_size();
             let lo = brick.origin_ws - half - Vec3::splat(MAX_DISTANCE);
             let hi = brick.origin_ws + half + Vec3::splat(MAX_DISTANCE);
@@ -137,12 +151,14 @@ impl GlobalSdf {
                                 dist: brick.sample_world(p),
                                 contained: true,
                                 color: *color,
+                                id: k as u16,
                             }
                         } else {
                             Candidate {
                                 dist: sdf_aabb(p, brick.origin_ws - half, brick.origin_ws + half),
                                 contained: false,
                                 color: *color,
+                                id: k as u16,
                             }
                         };
                         let i = Self::index(dims, x, y, z);
@@ -157,6 +173,7 @@ impl GlobalSdf {
             sdf.distance[i] = cand.dist.clamp(-MAX_DISTANCE, MAX_DISTANCE);
             let c = cand.color;
             sdf.albedo[i] = encode_rgba([c[0], c[1], c[2]], c[3]);
+            sdf.object_id[i] = cand.id;
         }
         sdf
     }
@@ -207,6 +224,7 @@ impl GlobalSdf {
             dims,
             distance: vec![MAX_DISTANCE; count],
             albedo: vec![[0; 4]; count],
+            object_id: vec![NO_OBJECT; count],
         }
     }
 
@@ -240,13 +258,13 @@ impl GlobalSdf {
     }
 }
 
-/// Signed distance and box of the surface nearest to `p` (`None` for an empty scene).
-fn nearest_box(boxes: &[SdfBox], p: Vec3) -> (f32, Option<&SdfBox>) {
+/// Signed distance, and index and box of the surface nearest to `p` (`None` for an empty scene).
+fn nearest_box(boxes: &[SdfBox], p: Vec3) -> (f32, Option<(usize, &SdfBox)>) {
     let mut best = (MAX_DISTANCE, None);
-    for b in boxes {
+    for (k, b) in boxes.iter().enumerate() {
         let d = sdf_aabb(p, b.min, b.max);
         if best.1.is_none() || d < best.0 {
-            best = (d, Some(b));
+            best = (d, Some((k, b)));
         }
     }
     best
@@ -271,4 +289,35 @@ fn encode_box_material(albedo: Vec3, emission: Vec3) -> [u8; 4] {
 fn encode_rgba(rgb: [f32; 3], a: f32) -> [u8; 4] {
     let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
     [q(rgb[0]), q(rgb[1]), q(rgb[2]), q(a)]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_object_id_volume_matches_the_nearest_object() {
+        let boxes = [
+            SdfBox {
+                min: Vec3::new(-4.0, -0.5, -0.5),
+                max: Vec3::new(-3.0, 0.5, 0.5),
+                albedo: Vec3::ONE,
+                emissive: Vec3::ZERO,
+            },
+            SdfBox {
+                min: Vec3::new(3.0, -0.5, -0.5),
+                max: Vec3::new(4.0, 0.5, 0.5),
+                albedo: Vec3::ONE,
+                emissive: Vec3::ZERO,
+            },
+        ];
+        let bounds = Aabb {
+            min: Vec3::splat(-5.0),
+            max: Vec3::splat(5.0),
+        };
+        let sdf = GlobalSdf::from_boxes(&boxes, bounds, [32, 32, 32]);
+        assert_eq!(sdf.object_id[sdf.index_of_world(Vec3::new(-3.6, 0.0, 0.0))], 0);
+        assert_eq!(sdf.object_id[sdf.index_of_world(Vec3::new(3.6, 0.0, 0.0))], 1);
+        assert_eq!(sdf.object_id[sdf.index_of_world(Vec3::splat(4.9))], NO_OBJECT);
+    }
 }

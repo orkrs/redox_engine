@@ -7,6 +7,7 @@
 use bytemuck::{Pod, Zeroable};
 use redox_math::Vec3;
 
+use super::card_atlas::{CardAtlas, CardObjectGpu};
 use crate::sdf::global_gpu::GlobalSdfGpu;
 use crate::shader::{GI_TRACE_WGSL, create_shader_module};
 
@@ -14,6 +15,14 @@ use crate::shader::{GI_TRACE_WGSL, create_shader_module};
 pub const MAX_RAYS_PER_PROBE: u32 = 128;
 /// Bytes per ray record: `vec4<f32>`.
 const RAY_RECORD_BYTES: u64 = 16;
+
+/// Card switch mirrored by `struct CardTraceParams` in `gi_trace.wgsl` (16 bytes).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+struct CardTraceParamsGpu {
+    /// x: 1 when cards are read; y: table length.
+    enabled: [u32; 4],
+}
 
 /// Trace parameters mirrored by `struct TraceParams` in `gi_trace.wgsl` (80 bytes).
 #[repr(C)]
@@ -73,6 +82,8 @@ pub struct TraceInputs<'a> {
     pub prev_irradiance: &'a wgpu::TextureView,
     /// Relocated probe offsets, one `vec4` per atlas index.
     pub probe_offset: &'a wgpu::Buffer,
+    /// Surface cards read at hit points; `None` traces the probe path only (GI-01).
+    pub cards: Option<&'a CardAtlas>,
 }
 
 /// Compute pipeline and buffers for the probe ray trace.
@@ -81,6 +92,11 @@ pub struct GiTracer {
     bgl: wgpu::BindGroupLayout,
     params: [wgpu::Buffer; TRACE_SLOTS],
     sampler: wgpu::Sampler,
+    card_params: wgpu::Buffer,
+    /// Stand-ins bound when no cards are read (the shader reads them only when enabled).
+    dummy_radiance: wgpu::TextureView,
+    dummy_normal_depth: wgpu::TextureView,
+    dummy_table: wgpu::Buffer,
     /// `vec4<f32>` per ray, `max_probes * MAX_RAYS_PER_PROBE` records.
     pub ray_data: wgpu::Buffer,
     max_probes: u32,
@@ -134,6 +150,29 @@ impl GiTracer {
                     },
                     count: None,
                 },
+                texture_entry(10, wgpu::TextureViewDimension::D2),
+                texture_entry(11, wgpu::TextureViewDimension::D2),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 12,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 13,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Uint,
+                        view_dimension: wgpu::TextureViewDimension::D3,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                uniform_entry(14),
             ],
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -167,6 +206,39 @@ impl GiTracer {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
+        let card_params = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("gi_trace_card_params"),
+            size: std::mem::size_of::<CardTraceParamsGpu>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let dummy_texture = |label: &str, format: wgpu::TextureFormat| {
+            device
+                .create_texture(&wgpu::TextureDescriptor {
+                    label: Some(label),
+                    size: wgpu::Extent3d {
+                        width: 1,
+                        height: 1,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                    view_formats: &[],
+                })
+                .create_view(&Default::default())
+        };
+        let dummy_radiance = dummy_texture("gi_trace_dummy_radiance", wgpu::TextureFormat::Rgba16Float);
+        let dummy_normal_depth =
+            dummy_texture("gi_trace_dummy_normal_depth", wgpu::TextureFormat::Rgba8Unorm);
+        let dummy_table = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("gi_trace_dummy_table"),
+            size: std::mem::size_of::<CardObjectGpu>() as u64,
+            usage: wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
         let ray_data = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("gi_trace_ray_data"),
             size: u64::from(max_probes.max(1)) * u64::from(MAX_RAYS_PER_PROBE) * RAY_RECORD_BYTES,
@@ -178,6 +250,10 @@ impl GiTracer {
             bgl,
             params,
             sampler,
+            card_params,
+            dummy_radiance,
+            dummy_normal_depth,
+            dummy_table,
             ray_data,
             max_probes,
         }
@@ -238,6 +314,20 @@ impl GiTracer {
         };
         let buffer = &self.params[slot.min(TRACE_SLOTS - 1)];
         queue.write_buffer(buffer, 0, bytemuck::bytes_of(&gpu));
+        let cards = inputs.cards;
+        let card_switch = CardTraceParamsGpu {
+            enabled: [
+                u32::from(cards.is_some()),
+                cards.map_or(0, |c| c.table_len),
+                0,
+                0,
+            ],
+        };
+        queue.write_buffer(&self.card_params, 0, bytemuck::bytes_of(&card_switch));
+        let (radiance, normal_depth, table) = match cards {
+            Some(c) => (&c.radiance_view, &c.normal_depth_view, &c.table),
+            None => (&self.dummy_radiance, &self.dummy_normal_depth, &self.dummy_table),
+        };
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("gi_trace_bg"),
@@ -282,6 +372,26 @@ impl GiTracer {
                 wgpu::BindGroupEntry {
                     binding: 9,
                     resource: inputs.probe_offset.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::TextureView(radiance),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 11,
+                    resource: wgpu::BindingResource::TextureView(normal_depth),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 12,
+                    resource: table.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 13,
+                    resource: wgpu::BindingResource::TextureView(&inputs.sdf.object_id_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 14,
+                    resource: self.card_params.as_entire_binding(),
                 },
             ],
         });
