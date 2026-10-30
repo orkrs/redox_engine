@@ -113,6 +113,8 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
             &Collider,
         )>()
         .iter(world)
+        // Entities switched off by `ScriptInactive` stay where they are.
+        .filter(|(e, ..)| world.get_component::<redox_ecs::Inactive>(*e).is_none())
         .map(|(e, c, t, rb, col)| {
             (
                 e,
