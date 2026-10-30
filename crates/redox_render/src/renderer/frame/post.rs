@@ -20,7 +20,7 @@ impl Renderer {
                 sharpen_enabled: if self.taa_enabled { 1 } else { 0 },
                 bloom_enabled: if self.bloom_enabled { 1 } else { 0 },
                 rcas_sharpness: if self.taa_enabled {
-                    self.rcas_sharpness
+                    crate::post::tsr::rcas_stops(self.render_scale, self.rcas_sharpness)
                 } else {
                     0.0
                 },
@@ -33,8 +33,9 @@ impl Renderer {
             // --- 6a. Update velocity uniform (same P'*V as rasterization) ---
             let inv_jittered_vp = jittered_vp.inverse();
 
-            let jitter = halton_jitter_ndc(
+            let jitter = crate::post::tsr::jitter_ndc(
                 self.taa_frame_count,
+                self.render_scale,
                 self.internal_width,
                 self.internal_height,
             );
@@ -82,8 +83,9 @@ impl Renderer {
 
             // --- 6c. Update TAA uniform ---
             let is_first_frame = self.taa_frame_count == 0;
-            let jitter = halton_jitter_ndc(
+            let jitter = crate::post::tsr::jitter_ndc(
                 self.taa_frame_count,
+                self.render_scale,
                 self.internal_width,
                 self.internal_height,
             );
@@ -93,6 +95,8 @@ impl Renderer {
                 blend_alpha: self.taa_blend_alpha,
                 reset: if is_first_frame { 1 } else { 0 },
                 jitter_uv: [jitter[0] * 0.5, -jitter[1] * 0.5],
+                inv_scale: crate::post::tsr::inv_scale(self.render_scale),
+                pad: 0.0,
             };
             self.queue.write_buffer(
                 &self.taa_pass.uniform_buffer,

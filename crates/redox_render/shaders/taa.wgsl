@@ -5,6 +5,8 @@ struct TaaUniform {
     blend_alpha : f32,
     reset       : u32,
     jitter_uv   : vec2<f32>,
+    inv_scale   : f32, // 1 / render_scale when upscaling, 1.0 at native (PST-07)
+    pad         : f32,
 };
 
 @group(0) @binding(0) var t_current    : texture_2d<f32>;
@@ -212,7 +214,8 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let sigma = sqrt(max(m2 * (1.0 / 9.0) - mu * mu, vec3<f32>(0.0)));
 
     let vel_conf = 1.0 - clamp(length(dilated_velocity(px, max_px) * taa_u.output_size) / 24.0, 0.0, 1.0);
-    let gamma = mix(0.85, 1.45, vel_conf * vel_conf);
+    // Upscaling widens the clip window by 1/scale (ASSUMPTION: linear factor, 1.0 at native).
+    let gamma = mix(0.85, 1.45, vel_conf * vel_conf) * taa_u.inv_scale;
     var cmin = mu - gamma * sigma;
     var cmax = mu + gamma * sigma;
     let chroma_extent = 0.125 * max(cmax.x - cmin.x, sigma.x);
@@ -247,7 +250,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let curr_depth = textureLoad(t_velocity, px, 0).z;
     let prev_px = vec2<i32>(reprojected_uv * vec2<f32>(textureDimensions(t_prev_depth)));
     let prev_depth = textureLoad(t_prev_depth, prev_px, 0);
-    let depth_ok = step(curr_depth, prev_depth + 0.001);
+    let depth_ok = step(curr_depth, prev_depth + 0.001 * taa_u.inv_scale);
 
     var k_move = mix(1.0 - taa_u.blend_alpha * 2.0, 1.0 - taa_u.blend_alpha, agree * agree);
     k_move *= 1.0 - clamp(vel_len / 12.0, 0.0, 1.0) * 0.55;

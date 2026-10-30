@@ -61,6 +61,8 @@ impl Renderer {
         let w = self.config.width;
         let h = self.config.height;
         self.resize(w, h);
+        // Push the new texture LOD bias to the PBR shader (PST-07).
+        self.update_shader_debug_buffer(ShaderDebugVizMode::None);
         // If TAA is enabled, ensure history is clean after scale change.
         self.taa_frame_count = 0;
         self.taa_history_read_idx = 0;

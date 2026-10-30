@@ -26,7 +26,6 @@
 
 use bytemuck::{Pod, Zeroable};
 
-use crate::resource::buffer::create_uniform_buffer;
 use crate::shader::{TAA_WGSL, create_shader_module};
 
 // ── Halton low-discrepancy sequence ─────────────────────────────────────────
@@ -103,6 +102,11 @@ pub struct TaaUniform {
     pub reset: u32,
     /// Current frame Halton jitter in UV (`ndc * 0.5` with Y flipped).
     pub jitter_uv: [f32; 2],
+    /// `1 / render_scale` when upscaling, `1.0` at native (PST-07). Widens the clip window
+    /// and scales the depth-rejection threshold.
+    pub inv_scale: f32,
+    /// Padding to the 8-byte struct alignment used by WGSL.
+    pub pad: f32,
 }
 
 impl Default for TaaUniform {
@@ -113,6 +117,8 @@ impl Default for TaaUniform {
             blend_alpha: 0.1,
             reset: 1,
             jitter_uv: [0.0, 0.0],
+            inv_scale: 1.0,
+            pad: 0.0,
         }
     }
 }
@@ -282,10 +288,16 @@ impl TaaPass {
         });
 
         // ── Uniform buffer ──────────────────────────────────────────────────
-        let uniform_buffer = create_uniform_buffer(
+        // COPY_SRC lets the TSR tests read the uniform back.
+        let uniform_buffer = wgpu::util::DeviceExt::create_buffer_init(
             device,
-            "taa_uniform",
-            bytemuck::bytes_of(&TaaUniform::default()),
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("taa_uniform"),
+                contents: bytemuck::bytes_of(&TaaUniform::default()),
+                usage: wgpu::BufferUsages::UNIFORM
+                    | wgpu::BufferUsages::COPY_DST
+                    | wgpu::BufferUsages::COPY_SRC,
+            },
         );
 
         let (reactive_fallback_texture, reactive_fallback_view) =

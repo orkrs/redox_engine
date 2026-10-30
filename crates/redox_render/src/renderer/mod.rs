@@ -79,7 +79,7 @@ use crate::pass::skybox::SkyboxPass;
 use crate::pass::smaa::SmaaPass;
 use crate::pass::taa::{
     TaaPass, TaaUniform, apply_jitter_to_projection, create_history_texture,
-    create_velocity_texture, halton_jitter_ndc,
+    create_velocity_texture,
 };
 use crate::pass::transparent::TransparentPass;
 use crate::pass::velocity::{ObjectVelocityPass, VelocityPass, VelocityUniform};

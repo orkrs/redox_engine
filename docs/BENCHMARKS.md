@@ -75,3 +75,6 @@ Cost of the two tile compute passes and the spreading blur, `tests/motion_blur_s
 |---|---|---|
 | off | not measured | run the ignored test on the owner's GPU |
 | on | not measured | |
+## TSR upscale (PST-07)
+
+Bench: `cargo test -p redox_render --test tsr -- --ignored --nocapture` (1080 and 2160 square targets, scales 1.0 / 0.77 / 0.67 / 0.5, wall-clock ms per frame including readback, PSNR to the native frame). Numbers are not recorded yet; the coordinator fills this table after the first run.
