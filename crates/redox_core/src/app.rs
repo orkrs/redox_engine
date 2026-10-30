@@ -149,6 +149,16 @@ impl AppBuilder {
         self.add_plugin(crate::plugin::AudioPlugin)
     }
 
+    /// Runs `hook` once after the renderer is created and before the first frame,
+    /// with the world and the render context (for uploads such as meshes or materials).
+    pub fn on_render_setup<F>(&mut self, hook: F)
+    where
+        F: FnOnce(&mut World, &mut RenderContext) + 'static,
+    {
+        self.post_render_hooks
+            .push(Box::new(move |world, ctx, _window| hook(world, ctx)));
+    }
+
     /// Enables the egui debug UI: creates a [`redox_ui::UiContext`] after the
     /// renderer is initialised (it needs the device and surface format).
     pub fn with_ui(mut self) -> Self {
