@@ -14,9 +14,17 @@ use redox_ecs::{Entity, World};
 use redox_math::Vec3;
 use redox_render::RenderObject;
 use redox_render::hlod::{CellLod, HlodConfig, opacities, step_cell_lod};
+use redox_render::hlod_gpu::{ProxyGpu, proxy_render_object};
 use redox_scene::{ActorKindTable, PartitionCell, StreamedActor};
 
-/// Per-cell HLOD state and the detail opacity of the actors it hides.
+/// Render-object ids of proxies start here, away from entity ids.
+///
+/// ASSUMPTION: entity indices stay below this value in practice, so proxy ids do
+/// not collide with actor ids.
+const PROXY_ID_BASE: u32 = 0x8000_0000;
+
+/// Per-cell HLOD state, the detail opacity of the actors it hides, and the
+/// uploaded proxies.
 #[derive(Debug)]
 pub struct HlodRuntime {
     config: HlodConfig,
@@ -26,6 +34,7 @@ pub struct HlodRuntime {
     states: HashMap<PartitionCell, CellLod>,
     detail_opacity: HashMap<u32, f32>,
     proxy_opacity: HashMap<PartitionCell, f32>,
+    proxies: HashMap<PartitionCell, (u32, ProxyGpu)>,
 }
 
 impl HlodRuntime {
@@ -45,7 +54,21 @@ impl HlodRuntime {
             states: HashMap::new(),
             detail_opacity: HashMap::new(),
             proxy_opacity: HashMap::new(),
+            proxies: HashMap::new(),
         }
+    }
+
+    /// Registers the uploaded proxy of a baked cell. A cell registered twice keeps
+    /// its first render-object id and takes the new proxy.
+    pub fn register_proxy(&mut self, cell: PartitionCell, gpu: ProxyGpu) {
+        let next_id = PROXY_ID_BASE + self.proxies.len() as u32;
+        let id = self.proxies.get(&cell).map_or(next_id, |(id, _)| *id);
+        self.proxies.insert(cell, (id, gpu));
+    }
+
+    /// Whether a cell has an uploaded proxy.
+    pub fn has_proxy(&self, cell: PartitionCell) -> bool {
+        self.proxies.contains_key(&cell)
     }
 
     /// Current state of a cell (`Detail` until it has been advanced).
@@ -119,9 +142,11 @@ pub fn hlod_system(world: &mut World, viewer_pos: Vec3, dt: f32) {
     runtime.update(&members, viewer_pos, dt);
 }
 
-/// Applies the detail opacity of the HLOD actors to extracted render objects:
-/// objects at opacity zero are removed, others get `color[3]` set to the opacity.
-/// Objects that are not HLOD actors are left as they are.
+/// Applies HLOD to the render objects of a frame, after extraction.
+///
+/// Objects of HLOD actors are dropped at detail opacity zero, otherwise get
+/// `color[3]` set to the opacity; other objects are left as they are. Then each
+/// uploaded proxy with a positive opacity is appended, ordered by its id.
 pub fn apply_hlod_to_render_objects(world: &World, objects: &mut Vec<RenderObject>) {
     let Some(runtime) = world.get_resource::<HlodRuntime>() else {
         return;
@@ -134,6 +159,32 @@ pub fn apply_hlod_to_render_objects(world: &World, objects: &mut Vec<RenderObjec
         }
         None => true,
     });
+    let mut proxies: Vec<(u32, f32, &ProxyGpu)> = runtime
+        .proxies
+        .iter()
+        .filter_map(|(cell, (id, gpu))| {
+            let opacity = runtime.proxy_opacity(*cell);
+            (opacity > 0.0).then_some((*id, opacity, gpu))
+        })
+        .collect();
+    proxies.sort_by_key(|(id, _, _)| *id);
+    objects.extend(
+        proxies
+            .into_iter()
+            .map(|(id, opacity, gpu)| proxy_render_object(gpu, id, opacity)),
+    );
+}
+
+/// One HLOD step for a frame: advances the cells and applies the result to the
+/// frame's render objects. The frame loop calls this once, after render extraction.
+pub fn hlod_frame(
+    world: &mut World,
+    viewer_pos: Vec3,
+    dt: f32,
+    objects: &mut Vec<RenderObject>,
+) {
+    hlod_system(world, viewer_pos, dt);
+    apply_hlod_to_render_objects(world, objects);
 }
 
 #[cfg(test)]

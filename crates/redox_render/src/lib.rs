@@ -16,6 +16,7 @@ pub mod frame;
 pub mod frame_graph;
 pub mod gi;
 pub mod hlod;
+pub mod hlod_gpu;
 pub mod light;
 pub mod material;
 /// Shader modules of material graph variants (MAT-02 step 5).
