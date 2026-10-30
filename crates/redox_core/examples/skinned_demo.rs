@@ -536,7 +536,7 @@ fn screenshots(dir: &std::path::Path, size: (u32, u32), args: &[String]) -> Vec<
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("skinned_demo_offscreen"),
         required_features: adapter.features() & wanted,
-        required_limits: wgpu::Limits::default(),
+        required_limits: redox_render::renderer::required_device_limits(&adapter.limits()),
         ..Default::default()
     }))
     .expect("device");

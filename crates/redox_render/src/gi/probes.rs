@@ -14,7 +14,7 @@ use super::trace::{GiTraceParams, GiTracer, TRACE_SLOTS};
 use crate::sdf::global_gpu::GlobalSdfGpu;
 
 /// Probes per cascade along each axis.
-pub const CASCADE_DIMS: [u32; 3] = [8, 8, 8];
+pub const CASCADE_DIMS: [u32; 3] = [16, 8, 16];
 /// Probe spacing of the fine cascade, metres.
 pub const FINE_SPACING: f32 = 0.5;
 /// Probe spacing of the coarse cascade, metres.
@@ -53,6 +53,9 @@ pub struct GiProbes {
     frame_index: u32,
     /// Frames since the last lighting change or cascade move; selects the hysteresis.
     frames_since_change: u32,
+    /// Off until a static scene is given: with an empty volume every ray would return the sky and
+    /// double the ambient light of scenes that do not use GI.
+    enabled: bool,
 }
 
 impl GiProbes {
@@ -85,7 +88,19 @@ impl GiProbes {
             frame_index: 0,
             // A fresh atlas is blended with the short hysteresis until it has filled in.
             frames_since_change: 0,
+            enabled: false,
         }
+    }
+
+    /// Switches the probes on or off. Off, they are neither traced nor read (the frame is as before GI).
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+        self.frames_since_change = 0;
+    }
+
+    /// Whether the probes are traced and read.
+    pub fn enabled(&self) -> bool {
+        self.enabled
     }
 
     /// Uniform buffer with the cascade description (`@binding(16)`).
@@ -122,6 +137,12 @@ impl GiProbes {
         encoder: &mut wgpu::CommandEncoder,
         frame: &GiFrame<'_>,
     ) {
+        if !self.enabled {
+            let layout = self.atlas.irradiance_layout();
+            let grid = GiGridGpu::new(&self.cascades, layout.probes_per_row, false);
+            queue.write_buffer(&self.grid_buffer, 0, bytemuck::bytes_of(&grid));
+            return;
+        }
         if self.snap_cascades(frame.camera_pos) {
             self.frames_since_change = 0;
         }

@@ -11,7 +11,8 @@ impl Renderer {
         f.touch("ddgi_irradiance");
         self.gi.poll(&self.device, &self.queue);
         let l = &self.light_uniform;
-        let sun_radiance = Vec3::new(l.dir_color[0], l.dir_color[1], l.dir_color[2]) * l.dir_color[3];
+        let sun_radiance =
+            Vec3::new(l.dir_color[0], l.dir_color[1], l.dir_color[2]) * l.dir_color[3];
         let sun_dir = -Vec3::new(l.dir_direction[0], l.dir_direction[1], l.dir_direction[2]);
         let camera = self.camera_uniform.camera_pos;
         self.gi_probes.update(

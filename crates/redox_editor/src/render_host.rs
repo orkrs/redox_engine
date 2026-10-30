@@ -83,7 +83,7 @@ impl SharedGpu {
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("redox_editor_shared_device"),
                 required_features,
-                required_limits: wgpu::Limits::default(),
+                required_limits: redox_render::renderer::required_device_limits(&adapter.limits()),
                 ..Default::default()
             })
             .await

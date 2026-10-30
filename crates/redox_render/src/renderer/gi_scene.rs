@@ -19,6 +19,7 @@ impl Renderer {
         let boxes = boxes.to_vec();
         self.gi
             .spawn_rebuild(move || GlobalSdf::from_boxes(&boxes, bounds, GLOBAL_SDF_DIMS));
+        self.gi_probes.set_enabled(true);
         self.gi_probes.notify_lighting_changed();
     }
 
@@ -37,6 +38,7 @@ impl Renderer {
         let bricks = bricks.to_vec();
         self.gi
             .spawn_rebuild(move || GlobalSdf::from_bricks(&bricks, bounds, GLOBAL_SDF_DIMS));
+        self.gi_probes.set_enabled(true);
         self.gi_probes.notify_lighting_changed();
     }
 }

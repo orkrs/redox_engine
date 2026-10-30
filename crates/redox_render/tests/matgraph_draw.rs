@@ -34,7 +34,7 @@ fn rig() -> Option<Rig> {
         .update(&camera, Vec3::new(0.0, 0.0, 9.0), Quat::IDENTITY);
     renderer.update_camera_buffer();
     let lights = LightScene::new(DirectionalLight::new(
-        Vec3::new(0.3, -0.5, -1.0),
+        Vec3::new(0.3, -0.5, 1.0),
         Vec3::ONE,
         2.0,
     ));

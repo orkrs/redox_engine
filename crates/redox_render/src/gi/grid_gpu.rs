@@ -43,7 +43,11 @@ impl GiGridGpu {
     ///
     /// ASSUMPTION: all cascades have the same probe count, so the atlas index of cascade `c`
     /// is `c * probe_count`; this holds for the 8×8×8 layout used by the renderer.
-    pub fn new(cascades: &[ProbeCascade; GI_CASCADE_COUNT], probes_per_row: u32, enabled: bool) -> Self {
+    pub fn new(
+        cascades: &[ProbeCascade; GI_CASCADE_COUNT],
+        probes_per_row: u32,
+        enabled: bool,
+    ) -> Self {
         let per_cascade = cascades[0].probe_count();
         let mut out = Self {
             probes_per_row,

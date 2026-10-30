@@ -84,6 +84,7 @@ fn materials_resolve_ktx2_textures_through_the_renderer() {
         | redox_render::profiler::PROFILER_FEATURES;
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         required_features: adapter.features() & wanted,
+        required_limits: redox_render::renderer::required_device_limits(&adapter.limits()),
         ..Default::default()
     }))
     .unwrap();

@@ -321,6 +321,9 @@ fn a_rough_floor_is_not_changed_by_ssr() {
 
 fn glass_frame(mode: Option<BlendMode>, alpha: f32) -> Option<f32> {
     let mut rig = rig(false)?;
+    // Dimmer than the shared rig: the opaque glass must stay below the tone-mapper's shoulder, or the
+    // half-transparent one cannot be told apart from it.
+    rig.lights.ambient = Vec3::splat(0.1);
     let behind = rig
         .renderer
         .add_material(Material::solid(Vec3::splat(0.05)));
