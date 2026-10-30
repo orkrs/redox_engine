@@ -1,7 +1,7 @@
 //! GPU copy of the global SDF volume (`sdf/global.rs`): an `R16Float` distance texture,
 //! an `Rgba8Unorm` material texture, and a small uniform describing the volume.
 
-use super::global::{GlobalSdf, MAX_DISTANCE};
+use super::global::{GlobalSdf, MAX_DISTANCE, NO_OBJECT};
 use bytemuck::{Pod, Zeroable};
 
 /// Volume descriptor mirrored by `struct SdfInfo` in `shaders/gi_trace.wgsl`.
@@ -31,6 +31,10 @@ pub struct GlobalSdfGpu {
     pub albedo_view: wgpu::TextureView,
     /// Uniform buffer with [`GlobalSdfInfoGpu`].
     pub info: wgpu::Buffer,
+    /// `R16Uint` 3D texture with the nearest object id per voxel (`NO_OBJECT` where none).
+    pub object_id_tex: wgpu::Texture,
+    /// View of `object_id_tex`.
+    pub object_id_view: wgpu::TextureView,
 }
 
 impl GlobalSdfGpu {
@@ -64,6 +68,16 @@ impl GlobalSdfGpu {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
+        let object_id_tex = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("global_sdf_object_id"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D3,
+            format: wgpu::TextureFormat::R16Uint,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
         let info = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("global_sdf_info"),
             size: std::mem::size_of::<GlobalSdfInfoGpu>() as u64,
@@ -77,11 +91,14 @@ impl GlobalSdfGpu {
             distance_tex,
             albedo_tex,
             info,
+            object_id_view: object_id_tex.create_view(&Default::default()),
+            object_id_tex,
         };
         let voxels = dims[0] as usize * dims[1] as usize * dims[2] as usize;
         let far = vec![half::f16::from_f32(MAX_DISTANCE).to_bits(); voxels];
         let empty = vec![[0u8; 4]; voxels];
-        this.write_texels(queue, &far, &empty);
+        let no_object = vec![NO_OBJECT; voxels];
+        this.write_texels(queue, &far, &empty, &no_object);
         queue.write_buffer(
             &this.info,
             0,
@@ -99,7 +116,7 @@ impl GlobalSdfGpu {
         if self.dims != sdf.dims {
             *self = Self::new(device, queue, sdf.dims);
         }
-        self.write_texels(queue, &sdf.distance_f16_bits(), &sdf.albedo);
+        self.write_texels(queue, &sdf.distance_f16_bits(), &sdf.albedo, &sdf.object_id);
         queue.write_buffer(
             &self.info,
             0,
@@ -110,7 +127,13 @@ impl GlobalSdfGpu {
         );
     }
 
-    fn write_texels(&self, queue: &wgpu::Queue, distance_bits: &[u16], albedo: &[[u8; 4]]) {
+    fn write_texels(
+        &self,
+        queue: &wgpu::Queue,
+        distance_bits: &[u16],
+        albedo: &[[u8; 4]],
+        object_id: &[u16],
+    ) {
         let [dx, dy, dz] = self.dims;
         let size = wgpu::Extent3d {
             width: dx,
@@ -143,6 +166,21 @@ impl GlobalSdfGpu {
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(dx * 4),
+                rows_per_image: Some(dy),
+            },
+            size,
+        );
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.object_id_tex,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            bytemuck::cast_slice(object_id),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(dx * 2),
                 rows_per_image: Some(dy),
             },
             size,

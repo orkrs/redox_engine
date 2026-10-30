@@ -50,6 +50,12 @@ impl Renderer {
         self.gi.set_cards(&self.device, &self.queue, objects);
     }
 
+    /// Switches the surface cards on or off (GI-02). Off, GI traces the probe path only, as in
+    /// GI-01, and the cards are not lit.
+    pub fn set_gi_cards_enabled(&mut self, enabled: bool) {
+        self.gi_probes.set_cards_enabled(enabled);
+    }
+
     /// Switches global illumination on or off. Off, the frame is as before GI: no probes are
     /// traced and the light from them is not added. Probes are on after a static scene is given.
     pub fn set_gi_enabled(&mut self, enabled: bool) {

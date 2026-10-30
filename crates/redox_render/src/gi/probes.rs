@@ -123,6 +123,8 @@ pub struct GiProbes {
     quality: GiQuality,
     /// Debug overlay selected by the application.
     debug: GiDebug,
+    /// Whether the surface cards are read by the trace and lit (GI-02); on by default.
+    cards_enabled: bool,
     /// Off until a static scene is given: with an empty volume every ray would return the sky and
     /// double the ambient light of scenes that do not use GI.
     enabled: bool,
@@ -180,6 +182,7 @@ impl GiProbes {
             quality: GiQuality::default(),
             debug: GiDebug::default(),
             enabled: false,
+            cards_enabled: true,
         }
     }
 
@@ -187,6 +190,17 @@ impl GiProbes {
     pub fn set_enabled(&mut self, enabled: bool) {
         self.enabled = enabled;
         self.frames_since_change = 0;
+    }
+
+    /// Turns the surface cards on or off (GI-02). Off, the trace takes the probe path only and the
+    /// cards are not lit; the frame is then as with GI-01.
+    pub fn set_cards_enabled(&mut self, enabled: bool) {
+        self.cards_enabled = enabled;
+    }
+
+    /// Whether the surface cards are read and lit.
+    pub fn cards_enabled(&self) -> bool {
+        self.cards_enabled
     }
 
     /// Sets the trace quality. Changing it restarts the hysteresis.
@@ -325,7 +339,8 @@ impl GiProbes {
             PROBES_PER_CASCADE * cascade_count,
         );
 
-        if let Some(cards) = frame.cards {
+        let cards = frame.cards.filter(|_| self.cards_enabled);
+        if let Some(cards) = cards {
             // Reads last frame's grid and atlas, like the trace: lit before this frame's update.
             self.card_light.record(
                 device,
@@ -352,6 +367,7 @@ impl GiProbes {
             prev_grid: &self.prev_grid_buffer,
             prev_irradiance: &self.irradiance_view,
             probe_offset: &self.probe_offset,
+            cards,
         };
         for (slot, cascade) in self
             .cascades

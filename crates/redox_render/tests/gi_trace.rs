@@ -142,6 +142,7 @@ fn trace(
         prev_grid: &prev_grid,
         prev_irradiance: &prev_view,
         probe_offset: &offsets,
+        cards: None,
     };
     let mut encoder = device.create_command_encoder(&Default::default());
     tracer.record(device, queue, &mut encoder, &params, &inputs);
