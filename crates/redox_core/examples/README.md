@@ -9,6 +9,7 @@ Run any example with `cargo run --release --example <name> -p redox_core`.
 | `skinned_demo` | clip-driven skinned rigs, two-bone IK, TAA/GTAO/VSM; `--golden` runs the regression frames, `--screenshot` renders headless | also the visual regression test |
 | `dino_runner` | 3D endless runner on the full plugin stack | KCC, triggers, spatial SFX |
 | `ragdoll_demo` | humanoid ragdoll dropped on a floor, bone heights printed; `--throw`, `--lift <m>` | headless; exits non-zero if the figure does not come to rest |
+| `ragdoll_window` | window version: a box figure stands on a floor; `R` drops it into a ragdoll, `T` stands it up; `--shot <png>` renders headless, `--selftest` checks the transitions | box man, not the Fox (the Fox skeleton is not humanoid) |
 
 ## Developer / diagnostic
 | Example | Purpose |
