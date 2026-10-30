@@ -6,6 +6,8 @@ mod geometry;
 mod gi;
 mod post;
 mod shadows;
+#[cfg(debug_assertions)]
+mod usage;
 mod vg;
 
 /// CPU time spent in the last `render_frame_into`, in milliseconds (wall clock, not GPU time).
@@ -42,6 +44,27 @@ struct FrameState<'a> {
     cam_eye: Vec3,
     vsm_dirty: Vec<crate::shadow::vsm_clipmap::DirtyPage>,
     hdr_resolve_pass: HdrGeometryResolvePass,
+    /// Texture uses of the frame, checked against the frame graph (debug builds only).
+    #[cfg(debug_assertions)]
+    usage: usage::FrameUsage,
+}
+
+impl FrameState<'_> {
+    /// Reports that the running pass uses the texture `texture` of the frame graph.
+    fn touch(&mut self, texture: &str) {
+        #[cfg(debug_assertions)]
+        self.usage.touch(texture);
+        #[cfg(not(debug_assertions))]
+        let _ = texture;
+    }
+
+    /// Starts the pass `name` for the usage log.
+    fn begin_pass(&mut self, name: &str) {
+        #[cfg(debug_assertions)]
+        self.usage.begin_pass(name);
+        #[cfg(not(debug_assertions))]
+        let _ = name;
+    }
 }
 
 impl Renderer {
@@ -86,8 +109,13 @@ impl Renderer {
         let t1 = std::time::Instant::now();
         let mut frame = self.begin_frame_state(objects, surface_view);
         for &name in crate::frame_graph::frame_pass_order() {
+            frame.begin_pass(name);
             self.run_frame_pass(name, &mut frame);
             self.gpu_profiler.mark(&mut frame.encoder, name);
+        }
+        #[cfg(debug_assertions)]
+        {
+            self.frame_usage_mismatches = frame.usage.mismatches();
         }
         let t2 = self.finish_frame(frame);
         let t3 = std::time::Instant::now();
@@ -120,6 +148,11 @@ impl Renderer {
             "msaa_resolve_particles" => self.pass_msaa_resolve_particles(f),
             "scatter_light" => self.record_scatter_light_pass(&mut f.encoder),
             "taa_tonemap_bloom_smaa" => {
+                // The post chain reads the HDR target for bloom and tonemap and writes the
+                // backbuffer and the TAA history (its views are handed over here).
+                f.touch("hdr_color");
+                f.touch("taa_history");
+                f.touch("backbuffer");
                 self.record_post_chain(
                     &mut f.encoder,
                     f.surface_view,
@@ -258,6 +291,8 @@ impl Renderer {
             cam_eye,
             vsm_dirty,
             hdr_resolve_pass,
+            #[cfg(debug_assertions)]
+            usage: usage::FrameUsage::for_size(self.config.width, self.config.height),
         }
     }
 

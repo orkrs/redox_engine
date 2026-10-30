@@ -10,6 +10,14 @@ impl Renderer {
             .load(std::sync::atomic::Ordering::Relaxed)
     }
 
+    /// Frame-graph declarations that the last frame's passes did not match (debug builds only).
+    /// Empty means every recorded texture use is declared and every declared texture was used.
+    #[cfg(debug_assertions)]
+    #[doc(hidden)]
+    pub fn frame_usage_mismatches(&self) -> &[crate::render_graph::AccessMismatch] {
+        &self.frame_usage_mismatches
+    }
+
     /// CPU time of the last `render_frame_into` call (wall clock, not GPU time).
     pub fn last_frame_cpu_timings(&self) -> FrameCpuTimings {
         self.last_cpu_timings

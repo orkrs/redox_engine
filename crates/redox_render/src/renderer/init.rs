@@ -903,6 +903,8 @@ impl Renderer {
             forward_draw_calls: std::sync::atomic::AtomicU32::new(0),
             skip_object_velocity_pass: false,
             object_velocity_draws: std::sync::atomic::AtomicU32::new(0),
+            #[cfg(debug_assertions)]
+            frame_usage_mismatches: Vec::new(),
             last_cpu_timings: FrameCpuTimings::default(),
             memory_limits: crate::memory_budget::MemoryBudget::new(),
             taa_history_tex: [taa_history_tex0, taa_history_tex1],
