@@ -14,7 +14,7 @@ use crate::pass::forward::DEPTH_FORMAT;
 use crate::pass::normal::SURFACE_FORMAT as NORMAL_SURFACE_FORMAT;
 use crate::pass::shadow::SHADOW_FORMAT;
 use crate::pass::shared_layouts::multisample_state;
-use crate::shader::{MATERIAL_SURFACE_WGSL, shader_with_vertex_decode};
+use crate::shader::{MATERIAL_SURFACE_WGSL, VG_RESOLVE_WGSL, shader_with_vertex_decode};
 
 /// Colour format of the normal prepass target. ASSUMPTION: matches `NormalPass::new` in
 /// `renderer/init.rs` (`Rgba16Float`).
@@ -195,6 +195,80 @@ pub fn vsm_source(generated: &Generated) -> String {
         "{MATERIAL_SURFACE_WGSL}\n{}\n{}\n{VSM_TEMPLATE}",
         generated.uniform_wgsl, generated.wgsl
     ))
+}
+
+/// Line of `vg_resolve.wgsl` after which the slot test is inserted (the material index of the
+/// pixel's meshlet).
+const VG_MATERIAL_LINE: &str = "let m_idx = meshlets[inst.meshlet_offset].material_index;";
+/// Line of `vg_resolve.wgsl` that becomes a `var`, because the graph replaces the albedo.
+const VG_ALBEDO_LINE: &str = "let albedo = mat.base_color.rgb;";
+/// Line of `vg_resolve.wgsl` before which the graph surface is evaluated, so that the specular
+/// roughness and the lobes see the graph roughness and normal.
+const VG_SPEC_ROUGHNESS_LINE: &str =
+    "let spec_roughness = apply_geometric_specular_aa(n, roughness);";
+
+/// Structs of `material_surface.wgsl` that the graph code uses. Copied rather than included,
+/// because `vg_resolve.wgsl` has its own `Material` struct.
+const VG_GRAPH_STRUCTS: &str = r#"
+struct SurfaceInput {
+    world_pos: vec3<f32>,
+    world_normal: vec3<f32>,
+    world_tangent: vec3<f32>,
+    instance_color: vec4<f32>,
+    to_camera: vec3<f32>,
+};
+
+struct SurfaceData {
+    base_color: vec3<f32>,
+    opacity: f32,
+    normal: vec3<f32>,
+    metallic: f32,
+    roughness: f32,
+    emissive: vec3<f32>,
+    layer0: vec4<f32>,
+    layer0_params: vec4<f32>,
+    layer1: vec4<f32>,
+    layer1_params: vec4<f32>,
+    sheen: f32,
+};
+"#;
+
+/// Graph block inserted before [`VG_SPEC_ROUGHNESS_LINE`]. The UV is not available in the resolve,
+/// so the graph is evaluated with UV zero; the vertex offset is not applied either.
+const VG_GRAPH_SURFACE: &str = r#"// Graph material (MAT-07 step 2): the graph surface replaces albedo, metal, roughness and normal.
+    let g_ndc = vec3<f32>(uv01.x * 2.0 - 1.0, (1.0 - uv01.y) * 2.0 - 1.0, depth_raw);
+    let g_view = camera.inv_proj * vec4<f32>(g_ndc, 1.0);
+    let g_w = select(1.0, g_view.w, abs(g_view.w) >= 1.0e-8);
+    let g_world = (camera.inv_view * vec4<f32>(g_view.xyz / g_w, 1.0)).xyz;
+    let g_surf = material_surface_graph(SurfaceInput(g_world, n, vec3<f32>(1.0, 0.0, 0.0), vec4<f32>(1.0), camera.camera_pos.xyz - g_world), vec2<f32>(0.0), mat_graph_time.x, mat_graph_params);
+    albedo = g_surf.base_color;
+    metallic = g_surf.metallic;
+    roughness = clamp(g_surf.roughness, 0.05, 1.0);
+    n = normalize(g_surf.normal);
+    "#;
+
+/// Module source of the VG resolve variant of one material slot: `vg_resolve.wgsl` with the
+/// graph surface evaluated for the pixels of `slot` and discarded for every other pixel. The
+/// slot is a constant of the text, so each slot has its own module. Parameters are in group 3.
+pub fn vg_resolve_source(generated: &Generated, slot: usize) -> String {
+    let body = VG_RESOLVE_WGSL
+        .replacen(
+            VG_MATERIAL_LINE,
+            &format!("{VG_MATERIAL_LINE}\n    if (m_idx != GRAPH_MATERIAL_SLOT) {{ discard; }}"),
+            1,
+        )
+        .replacen(VG_ALBEDO_LINE, "var albedo = mat.base_color.rgb;", 1)
+        .replacen(
+            VG_SPEC_ROUGHNESS_LINE,
+            &format!("{VG_GRAPH_SURFACE}    {VG_SPEC_ROUGHNESS_LINE}"),
+            1,
+        );
+    format!(
+        "{VG_GRAPH_STRUCTS}\nconst GRAPH_MATERIAL_SLOT: u32 = {slot}u;\n{body}\n{}\n{}\n\
+         @group(3) @binding(0) var<uniform> mat_graph_params: MaterialParams;\n\
+         @group(3) @binding(1) var<uniform> mat_graph_time: vec4<f32>;\n",
+        generated.uniform_wgsl, generated.wgsl
+    )
 }
 
 /// Whether two objects may share one draw run in a prepass or shadow pass. Objects of graph
@@ -652,6 +726,22 @@ mod tests {
         validate_wgsl(&source).expect("shadow variant passes naga");
         assert!(source.contains("fs_graph_shadow"));
         assert!(source.contains("@group(2) @binding(0)"));
+    }
+
+    #[test]
+    fn the_vg_resolve_variant_is_valid_wgsl_and_names_its_slot() {
+        let source = vg_resolve_source(&generated(Pass::Main), 5);
+        validate_wgsl(&source).expect("vg resolve variant passes naga");
+        assert!(source.contains("const GRAPH_MATERIAL_SLOT: u32 = 5u;"));
+        assert!(source.contains("if (m_idx != GRAPH_MATERIAL_SLOT) { discard; }"));
+        assert!(source.contains("var albedo = mat.base_color.rgb;"));
+        assert_eq!(
+            source
+                .matches("material_surface_graph(SurfaceInput")
+                .count(),
+            1
+        );
+        assert!(source.contains("@group(3) @binding(1)"));
     }
 
     #[test]

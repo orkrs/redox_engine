@@ -19,7 +19,7 @@ use redox_matgraph::{
 
 use crate::matgraph_passes::{
     GraphPass, PassBindLayouts, blended_pipeline, depth_pipeline, depth_source, shadow_pipeline,
-    shadow_source, vsm_pipeline, vsm_source,
+    shadow_source, vg_resolve_source, vsm_pipeline, vsm_source,
 };
 use crate::pass::pbr::{PbrPass, pbr_render_pipeline};
 use crate::pass::transparent::ADDITIVE_BLEND;
@@ -278,6 +278,8 @@ struct GraphMaterial {
     shadow_key: ShaderKey,
     /// Key of the sun shadow page module.
     vsm_key: ShaderKey,
+    /// Key of the VG resolve module of this slot (one per slot: the slot is in its text).
+    vg_key: ShaderKey,
     /// Longest vertex offset the graph declares, metres.
     wpo_max: f32,
     /// Keeps the parameter block alive for the bind groups.
@@ -293,8 +295,7 @@ impl GraphMaterial {
             GraphPass::Depth => self.depth_key,
             GraphPass::Shadow => self.shadow_key,
             GraphPass::VsmDepth => self.vsm_key,
-            // Placeholder until step 2 gives the VG resolve its own slot-specific module.
-            GraphPass::VgResolve => self.key,
+            GraphPass::VgResolve => self.vg_key,
         }
     }
 }
@@ -319,6 +320,9 @@ pub struct MaterialGraphs {
     time_buffer: wgpu::Buffer,
     cache: MaterialShaderCache,
     pipelines: HashMap<(ShaderKey, GraphPass), wgpu::RenderPipeline>,
+    /// VG resolve pipelines by material slot; built by the resolve pass (see
+    /// [`MaterialGraphs::ensure_vg_pipeline`]) and dropped with the slot's graph.
+    vg_pipelines: HashMap<usize, wgpu::RenderPipeline>,
     materials: HashMap<usize, GraphMaterial>,
     /// Directory for debug copies of the generated WGSL, written once per variant.
     disk_cache: Option<PathBuf>,
@@ -397,6 +401,7 @@ impl MaterialGraphs {
             vsm_layout,
             cache: MaterialShaderCache::new(),
             pipelines: HashMap::new(),
+            vg_pipelines: HashMap::new(),
             materials: HashMap::new(),
             disk_cache: None,
         }
@@ -451,6 +456,7 @@ impl MaterialGraphs {
 
     /// Returns the slot `material_index` to the default pipelines. `true` when it had a graph.
     pub fn clear_material(&mut self, material_index: usize) -> bool {
+        self.vg_pipelines.remove(&material_index);
         self.materials.remove(&material_index).is_some()
     }
 
@@ -497,6 +503,7 @@ impl MaterialGraphs {
         let (depth_key, _) = self.ensure_variant(device, graph, source_hash, GraphPass::Depth)?;
         let (shadow_key, _) = self.ensure_variant(device, graph, source_hash, GraphPass::Shadow)?;
         let (vsm_key, _) = self.ensure_variant(device, graph, source_hash, GraphPass::VsmDepth)?;
+        let vg_key = self.ensure_vg_variant(device, graph, material_index)?;
         for pass in [GraphPass::Alpha, GraphPass::Additive] {
             self.ensure_pipeline(device, key, pass);
         }
@@ -524,6 +531,8 @@ impl MaterialGraphs {
                 },
             ],
         });
+        // A new graph replaces the slot's VG pipeline, which is built again on demand.
+        self.vg_pipelines.remove(&material_index);
         self.materials.insert(
             material_index,
             GraphMaterial {
@@ -531,11 +540,37 @@ impl MaterialGraphs {
                 depth_key,
                 shadow_key,
                 vsm_key,
+                vg_key,
                 wpo_max: forward.ir.wpo_max,
                 _params_buffer: buffer,
                 params: params_bg,
             },
         );
+        Ok(key)
+    }
+
+    /// Builds the VG resolve module of the slot `material_index` for `graph` (no pipeline: that
+    /// needs the resolve pass layouts). The key is the graph variant key mixed with the slot.
+    fn ensure_vg_variant(
+        &mut self,
+        device: &wgpu::Device,
+        graph: &MaterialGraph,
+        material_index: usize,
+    ) -> Result<ShaderKey, MaterialGraphError> {
+        let options = CodegenOptions {
+            pass: GraphPass::VgResolve.codegen(),
+            features: GraphPass::VgResolve.features(),
+        };
+        let variant = compile_variant(graph, &options).map_err(MaterialGraphError::Graph)?;
+        let mut seed = variant.key.0.to_le_bytes().to_vec();
+        seed.extend_from_slice(&(material_index as u64).to_le_bytes());
+        let key = ShaderKey(fnv1a(&seed));
+        let generated = &variant.generated;
+        self.cache
+            .get_or_build(device, key, "matgraph_vg_resolve", || {
+                vg_resolve_source(generated, material_index)
+            })
+            .map_err(MaterialGraphError::Wgsl)?;
         Ok(key)
     }
 
@@ -583,7 +618,14 @@ impl MaterialGraphs {
 
     /// Removes the graph of a material slot; the slot goes back to the default pipelines.
     pub fn remove_material(&mut self, material_index: usize) -> bool {
+        self.vg_pipelines.remove(&material_index);
         self.materials.remove(&material_index).is_some()
+    }
+
+    /// Drops the VG resolve pipelines. Called when the resolve pass is recreated (its layouts
+    /// change); they are built again on demand.
+    pub fn clear_vg_pipelines(&mut self) {
+        self.vg_pipelines.clear();
     }
 
     /// Rebuilds the pipeline layout and every pipeline after the forward pass was recreated
