@@ -33,7 +33,7 @@ struct Rig {
 fn rig() -> Option<Rig> {
     let adapter = common::adapter()?;
     let mut renderer = common::renderer(&adapter, SIZE)?;
-    renderer.enable_taa(true);
+    renderer.enable_taa(false);
     let mesh = renderer.upload_mesh(&create_cube());
     let material = renderer.add_material(Material::solid(Vec3::new(0.9, 0.9, 0.9)));
     let target = renderer.device.create_texture(&wgpu::TextureDescriptor {

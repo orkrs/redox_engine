@@ -79,6 +79,82 @@ pub fn deformed_shadow_bounds(
     out
 }
 
+/// True when `cur` differs from `prev` by more than `eps` in translation, or by more than
+/// [`SHADOW_ROTATION_EPS`] in any basis column.
+fn pose_changed(prev: &Mat4, cur: &Mat4, eps: f32) -> bool {
+    let moved: Vec3 = cur.w_axis.truncate() - prev.w_axis.truncate();
+    if moved.length() > eps {
+        return true;
+    }
+    (0..3).any(|axis| {
+        let delta = cur.col(axis) - prev.col(axis);
+        delta.truncate().length() > SHADOW_ROTATION_EPS
+    })
+}
+
+/// AABBs whose shadow pages must be invalidated this frame.
+///
+/// `prev` holds the pose snapshot of each dynamic caster at its last invalidation, `cur` the
+/// current `(id, model matrix, world AABB)` of every dynamic caster. Objects are matched by
+/// `id`, so the order of `cur` does not matter.
+///
+/// - an object whose pose changed by more than `eps` (translation) since its snapshot yields
+///   both its snapshot AABB and its current AABB;
+/// - a new object (not in `prev`) yields its current AABB;
+/// - an object that vanished (in `prev`, not in `cur`) yields its snapshot AABB.
+///
+/// Slow drift accumulates against the snapshot, so an object that creeps past `eps` over
+/// several frames is still refreshed. Use [`next_shadow_poses`] to advance the snapshots.
+pub fn moved_shadow_bounds(
+    prev: &HashMap<u32, ShadowPose>,
+    cur: &[(u32, Mat4, Aabb)],
+    eps: f32,
+) -> Vec<Aabb> {
+    let mut out = Vec::new();
+    let mut cur_ids = HashSet::with_capacity(cur.len());
+    for (id, matrix, bounds) in cur {
+        cur_ids.insert(*id);
+        match prev.get(id) {
+            None => out.push(*bounds),
+            Some((prev_matrix, prev_bounds)) => {
+                if pose_changed(prev_matrix, matrix, eps) {
+                    out.push(*prev_bounds);
+                    out.push(*bounds);
+                }
+            }
+        }
+    }
+    for (id, (_, prev_bounds)) in prev {
+        if !cur_ids.contains(id) {
+            out.push(*prev_bounds);
+        }
+    }
+    out
+}
+
+/// Snapshots to keep for the next frame.
+///
+/// An object that did not move past `eps` keeps its old snapshot (so slow drift keeps
+/// accumulating); a moved or new object takes its current pose. Objects absent from `cur`
+/// are dropped. Duplicate ids in `cur` are not supported: the last entry wins.
+pub fn next_shadow_poses(
+    prev: &HashMap<u32, ShadowPose>,
+    cur: &[(u32, Mat4, Aabb)],
+    eps: f32,
+) -> HashMap<u32, ShadowPose> {
+    cur.iter()
+        .map(|(id, matrix, bounds)| {
+            let kept = match prev.get(id) {
+                Some((prev_matrix, prev_bounds)) if !pose_changed(prev_matrix, matrix, eps) => {
+                    (*prev_matrix, *prev_bounds)
+                }
+                _ => (*matrix, *bounds),
+            };
+            (*id, kept)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,80 +287,4 @@ mod tests {
             vec![b]
         );
     }
-}
-
-/// True when `cur` differs from `prev` by more than `eps` in translation, or by more than
-/// [`SHADOW_ROTATION_EPS`] in any basis column.
-fn pose_changed(prev: &Mat4, cur: &Mat4, eps: f32) -> bool {
-    let moved: Vec3 = cur.w_axis.truncate() - prev.w_axis.truncate();
-    if moved.length() > eps {
-        return true;
-    }
-    (0..3).any(|axis| {
-        let delta = cur.col(axis) - prev.col(axis);
-        delta.truncate().length() > SHADOW_ROTATION_EPS
-    })
-}
-
-/// AABBs whose shadow pages must be invalidated this frame.
-///
-/// `prev` holds the pose snapshot of each dynamic caster at its last invalidation, `cur` the
-/// current `(id, model matrix, world AABB)` of every dynamic caster. Objects are matched by
-/// `id`, so the order of `cur` does not matter.
-///
-/// - an object whose pose changed by more than `eps` (translation) since its snapshot yields
-///   both its snapshot AABB and its current AABB;
-/// - a new object (not in `prev`) yields its current AABB;
-/// - an object that vanished (in `prev`, not in `cur`) yields its snapshot AABB.
-///
-/// Slow drift accumulates against the snapshot, so an object that creeps past `eps` over
-/// several frames is still refreshed. Use [`next_shadow_poses`] to advance the snapshots.
-pub fn moved_shadow_bounds(
-    prev: &HashMap<u32, ShadowPose>,
-    cur: &[(u32, Mat4, Aabb)],
-    eps: f32,
-) -> Vec<Aabb> {
-    let mut out = Vec::new();
-    let mut cur_ids = HashSet::with_capacity(cur.len());
-    for (id, matrix, bounds) in cur {
-        cur_ids.insert(*id);
-        match prev.get(id) {
-            None => out.push(*bounds),
-            Some((prev_matrix, prev_bounds)) => {
-                if pose_changed(prev_matrix, matrix, eps) {
-                    out.push(*prev_bounds);
-                    out.push(*bounds);
-                }
-            }
-        }
-    }
-    for (id, (_, prev_bounds)) in prev {
-        if !cur_ids.contains(id) {
-            out.push(*prev_bounds);
-        }
-    }
-    out
-}
-
-/// Snapshots to keep for the next frame.
-///
-/// An object that did not move past `eps` keeps its old snapshot (so slow drift keeps
-/// accumulating); a moved or new object takes its current pose. Objects absent from `cur`
-/// are dropped. Duplicate ids in `cur` are not supported: the last entry wins.
-pub fn next_shadow_poses(
-    prev: &HashMap<u32, ShadowPose>,
-    cur: &[(u32, Mat4, Aabb)],
-    eps: f32,
-) -> HashMap<u32, ShadowPose> {
-    cur.iter()
-        .map(|(id, matrix, bounds)| {
-            let kept = match prev.get(id) {
-                Some((prev_matrix, prev_bounds)) if !pose_changed(prev_matrix, matrix, eps) => {
-                    (*prev_matrix, *prev_bounds)
-                }
-                _ => (*matrix, *bounds),
-            };
-            (*id, kept)
-        })
-        .collect()
 }

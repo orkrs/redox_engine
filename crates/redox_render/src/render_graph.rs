@@ -1074,10 +1074,15 @@ mod tests {
         });
         let c = g.compile().unwrap();
         assert_eq!(names(&c), ["cull", "shade"]);
-        assert!(
-            c.barrier_plan.is_empty(),
-            "first use of the buffer has no previous access"
-        );
+        // The first use of the buffer is not a transition; the write-to-read change is.
+        let on_buffer: Vec<_> = c
+            .barrier_plan
+            .iter()
+            .filter(|t| t.resource == "clusters")
+            .collect();
+        assert_eq!(on_buffer.len(), 1);
+        assert_eq!(on_buffer[0].from, Access::StorageWrite);
+        assert_eq!(on_buffer[0].to, Access::ShaderRead);
         assert_eq!(c.lifetimes[clusters.0 as usize], Some((0, 1)));
         assert_eq!(c.required_buffer_usage(clusters), BufferUsages::STORAGE);
     }

@@ -311,7 +311,7 @@ impl SkinnedMeshBinding {
                 binding.positions.clear();
                 binding.previous_bounds = None;
                 binding.pose.record(
-                    hash_matrices(*matrices),
+                    hash_matrices(matrices),
                     hash_weights(&binding.morph_weights),
                 );
             }
