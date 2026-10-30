@@ -554,3 +554,41 @@ fn outside_the_box_the_global_ibl_is_used() {
         max_channel_diff(&without, &with)
     );
 }
+
+#[test]
+fn the_frame_after_a_capture_equals_the_frame_without_one() {
+    let _guard = lock();
+    let Some(adapter) = common::adapter() else {
+        eprintln!("no GPU adapter, skipping");
+        return;
+    };
+    let Some(mut plain) = common::renderer(&adapter, SIZE) else {
+        eprintln!("no device, skipping");
+        return;
+    };
+    let Some(mut captured) = common::renderer(&adapter, SIZE) else {
+        eprintln!("no device, skipping");
+        return;
+    };
+    let plain_scene = scene(&mut plain);
+    let captured_scene = scene(&mut captured);
+    let (eye, forward) = reflection_view();
+
+    // Two identical renderers; only one of them captures. The probe stays disabled, so the
+    // capture's faces are the only thing that can differ between the two frames.
+    captured.set_reflection_probes(&[probe(Vec3::ZERO, 0)]);
+    captured
+        .capture_reflection_probe(0, &captured_scene.objects, &captured_scene.lights)
+        .expect("capture");
+
+    let without = render(&mut plain, &plain_scene, eye, forward);
+    let with = render(&mut captured, &captured_scene, eye, forward);
+
+    let differing = differing_bytes(&without, &with);
+    assert_eq!(
+        differing,
+        0,
+        "{differing} bytes differ, largest difference {}",
+        max_channel_diff(&without, &with)
+    );
+}
