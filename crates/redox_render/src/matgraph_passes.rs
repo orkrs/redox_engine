@@ -38,23 +38,29 @@ pub enum GraphPass {
     Shadow,
     /// Virtual shadow map pages of the sun (alpha cut-out only).
     VsmDepth,
+    /// Visibility buffer resolve of virtual geometry (MAT-07 step 2): the surface of the graph
+    /// replaces the base shading of the pixels of its slot.
+    VgResolve,
 }
 
 impl GraphPass {
     /// Every pass, in the order pipelines are built.
-    pub const ALL: [GraphPass; 6] = [
+    pub const ALL: [GraphPass; 7] = [
         GraphPass::Forward,
         GraphPass::Alpha,
         GraphPass::Additive,
         GraphPass::Depth,
         GraphPass::Shadow,
         GraphPass::VsmDepth,
+        GraphPass::VgResolve,
     ];
 
     /// Codegen pass whose WGSL this pass uses. Alpha and additive share the forward module.
     pub fn codegen(self) -> Pass {
         match self {
-            GraphPass::Forward | GraphPass::Alpha | GraphPass::Additive => Pass::Main,
+            GraphPass::Forward | GraphPass::Alpha | GraphPass::Additive | GraphPass::VgResolve => {
+                Pass::Main
+            }
             GraphPass::Depth => Pass::Depth,
             GraphPass::Shadow | GraphPass::VsmDepth => Pass::Shadow,
         }
@@ -62,9 +68,11 @@ impl GraphPass {
 
     /// Codegen features of this pass. The sun's shadow pages are drawn instanced, which also
     /// keeps their module key apart from the point-light atlas variant (same IR, other template).
+    /// The VG resolve is keyed apart by `skinning` for the same reason.
     pub fn features(self) -> redox_matgraph::Features {
         redox_matgraph::Features {
             instanced: self == GraphPass::VsmDepth,
+            skinning: self == GraphPass::VgResolve,
             ..redox_matgraph::Features::default()
         }
     }
@@ -75,6 +83,7 @@ impl GraphPass {
             GraphPass::Forward | GraphPass::Alpha | GraphPass::Additive => GRAPH_PARAMS_GROUP,
             GraphPass::Depth | GraphPass::VsmDepth => 1,
             GraphPass::Shadow => 2,
+            GraphPass::VgResolve => 3,
         }
     }
 }
@@ -623,8 +632,10 @@ mod tests {
         assert_eq!(GraphPass::Forward.params_group(), GRAPH_PARAMS_GROUP);
         assert_eq!(GraphPass::Depth.params_group(), 1);
         assert_eq!(GraphPass::Shadow.params_group(), 2);
-        assert_eq!(GraphPass::ALL.len(), 6);
+        assert_eq!(GraphPass::ALL.len(), 7);
         assert_eq!(GraphPass::VsmDepth.params_group(), 1);
+        assert_eq!(GraphPass::VgResolve.params_group(), 3);
+        assert_eq!(GraphPass::VgResolve.codegen(), Pass::Main);
     }
 
     #[test]

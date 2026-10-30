@@ -293,6 +293,8 @@ impl GraphMaterial {
             GraphPass::Depth => self.depth_key,
             GraphPass::Shadow => self.shadow_key,
             GraphPass::VsmDepth => self.vsm_key,
+            // Placeholder until step 2 gives the VG resolve its own slot-specific module.
+            GraphPass::VgResolve => self.key,
         }
     }
 }
@@ -642,6 +644,8 @@ impl MaterialGraphs {
             GraphPass::Depth => depth_pipeline(device, &self.depth_layout, module),
             GraphPass::Shadow => shadow_pipeline(device, &self.shadow_layout, module),
             GraphPass::VsmDepth => vsm_pipeline(device, &self.vsm_layout, module),
+            // Built by the VG resolve pass per slot (step 3), never here.
+            GraphPass::VgResolve => return,
         };
         self.pipelines.insert((key, pass), pipeline);
     }
@@ -681,6 +685,9 @@ fn variant_module(pass: GraphPass, generated: &Generated) -> Result<String, Vari
         GraphPass::Depth => Ok(depth_source(generated)),
         GraphPass::Shadow => Ok(shadow_source(generated)),
         GraphPass::VsmDepth => Ok(vsm_source(generated)),
+        GraphPass::VgResolve => Err(VariantError::InvalidWgsl(
+            "VG resolve modules are built per slot".to_owned(),
+        )),
     }
 }
 
