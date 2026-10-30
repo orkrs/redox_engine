@@ -20,6 +20,8 @@ redox_input = { path = "../redox_input" }
 redox_asset = { path = "../redox_asset" }
 redox_audio = { path = "../redox_audio" }
 redox_nav = { path = "../redox_nav" }
+# Networking plugin (NetPlugin) and the net_chat example.
+redox_net = { path = "../redox_net" }
 redox_ui = { path = "../redox_ui" }
 redox_physics = { path = "../redox_physics" }
 # Scripts see the world through `script_world` (WorldQueries, sys. commands).

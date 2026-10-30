@@ -37,6 +37,7 @@ pub mod commands;
 pub mod config;
 pub mod dispatcher;
 pub mod hlod_system;
+pub mod net_plugin;
 pub mod plugin;
 pub mod ragdoll_system;
 pub mod script_world;
@@ -51,5 +52,6 @@ pub use dispatcher::{Dispatcher, Stage, SystemMeta, access_compatible, parallel_
 pub use plugin::{
     App, AudioPlugin, CorePlugin, NavPlugin, PhysicsPlugin, Plugin, RenderPlugin, ScriptWorldPlugin,
 };
+pub use net_plugin::{NetMode, NetPlugin};
 pub use state::{AppState, NextState, State, in_state};
 pub use time::Time;
