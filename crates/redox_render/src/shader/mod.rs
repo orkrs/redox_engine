@@ -57,6 +57,8 @@ pub const VELOCITY_WGSL: &str = include_str!("../../shaders/velocity.wgsl");
 pub const OBJECT_VELOCITY_WGSL: &str = include_str!("../../shaders/object_velocity.wgsl");
 /// Source of `taa.wgsl`.
 pub const TAA_WGSL: &str = include_str!("../../shaders/taa.wgsl");
+/// Source of `motion_blur_tiles.wgsl`: velocity tile maxima for motion blur spreading (PST-03).
+pub const MOTION_BLUR_TILES_WGSL: &str = include_str!("../../shaders/motion_blur_tiles.wgsl");
 /// Source of `msaa_resolve.wgsl`.
 pub const MSAA_RESOLVE_WGSL: &str = include_str!("../../shaders/msaa_resolve.wgsl");
 /// Source of `tone_mapping.wgsl`.
@@ -168,6 +170,11 @@ const EMBEDDED: &[(&str, &str, &str)] = &[
         OBJECT_VELOCITY_WGSL,
     ),
     ("taa", "taa.wgsl", TAA_WGSL),
+    (
+        "motion_blur_tiles",
+        "motion_blur_tiles.wgsl",
+        MOTION_BLUR_TILES_WGSL,
+    ),
     ("msaa_resolve", "msaa_resolve.wgsl", MSAA_RESOLVE_WGSL),
     ("tone_mapping", "tone_mapping.wgsl", TONE_MAPPING_WGSL),
     (
@@ -437,6 +444,7 @@ mod tests {
             ("gtao_upsample", super::GTAO_UPSAMPLE_WGSL),
             ("velocity", super::VELOCITY_WGSL),
             ("taa", super::TAA_WGSL),
+            ("motion_blur_tiles", super::MOTION_BLUR_TILES_WGSL),
             ("msaa_resolve", super::MSAA_RESOLVE_WGSL),
             ("tone_mapping", super::TONE_MAPPING_WGSL),
             ("debug_lines", super::DEBUG_LINES_WGSL),

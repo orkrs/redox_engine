@@ -67,3 +67,11 @@ Reading: at 500 vertices one mesh costs the same on both paths; from about 1 000
 | Стена: кадр от `render_frame_view` до `poll(wait)` | 12,75 мс |
 
 Цель проход выбора ≤ 1 мс: по метке `cluster_vg_cull` (0,28 мс) достигнута; точное время обхода без отдельной метки не выделено. Расхождение «GPU 1,6 мс» и «стена 12,75 мс» означает, что кадр упирается в CPU (запись команд, загрузка данных экземпляров); причина не искалась. Замер на машине разработчика, не на эталонной станции; по умолчанию `VGConfig` мал для такого ассета (нужно `max_vertices` 1<<20, `max_indices` 1<<22), без этого `register_dag_asset` возвращает `None`.
+## Motion blur spreading (PST-03)
+
+Cost of the two tile compute passes and the spreading blur, `tests/motion_blur_spread.rs::spreading_cost_per_frame` (`#[ignore]`, 128×128, wall time per frame including the readback). Run: `cargo test -p redox_render --test motion_blur_spread -- --ignored --nocapture`.
+
+| Spreading | ms per frame | Notes |
+|---|---|---|
+| off | not measured | run the ignored test on the owner's GPU |
+| on | not measured | |
