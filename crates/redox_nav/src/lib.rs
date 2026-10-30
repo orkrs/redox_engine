@@ -21,6 +21,7 @@ mod debug;
 mod error;
 mod format;
 mod geometry;
+pub mod grid;
 mod links;
 mod query;
 mod queue;
