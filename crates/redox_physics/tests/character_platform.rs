@@ -215,13 +215,34 @@ fn the_character_stays_at_the_same_point_of_the_platform_in_its_local_frame() {
         }
     }
     let drift = (local_point(&world, platform, player) - start).length();
-    // KNOWN DEFECT (PHY-06): about 4-5 % of the platform's turn is lost (measured: 0.16 m after
-    // 1.5 s, 0.26 m after 3 s at radius 2 m and 1 rad/s), so the drift grows slowly. The bound
-    // below stops it from growing unnoticed; the 5 cm of the spec needs the cause found first.
+    // PHY-06: the one-tick carry lag is fixed (see `a_platform_turn_is_carried_in_the_same_tick`).
+    // The earlier measurement (0.16 m after 1.5 s, 0.26 m after 3 s at radius 2 m and 1 rad/s) was
+    // taken before that fix and has not been re-measured; the remaining ~4-5 % proportional loss is
+    // not explained yet. The bound below stops drift growing unnoticed; the 5 cm of the spec is open.
     assert!(drift <= 0.35, "drifted {drift} in the platform frame");
     assert!(
         drift - drift_at_half <= 0.15,
         "the drift grows faster than measured: {drift_at_half} after 1.5 s, {drift} after 3 s"
+    );
+}
+
+/// Regression for the stale-pose carry (PHY-06): a single large turn of the platform must move the
+/// character in the same tick. Before the fix the carry used the platform's previous collider pose,
+/// so the character stayed about 1 m behind after a 0.5 rad turn.
+#[test]
+fn a_platform_turn_is_carried_in_the_same_tick() {
+    let (mut world, platform, player) = turning_platform_with_player();
+    let origin = Vec3::new(0.0, -0.25, 0.0);
+    let local = local_point(&world, platform, player);
+    set_platform_pose(&mut world, platform, origin, 0.5);
+    sync_to_physics(&mut world);
+    tick_physics(&mut world, DT);
+    let expected = origin + Quat::from_rotation_y(0.5) * local;
+    let p = position(&world, player);
+    let error = ((p.x - expected.x).powi(2) + (p.z - expected.z).powi(2)).sqrt();
+    assert!(
+        error < 0.15,
+        "character {p:?} is off the expected point {expected:?} by {error}"
     );
 }
 

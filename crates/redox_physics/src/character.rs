@@ -51,31 +51,52 @@ fn yaw_of(rotation: Quat) -> f32 {
     forward.x.atan2(forward.z)
 }
 
+/// Current pose of the body that owns the collider `handle`.
+///
+/// Reads the rigid body, not the collider: `sync_to_physics` writes the platform's new transform
+/// into the body right before the step, but the collider only takes that pose inside
+/// `PhysicsPipeline::step`. Reading the collider here gave the character the platform one tick
+/// stale (PHY-06: the carry lagged the platform by a tick). Colliders without a parent body fall
+/// back to their own pose.
+fn platform_pose(
+    colliders: &ColliderSet,
+    bodies: &RigidBodySet,
+    handle: ColliderHandle,
+) -> Option<(Vec3, Quat)> {
+    let collider = colliders.get(handle)?;
+    let pose = collider
+        .parent()
+        .and_then(|body| bodies.get(body))
+        .map_or(*collider.position(), |body| *body.position());
+    Some((pose.translation, pose.rotation))
+}
+
 /// Motion of the ground under a character since the last step, at the point `at` where it stands:
 /// the translation of that point (including the platform's rotation about its origin) and the
 /// rotation the platform turned by. Zero motion when the character stood on nothing or its collider
 /// is gone.
 ///
-/// Call order in `tick_physics`: `move_character_controllers` runs before the Rapier step, so the
-/// collider poses read here are those of the previous step. The carry is the difference of two
-/// consecutive poses, so the error does not accumulate; it lags by one frame.
+/// `ground` holds the platform pose recorded at the previous step; the current pose comes from
+/// `platform_pose`. The carry is the difference of two consecutive poses, so the error does not
+/// accumulate.
 fn platform_carry(
     colliders: &ColliderSet,
+    bodies: &RigidBodySet,
     ground: Option<(ColliderHandle, Vec3, Quat)>,
     at: Vec3,
 ) -> (Vec3, Quat) {
     let Some((handle, previous, previous_rotation)) = ground else {
         return (Vec3::ZERO, Quat::IDENTITY);
     };
-    colliders
-        .get(handle)
-        .map_or((Vec3::ZERO, Quat::IDENTITY), |collider| {
-            let pose = collider.position();
-            let turn = pose.rotation * previous_rotation.inverse();
+    platform_pose(colliders, bodies, handle).map_or(
+        (Vec3::ZERO, Quat::IDENTITY),
+        |(position, rotation)| {
+            let turn = rotation * previous_rotation.inverse();
             // The point turned with the platform about its previous origin, then moved with the origin.
-            let translation = rotate_about(at, previous, turn) + (pose.translation - previous) - at;
+            let translation = rotate_about(at, previous, turn) + (position - previous) - at;
             (translation, turn)
-        })
+        },
+    )
 }
 
 /// Moves every [`CharacterController`] this step: gravity, wall slide, autostep, moving platforms.
@@ -128,8 +149,12 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
         let shape = collider.shape();
         // Semi-implicit Euler: accelerate first, then move with the new speed.
         let mut vy = vertical - gravity * dt;
-        let (carry, platform_turn) =
-            platform_carry(&physics.colliders, ground_pose, transform.translation);
+        let (carry, platform_turn) = platform_carry(
+            &physics.colliders,
+            &physics.rigid_bodies,
+            ground_pose,
+            transform.translation,
+        );
         let mut wish = desired + carry;
         wish.y += vy * dt;
         let yaw = if settings.inherit_platform_yaw {
@@ -162,10 +187,8 @@ pub fn move_character_controllers(world: &mut World, dt: f32) {
         let grounded = movement.grounded;
         let ground_collider = if grounded { floor } else { None };
         let next_ground_pose = ground_collider.and_then(|handle| {
-            physics.colliders.get(handle).map(|collider| {
-                let pose = collider.position();
-                (handle, pose.translation, pose.rotation)
-            })
+            platform_pose(&physics.colliders, &physics.rigid_bodies, handle)
+                .map(|(position, rotation)| (handle, position, rotation))
         });
         // Landing stops the fall; hitting a ceiling stops the rise.
         let hit_ceiling = vy > 0.0 && delta.y < wish.y - 1e-4;
@@ -405,7 +428,8 @@ mod carry_math_tests {
     #[test]
     fn platform_carry_without_ground_is_zero() {
         let colliders = ColliderSet::new();
-        let (translation, turn) = platform_carry(&colliders, None, Vec3::ONE);
+        let bodies = RigidBodySet::new();
+        let (translation, turn) = platform_carry(&colliders, &bodies, None, Vec3::ONE);
         assert_eq!(translation, Vec3::ZERO);
         assert_eq!(turn, Quat::IDENTITY);
     }
