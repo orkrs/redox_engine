@@ -13,8 +13,8 @@ use std::collections::hash_map::Entry;
 use std::path::PathBuf;
 
 use redox_matgraph::{
-    CodegenOptions, Generated, GraphError, GraphReload, MatGraphWatcher, MaterialGraph, ShaderKey,
-    Variant, compile_variant,
+    CodegenOptions, GRAPH_TEXTURE_SLOTS, Generated, GraphError, GraphReload, MatGraphWatcher,
+    MaterialGraph, ShaderKey, Variant, compile_variant,
 };
 
 use crate::matgraph_passes::{
@@ -315,6 +315,10 @@ pub struct MaterialGraphs {
     vsm_layout: wgpu::PipelineLayout,
     /// Frame time uniform bound at binding 1 of every parameter group.
     time_buffer: wgpu::Buffer,
+    /// 1x1 white texture bound to the texture slots a material does not fill.
+    white: wgpu::TextureView,
+    /// Samplers at bindings 6..=8: default, repeat and clamp (see [`GRAPH_SAMPLER_BINDING`]).
+    samplers: [wgpu::Sampler; 3],
     cache: MaterialShaderCache,
     pipelines: HashMap<(ShaderKey, GraphPass), wgpu::RenderPipeline>,
     materials: HashMap<usize, GraphMaterial>,
@@ -326,37 +330,17 @@ impl MaterialGraphs {
     /// Creates the state for the forward pass `pbr` (colour format and MSAA count as in `PbrPass`).
     pub fn new(
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         pbr: &PbrPass,
         surface_format: wgpu::TextureFormat,
         sample_count: u32,
     ) -> Self {
         let graph_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("matgraph_params_bgl"),
-            entries: &[
-                // 0: the parameter block; the vertex stage reads it for the vertex offset.
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                // 1: the frame time (x, seconds), shared by every graph material and pass.
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
+            entries: &graph_bgl_entries(),
         });
+        let white = white_view(device, queue);
+        let samplers = graph_samplers(device);
         let time_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("matgraph_time"),
             size: 16,
@@ -389,6 +373,8 @@ impl MaterialGraphs {
             sample_count,
             graph_bgl,
             time_buffer,
+            white,
+            samplers,
             layout,
             depth_layout,
             shadow_layout,
@@ -673,6 +659,105 @@ impl MaterialGraphs {
 }
 
 /// Module source of `variant` for `pass`.
+/// First binding of the texture slots (`tex0` at this binding, `tex3` three after it).
+pub(crate) const GRAPH_TEXTURE_BINDING: u32 = 2;
+/// First binding of the samplers: default at this binding, then repeat and clamp.
+pub(crate) const GRAPH_SAMPLER_BINDING: u32 = GRAPH_TEXTURE_BINDING + GRAPH_TEXTURE_SLOTS as u32;
+
+/// Parameter group entries: the parameter block and frame time (both vertex and fragment), then
+/// the texture slots and the three samplers (fragment only).
+fn graph_bgl_entries() -> Vec<wgpu::BindGroupLayoutEntry> {
+    let uniform = |binding: u32| wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Uniform,
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        },
+        count: None,
+    };
+    let texture = |binding: u32| wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    };
+    let sampler = |binding: u32| wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+        count: None,
+    };
+    let textures = (GRAPH_TEXTURE_BINDING..).take(GRAPH_TEXTURE_SLOTS as usize);
+    let samplers = (GRAPH_SAMPLER_BINDING..).take(3);
+    let mut entries = vec![uniform(0), uniform(1)];
+    entries.extend(textures.map(texture));
+    entries.extend(samplers.map(sampler));
+    entries
+}
+
+/// 1x1 opaque white texture: the value of a texture slot the material leaves empty.
+fn white_view(device: &wgpu::Device, queue: &wgpu::Queue) -> wgpu::TextureView {
+    let size = wgpu::Extent3d {
+        width: 1,
+        height: 1,
+        depth_or_array_layers: 1,
+    };
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("matgraph_white"),
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        &[255, 255, 255, 255],
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(4),
+            rows_per_image: Some(1),
+        },
+        size,
+    );
+    texture.create_view(&wgpu::TextureViewDescriptor::default())
+}
+
+/// Linear samplers with the given wrap mode, in binding order: default and repeat wrap, clamp
+/// clamps to the edge.
+fn graph_samplers(device: &wgpu::Device) -> [wgpu::Sampler; 3] {
+    let sampler = |label: &str, address: wgpu::AddressMode| {
+        device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some(label),
+            address_mode_u: address,
+            address_mode_v: address,
+            address_mode_w: address,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            ..Default::default()
+        })
+    };
+    [
+        sampler("matgraph_samp_default", wgpu::AddressMode::Repeat),
+        sampler("matgraph_samp_repeat", wgpu::AddressMode::Repeat),
+        sampler("matgraph_samp_clamp", wgpu::AddressMode::ClampToEdge),
+    ]
+}
+
 fn variant_module(pass: GraphPass, generated: &Generated) -> Result<String, VariantError> {
     match pass {
         GraphPass::Forward | GraphPass::Alpha | GraphPass::Additive => {

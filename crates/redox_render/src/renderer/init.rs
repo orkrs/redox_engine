@@ -51,6 +51,7 @@ impl Renderer {
         let pbr_pass = PbrPass::new(&device, hdr_format, msaa_sample_count);
         let matgraphs = crate::matgraph_cache::MaterialGraphs::new(
             &device,
+            &queue,
             &pbr_pass,
             hdr_format,
             msaa_sample_count,
