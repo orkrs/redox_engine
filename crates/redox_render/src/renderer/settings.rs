@@ -161,8 +161,21 @@ impl Renderer {
         self.post_fx_settings.dof
     }
 
-    /// Enables screen-space reflections (`None` turns them off). The pass runs first in the post
-    /// chain, so like motion blur and DoF it works only with TAA on. It reflects only what is on
+    /// Sets the screen-space subsurface blur (`None` turns it off). It is switched on by itself
+    /// when the first subsurface material is added; an explicit call overrides that. Like the other
+    /// post effects it works only with TAA on.
+    pub fn set_sss(&mut self, settings: Option<crate::post::sss::SssSettings>) {
+        self.sss_seen = true;
+        self.post_fx_settings.sss = settings;
+    }
+
+    /// Screen-space subsurface scattering settings, `None` when off.
+    pub fn sss(&self) -> Option<crate::post::sss::SssSettings> {
+        self.post_fx_settings.sss
+    }
+
+    /// Enables screen-space reflections (`None` turns them off). The pass runs in the post chain,
+    /// so like motion blur and DoF it works only with TAA on. It reflects only what is on
     /// screen, and uses the scalar roughness and metallic of each material (no maps).
     pub fn set_ssr(&mut self, settings: Option<SsrSettings>) {
         self.post_fx_settings.ssr = settings;
@@ -265,6 +278,7 @@ impl Renderer {
             &self.sdf_gpu.sampler,
             &self.vsm_shadow_history_view,
             &self.vsm_shadow_pbr_sampler,
+            &self.scene_copy_view,
         );
     }
 }

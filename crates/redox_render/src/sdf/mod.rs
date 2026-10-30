@@ -30,6 +30,7 @@
 
 pub mod atlas;
 pub mod bake;
+pub mod format;
 pub mod global;
 pub mod global_gpu;
 pub mod gpu_atlas;

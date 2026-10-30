@@ -298,7 +298,10 @@ mod tests {
             uv: [0.0, 0.0],
             tangent: [1.0, 0.0, 0.0],
         };
-        let mesh = Mesh::new(vec![v([0.0, 0.0, 0.0]), v([1.0, 0.0, 0.0]), v([0.0, 1.0, 0.0])], vec![0, 1, 2]);
+        let mesh = Mesh::new(
+            vec![v([0.0, 0.0, 0.0]), v([1.0, 0.0, 0.0]), v([0.0, 1.0, 0.0])],
+            vec![0, 1, 2],
+        );
         let material = CardMaterial {
             albedo: Vec3::ONE,
             emissive: Vec3::ZERO,

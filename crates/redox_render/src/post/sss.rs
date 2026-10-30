@@ -86,3 +86,77 @@ pub fn blur_radius_pixels(radius_mm: f32, dist_m: f32, fov_y: f32, screen_h: f32
     let px = radius_m * screen_h / visible_height_m;
     if px.is_finite() { px.max(0.0) } else { 0.0 }
 }
+
+use bytemuck::{Pod, Zeroable};
+
+use crate::post::post_fx::ChainFrame;
+
+/// Shader source of the screen-space blur.
+pub(crate) const SSS_BLUR_WGSL: &str = include_str!("../../shaders/sss_blur.wgsl");
+
+/// Screen-space subsurface blur settings (one profile per frame, v1).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SssSettings {
+    /// World radius of the widest (red) scattering, millimetres. Default 8.
+    pub radius_mm: f32,
+    /// Largest view-depth difference between a pixel and a tap that still blurs, metres. Default 0.1.
+    pub depth_tolerance: f32,
+    /// Relative width per channel (red widest). Default `[1.0, 0.45, 0.25]`.
+    pub profile: [f32; 3],
+}
+
+impl Default for SssSettings {
+    fn default() -> Self {
+        Self {
+            radius_mm: 8.0,
+            depth_tolerance: 0.1,
+            profile: [1.0, 0.45, 0.25],
+        }
+    }
+}
+
+/// Uniform of `shaders/sss_blur.wgsl`. 48 bytes.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub(crate) struct SssUniform {
+    direction: [f32; 2],
+    screen: [f32; 2],
+    radius_m: f32,
+    depth_tolerance: f32,
+    proj_y: f32,
+    _pad: f32,
+    profile: [f32; 4],
+}
+
+/// Builds the uniform of one blur direction (`[1, 0]` horizontal, `[0, 1]` vertical).
+pub(crate) fn sss_uniform(
+    s: &SssSettings,
+    frame: &ChainFrame<'_>,
+    direction: [f32; 2],
+) -> SssUniform {
+    SssUniform {
+        direction,
+        screen: frame.screen,
+        radius_m: s.radius_mm * 0.001,
+        depth_tolerance: s.depth_tolerance,
+        proj_y: frame.camera.proj[1][1],
+        _pad: 0.0,
+        profile: [s.profile[0], s.profile[1], s.profile[2], 0.0],
+    }
+}
+
+#[cfg(test)]
+mod blur_tests {
+    use super::*;
+
+    #[test]
+    fn the_uniform_is_48_bytes() {
+        assert_eq!(std::mem::size_of::<SssUniform>(), 48);
+    }
+
+    #[test]
+    fn red_scatters_furthest_by_default() {
+        let s = SssSettings::default();
+        assert!(s.profile[0] > s.profile[1] && s.profile[1] > s.profile[2]);
+    }
+}

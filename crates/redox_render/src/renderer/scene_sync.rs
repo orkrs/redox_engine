@@ -66,10 +66,18 @@ impl Renderer {
                 .unwrap_or(([0.0; 4], [1.0, 1.0, 1.0, 0.0]));
             // The w components are free: the normal prepass reads roughness and metallic there.
             // Missing material: fully rough and dielectric, so no reflection is drawn.
-            let (roughness, metallic) = self
-                .registry
-                .legacy_material(obj.material_index)
-                .map_or((1.0, 0.0), |m| (m.roughness, m.metallic));
+            let (roughness, metallic) =
+                self.registry
+                    .legacy_material(obj.material_index)
+                    .map_or((1.0, 0.0), |m| {
+                        // +2.0 marks a subsurface material for the SSS blur (see normal.wgsl).
+                        let sss = if m.subsurface.is_some_and(|p| p.wrap > 0.0) {
+                            2.0
+                        } else {
+                            0.0
+                        };
+                        (m.roughness + sss, m.metallic)
+                    });
             self.model_uniform_scratch.push(ModelUniform {
                 model: obj.model_matrix.to_cols_array_2d(),
                 normal_matrix: [

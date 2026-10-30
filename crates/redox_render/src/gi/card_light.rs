@@ -76,7 +76,11 @@ impl CardLighter {
             label: Some("gi_card_light_bgl"),
             entries: &[
                 uniform_entry(0),
-                texture_entry(1, wgpu::TextureViewDimension::D3, wgpu::TextureSampleType::Float { filterable: true }),
+                texture_entry(
+                    1,
+                    wgpu::TextureViewDimension::D3,
+                    wgpu::TextureSampleType::Float { filterable: true },
+                ),
                 uniform_entry(2),
                 wgpu::BindGroupLayoutEntry {
                     binding: 3,
@@ -84,8 +88,16 @@ impl CardLighter {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
-                texture_entry(4, wgpu::TextureViewDimension::D2, wgpu::TextureSampleType::Float { filterable: true }),
-                texture_entry(5, wgpu::TextureViewDimension::D2, wgpu::TextureSampleType::Float { filterable: true }),
+                texture_entry(
+                    4,
+                    wgpu::TextureViewDimension::D2,
+                    wgpu::TextureSampleType::Float { filterable: true },
+                ),
+                texture_entry(
+                    5,
+                    wgpu::TextureViewDimension::D2,
+                    wgpu::TextureSampleType::Float { filterable: true },
+                ),
                 storage_entry(6, true),
                 wgpu::BindGroupLayoutEntry {
                     binding: 7,
@@ -98,7 +110,11 @@ impl CardLighter {
                     count: None,
                 },
                 uniform_entry(8),
-                texture_entry(9, wgpu::TextureViewDimension::D2, wgpu::TextureSampleType::Float { filterable: true }),
+                texture_entry(
+                    9,
+                    wgpu::TextureViewDimension::D2,
+                    wgpu::TextureSampleType::Float { filterable: true },
+                ),
                 storage_entry(10, true),
                 storage_entry(11, true),
             ],
@@ -180,15 +196,24 @@ impl CardLighter {
             layout: &self.bgl,
             entries: &[
                 bind(0, self.params.as_entire_binding()),
-                bind(1, wgpu::BindingResource::TextureView(&inputs.sdf.distance_view)),
+                bind(
+                    1,
+                    wgpu::BindingResource::TextureView(&inputs.sdf.distance_view),
+                ),
                 bind(2, inputs.sdf.info.as_entire_binding()),
                 bind(3, wgpu::BindingResource::Sampler(&self.sampler)),
                 bind(4, wgpu::BindingResource::TextureView(&atlas.albedo_view)),
-                bind(5, wgpu::BindingResource::TextureView(&atlas.normal_depth_view)),
+                bind(
+                    5,
+                    wgpu::BindingResource::TextureView(&atlas.normal_depth_view),
+                ),
                 bind(6, atlas.table.as_entire_binding()),
                 bind(7, wgpu::BindingResource::TextureView(&atlas.radiance_view)),
                 bind(8, inputs.prev_grid.as_entire_binding()),
-                bind(9, wgpu::BindingResource::TextureView(inputs.prev_irradiance)),
+                bind(
+                    9,
+                    wgpu::BindingResource::TextureView(inputs.prev_irradiance),
+                ),
                 bind(10, inputs.probe_offset.as_entire_binding()),
                 bind(11, self.points.as_entire_binding()),
             ],

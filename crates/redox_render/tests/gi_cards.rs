@@ -75,13 +75,22 @@ struct Scene {
     atlas: CardAtlas,
 }
 
-fn scene(device: &wgpu::Device, queue: &wgpu::Queue, boxes: &[SdfBox], cards: &[(ObjectCards, u32)]) -> Scene {
+fn scene(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    boxes: &[SdfBox],
+    cards: &[(ObjectCards, u32)],
+) -> Scene {
     let bounds = Aabb {
         min: Vec3::splat(-6.0),
         max: Vec3::splat(6.0),
     };
     let mut sdf = GlobalSdfGpu::new(device, queue, SDF_DIMS);
-    sdf.upload(device, queue, &GlobalSdf::from_boxes(boxes, bounds, SDF_DIMS));
+    sdf.upload(
+        device,
+        queue,
+        &GlobalSdf::from_boxes(boxes, bounds, SDF_DIMS),
+    );
     let grid = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("test_prev_grid"),
         size: std::mem::size_of::<GiGridGpu>() as u64,
@@ -207,7 +216,12 @@ fn read_radiance(device: &wgpu::Device, queue: &wgpu::Queue, atlas: &CardAtlas) 
 }
 
 /// Radiance of the centre texel of `face` of the object whose face rectangles are `rects`.
-fn centre_radiance(rgba: &[[f32; 4]], size: u32, rects: &[[u32; 4]; 6], face: CardFace) -> [f32; 4] {
+fn centre_radiance(
+    rgba: &[[f32; 4]],
+    size: u32,
+    rects: &[[u32; 4]; 6],
+    face: CardFace,
+) -> [f32; 4] {
     let [x, y, w, h] = rects[face.index()];
     rgba[((x + w / 2) + (y + h / 2) * size) as usize]
 }
@@ -218,7 +232,14 @@ fn rects_of(cards: &[(ObjectCards, u32)]) -> [[u32; 4]; 6] {
 }
 
 /// Lights every row of the atlas: four consecutive frames cover all rows modulo 4.
-fn light_all_rows(device: &wgpu::Device, queue: &wgpu::Queue, s: &Scene, sun_dir: Vec3, sun_rad: Vec3, points: &[CardPointGpu]) {
+fn light_all_rows(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    s: &Scene,
+    sun_dir: Vec3,
+    sun_rad: Vec3,
+    points: &[CardPointGpu],
+) {
     for frame in 0..4 {
         light(device, queue, s, sun_dir, sun_rad, points, frame);
     }
@@ -270,14 +291,27 @@ fn a_point_light_brightens_the_near_card() {
     let rects = rects_of(&cards);
     let s = scene(&device, &queue, &[], &cards);
     light_all_rows(&device, &queue, &s, Vec3::ZERO, Vec3::ZERO, &[]);
-    let dark = centre_radiance(&read_radiance(&device, &queue, &s.atlas), TEST_ATLAS, &rects, CardFace::PosX);
+    let dark = centre_radiance(
+        &read_radiance(&device, &queue, &s.atlas),
+        TEST_ATLAS,
+        &rects,
+        CardFace::PosX,
+    );
     let point = CardPointGpu {
         pos_intensity: [2.5, 0.0, 0.0, 4.0],
         color_radius: [1.0, 1.0, 1.0, 10.0],
     };
     light_all_rows(&device, &queue, &s, Vec3::ZERO, Vec3::ZERO, &[point]);
-    let bright = centre_radiance(&read_radiance(&device, &queue, &s.atlas), TEST_ATLAS, &rects, CardFace::PosX);
-    assert!(bright[0] > dark[0] + 0.01, "point light: {bright:?} vs {dark:?}");
+    let bright = centre_radiance(
+        &read_radiance(&device, &queue, &s.atlas),
+        TEST_ATLAS,
+        &rects,
+        CardFace::PosX,
+    );
+    assert!(
+        bright[0] > dark[0] + 0.01,
+        "point light: {bright:?} vs {dark:?}"
+    );
 }
 
 #[test]
@@ -310,7 +344,10 @@ fn only_a_quarter_of_the_atlas_is_updated_per_frame() {
     let after_four = lit_texels(&read_radiance(&device, &queue, &s.atlas));
     assert!(after_four > 0.0);
     let fraction = after_one / after_four;
-    assert!((0.2..=0.3).contains(&fraction), "one frame lit {fraction:.3} of the atlas");
+    assert!(
+        (0.2..=0.3).contains(&fraction),
+        "one frame lit {fraction:.3} of the atlas"
+    );
 }
 
 #[test]

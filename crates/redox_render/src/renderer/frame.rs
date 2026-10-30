@@ -334,6 +334,8 @@ impl Renderer {
             vg_shadow_instances_bg: &self.vg_shadow_instances_bg,
             registry: &self.registry,
             graphs: Some(&self.matgraphs),
+            masked: &self.masked_shadow,
+            alpha_test: &self.material_alpha_test,
         };
 
         // ── VSM production (directional; only when the mode is enabled) ──
@@ -373,6 +375,8 @@ impl Renderer {
                 vsm_pageinfo_bg: &self.vsm_pageinfo_bg,
                 vsm_pages_views: &self.vsm_pages_views,
                 registry: &self.registry,
+                masked: &self.masked_shadow,
+                alpha_test: &self.material_alpha_test,
             };
             if self.mt_command_recording {
                 let (atlas_cmd, vsm_cmd) = join(

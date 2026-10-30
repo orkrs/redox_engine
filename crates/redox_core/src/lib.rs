@@ -36,6 +36,7 @@ pub mod app;
 pub mod commands;
 pub mod config;
 pub mod dispatcher;
+pub mod gi_streaming;
 pub mod hlod_load;
 pub mod hlod_system;
 pub mod material_graph;

@@ -6,6 +6,9 @@
 // in pbr.wgsl) and passes the samples in as `TextureSamples`.
 
 /// Layout identical to `material::MaterialUniform` (group 2 uniform).
+/// `Material.flags` bit: the surface refracts the scene behind it (`sss_params.yz` = ior, strength).
+const MAT_FLAG_REFRACT: u32 = 256u;
+
 struct Material {
     base_color: vec4<f32>,
     emissive:   vec4<f32>,

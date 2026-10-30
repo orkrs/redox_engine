@@ -643,6 +643,22 @@ impl Renderer {
             reflection_probes.view(),
             reflection_probes.buffer(),
         );
+        let scene_copy_view = device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("scene_copy_placeholder"),
+                size: wgpu::Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: hdr_format,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
+            .create_view(&Default::default());
         let scene_bind_group = pbr_pass.create_scene_bind_group(
             &device,
             &light_buffer,
@@ -667,6 +683,7 @@ impl Renderer {
             &sdf_gpu.sampler,
             &vsm_shadow_history_view,
             &vsm_shadow_pbr_sampler,
+            &scene_copy_view,
         );
 
         let vg_system_inner = VGSystem::new(
@@ -733,6 +750,13 @@ impl Renderer {
 
         // ── VSM resources (directional; activated via `set_shadow_mode`) ──
         let vsm_depth_pass = crate::shadow::depth_pass::VsmDepthPass::new(&device);
+        let masked_shadow = crate::shadow::masked::MaskedShadow::new(
+            &device,
+            &shadow_pass.bind_group_layout,
+            &shadow_pass.model_bgl,
+            &vsm_depth_pass.bind_group_layout,
+            &pbr_pass.material_bgl,
+        );
 
         // `vsm_info_buffer` is created once, above: a second `let` here used to shadow it, so
         // the screen-space trace bind group kept an orphan buffer that was never written and
@@ -846,6 +870,12 @@ impl Renderer {
             fallback_mr_view: fallback_mr.view,
             common_sampler,
             material_blend_flags: Vec::new(),
+            material_alpha_test: Vec::new(),
+            refractive_materials: 0,
+            sss_seen: false,
+            scene_copy: None,
+            scene_copy_view,
+            scene_copy_frames: 0,
             model_buffer,
             model_bind_group,
             shadow_model_bind_group,
@@ -934,6 +964,7 @@ impl Renderer {
             vg_use_vis_path: true,
             current_point_lights: Vec::new(),
             vsm_depth_pass,
+            masked_shadow,
             vsm_clipmap,
             vsm_pages_tex,
             vsm_pages_views,

@@ -292,6 +292,18 @@ pub struct Renderer {
     pub common_sampler: wgpu::Sampler,
     /// Per-material blend mode, parallel to registry legacy material indices.
     pub material_blend_flags: Vec<BlendMode>,
+    /// Per material slot: casts masked shadows (alpha-tested, `Material::alpha_test`).
+    pub material_alpha_test: Vec<bool>,
+    /// Number of material slots with screen-space refraction; the scene copy exists only when > 0.
+    pub refractive_materials: usize,
+    /// A subsurface material was added (turns the SSS blur on once, unless set explicitly).
+    pub sss_seen: bool,
+    /// Copy of the opaque scene colour for refraction (`None` until a refractive material is used).
+    pub scene_copy: Option<wgpu::Texture>,
+    /// View bound at `@binding(25)`: the scene copy, or a 1x1 placeholder.
+    pub scene_copy_view: wgpu::TextureView,
+    /// Frames in which the scene copy was made (test hook).
+    pub scene_copy_frames: u64,
 
     /// Per-object model-matrix buffer (reused each frame).
     model_buffer: wgpu::Buffer,
@@ -455,6 +467,8 @@ pub struct Renderer {
     // --- Virtual Shadow Maps (directional; enabled via `set_shadow_mode`) ---
     /// Pass that renders depth into virtual shadow map pages.
     pub vsm_depth_pass: crate::shadow::depth_pass::VsmDepthPass,
+    /// Alpha-tested caster pipelines for masked materials (MAT-06).
+    pub masked_shadow: crate::shadow::masked::MaskedShadow,
     /// Clipmap of virtual shadow map pages.
     pub vsm_clipmap: crate::shadow::vsm_clipmap::VsmClipmap,
     /// Per-page R32Float layers (one layer per physical page).

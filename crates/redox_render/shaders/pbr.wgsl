@@ -82,6 +82,8 @@ struct GiGridGpu {
 @group(1) @binding(23) var t_gi_visibility: texture_2d<f32>;
 // Relocated probe offsets (gi_relocate.wgsl), one vec4 per atlas index.
 @group(1) @binding(24) var<storage, read> gi_probe_offset: array<vec4<f32>>;
+// Opaque scene colour for screen-space refraction (MAT-06); a 1x1 placeholder when unused.
+@group(1) @binding(25) var t_scene_copy: texture_2d<f32>;
 
 // ── SDF brick atlas (Phase 5) ───────────────────────────────────────────
 struct SdfBrickPageGpu {
@@ -1180,7 +1182,22 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         ambient = ambient_base * coat_transmittance(n_dot_v) + coat_ibl_term(n_dot_v, r, in.world_pos) * ambient_factor;
     }
     let color = ambient + lo + material.emissive.rgb;
-    return vec4<f32>(sanitize_hdr(color), material.base_color.a * in.instance_color.a);
+    var out_alpha = material.base_color.a * in.instance_color.a;
+    var out_color = color;
+    if ((material.flags & MAT_FLAG_REFRACT) != 0u) {
+        // The surface replaces what is behind it: the background is looked up again, shifted by the
+        // surface tilt, and blended by the surface alpha; the blend state then keeps it as is.
+        let size = vec2<f32>(textureDimensions(t_scene_copy));
+        let uv = in.clip_pos.xy / size;
+        let n_view = (camera.view * vec4<f32>(n, 0.0)).xyz;
+        let dist = length(in.world_pos - camera.camera_pos.xyz);
+        let k = (material.sss_params.y - 1.0) * material.sss_params.z / max(dist, 1.0);
+        let uv_shifted = clamp(uv + n_view.xy * vec2<f32>(k, -k), vec2<f32>(0.0), vec2<f32>(1.0));
+        let behind = textureSampleLevel(t_scene_copy, s_ibl, uv_shifted, 0.0).rgb;
+        out_color = mix(behind, color, clamp(out_alpha, 0.0, 1.0));
+        out_alpha = 1.0;
+    }
+    return vec4<f32>(sanitize_hdr(out_color), out_alpha);
 }
 
 // ── Virtual Shadow Maps: clipmap lookup + SMRT soft sampling ────────────

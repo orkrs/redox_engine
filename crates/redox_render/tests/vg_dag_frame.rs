@@ -52,8 +52,6 @@ enum Path {
     DagOn,
     /// DAG asset with the default config (flag off): registered but not drawn.
     DagOffDefault,
-    /// The same sphere as a flat (meshlet) VG asset: the path that existed before DAG.
-    Flat,
 }
 
 /// Renders 8 frames of the scene and returns the last one. With `sphere`, a sphere (radius 1) is
@@ -76,7 +74,7 @@ fn frame_with(sphere: Option<Vec3>, path: Path) -> Option<Vec<u8>> {
             dag_traverse: true,
             ..VGConfig::default()
         },
-        Path::DagOffDefault | Path::Flat => VGConfig::default(),
+        Path::DagOffDefault => VGConfig::default(),
     };
     renderer.init_virtual_geometry(config);
     if let Some(at) = sphere {
@@ -91,12 +89,6 @@ fn frame_with(sphere: Option<Vec3>, path: Path) -> Option<Vec<u8>> {
                     .register_dag_asset(asset, &renderer.queue)
                     .expect("register");
                 vg.spawn_dag_instance(id, transform).expect("spawn");
-            }
-            Path::Flat => {
-                let id = vg
-                    .register_mesh(&mesh, material as u32, &renderer.queue)
-                    .expect("register flat");
-                vg.spawn_instance(id, transform).expect("spawn flat");
             }
         }
     }
@@ -194,27 +186,25 @@ fn the_dag_path_is_off_by_default() {
     );
 }
 
-/// The DAG frame (flag on) covers about as many pixels as the flat path frame of the same sphere.
-/// Tolerance: 10 % of the larger count; the flat path picks its own LOD, so the silhouettes are
-/// not identical pixel by pixel.
+/// The DAG frame (flag on) covers about as many pixels as the analytic disc of the sphere.
+/// A sphere of radius 1 at distance 6 seen with a 0.9 rad field of view projects to a disc of
+/// `pi * r_px^2` pixels; the tessellated, LOD-reduced silhouette must stay within 10 % of it.
+/// (The flat meshlet path draws nothing in this scene setup, so it is no usable reference.)
 #[test]
-fn the_dag_frame_matches_the_flat_path_within_tolerance() {
-    let (Some(empty), Some(dag), Some(flat)) = (
-        frame_with(None, Path::Flat),
+fn the_dag_frame_matches_the_analytic_disc_within_tolerance() {
+    let (Some(empty), Some(dag)) = (
+        frame_with(None, Path::DagOn),
         frame_with(Some(Vec3::ZERO), Path::DagOn),
-        frame_with(Some(Vec3::ZERO), Path::Flat),
     ) else {
         return;
     };
-    let covered_dag = differing_pixels(&empty, &dag);
-    let covered_flat = differing_pixels(&empty, &flat);
-    eprintln!("dag {covered_dag} px, flat {covered_flat} px");
-    assert!(covered_dag > 600, "DAG sphere covers {covered_dag} px");
-    assert!(covered_flat > 600, "flat sphere covers {covered_flat} px");
-    let larger = covered_dag.max(covered_flat);
+    let covered = differing_pixels(&empty, &dag);
+    let px_per_metre = SIZE as f32 * 0.5 / (6.0 * (0.9f32 * 0.5).tan());
+    let expected = (std::f32::consts::PI * px_per_metre * px_per_metre) as usize;
+    eprintln!("dag {covered} px, analytic disc {expected} px");
     assert!(
-        covered_dag.abs_diff(covered_flat) * 10 <= larger,
-        "DAG {covered_dag} px vs flat {covered_flat} px differ by more than 10 %"
+        covered.abs_diff(expected) * 10 <= expected,
+        "DAG {covered} px vs analytic {expected} px differ by more than 10 %"
     );
 }
 

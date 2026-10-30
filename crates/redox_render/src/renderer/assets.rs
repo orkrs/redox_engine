@@ -145,6 +145,16 @@ impl Renderer {
             bytemuck::bytes_of(&uniform),
         );
         let bind_group = self.build_material_bind_group(&material, &buffer, from_pool);
+        self.material_alpha_test.push(material.alpha_test);
+        if material.refraction.is_some() {
+            self.refractive_materials += 1;
+        }
+        if material.subsurface.is_some_and(|p| p.wrap > 0.0) && !self.sss_seen {
+            self.sss_seen = true;
+            if self.post_fx_settings.sss.is_none() {
+                self.post_fx_settings.sss = Some(crate::post::sss::SssSettings::default());
+            }
+        }
         let idx = self
             .registry
             .push_legacy_material(material, buffer, bind_group);
@@ -356,6 +366,8 @@ impl Renderer {
             emissive: data.emissive,
             layers: data.layers,
             sheen: data.sheen,
+            alpha_test: data.alpha_test,
+            refraction: data.refraction,
             ..Material::solid(data.base_color)
         };
         let idx = self.add_material_impl(material, true);

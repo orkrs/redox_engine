@@ -351,7 +351,7 @@ fn vs_graph_depth(in: CompressedVertIn, @builtin(instance_index) instance_idx: u
     out.clip_pos = graph_camera.view_proj * world_pos;
     out.world_pos = world_pos.xyz;
     out.world_normal = normalize(mdl.normal_matrix * oct_decode(in.normal_oct));
-    out.surface = vec2<f32>(mdl.bounds_min.w, mdl.bounds_extent.w);
+    out.surface = vec2<f32>(mdl.bounds_min.w - 2.0 * step(1.5, mdl.bounds_min.w), mdl.bounds_extent.w);
     out.uv = in.uv;
     return out;
 }

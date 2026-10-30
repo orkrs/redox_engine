@@ -14,6 +14,7 @@ use crate::post::fog::{FOG_WGSL, FogSettings, FogUniform, fog_uniform};
 use crate::post::fog_froxel::{FROXEL_COMPOSITE_WGSL, FroxelVolume, volume_entry};
 use crate::post::motion_blur_tiles::{SPREAD_SOFT_Z, TilePasses, TileTargets};
 use crate::post::ssr::{SSR_WGSL, SsrSettings, ssr_uniform};
+use crate::post::sss::{SSS_BLUR_WGSL, SssSettings, sss_uniform};
 use crate::post::tone_mapping::create_tonemap_bind_group;
 use crate::shader::create_shader_module;
 
@@ -162,7 +163,9 @@ pub struct PostFxSettings {
     pub motion_blur: Option<MotionBlurSettings>,
     /// Depth of field, or `None` when off.
     pub dof: Option<DofSettings>,
-    /// Screen-space reflections, or `None` when off. Runs first in the chain.
+    /// Screen-space subsurface blur, or `None` when off. Runs before everything else.
+    pub sss: Option<SssSettings>,
+    /// Screen-space reflections, or `None` when off.
     pub ssr: Option<SsrSettings>,
     /// Height fog, or `None` when off. Runs last in the chain.
     pub fog: Option<FogSettings>,
@@ -448,6 +451,8 @@ pub(crate) struct PostFxInputs<'a> {
 
 /// Passes of the chain. Each owns its pipeline, sampler and uniform buffer.
 struct EffectPasses {
+    sss_h: EffectPass,
+    sss_v: EffectPass,
     ssr: EffectPass,
     motion_blur: EffectPass,
     dof: EffectPass,
@@ -464,6 +469,8 @@ struct Lanes {
 
 /// Bind groups of every effect.
 struct EffectLanes {
+    sss_h: Lanes,
+    sss_v: Lanes,
     ssr: Lanes,
     motion_blur: Lanes,
     dof: Lanes,
@@ -590,7 +597,8 @@ impl PostFx {
         frame: &ChainFrame<'_>,
         settings: &PostFxSettings,
     ) -> Option<usize> {
-        if settings.ssr.is_none()
+        if settings.sss.is_none()
+            && settings.ssr.is_none()
             && settings.motion_blur.is_none()
             && settings.dof.is_none()
             && settings.fog.is_none()
@@ -598,6 +606,17 @@ impl PostFx {
             return None;
         }
         let mut source = Source::History(history_slot);
+        if let Some(s) = settings.sss {
+            for (pass, lanes, direction) in [
+                (&self.passes.sss_h, &self.lanes.sss_h, [1.0, 0.0]),
+                (&self.passes.sss_v, &self.lanes.sss_v, [0.0, 1.0]),
+            ] {
+                let dst = source.next_target();
+                pass.write(queue, &sss_uniform(&s, frame, direction));
+                pass.record(encoder, lanes.get(source), &self.views[dst]);
+                source = Source::Target(dst);
+            }
+        }
         if let Some(s) = settings.ssr {
             let dst = source.next_target();
             self.passes.ssr.write(queue, &ssr_uniform(&s, frame));
@@ -689,6 +708,23 @@ fn create_targets(
 
 /// Builds the four effect passes (pipelines, samplers, uniform buffers).
 fn create_passes(device: &wgpu::Device) -> EffectPasses {
+    let sss_pass = |label: &'static str| {
+        EffectPass::new(
+            device,
+            label,
+            SSS_BLUR_WGSL,
+            &[
+                texture_entry(0, FILTERABLE),
+                texture_entry(1, FILTERABLE),
+                texture_entry(2, FILTERABLE),
+                sampler_entry(3),
+                uniform_entry(4),
+            ],
+            std::mem::size_of::<crate::post::sss::SssUniform>() as u64,
+        )
+    };
+    let sss_h = sss_pass("sss_blur_horizontal");
+    let sss_v = sss_pass("sss_blur_vertical");
     let ssr = EffectPass::new(
         device,
         "screen_space_reflections",
@@ -754,6 +790,8 @@ fn create_passes(device: &wgpu::Device) -> EffectPasses {
         std::mem::size_of::<FogUniform>() as u64,
     );
     EffectPasses {
+        sss_h,
+        sss_v,
         ssr,
         motion_blur,
         dof,
@@ -804,6 +842,20 @@ fn build_bindings(
     };
     let history = inputs.history_views;
     let lanes = EffectLanes {
+        sss_h: lane_bindings(
+            device,
+            &passes.sss_h,
+            history,
+            views,
+            &[inputs.normal_view, inputs.surface_view],
+        ),
+        sss_v: lane_bindings(
+            device,
+            &passes.sss_v,
+            history,
+            views,
+            &[inputs.normal_view, inputs.surface_view],
+        ),
         ssr: lane_bindings(
             device,
             &passes.ssr,

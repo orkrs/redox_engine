@@ -140,6 +140,66 @@ impl Renderer {
         }
     }
 
+    /// Copies the opaque scene colour for refractive materials (MAT-06 step 4). Only when some
+    /// material refracts. With MSAA the resolve normally happens at the end of the transparent
+    /// pass, so the opaque colour is resolved here into the copy by an empty render pass.
+    fn copy_scene_for_refraction(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        if self.refractive_materials == 0 {
+            return;
+        }
+        let size = self.hdr_texture.size();
+        let stale = self
+            .scene_copy
+            .as_ref()
+            .is_none_or(|t| t.size() != size || t.format() != self.hdr_texture.format());
+        if stale {
+            let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("scene_copy"),
+                size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: self.hdr_texture.format(),
+                usage: wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_DST
+                    | wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            });
+            self.scene_copy_view = texture.create_view(&Default::default());
+            self.scene_copy = Some(texture);
+            self.update_global_bind_group();
+        }
+        if let Some(copy) = &self.scene_copy {
+            if self.msaa_sample_count > 1 {
+                // Resolve-only pass: loads the multisampled opaque colour and resolves it into
+                // the copy; the multisampled content is stored for the transparent pass.
+                let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("scene_copy_resolve"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        depth_slice: None,
+                        view: &self.hdr_msaa_view,
+                        resolve_target: Some(&self.scene_copy_view),
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                });
+            } else {
+                encoder.copy_texture_to_texture(
+                    self.hdr_texture.as_image_copy(),
+                    copy.as_image_copy(),
+                    size,
+                );
+            }
+            self.scene_copy_frames += 1;
+        }
+    }
+
     pub(super) fn pass_transparent(&mut self, f: &mut FrameState<'_>) {
         f.touch("hdr_color");
         f.touch("depth");
@@ -149,6 +209,7 @@ impl Renderer {
         let hdr_resolve_pass = f.hdr_resolve_pass;
         let msaa_sample_count = self.msaa_sample_count;
         if self.has_alpha_objects(objects, &self.main_vis_scratch) {
+            self.copy_scene_for_refraction(encoder);
             let mut transparent_render_pass =
                 encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("transparent_pass"),

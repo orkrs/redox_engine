@@ -316,8 +316,18 @@ mod tests {
             max: Vec3::splat(5.0),
         };
         let sdf = GlobalSdf::from_boxes(&boxes, bounds, [32, 32, 32]);
-        assert_eq!(sdf.object_id[sdf.index_of_world(Vec3::new(-3.6, 0.0, 0.0))], 0);
-        assert_eq!(sdf.object_id[sdf.index_of_world(Vec3::new(3.6, 0.0, 0.0))], 1);
-        assert_eq!(sdf.object_id[sdf.index_of_world(Vec3::splat(4.9))], NO_OBJECT);
+        assert_eq!(
+            sdf.object_id[sdf.index_of_world(Vec3::new(-3.6, 0.0, 0.0))],
+            0
+        );
+        assert_eq!(
+            sdf.object_id[sdf.index_of_world(Vec3::new(3.6, 0.0, 0.0))],
+            1
+        );
+        // Empty space carries the id of the nearest object (only hit points are read by the shader).
+        assert_ne!(
+            sdf.object_id[sdf.index_of_world(Vec3::new(3.9, 4.0, 0.0))],
+            NO_OBJECT
+        );
     }
 }

@@ -65,6 +65,26 @@ pub fn compressed_position_layout() -> wgpu::VertexBufferLayout<'static> {
     }
 }
 
+/// Position and UV layout for alpha-tested depth passes: position at location 0, UV at 1.
+pub fn compressed_position_uv_layout() -> wgpu::VertexBufferLayout<'static> {
+    wgpu::VertexBufferLayout {
+        array_stride: std::mem::size_of::<CompressedVertex>() as wgpu::BufferAddress,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: &[
+            wgpu::VertexAttribute {
+                offset: 0,
+                shader_location: 0,
+                format: wgpu::VertexFormat::Snorm16x4,
+            },
+            wgpu::VertexAttribute {
+                offset: 12,
+                shader_location: 1,
+                format: wgpu::VertexFormat::Float16x2,
+            },
+        ],
+    }
+}
+
 /// Returns `(min, extent)` vectors for shader dequantization.
 pub fn bounds_vectors(aabb: &Aabb) -> ([f32; 4], [f32; 4]) {
     let min = aabb.min;

@@ -78,6 +78,10 @@ pub struct MaterialData {
     pub layers: Option<[MaterialLayer; 2]>,
     /// Sheen lobe weight for fabric-like surfaces (0 = disabled).
     pub sheen: f32,
+    /// Masked surface (leaves, fences): shadow casters discard texels with alpha below 0.5.
+    pub alpha_test: bool,
+    /// Screen-space refraction (glass, water); `None` = off.
+    pub refraction: Option<crate::material::Refraction>,
 }
 
 impl MaterialData {
@@ -94,7 +98,21 @@ impl MaterialData {
             blend: BlendMode::Opaque,
             layers: None,
             sheen: 0.0,
+            alpha_test: false,
+            refraction: None,
         }
+    }
+
+    /// Enables screen-space refraction (use with `BlendMode::Alpha`).
+    pub fn refractive(mut self, ior: f32, strength: f32) -> Self {
+        self.refraction = Some(crate::material::Refraction { ior, strength });
+        self
+    }
+
+    /// Marks the material as masked (alpha-tested shadows).
+    pub fn masked(mut self, masked: bool) -> Self {
+        self.alpha_test = masked;
+        self
     }
 
     /// Sets the blend mode (builder style).

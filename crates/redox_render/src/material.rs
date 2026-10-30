@@ -54,6 +54,19 @@ pub struct Material {
     pub anisotropy: f32,
     /// Subsurface wrap profile (`None` = no subsurface).
     pub subsurface: Option<SubsurfaceProfile>,
+    /// Masked surface: shadow casters discard texels with alpha below 0.5.
+    pub alpha_test: bool,
+    /// Screen-space refraction of the scene behind the surface (glass, water); `None` = off.
+    pub refraction: Option<Refraction>,
+}
+
+/// Screen-space refraction of a transparent material (MAT-06 step 4).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Refraction {
+    /// Index of refraction; 1.0 leaves the background where it is.
+    pub ior: f32,
+    /// Artist scale of the UV offset (see [`crate::post::refraction::refraction_offset`]).
+    pub strength: f32,
 }
 
 /// Identifier of a material graph (MAT-02). Reserved: no graph is loaded yet.
@@ -144,6 +157,8 @@ pub mod material_flags {
     pub const HAS_ANISOTROPY: u32 = 1 << 6;
     /// Subsurface wrap lighting is active (`sss_params.x > 0`).
     pub const HAS_SUBSURFACE: u32 = 1 << 7;
+    /// The surface refracts the scene behind it (`sss_params.yz` = ior, strength).
+    pub const HAS_REFRACTION: u32 = 1 << 8;
 }
 
 /// Coat IOR used when a coat is enabled without an explicit IOR.
@@ -168,7 +183,21 @@ impl Material {
             coat_tint: Vec3::ONE,
             anisotropy: 0.0,
             subsurface: None,
+            alpha_test: false,
+            refraction: None,
         }
+    }
+
+    /// Enables screen-space refraction (use with `BlendMode::Alpha`).
+    pub fn refractive(mut self, ior: f32, strength: f32) -> Self {
+        self.refraction = Some(Refraction { ior, strength });
+        self
+    }
+
+    /// Marks the material as masked: shadow casters discard texels with alpha below 0.5.
+    pub fn masked(mut self, masked: bool) -> Self {
+        self.alpha_test = masked;
+        self
     }
 
     /// Creates a textured material.
@@ -243,6 +272,9 @@ impl Material {
     /// Converts to the GPU uniform layout.
     pub fn to_uniform(&self, _device: &wgpu::Device) -> MaterialUniform {
         let mut flags = 0;
+        if self.alpha_test {
+            flags |= material_flags::ALPHA_TEST;
+        }
         if self.texture_index.is_some() {
             flags |= material_flags::HAS_ALBEDO_TEX;
         }
@@ -278,6 +310,12 @@ impl Material {
             }
             _ => ([0.0; 4], [0.0; 4]),
         };
+        let mut sss_params = sss_params;
+        if let Some(r) = self.refraction {
+            flags |= material_flags::HAS_REFRACTION;
+            sss_params[1] = r.ior;
+            sss_params[2] = r.strength;
+        }
 
         MaterialUniform {
             base_color: [self.base_color.x, self.base_color.y, self.base_color.z, 1.0],

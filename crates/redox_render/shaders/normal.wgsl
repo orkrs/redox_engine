@@ -19,7 +19,7 @@ struct VertexOutput {
     @builtin(position) clip_pos: vec4<f32>,
     @location(0) world_normal: vec3<f32>,
     @location(1) world_pos: vec3<f32>,
-    @location(2) @interpolate(flat) surface: vec2<f32>,
+    @location(2) @interpolate(flat) surface: vec3<f32>,
 };
 
 struct FragmentOutput {
@@ -40,7 +40,9 @@ fn vs_main(in: CompressedVertIn, @builtin(instance_index) instance_idx: u32) -> 
     out.world_pos = world_pos.xyz;
     let nm = mdl.normal_matrix;
     out.world_normal = normalize(nm * oct_decode(in.normal_oct));
-    out.surface = vec2<f32>(mdl.bounds_min.w, mdl.bounds_extent.w);
+    // bounds_min.w = roughness, plus 2.0 for a subsurface material (the mask of the SSS blur).
+    let sss = select(0.0, 1.0, mdl.bounds_min.w >= 1.5);
+    out.surface = vec3<f32>(mdl.bounds_min.w - 2.0 * sss, mdl.bounds_extent.w, sss);
     return out;
 }
 
@@ -54,6 +56,6 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let linear_depth = clamp(view_z / FAR, 0.0, 1.0);
     var out: FragmentOutput;
     out.normal_depth = vec4<f32>(normalize(in.world_normal), linear_depth);
-    out.surface = vec4<f32>(in.surface, 0.0, 0.0);
+    out.surface = vec4<f32>(in.surface, 0.0);
     return out;
 }

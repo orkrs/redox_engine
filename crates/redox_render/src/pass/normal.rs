@@ -8,7 +8,7 @@ use crate::pass::forward::DEPTH_FORMAT;
 use crate::shader::{NORMAL_WGSL, create_shader_with_vertex_decode};
 
 /// Format of the material surface target: r = roughness, g = metallic.
-pub const SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rg8Unorm;
+pub const SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 /// View distance that maps to 1.0 in the normal target's alpha (`linear_depth = view_z / FAR`).
 /// Must match `FAR` in `shaders/normal.wgsl`.

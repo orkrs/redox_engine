@@ -99,7 +99,7 @@ pub struct AtlasRect {
 pub fn card_size(extent_u: f32, extent_v: f32, texel_world: f32) -> (u32, u32) {
     let side = |extent: f32| {
         let texels = extent / texel_world;
-        if !(texel_world > 0.0) || !texels.is_finite() {
+        if texel_world.is_nan() || texel_world <= 0.0 || !texels.is_finite() {
             return CARD_MAX;
         }
         let n = texels.ceil().clamp(0.0, CARD_MAX as f32) as u32;
@@ -200,10 +200,7 @@ pub fn project_to_card(face: CardFace, aabb_min: Vec3, aabb_max: Vec3, p: Vec3) 
     let hi = aabb_max.to_array();
     let pa = p.to_array();
     let extent = |axis: usize| (hi[axis] - lo[axis]).max(1e-6);
-    let uv = Vec2::new(
-        (pa[u] - lo[u]) / extent(u),
-        (pa[v] - lo[v]) / extent(v),
-    );
+    let uv = Vec2::new((pa[u] - lo[u]) / extent(u), (pa[v] - lo[v]) / extent(v));
     let depth = if face.is_positive() {
         (hi[d] - pa[d]) / extent(d)
     } else {
@@ -213,7 +210,13 @@ pub fn project_to_card(face: CardFace, aabb_min: Vec3, aabb_max: Vec3, p: Vec3) 
 }
 
 /// Inverse of [`project_to_card`]: the world point at card coordinates `uv` and `depth`.
-pub fn unproject_from_card(face: CardFace, aabb_min: Vec3, aabb_max: Vec3, uv: Vec2, depth: f32) -> Vec3 {
+pub fn unproject_from_card(
+    face: CardFace,
+    aabb_min: Vec3,
+    aabb_max: Vec3,
+    uv: Vec2,
+    depth: f32,
+) -> Vec3 {
     let (u, v, d) = face.axes();
     let lo = aabb_min.to_array();
     let hi = aabb_max.to_array();
@@ -271,10 +274,8 @@ mod tests {
         assert!(placed.len() > 400, "packer placed only {}", placed.len());
         for (i, a) in placed.iter().enumerate() {
             for b in &placed[i + 1..] {
-                let apart = a.x + a.w <= b.x
-                    || b.x + b.w <= a.x
-                    || a.y + a.h <= b.y
-                    || b.y + b.h <= a.y;
+                let apart =
+                    a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
                 assert!(apart, "{a:?} overlaps {b:?}");
             }
         }
@@ -351,7 +352,9 @@ mod tests {
     fn face_weights_sum_to_one_and_follow_the_normal() {
         let w = face_weights(Vec3::X);
         assert_eq!(w, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
-        let sum: f32 = face_weights(Vec3::new(1.0, 1.0, 0.0).normalize()).iter().sum();
+        let sum: f32 = face_weights(Vec3::new(1.0, 1.0, 0.0).normalize())
+            .iter()
+            .sum();
         assert!((sum - 1.0).abs() < 1e-5);
         let equal = face_weights(Vec3::ZERO);
         assert!(equal.iter().all(|&v| (v - 1.0 / 6.0).abs() < 1e-6));

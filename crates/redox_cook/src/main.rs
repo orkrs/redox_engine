@@ -12,6 +12,8 @@
 //! redox_cook bake-ibl <sky.hdr> <out-dir>  bake IBL maps to KTX2 (build with --features bake)
 //! redox_cook bake-hlod <world.bin> <out-dir> [--triangles 2000] [--kinds actor_kinds.ron]
 //!                                          per-cell HLOD proxies (`.hlod`, one file per cell)
+//! redox_cook bake-sdf <world.bin> <out-dir> [--kinds actor_kinds.ron] [--max-world-size 8]
+//!                                          per-cell SDF bricks (`.sdf`, one file per cell) for GI
 //! redox_cook bake-navmesh <in.glb|gltf> <out.nav> [--tile 16] [--radius 0.4] [--height 1.8]
 //!                                          [--step 0.4] [--slope 45]
 //!                                          bake walkable tiles for one agent to a .nav file
@@ -66,6 +68,11 @@ enum Command {
         out: PathBuf,
         options: hlod_bake::HlodOptions,
     },
+    BakeSdf {
+        world: PathBuf,
+        out: PathBuf,
+        options: hlod_bake::SdfOptions,
+    },
 }
 
 fn parse(args: &[String]) -> Result<Command, String> {
@@ -112,6 +119,11 @@ fn parse(args: &[String]) -> Result<Command, String> {
             out: out.into(),
             options: hlod_bake::parse_options(flags)?,
         }),
+        ["bake-sdf", world, out, flags @ ..] => Ok(Command::BakeSdf {
+            world: world.into(),
+            out: out.into(),
+            options: hlod_bake::parse_sdf_options(flags)?,
+        }),
         ["bake-navmesh", args @ ..] => nav::parse_bake_navmesh(args).map(Command::BakeNavmesh),
         ["audio-check", args @ ..] => audio_check::parse_audio_check(args).map(Command::AudioCheck),
         [] => Err("missing command".into()),
@@ -125,6 +137,7 @@ fn parse(args: &[String]) -> Result<Command, String> {
                 "texture-info",
                 "bake-ibl",
                 "bake-hlod",
+                "bake-sdf",
                 "bake-navmesh",
                 "audio-check",
             ]
@@ -210,6 +223,13 @@ fn run(command: Command) -> Result<(), String> {
             options,
         } => hlod_bake::bake_hlod(&world, &out, &options).map(|written| {
             println!("wrote {written} HLOD proxies to {}", out.display());
+        }),
+        Command::BakeSdf {
+            world,
+            out,
+            options,
+        } => hlod_bake::bake_sdf(&world, &out, &options).map(|written| {
+            println!("wrote {written} SDF cell files to {}", out.display());
         }),
         Command::BakeNavmesh(job) => nav::run(&job),
         Command::AudioCheck(job) => audio_check::run(&job),

@@ -56,7 +56,12 @@ fn cube_mesh(half: f32) -> Mesh {
                 }
             };
             let base = vertices.len() as u32;
-            vertices.extend([corner(-1.0, -1.0), corner(1.0, -1.0), corner(1.0, 1.0), corner(-1.0, 1.0)]);
+            vertices.extend([
+                corner(-1.0, -1.0),
+                corner(1.0, -1.0),
+                corner(1.0, 1.0),
+                corner(-1.0, 1.0),
+            ]);
             indices.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
         }
     }
@@ -92,7 +97,12 @@ fn sky_cube(device: &wgpu::Device, queue: &wgpu::Queue) -> wgpu::TextureView {
         usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         view_formats: &[],
     });
-    let data: Vec<u8> = [51u8, 102, 230, 255].iter().copied().cycle().take(4 * 4 * 6 * 4).collect();
+    let data: Vec<u8> = [51u8, 102, 230, 255]
+        .iter()
+        .copied()
+        .cycle()
+        .take(4 * 4 * 6 * 4)
+        .collect();
     queue.write_texture(
         wgpu::TexelCopyTextureInfo {
             texture: &texture,

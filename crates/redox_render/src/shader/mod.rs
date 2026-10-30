@@ -112,6 +112,10 @@ pub const VERTEX_COMPRESSED_WGSL: &str = include_str!("../../shaders/vertex_comp
 pub const SKYBOX_WGSL: &str = include_str!("../../shaders/skybox.wgsl");
 /// Source of `vsm_depth.wgsl`.
 pub const VSM_DEPTH_WGSL: &str = include_str!("../../shaders/vsm_depth.wgsl");
+/// Source of `vsm_depth_masked.wgsl`.
+pub const VSM_DEPTH_MASKED_WGSL: &str = include_str!("../../shaders/vsm_depth_masked.wgsl");
+/// Source of `shadow_masked.wgsl`.
+pub const SHADOW_MASKED_WGSL: &str = include_str!("../../shaders/shadow_masked.wgsl");
 /// Source of `vsm_visibility.wgsl`.
 pub const VSM_VISIBILITY_WGSL: &str = include_str!("../../shaders/vsm_visibility.wgsl");
 /// Source of `vsm_request.wgsl`.
@@ -168,6 +172,7 @@ const EMBEDDED: &[(&str, &str, &str)] = &[
         MATERIAL_SURFACE_WGSL,
     ),
     ("shadow", "shadow.wgsl", SHADOW_WGSL),
+    ("shadow_masked", "shadow_masked.wgsl", SHADOW_MASKED_WGSL),
     ("normal", "normal.wgsl", NORMAL_WGSL),
     ("gtao", "gtao.wgsl", GTAO_WGSL),
     ("gtao_blur", "gtao_blur.wgsl", GTAO_BLUR_WGSL),
@@ -227,6 +232,11 @@ const EMBEDDED: &[(&str, &str, &str)] = &[
     ),
     ("skybox", "skybox.wgsl", SKYBOX_WGSL),
     ("vsm_depth", "vsm_depth.wgsl", VSM_DEPTH_WGSL),
+    (
+        "vsm_depth_masked",
+        "vsm_depth_masked.wgsl",
+        VSM_DEPTH_MASKED_WGSL,
+    ),
     ("vsm_visibility", "vsm_visibility.wgsl", VSM_VISIBILITY_WGSL),
     ("vsm_request", "vsm_request.wgsl", VSM_REQUEST_WGSL),
     ("scatter_light", "scatter_light.wgsl", SCATTER_LIGHT_WGSL),
@@ -322,8 +332,10 @@ pub fn load(name: &str) -> String {
         } else {
             read_part("gi_card_light.wgsl", GI_CARD_LIGHT_BODY_WGSL)
         };
-        return [read_part("gi_common.wgsl", GI_COMMON_WGSL), body].join("
-");
+        return [read_part("gi_common.wgsl", GI_COMMON_WGSL), body].join(
+            "
+",
+        );
     }
     if name == "vg_cull" {
         // `vg_cull` needs the shared helpers in front of its body (see `VG_CULL_WGSL`).
@@ -465,6 +477,8 @@ mod tests {
             ("vg_vis", super::VG_VIS_WGSL),
             ("vg_shadow", super::VG_SHADOW_WGSL),
             ("vsm_depth", super::VSM_DEPTH_WGSL),
+            ("shadow_masked", super::SHADOW_MASKED_WGSL),
+            ("vsm_depth_masked", super::VSM_DEPTH_MASKED_WGSL),
         ];
         for (name, src) in with_decode {
             validate_wgsl(name, &super::shader_with_vertex_decode(src));

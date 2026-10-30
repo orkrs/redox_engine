@@ -230,9 +230,12 @@ impl GiTracer {
                 })
                 .create_view(&Default::default())
         };
-        let dummy_radiance = dummy_texture("gi_trace_dummy_radiance", wgpu::TextureFormat::Rgba16Float);
-        let dummy_normal_depth =
-            dummy_texture("gi_trace_dummy_normal_depth", wgpu::TextureFormat::Rgba8Unorm);
+        let dummy_radiance =
+            dummy_texture("gi_trace_dummy_radiance", wgpu::TextureFormat::Rgba16Float);
+        let dummy_normal_depth = dummy_texture(
+            "gi_trace_dummy_normal_depth",
+            wgpu::TextureFormat::Rgba8Unorm,
+        );
         let dummy_table = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("gi_trace_dummy_table"),
             size: std::mem::size_of::<CardObjectGpu>() as u64,
@@ -326,7 +329,11 @@ impl GiTracer {
         queue.write_buffer(&self.card_params, 0, bytemuck::bytes_of(&card_switch));
         let (radiance, normal_depth, table) = match cards {
             Some(c) => (&c.radiance_view, &c.normal_depth_view, &c.table),
-            None => (&self.dummy_radiance, &self.dummy_normal_depth, &self.dummy_table),
+            None => (
+                &self.dummy_radiance,
+                &self.dummy_normal_depth,
+                &self.dummy_table,
+            ),
         };
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {

@@ -51,7 +51,12 @@ fn cube_mesh(half: f32) -> Mesh {
                 }
             };
             let base = vertices.len() as u32;
-            vertices.extend([corner(-1.0, -1.0), corner(1.0, -1.0), corner(1.0, 1.0), corner(-1.0, 1.0)]);
+            vertices.extend([
+                corner(-1.0, -1.0),
+                corner(1.0, -1.0),
+                corner(1.0, 1.0),
+                corner(-1.0, 1.0),
+            ]);
             indices.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
         }
     }

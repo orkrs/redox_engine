@@ -96,7 +96,15 @@ pub fn capture_object(
     let verts = world_vertices(mesh, model);
     let (aabb_min, aabb_max) = world_aabb(&verts);
     let faces = CardFace::ALL.map(|face| {
-        capture_face(face, aabb_min, aabb_max, &verts, &mesh.indices, material, texel_world)
+        capture_face(
+            face,
+            aabb_min,
+            aabb_max,
+            &verts,
+            &mesh.indices,
+            material,
+            texel_world,
+        )
     });
     ObjectCards {
         aabb_min,
@@ -309,7 +317,12 @@ mod tests {
                     vertex(p, n)
                 };
                 let base = vertices.len() as u32;
-                vertices.extend([corner(-1.0, -1.0), corner(1.0, -1.0), corner(1.0, 1.0), corner(-1.0, 1.0)]);
+                vertices.extend([
+                    corner(-1.0, -1.0),
+                    corner(1.0, -1.0),
+                    corner(1.0, 1.0),
+                    corner(-1.0, 1.0),
+                ]);
                 indices.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
             }
         }
@@ -370,7 +383,11 @@ mod tests {
         let corner = face.normal[0];
         assert_eq!(corner[3], DEPTH_EMPTY);
         let mid = (face.w * face.h / 2 + face.w / 2) as usize;
-        assert!(face.normal[mid][3] < 128, "centre depth {}", face.normal[mid][3]);
+        assert!(
+            face.normal[mid][3] < 128,
+            "centre depth {}",
+            face.normal[mid][3]
+        );
     }
 
     #[test]
@@ -384,18 +401,21 @@ mod tests {
         let mesh = Mesh::new(verts, vec![0, 1, 2]);
         let cards = capture_object(&mesh, &Mat4::IDENTITY, &red(), 0.25);
         let face = &cards.faces[CardFace::PosY.index()];
-        // Along u (= x) the surface lowers, so depth (= (2 - y) / 2) grows with u.
+        // Along u (= x) the surface rises (y = x) towards the camera above, so the depth
+        // (= (2 - y) / 2) shrinks linearly with u.
         let row = face.h / 2;
-        let mut last = -1i32;
+        let mut last = i32::MAX;
+        let mut seen = 0;
         for x in 0..face.w {
             let code = face.normal[(x + row * face.w) as usize][3];
             if code == DEPTH_EMPTY {
                 continue;
             }
-            assert!(code as i32 >= last, "depth fell at x={x}");
+            assert!(code as i32 <= last, "depth grew at x={x}");
             last = code as i32;
+            seen += 1;
         }
-        assert!(last > 0);
+        assert!(seen > 2 && last < i32::MAX);
     }
 
     #[test]

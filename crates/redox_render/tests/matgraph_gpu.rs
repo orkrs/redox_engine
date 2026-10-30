@@ -468,12 +468,7 @@ fn unary_scalar_nodes_match_the_interpreter() {
     ];
     let cases: Vec<MaterialGraph> = kinds
         .into_iter()
-        .map(|kind| {
-            scalar_case(
-                vec![constant(1, 2.3), node(2, kind, vec![link(1)])],
-                2,
-            )
-        })
+        .map(|kind| scalar_case(vec![constant(1, 2.3), node(2, kind, vec![link(1)])], 2))
         .collect();
     assert_all_match(&cases);
 }
@@ -532,7 +527,10 @@ fn vector_and_derived_nodes_match_the_interpreter() {
     let cases = [
         // Dot of uv with itself.
         scalar_case(
-            vec![node(1, NodeKind::Uv, vec![]), node(2, NodeKind::Dot, vec![link(1), link(1)])],
+            vec![
+                node(1, NodeKind::Uv, vec![]),
+                node(2, NodeKind::Dot, vec![link(1), link(1)]),
+            ],
             2,
         ),
         // Normalised constant vector.
@@ -545,7 +543,10 @@ fn vector_and_derived_nodes_match_the_interpreter() {
         ),
         // Component of uv.
         scalar_case(
-            vec![node(1, NodeKind::Uv, vec![]), node(2, NodeKind::Split { component: 1 }, vec![link(1)])],
+            vec![
+                node(1, NodeKind::Uv, vec![]),
+                node(2, NodeKind::Split { component: 1 }, vec![link(1)]),
+            ],
             2,
         ),
         // Component of vertex colour.
@@ -596,15 +597,24 @@ fn vector_and_derived_nodes_match_the_interpreter() {
 fn noise_nodes_match_the_interpreter() {
     let cases = [
         scalar_case(
-            vec![node(1, NodeKind::Uv, vec![]), node(2, NodeKind::ValueNoise, vec![link(1)])],
+            vec![
+                node(1, NodeKind::Uv, vec![]),
+                node(2, NodeKind::ValueNoise, vec![link(1)]),
+            ],
             2,
         ),
         scalar_case(
-            vec![node(1, NodeKind::Uv, vec![]), node(2, NodeKind::GradientNoise, vec![link(1)])],
+            vec![
+                node(1, NodeKind::Uv, vec![]),
+                node(2, NodeKind::GradientNoise, vec![link(1)]),
+            ],
             2,
         ),
         scalar_case(
-            vec![node(1, NodeKind::Uv, vec![]), node(2, NodeKind::Worley, vec![link(1)])],
+            vec![
+                node(1, NodeKind::Uv, vec![]),
+                node(2, NodeKind::Worley, vec![link(1)]),
+            ],
             2,
         ),
         scalar_case(
@@ -618,4 +628,35 @@ fn noise_nodes_match_the_interpreter() {
         ),
     ];
     assert_all_match(&cases);
+}
+
+/// MAT-03 step 3: a custom node's WGSL body runs on the GPU. The interpreter has no reference for
+/// custom code, so the expected value is computed by hand: opacity = 0.2 * 2.
+#[test]
+fn a_custom_node_in_a_graph_is_evaluated_on_the_gpu() {
+    let Some((device, queue)) = device() else {
+        eprintln!("no GPU adapter, skipping");
+        return;
+    };
+    let graph = graph(vec![
+        node(1, NodeKind::ConstF32(0.2), vec![]),
+        node(
+            2,
+            NodeKind::Custom {
+                name: "double".into(),
+                inputs: vec![("a".into(), Ty::F32)],
+                output: Ty::F32,
+                body: "    return a * 2.0;".into(),
+            },
+            vec![link(1)],
+        ),
+        node(
+            3,
+            NodeKind::SurfaceOutput,
+            vec![None, link(2), None, None, None, None],
+        ),
+    ]);
+    assert!(graph.validate().is_empty(), "{:?}", graph.validate());
+    let gpu = run_on_gpu(&device, &queue, &graph, &[]);
+    assert!((gpu[3] - 0.4).abs() <= TOLERANCE, "opacity {}", gpu[3]);
 }

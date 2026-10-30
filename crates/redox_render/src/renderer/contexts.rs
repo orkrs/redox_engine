@@ -161,6 +161,15 @@ pub struct AtlasContext<'a> {
     pub registry: &'a GpuRegistry,
     /// Graph slots of the shadow atlas (MAT-02); `None` when no graph is bound.
     pub graphs: Option<&'a MaterialGraphs>,
+    /// Alpha-tested caster pipeline (MAT-06).
+    pub masked: &'a crate::shadow::masked::MaskedShadow,
+    /// Per material slot: masked caster.
+    pub alpha_test: &'a [bool],
+}
+
+/// Whether `material` casts alpha-tested shadows.
+fn is_masked(alpha_test: &[bool], material: usize) -> bool {
+    alpha_test.get(material).copied().unwrap_or(false)
 }
 
 pub fn record_point_atlas_shadows(
@@ -226,6 +235,11 @@ pub fn record_point_atlas_shadows(
                             objects[a].material_index,
                             objects[b].material_index,
                         )
+                        && masked_compatible(
+                            ctx.alpha_test,
+                            objects[a].material_index,
+                            objects[b].material_index,
+                        )
                 },
             ) {
                 let material = objects[run.start as usize].material_index;
@@ -237,6 +251,14 @@ pub fn record_point_atlas_shadows(
                         shadow_pass.set_pipeline(pipeline);
                         shadow_pass.set_bind_group(GraphPass::Shadow.params_group(), params, &[]);
                         on_graph = true;
+                    }
+                    None if is_masked(ctx.alpha_test, material) => {
+                        if let Some(bind_group) = ctx.registry.legacy_material_bind_group(material)
+                        {
+                            shadow_pass.set_pipeline(&ctx.masked.atlas);
+                            shadow_pass.set_bind_group(2, bind_group, &[]);
+                            on_graph = true;
+                        }
                     }
                     None if on_graph => {
                         shadow_pass.set_pipeline(&ctx.shadow_pass.pipeline);
@@ -277,6 +299,10 @@ pub struct VsmContext<'a> {
     pub vsm_pageinfo_bg: &'a wgpu::BindGroup,
     pub vsm_pages_views: &'a [wgpu::TextureView],
     pub registry: &'a GpuRegistry,
+    /// Alpha-tested caster pipeline (MAT-06).
+    pub masked: &'a crate::shadow::masked::MaskedShadow,
+    /// Per material slot: masked caster.
+    pub alpha_test: &'a [bool],
 }
 
 /// Draws every object that can cast into each dirty page. `page_vps[i]` is the view-projection
@@ -313,11 +339,34 @@ pub fn record_vsm_pages(
         page_pass.set_pipeline(&ctx.vsm_depth_pass.pipeline);
         page_pass.set_bind_group(0, ctx.vsm_pageinfo_bg, &[(page_ord as u32) * 256]);
         let page_vp = page_vps.get(page_ord).copied();
+        let mut bound_masked = false;
         for run in batching::runs(
             objects.len(),
             |i| page_vp.is_none_or(|vp| aabb_overlaps_clip_xy(objects[i].bounds, vp)),
-            |a, b| objects[a].mesh_index == objects[b].mesh_index,
+            |a, b| {
+                objects[a].mesh_index == objects[b].mesh_index
+                    && masked_compatible(
+                        ctx.alpha_test,
+                        objects[a].material_index,
+                        objects[b].material_index,
+                    )
+            },
         ) {
+            // Masked casters use the alpha-tested pipeline; the plain one is rebound after them.
+            let material = objects[run.start as usize].material_index;
+            let masked = is_masked(ctx.alpha_test, material);
+            if masked {
+                if let Some(bind_group) = ctx.registry.legacy_material_bind_group(material) {
+                    page_pass.set_pipeline(&ctx.masked.vsm);
+                    page_pass.set_bind_group(0, ctx.vsm_pageinfo_bg, &[(page_ord as u32) * 256]);
+                    page_pass.set_bind_group(1, bind_group, &[]);
+                    bound_masked = true;
+                }
+            } else if bound_masked {
+                page_pass.set_pipeline(&ctx.vsm_depth_pass.pipeline);
+                page_pass.set_bind_group(0, ctx.vsm_pageinfo_bg, &[(page_ord as u32) * 256]);
+                bound_masked = false;
+            }
             if let Some(gpu_mesh) = ctx
                 .registry
                 .mesh_by_slot(objects[run.start as usize].mesh_index)
@@ -330,6 +379,12 @@ pub fn record_vsm_pages(
         }
     }
     encoder.finish()
+}
+
+/// Two objects may share a draw run when both are plain, or both masked with one material.
+fn masked_compatible(alpha_test: &[bool], a: usize, b: usize) -> bool {
+    let (ma, mb) = (is_masked(alpha_test, a), is_masked(alpha_test, b));
+    ma == mb && (!ma || a == b)
 }
 
 /// Whether the projected bounds touch the `[-1, 1]` xy square of `view_proj` (depth ignored).

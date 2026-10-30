@@ -419,6 +419,17 @@ impl PbrPass {
                     },
                     count: None,
                 },
+                // 25: opaque scene colour copy for refraction (MAT-06)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 25,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -608,6 +619,7 @@ impl PbrPass {
         sdf_sampler: &wgpu::Sampler,
         vsm_shadow_view: &wgpu::TextureView,
         vsm_shadow_sampler: &wgpu::Sampler,
+        scene_copy_view: &wgpu::TextureView,
     ) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("pbr_scene_bg"),
@@ -700,6 +712,10 @@ impl PbrPass {
                 wgpu::BindGroupEntry {
                     binding: 24,
                     resource: gi_probe_offset_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 25,
+                    resource: wgpu::BindingResource::TextureView(scene_copy_view),
                 },
             ],
         })
