@@ -5,6 +5,7 @@ use super::FrameState;
 
 impl Renderer {
     pub(super) fn pass_ddgi_fill(&mut self, f: &mut FrameState<'_>) {
+        self.gi.poll(&self.device, &self.queue);
         let objects = f.objects;
         let encoder = &mut f.encoder;
         self.ddgi_gpu.record_gpu_fill(

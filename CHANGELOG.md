@@ -51,6 +51,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - Courier (B9): settings screen (volume and effect switches, saved between runs).
 - Render (PST-03): motion blur spreads beyond object edges. Velocity tile maxima (20×20, 3×3 neighbourhood) in `post/motion_blur_tiles.rs` and `shaders/motion_blur_tiles.wgsl`; `MotionBlurSettings::spread_beyond_edges` (off by default; off leaves the frame unchanged).
 - Networking (NET-01): new crate `redox_net` with the `Transport` seam, a deterministic `LoopbackWire` (latency, jitter, loss, duplication), `NetServer`/`NetClient` with a 16-player limit, reliable and ordered channel, deduplicated unreliable channel, newest-wins snapshots, `Message` codec (u16 id + postcard) and a server tick estimator; decision in ADR 0008 (proposed). No UDP adapter, `NetPlugin` or example yet.
+- Render (GI-01, steps 1-3): octahedral mapping (`gi::oct`), analytic box scene and sphere tracing (`gi::sdf_ref`, `cornell_box`), CPU path-tracing reference (`gi::reference`), toroidal probe cascade (`gi::cascade`), global SDF volume on CPU and GPU (`sdf::global`, `sdf::global_gpu`, background rebuild via `Renderer::set_gi_static_geometry` / `set_gi_static_bricks`), probe ray trace (`gi::trace::GiTracer`, `shaders/gi_trace.wgsl`). Not yet wired into the frame; the DDGI path is unchanged.
 
 ### Removed
 - Old examples `showcase`, `prism_vault`, `ball_score`, `shadow_lab` (kept: `skinned_demo`, `dino_runner`, `dino_game`).
