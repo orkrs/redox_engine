@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use crate::check::node_types;
 use crate::eval::{Value, apply};
 use crate::graph::{GraphError, MaterialGraph, Node, NodeId, NodeKind, Ty, arity};
+use crate::noise::NoiseKind;
 
 /// Operation of the IR. Arguments are carried by [`Op::args`].
 #[derive(Clone, Debug, PartialEq)]
@@ -44,6 +45,88 @@ pub enum OpKind {
     Pow,
     /// `1 - x`.
     OneMinus,
+    /// Texture sample of `slot`; the argument is the `uv` operand.
+    Texture {
+        /// Texture slot.
+        slot: u8,
+        /// Sampler binding used.
+        sampler: SamplerKind,
+    },
+    /// Tangent-space normal map of `slot`; argument `uv`.
+    NormalMap {
+        /// Texture slot.
+        slot: u8,
+    },
+    /// Triplanar sample of `slot`; arguments `position`, `normal`.
+    Triplanar {
+        /// Texture slot.
+        slot: u8,
+        /// Texture repeats per metre.
+        scale: f32,
+    },
+    /// Single-argument math function (see [`MathFn`]).
+    Math(MathFn),
+    /// `min(a, b)`.
+    Min,
+    /// `max(a, b)`.
+    Max,
+    /// `step(edge, x)`.
+    Step,
+    /// `smoothstep(e0, e1, x)`.
+    Smoothstep,
+    /// `select(b, a, mask >= 0.5)`; arguments `mask`, `a`, `b`.
+    Select,
+    /// Fresnel term with the given exponent; arguments `normal`, `view`.
+    Fresnel(f32),
+    /// Component of a vector; argument is the vector.
+    Split(u8),
+    /// `vec3` from three scalars.
+    Merge,
+    /// Noise of the given kind; argument is the position (`vec2` or `vec3`).
+    Noise(NoiseKind),
+    /// Custom WGSL function of graph node `node`; arguments are its inputs in order.
+    Custom {
+        /// Graph node the function belongs to (names the generated function).
+        node: NodeId,
+        /// Parameters with their types.
+        inputs: Vec<(String, Ty)>,
+        /// Return type.
+        output: Ty,
+        /// Function body.
+        body: String,
+    },
+}
+
+/// Sampler used by a texture operation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SamplerKind {
+    /// Renderer default sampler (`samp_default`).
+    Default,
+    /// Explicit repeat sampler (`samp_repeat`).
+    Repeat,
+    /// Explicit clamp sampler (`samp_clamp`).
+    Clamp,
+}
+
+/// Single-argument math functions, applied component-wise.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MathFn {
+    /// `abs(x)`.
+    Abs,
+    /// `floor(x)`.
+    Floor,
+    /// `x - floor(x)`.
+    Fract,
+    /// `saturate(x)`.
+    Saturate,
+    /// `sin(x)`.
+    Sin,
+    /// `cos(x)`.
+    Cos,
+    /// `sqrt(x)`.
+    Sqrt,
+    /// Remap with `[in_min, in_max, out_min, out_max]`.
+    Remap([f32; 4]),
 }
 
 /// One SSA operation. `id` equals its position in [`Ir::ops`]; every argument is an earlier id.
@@ -245,14 +328,66 @@ impl Lowering<'_> {
             args.push(arg);
         }
         let ty = self.types.get(&id).copied().unwrap_or(Ty::F32);
-        let kind = self.kind_of(&node.kind);
+        let kind = self.kind_of(id, &node.kind);
         let op = self.push(kind, ty, args);
         self.done.insert(id, op);
         op
     }
 
-    fn kind_of(&self, kind: &NodeKind) -> OpKind {
+    fn kind_of(&self, id: NodeId, kind: &NodeKind) -> OpKind {
         match kind {
+            NodeKind::Texture2d { slot } => OpKind::Texture {
+                slot: *slot,
+                sampler: SamplerKind::Default,
+            },
+            NodeKind::TextureSample { slot, clamp } => OpKind::Texture {
+                slot: *slot,
+                sampler: if *clamp {
+                    SamplerKind::Clamp
+                } else {
+                    SamplerKind::Repeat
+                },
+            },
+            NodeKind::NormalMap { slot } => OpKind::NormalMap { slot: *slot },
+            NodeKind::Triplanar { slot, scale } => OpKind::Triplanar {
+                slot: *slot,
+                scale: *scale,
+            },
+            NodeKind::Abs => OpKind::Math(MathFn::Abs),
+            NodeKind::Floor => OpKind::Math(MathFn::Floor),
+            NodeKind::Fract => OpKind::Math(MathFn::Fract),
+            NodeKind::Saturate => OpKind::Math(MathFn::Saturate),
+            NodeKind::Sin => OpKind::Math(MathFn::Sin),
+            NodeKind::Cos => OpKind::Math(MathFn::Cos),
+            NodeKind::Sqrt => OpKind::Math(MathFn::Sqrt),
+            NodeKind::Remap {
+                in_min,
+                in_max,
+                out_min,
+                out_max,
+            } => OpKind::Math(MathFn::Remap([*in_min, *in_max, *out_min, *out_max])),
+            NodeKind::Min => OpKind::Min,
+            NodeKind::Max => OpKind::Max,
+            NodeKind::Step => OpKind::Step,
+            NodeKind::Smoothstep => OpKind::Smoothstep,
+            NodeKind::If => OpKind::Select,
+            NodeKind::Fresnel { power } => OpKind::Fresnel(*power),
+            NodeKind::Split { component } => OpKind::Split(*component),
+            NodeKind::Merge => OpKind::Merge,
+            NodeKind::ValueNoise => OpKind::Noise(NoiseKind::Value),
+            NodeKind::GradientNoise => OpKind::Noise(NoiseKind::Gradient),
+            NodeKind::Worley => OpKind::Noise(NoiseKind::Worley),
+            NodeKind::Custom {
+                inputs,
+                output,
+                body,
+                ..
+            } => OpKind::Custom {
+                node: id,
+                inputs: inputs.clone(),
+                output: *output,
+                body: body.clone(),
+            },
             NodeKind::Uv => OpKind::Uv,
             NodeKind::WorldPos => OpKind::WorldPos,
             NodeKind::Normal => OpKind::Normal,
@@ -351,6 +486,10 @@ fn is_pure(kind: &OpKind) -> bool {
             | OpKind::Time
             | OpKind::Const(_)
             | OpKind::Param(_)
+            | OpKind::Texture { .. }
+            | OpKind::NormalMap { .. }
+            | OpKind::Triplanar { .. }
+            | OpKind::Custom { .. }
     )
 }
 

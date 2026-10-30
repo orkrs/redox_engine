@@ -15,6 +15,4 @@ path = "src/lib.rs"
 serde = { workspace = true }
 ron = { workspace = true }
 thiserror = { workspace = true }
-
-[dev-dependencies]
 naga = { version = "30", features = ["wgsl-in"] }

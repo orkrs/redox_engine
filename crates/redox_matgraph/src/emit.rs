@@ -1,10 +1,10 @@
-//! WGSL expression of one IR operation (MAT-02 step 3).
+//! WGSL expression of one IR operation (MAT-02 step 3, extended by MAT-03).
 //!
 //! Operands are named `v<id>` by the code generator. Scalars are splatted to the result type
 //! where a WGSL builtin needs matching types; `+ - *` already accept scalar/vector mixes.
 
 use crate::graph::Ty;
-use crate::ir::{Ir, Op, OpKind};
+use crate::ir::{Ir, MathFn, Op, OpKind, SamplerKind};
 
 /// WGSL expression computing `op` from its operands.
 pub(crate) fn expr(ir: &Ir, op: &Op) -> String {
@@ -52,6 +52,90 @@ pub(crate) fn expr(ir: &Ir, op: &Op) -> String {
             splat(&arg(1), arg_ty(1), op.ty)
         ),
         OpKind::OneMinus => format!("(1.0 - {})", arg(0)),
+        OpKind::Texture { slot, sampler } => {
+            format!("textureSample(tex{slot}, {}, {})", sampler_name(*sampler), arg(0))
+        }
+        OpKind::NormalMap { slot } => format!(
+            "mg_normal_map(tex{slot}, samp_default, {}, in.world_normal, in.world_tangent)",
+            arg(0)
+        ),
+        OpKind::Triplanar { slot, scale } => format!(
+            "mg_triplanar(tex{slot}, samp_default, {}, {}, {})",
+            arg(0),
+            arg(1),
+            literal(*scale)
+        ),
+        OpKind::Math(f) => math(f, &arg(0)),
+        OpKind::Min => format!("min({}, {})", splat_arg(0), splat_arg(1)),
+        OpKind::Max => format!("max({}, {})", splat_arg(0), splat_arg(1)),
+        OpKind::Step => format!("step({}, {})", splat_arg(0), splat_arg(1)),
+        OpKind::Smoothstep => format!(
+            "smoothstep({}, {}, {})",
+            splat_arg(0),
+            splat_arg(1),
+            splat_arg(2)
+        ),
+        OpKind::Select => format!(
+            "select({}, {}, {} >= 0.5)",
+            splat(&arg(2), arg_ty(2), op.ty),
+            splat(&arg(1), arg_ty(1), op.ty),
+            arg(0)
+        ),
+        OpKind::Fresnel(power) => format!(
+            "pow(1.0 - saturate(dot({}, {})), {})",
+            arg(0),
+            arg(1),
+            literal(*power)
+        ),
+        OpKind::Split(index) => {
+            let swizzle = ["x", "y", "z", "w"].get(usize::from(*index)).copied().unwrap_or("x");
+            format!("{}.{swizzle}", arg(0))
+        }
+        OpKind::Merge => format!("vec3<f32>({}, {}, {})", arg(0), arg(1), arg(2)),
+        OpKind::Noise(kind) => {
+            let dims = arg_ty(0).components();
+            let point = if arg_ty(0) == Ty::Vec2 {
+                format!("vec3<f32>({}, 0.0)", arg(0))
+            } else {
+                arg(0)
+            };
+            format!("{}({point}, {dims}u)", kind.wgsl_fn())
+        }
+        OpKind::Custom { node, inputs, .. } => {
+            let args: Vec<String> = (0..inputs.len()).map(arg).collect();
+            format!("custom_{node}({})", args.join(", "))
+        }
+    }
+}
+
+/// WGSL name of a sampler binding.
+fn sampler_name(sampler: SamplerKind) -> &'static str {
+    match sampler {
+        SamplerKind::Default => "samp_default",
+        SamplerKind::Repeat => "samp_repeat",
+        SamplerKind::Clamp => "samp_clamp",
+    }
+}
+
+/// Single-argument math. The remap formula matches [`crate::eval`] operation by operation.
+fn math(f: &MathFn, x: &str) -> String {
+    match f {
+        MathFn::Abs => format!("abs({x})"),
+        MathFn::Floor => format!("floor({x})"),
+        MathFn::Fract => format!("fract({x})"),
+        MathFn::Saturate => format!("saturate({x})"),
+        MathFn::Sin => format!("sin({x})"),
+        MathFn::Cos => format!("cos({x})"),
+        MathFn::Sqrt => format!("sqrt({x})"),
+        MathFn::Remap([in_min, in_max, out_min, out_max]) => format!(
+            "((({x} - {}) / ({} - {})) * ({} - {}) + {})",
+            literal(*in_min),
+            literal(*in_max),
+            literal(*in_min),
+            literal(*out_max),
+            literal(*out_min),
+            literal(*out_min)
+        ),
     }
 }
 
