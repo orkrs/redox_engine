@@ -166,7 +166,7 @@ fn selftest() -> Result<(), String> {
         }
     }
 
-    let mut received = vec![0usize; CLIENT_COUNT];
+    let mut received = [0usize; CLIENT_COUNT];
     while received.iter().any(|&count| count < total) {
         check_deadline(deadline, "relayed messages at the clients")?;
         step(&mut server, &mut clients, &mut last);
