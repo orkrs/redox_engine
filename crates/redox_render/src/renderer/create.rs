@@ -30,6 +30,11 @@ pub fn required_device_limits(adapter: &wgpu::Limits) -> wgpu::Limits {
             defaults.max_storage_textures_per_shader_stage,
             STORAGE_TEXTURES_CAP,
         ),
+        max_bind_groups: raised(
+            adapter.max_bind_groups,
+            defaults.max_bind_groups,
+            crate::matgraph_cache::GRAPH_BIND_GROUPS,
+        ),
         ..defaults
     }
 }

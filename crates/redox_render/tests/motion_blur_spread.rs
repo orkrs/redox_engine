@@ -130,7 +130,7 @@ fn covered_width(frame: &[u8], threshold: f32) -> usize {
 fn flying_cube(rig: &mut Rig) -> Vec<u8> {
     let mut last = Vec::new();
     for i in 0..5 {
-        let x = -1.6 + 0.8 * i as f32;
+        let x = -2.4 + 0.8 * i as f32;
         let cube = rig.object(Vec3::new(x, 0.0, -5.0), Vec3::ONE);
         last = rig.frame(&[cube]);
     }

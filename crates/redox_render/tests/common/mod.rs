@@ -14,6 +14,11 @@ pub fn device_with_bc(adapter: &wgpu::Adapter) -> Option<(wgpu::Device, wgpu::Qu
         | redox_render::profiler::PROFILER_FEATURES;
     pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         required_features: adapter.features() & wanted,
+        required_limits: if adapter.get_info().backend == wgpu::Backend::Vulkan {
+            redox_render::renderer::required_device_limits(&adapter.limits())
+        } else {
+            wgpu::Limits::default()
+        },
         ..Default::default()
     }))
     .ok()

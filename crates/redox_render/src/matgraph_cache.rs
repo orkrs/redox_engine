@@ -183,7 +183,8 @@ pub struct MaterialGraphs {
     sample_count: u32,
     graph_bgl: wgpu::BindGroupLayout,
     /// Pipeline layout: the four PBR groups followed by the graph parameter group.
-    layout: wgpu::PipelineLayout,
+    /// `None` when the device allows fewer than five bind groups: graph materials are refused.
+    layout: Option<wgpu::PipelineLayout>,
     cache: MaterialShaderCache,
     pipelines: HashMap<ShaderKey, wgpu::RenderPipeline>,
     materials: HashMap<usize, GraphMaterial>,
@@ -268,6 +269,11 @@ impl MaterialGraphs {
         graph: &MaterialGraph,
         params: &[[f32; 4]],
     ) -> Result<ShaderKey, MaterialGraphError> {
+        if self.layout.is_none() {
+            return Err(MaterialGraphError::Wgsl(VariantError::InvalidWgsl(
+                "the device allows fewer than 5 bind groups".to_owned(),
+            )));
+        }
         let options = CodegenOptions {
             pass: Pass::Main,
             features: Features::default(),
@@ -334,12 +340,12 @@ impl MaterialGraphs {
 
     /// Creates the pipeline of a variant whose module is already in the cache.
     fn build_pipeline(&mut self, device: &wgpu::Device, key: ShaderKey) {
-        let Some(module) = self.cache.module(key) else {
+        let (Some(module), Some(layout)) = (self.cache.module(key), self.layout.as_ref()) else {
             return;
         };
         let pipeline = pbr_render_pipeline(
             device,
-            &self.layout,
+            layout,
             module,
             self.surface_format,
             self.sample_count,
@@ -364,23 +370,31 @@ impl MaterialGraphs {
     }
 }
 
+/// Bind groups the graph pass needs: the four PBR groups and the graph parameter group.
+pub const GRAPH_BIND_GROUPS: u32 = 5;
+
 /// Pipeline layout of the graph pass: the PBR groups 0..3 and the graph parameter group 4.
 fn graph_layout(
     device: &wgpu::Device,
     pbr: &PbrPass,
     graph_bgl: &wgpu::BindGroupLayout,
-) -> wgpu::PipelineLayout {
-    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("matgraph_pipeline_layout"),
-        bind_group_layouts: &[
-            Some(&pbr.frame_bgl),
-            Some(&pbr.scene_bgl),
-            Some(&pbr.material_bgl),
-            Some(&pbr.model_bgl),
-            Some(graph_bgl),
-        ],
-        immediate_size: 0,
-    })
+) -> Option<wgpu::PipelineLayout> {
+    if device.limits().max_bind_groups < GRAPH_BIND_GROUPS {
+        return None;
+    }
+    Some(
+        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("matgraph_pipeline_layout"),
+            bind_group_layouts: &[
+                Some(&pbr.frame_bgl),
+                Some(&pbr.scene_bgl),
+                Some(&pbr.material_bgl),
+                Some(&pbr.model_bgl),
+                Some(graph_bgl),
+            ],
+            immediate_size: 0,
+        }),
+    )
 }
 
 /// One value per parameter slot: the given value, or the slot default when it is missing.
