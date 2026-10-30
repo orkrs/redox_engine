@@ -5,8 +5,9 @@
 //! The `hlod_frame` cost is measured on the CPU. When a GPU adapter exists the
 //! same scene is also rendered headless and the renderer's `FrameCpuTimings`
 //! (prepare, record, submit) are printed. Without an adapter that part is skipped.
-//! ASSUMPTION: the proxies are drawn with the cube mesh as a stand-in, so the GPU
-//! numbers measure the draw path, not the proxy geometry.
+//! The proxies are real: each cell's 100 actors are merged by `build_proxy` and uploaded
+//! with `upload_proxy` (one mean colour per cell, VG-04 variant b). ASSUMPTION: the actors
+//! of this bench have no meshes of their own, so each actor is a unit cube.
 
 #![allow(clippy::unwrap_used)]
 
@@ -18,8 +19,8 @@ use redox_math::{Aabb, Mat4, Quat, Vec3};
 use redox_render::Renderer;
 use redox_render::camera::Camera;
 use redox_render::frame::FrameView;
-use redox_render::hlod::HlodConfig;
-use redox_render::hlod_gpu::ProxyGpu;
+use redox_render::hlod::{HlodConfig, HlodInput, HlodParams, HlodProxy, build_proxy};
+use redox_render::hlod_gpu::{ProxyGpu, proxy_render_object, upload_proxy};
 use redox_render::light::{DirectionalLight, LightScene};
 use redox_render::material::Material;
 use redox_render::mesh::primitive::create_cube;
@@ -70,6 +71,35 @@ fn spawn_scene(world: &mut World) -> Vec<Entity> {
         }
     }
     entities
+}
+
+/// The proxy of one cell: the unit cubes of its actors merged by `build_proxy`, as `bake-hlod` does.
+fn build_cell_proxy(cell: PartitionCell) -> HlodProxy {
+    let cube = create_cube();
+    let positions: Vec<[f32; 3]> = cube.vertices.iter().map(|v| v.position).collect();
+    let origin = Vec3::new(cell.x as f32 * CELL_SIZE, 0.0, cell.y as f32 * CELL_SIZE);
+    let transforms: Vec<Mat4> = (0..PER_CELL)
+        .map(|i| {
+            let offset = Vec3::new((i % 10) as f32 * 4.0 + 1.0, 0.5, (i / 10) as f32 * 4.0 + 1.0);
+            Mat4::from_translation(origin + offset)
+        })
+        .collect();
+    let inputs: Vec<HlodInput<'_>> = transforms
+        .iter()
+        .map(|&transform| HlodInput {
+            positions: &positions,
+            indices: &cube.indices,
+            transform,
+            color: [0.5, 0.5, 0.5],
+            vertex_colors: None,
+        })
+        .collect();
+    let params = HlodParams {
+        target_triangles: 2000,
+        max_error: 0.05 * CELL_SIZE,
+        weld_epsilon: 1e-4,
+    };
+    build_proxy(&inputs, &params).expect("cell proxy")
 }
 
 /// Average microseconds of `hlod_frame` over `frames` frames, and the object count of the last one.
@@ -210,15 +240,23 @@ fn four_thousand_objects_in_forty_cells_seen_from_300m() {
         Vec3::ZERO,
         cells.iter().copied(),
     );
-    for cell in &cells {
-        runtime.register_proxy(
-            *cell,
-            ProxyGpu {
-                mesh_slot: cube,
-                material_slot: material,
-                bounds: Aabb::empty(),
-            },
-        );
+    // Real proxies: built per cell, and uploaded when a GPU adapter exists. Without one the
+    // runtime gets placeholder slots, which only the CPU part uses.
+    let proxies: Vec<HlodProxy> = cells.iter().map(|cell| build_cell_proxy(*cell)).collect();
+    let gpu_proxies: Option<Vec<ProxyGpu>> = gpu.as_mut().map(|rig| {
+        proxies
+            .iter()
+            .map(|proxy| upload_proxy(&mut rig.renderer, proxy))
+            .collect()
+    });
+    let placeholder = ProxyGpu {
+        mesh_slot: cube,
+        material_slot: material,
+        bounds: Aabb::empty(),
+    };
+    for (i, cell) in cells.iter().enumerate() {
+        let slot = gpu_proxies.as_ref().map_or(placeholder, |slots| slots[i]);
+        runtime.register_proxy(*cell, slot);
     }
     world.insert_resource(runtime);
     let _ = time_frames(&mut world, &entities, viewer, 0.1, WARMUP_FRAMES);
@@ -245,7 +283,17 @@ fn four_thousand_objects_in_forty_cells_seen_from_300m() {
         .iter()
         .map(|e| detail_object(e.id(), cube, material))
         .collect();
+    let Some(slots) = gpu_proxies.as_deref() else {
+        return;
+    };
     hlod_frame(&mut world, viewer, 0.0, &mut with_objects);
+    // The cells are in the proxy state here, so the proxies are drawn at full opacity.
+    with_objects.extend(
+        slots
+            .iter()
+            .enumerate()
+            .map(|(i, slot)| proxy_render_object(slot, 100_000 + i as u32, 1.0)),
+    );
     let without = gpu_median(rig, &without_objects);
     let with = gpu_median(rig, &with_objects);
     println!(

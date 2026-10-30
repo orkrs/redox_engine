@@ -388,6 +388,21 @@ fn to_u32(len: usize) -> Result<u32, HlodError> {
 }
 
 impl HlodProxy {
+    /// The one colour of the cell (variant b of VG-04): the mean of the vertex colours,
+    /// used as the base colour of the proxy material because the renderer has no
+    /// per-vertex colour. White when the proxy has no vertices.
+    pub fn mean_colour(&self) -> [f32; 3] {
+        if self.colors.is_empty() {
+            return [1.0; 3];
+        }
+        let sum = self
+            .colors
+            .iter()
+            .fold([0.0_f32; 3], |acc, c| [acc[0] + c[0], acc[1] + c[1], acc[2] + c[2]]);
+        let n = self.colors.len() as f32;
+        sum.map(|s| s / n)
+    }
+
     /// Axis-aligned bounds of the vertices (zeros when there are none).
     fn bounds(&self) -> ([f32; 3], [f32; 3]) {
         let Some(first) = self.vertices.first() else {

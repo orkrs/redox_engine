@@ -91,7 +91,12 @@ pub fn select_probes(probes: &[ReflectionProbe], pos: Vec3) -> [(usize, f32); 2]
             (weight > 0.0).then_some((index, probe.priority, weight))
         })
         .collect();
-    candidates.sort_by(|a, b| b.1.cmp(&a.1).then(b.2.total_cmp(&a.2)));
+    // Priority first, then weight, then the lower probe index: the choice does not depend on sort stability.
+    candidates.sort_by(|a, b| {
+        b.1.cmp(&a.1)
+            .then(b.2.total_cmp(&a.2))
+            .then(a.0.cmp(&b.0))
+    });
 
     let mut slots = [(0usize, 0.0f32); 2];
     for (slot, &(index, _, weight)) in slots.iter_mut().zip(candidates.iter().take(2)) {
@@ -185,5 +190,37 @@ mod tests {
     #[test]
     fn no_probe_gives_zero_weights() {
         assert_eq!(select_probes(&[], Vec3::ZERO), [(0, 0.0), (0, 0.0)]);
+    }
+
+    #[test]
+    fn three_probes_with_equal_priority_and_weight_pick_the_lowest_indices() {
+        // All three contain the point with the same weight (1.0) and the same priority.
+        let p = probe(Vec3::ZERO, 5.0, 1.0, 0);
+        let picked = select_probes(&[p, p, p], Vec3::ZERO);
+        assert_eq!(picked[0].0, 0);
+        assert_eq!(picked[1].0, 1);
+        assert!((picked[0].1 - 0.5).abs() < 1e-6, "{picked:?}");
+        assert!((picked[1].1 - 0.5).abs() < 1e-6, "{picked:?}");
+    }
+
+    #[test]
+    fn the_insertion_order_does_not_change_the_chosen_probes() {
+        // Distinct priorities and weights, so the choice is fixed by the values, not the positions.
+        let low = probe(Vec3::ZERO, 5.0, 1.0, 0);
+        let high = probe(Vec3::new(1.0, 0.0, 0.0), 5.0, 1.0, 2);
+        let mid = probe(Vec3::new(-1.0, 0.0, 0.0), 5.0, 1.0, 1);
+        let pos = Vec3::new(0.2, 0.0, 0.0);
+        let forward = [low, high, mid];
+        let reversed = [mid, high, low];
+        let chosen = |list: &[ReflectionProbe]| -> Vec<(ReflectionProbe, f32)> {
+            select_probes(list, pos)
+                .iter()
+                .filter(|(_, w)| *w > 0.0)
+                .map(|&(i, w)| (list[i], w))
+                .collect()
+        };
+        assert_eq!(chosen(&forward), chosen(&reversed));
+        assert_eq!(chosen(&forward)[0].0, high);
+        assert_eq!(chosen(&forward)[1].0, mid);
     }
 }
