@@ -15,7 +15,8 @@ use redox_scene::world_bin::BinWorld;
 use redox_scene::{ActorKindTable, PartitionCell};
 
 use crate::app::AppBuilder;
-use crate::hlod_system::HlodRuntime;
+use crate::dispatcher::Stage;
+use crate::hlod_system::{HlodRuntime, HlodSettings, hlod_frame_system};
 use crate::plugin::Plugin;
 
 /// Name of the actor kind table read next to the world file.
@@ -124,22 +125,30 @@ pub fn load_hlod_scene(
     Ok(Some(HlodScene { runtime, kinds }))
 }
 
-/// Loads the HLOD of a scene at start-up.
+/// Loads the HLOD of a scene at start-up and runs its frame step.
 ///
 /// The world file is `world_bin`; its `.hlod` files and `actor_kinds.ron` are read
 /// from the same folder. Without them nothing is inserted and the frame does not change.
+/// The frame step is a system on [`Stage::Render`]: it reads the objects that
+/// extraction put in `FrameRenderObjects` earlier in the frame, so the draw system
+/// must be added after this plugin.
+// ASSUMPTION: systems of one stage run in registration order.
 pub struct HlodPlugin {
     /// Path of the scene's `world.bin`.
     pub world_bin: PathBuf,
     /// Switch distance, hysteresis and fade time of the cell cross-fade.
     pub config: HlodConfig,
+    /// Initial value of [`HlodSettings::enabled`]; the step still does nothing without proxies.
+    pub enabled: bool,
 }
 
 impl Plugin for HlodPlugin {
     fn build(&self, app: &mut AppBuilder) {
         let world_bin = self.world_bin.clone();
         let config = self.config;
+        let enabled = self.enabled;
         app.on_render_setup(move |world, render| {
+            world.insert_resource(HlodSettings { enabled });
             let scene = load_hlod_scene(&world_bin, config, |proxy| {
                 redox_render::hlod_gpu::upload_proxy(render, proxy)
             });
@@ -154,6 +163,7 @@ impl Plugin for HlodPlugin {
                 Err(message) => log::warn!("HLOD stays off: {message}"),
             }
         });
+        app.add_system_mut(Stage::Render, |world, _| hlod_frame_system(world));
     }
 }
 
