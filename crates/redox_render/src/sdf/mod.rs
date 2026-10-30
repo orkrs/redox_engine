@@ -30,6 +30,8 @@
 
 pub mod atlas;
 pub mod bake;
+pub mod global;
+pub mod global_gpu;
 pub mod gpu_atlas;
 
 pub use atlas::{BrickRef, SdfBrick, SdfBrickAtlas};

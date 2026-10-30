@@ -4,6 +4,7 @@ use bytemuck::{Pod, Zeroable};
 use redox_math::Vec3;
 
 use super::ddgi::{DdgiProbeGrid, GridDimensions};
+use super::oct::oct_encode;
 use crate::shader::{DDGI_TRACE_WGSL, create_shader_module};
 use crate::systems::RenderObject;
 
@@ -309,52 +310,12 @@ impl DdgiGpu {
     }
 }
 
-/// Octahedral encode (unit vector → [0,1]²).
-fn oct_encode(n: Vec3) -> (f32, f32) {
-    let n = n / (n.x.abs() + n.y.abs() + n.z.abs()).max(1e-6);
-    let mut u = n.x;
-    let mut v = n.z;
-    if n.y < 0.0 {
-        let ou = u;
-        u = (1.0 - v.abs()) * sign_nonzero(ou);
-        v = (1.0 - ou.abs()) * sign_nonzero(v);
-    }
-    (
-        (u * 0.5 + 0.5).clamp(0.0, 1.0),
-        (v * 0.5 + 0.5).clamp(0.0, 1.0),
-    )
-}
-
-fn sign_nonzero(x: f32) -> f32 {
-    if x >= 0.0 { 1.0 } else { -1.0 }
-}
-
-#[allow(dead_code)]
-fn oct_texel_uv(index: usize) -> (f32, f32) {
-    // 2×4 atlas covering the octahedron.
-    let x = (index % 2) as f32;
-    let y = (index / 2) as f32;
-    ((x + 0.5) / 2.0, (y + 0.5) / 4.0)
-}
-
-#[allow(dead_code)]
-fn oct_decode(uv: (f32, f32)) -> Vec3 {
-    let mut f = Vec3::new(uv.0 * 2.0 - 1.0, 0.0, uv.1 * 2.0 - 1.0);
-    f.y = 1.0 - f.x.abs() - f.z.abs();
-    if f.y < 0.0 {
-        let ox = f.x;
-        f.x = (1.0 - f.z.abs()) * sign_nonzero(ox);
-        f.z = (1.0 - ox.abs()) * sign_nonzero(f.z);
-    }
-    f.normalize_or_zero()
-}
-
 /// CPU-side octahedral sample (used by unit tests / offline tools).
 #[allow(dead_code)]
 pub(crate) fn sample_oct_cpu(samples: &[Vec3; DDGI_OCT_SAMPLES], dir: Vec3) -> Vec3 {
-    let (u, v) = oct_encode(dir);
-    let fx = u * 2.0 - 0.5;
-    let fy = v * 4.0 - 0.5;
+    let uv = oct_encode(dir);
+    let fx = uv.x * 2.0 - 0.5;
+    let fy = uv.y * 4.0 - 0.5;
     let x0 = fx.floor().clamp(0.0, 1.0) as usize;
     let y0 = fy.floor().clamp(0.0, 3.0) as usize;
     let x1 = (x0 + 1).min(1);

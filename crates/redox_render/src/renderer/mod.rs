@@ -13,6 +13,7 @@ mod error;
 mod frame;
 pub use frame::FrameCpuTimings;
 mod helpers;
+mod gi_scene;
 mod init;
 mod memory;
 pub mod motion;
@@ -343,6 +344,8 @@ pub struct Renderer {
     // --- Phase 5 GI / SDF ---
     /// GPU side of the DDGI probe grid.
     pub ddgi_gpu: crate::gi::DdgiGpu,
+    /// Global SDF volume for GI and its background rebuilds (GI-01).
+    pub gi: crate::gi::state::GiState,
     /// GPU signed distance field atlas.
     pub sdf_gpu: crate::sdf::SdfGpuAtlas,
     #[allow(dead_code)]

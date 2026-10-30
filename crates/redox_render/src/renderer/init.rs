@@ -589,6 +589,7 @@ impl Renderer {
         // be uploaded globally (they multiply into directional shadows and look like
         // painted sliding blobs that don't match the real scene casters).
         let ddgi_gpu = crate::gi::DdgiGpu::new_default(&device);
+        let gi = crate::gi::state::GiState::new(&device, &queue);
         let sdf_gpu = crate::sdf::SdfGpuAtlas::new(&device, &queue);
         let (blue_noise_texture, blue_noise_view, blue_noise_sampler) =
             crate::resource::blue_noise::create_blue_noise_texture(&device, &queue);
@@ -863,6 +864,7 @@ impl Renderer {
             bloom_up_bgs,
             bloom_composite_bg,
             ddgi_gpu,
+            gi,
             sdf_gpu,
             blue_noise_texture,
             blue_noise_view,

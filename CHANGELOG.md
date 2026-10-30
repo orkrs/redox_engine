@@ -47,6 +47,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - Scripting (B7c): `raycast_many`, `emit_command` (`ScriptCommand`, `take_commands`), `ScriptRuntime::set_inputs`; Courier coin pickup runs as a WASM module.
 - Audio (B8): streaming music through kira (`register_music`, looped streaming voices on the Music bus, `KiraMusicVoice`, `MusicVoices`).
 - Courier (B9): settings screen (volume and effect switches, saved between runs).
+- Render (GI-01, steps 1-3): octahedral mapping (`gi::oct`), analytic box scene and sphere tracing (`gi::sdf_ref`, `cornell_box`), CPU path-tracing reference (`gi::reference`), toroidal probe cascade (`gi::cascade`), global SDF volume on CPU and GPU (`sdf::global`, `sdf::global_gpu`, background rebuild via `Renderer::set_gi_static_geometry` / `set_gi_static_bricks`), probe ray trace (`gi::trace::GiTracer`, `shaders/gi_trace.wgsl`). Not yet wired into the frame; the DDGI path is unchanged.
 
 ### Removed
 - Old examples `showcase`, `prism_vault`, `ball_score`, `shadow_lab` (kept: `skinned_demo`, `dino_runner`, `dino_game`).
