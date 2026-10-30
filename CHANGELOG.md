@@ -47,6 +47,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - Scripting (B7c): `raycast_many`, `emit_command` (`ScriptCommand`, `take_commands`), `ScriptRuntime::set_inputs`; Courier coin pickup runs as a WASM module.
 - Audio (B8): streaming music through kira (`register_music`, looped streaming voices on the Music bus, `KiraMusicVoice`, `MusicVoices`).
 - Courier (B9): settings screen (volume and effect switches, saved between runs).
+- Networking (NET-01): new crate `redox_net` with the `Transport` seam, a deterministic `LoopbackWire` (latency, jitter, loss, duplication), `NetServer`/`NetClient` with a 16-player limit, reliable and ordered channel, deduplicated unreliable channel, newest-wins snapshots, `Message` codec (u16 id + postcard) and a server tick estimator; decision in ADR 0008 (proposed). No UDP adapter, `NetPlugin` or example yet.
 
 ### Removed
 - Old examples `showcase`, `prism_vault`, `ball_score`, `shadow_lab` (kept: `skinned_demo`, `dino_runner`, `dino_game`).
