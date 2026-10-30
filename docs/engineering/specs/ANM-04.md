@@ -62,3 +62,4 @@ pub fn validate_binding(graph: &AnimGraph, skeleton: &Skeleton, clips_len: usize
 
 - **Осталось:** снять `threshold_bench`, заменить временные `GPU_SKIN_MIN_VERTICES` / `GPU_BATCH_MIN_MESHES` измеренными, вызвать `resolved_mode` из Courier.
 - **Приёмка:** константы с обоснованием числом в `BENCHMARKS.md`.
+- **Исход: ✅** (проверено 2026-10-30): `threshold_bench` снят (`BENCHMARKS.md` «GPU/CPU skinning threshold»), `GPU_SKIN_MIN_VERTICES = 1024`, `GPU_BATCH_MIN_MESHES = 4` измерены, `resolved_mode` вызывается из Courier. Строка «Статус» выше устарела.
