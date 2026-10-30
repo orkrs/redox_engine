@@ -576,6 +576,9 @@ fn the_frame_after_a_capture_equals_the_frame_without_one() {
 
     // Two identical renderers; only one of them captures. The probe stays disabled, so the
     // capture's faces are the only thing that can differ between the two frames.
+    // ASSUMPTION: the VSM page feedback is read back asynchronously, so two renderers may
+    // harvest it at different frames and the bytes differ by a level or two. If this test is
+    // flaky, relax the assertion to `max_channel_diff <= 1` as the other frame tests do.
     captured.set_reflection_probes(&[probe(Vec3::ZERO, 0)]);
     captured
         .capture_reflection_probe(0, &captured_scene.objects, &captured_scene.lights)
