@@ -186,8 +186,9 @@ impl Renderer {
         let unjittered_vp = camera_proj * camera_view;
 
         let jittered_vp = if self.taa_enabled {
-            let jitter = halton_jitter_ndc(
+            let jitter = crate::post::tsr::jitter_ndc(
                 self.taa_frame_count,
+                self.render_scale,
                 self.internal_width,
                 self.internal_height,
             );

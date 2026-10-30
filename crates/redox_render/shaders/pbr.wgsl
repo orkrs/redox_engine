@@ -150,6 +150,7 @@ struct ShaderDebugUniform {
     frame_index: u32,
     ibl_enabled: u32,
     gtao_enabled: u32,
+    lod_bias: f32,
 };
 
 struct VertexOutput {
@@ -842,16 +843,17 @@ fn get_cluster_index(screen_pos: vec2<f32>, cluster_info: ClusterInfo) -> u32 {
 fn material_sample_textures(mat: Material, uv: vec2<f32>, frag_coord: vec4<f32>) -> TextureSamples {
     var tex: TextureSamples;
     tex.albedo = vec4<f32>(1.0);
+    // LOD bias is 0 at native scale and negative when upscaling (PST-07).
     if ((mat.flags & 1u) != 0u) {
-        tex.albedo = textureSample(t_albedo, s_mat, uv);
+        tex.albedo = textureSampleBias(t_albedo, s_mat, uv, shader_debug.lod_bias);
     }
     tex.normal = vec4<f32>(0.0);
     if ((mat.flags & 2u) != 0u) {
-        tex.normal = textureSample(t_normal, s_mat, uv);
+        tex.normal = textureSampleBias(t_normal, s_mat, uv, shader_debug.lod_bias);
     }
     tex.mr = vec4<f32>(0.0);
     if ((mat.flags & 4u) != 0u) {
-        tex.mr = textureSample(t_mr, s_mat, uv);
+        tex.mr = textureSampleBias(t_mr, s_mat, uv, shader_debug.lod_bias);
     }
     // Blue-noise threshold for stochastic alpha (the discard itself is in material_surface).
     let screen_uv = frag_coord.xy / vec2<f32>(textureDimensions(t_blue_noise));

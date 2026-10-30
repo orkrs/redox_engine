@@ -141,6 +141,7 @@ struct ShaderDebugUniform {
     frame_index: u32,
     ibl_enabled: u32,
     gtao_enabled: u32,
+    lod_bias: f32,
 };
 
 // ── group(0): frame / global (mirrors pbr.wgsl group 0) ─────────────────

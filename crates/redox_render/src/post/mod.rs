@@ -12,3 +12,5 @@ pub mod ssr;
 /// Subsurface-scattering math: wrap lighting and the separable kernel (MAT-05).
 pub mod sss;
 pub mod tone_mapping;
+/// Temporal upscaling math for `render_scale < 1`: jitter, LOD bias, sharpening (PST-07).
+pub mod tsr;

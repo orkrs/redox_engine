@@ -422,6 +422,8 @@ pub struct ShaderDebugUniform {
     pub ibl_enabled: u32,
     /// Non-zero when ambient occlusion is applied.
     pub gtao_enabled: u32,
+    /// Texture LOD bias for material samples (PST-07); `0.0` at native scale.
+    pub lod_bias: f32,
 }
 
 impl PointLightGpu {

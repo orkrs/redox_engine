@@ -54,3 +54,7 @@ Measured 2026-10-30, release, RTX 4060 Ti (`cargo test --release -p redox_render
 | 50 000 | 100 | 262.608 | 3.800 | 2.134 |
 
 Reading: at 500 vertices one mesh costs the same on both paths; from about 1 000 vertices the GPU wins even with a submit per mesh; for small meshes the GPU only wins when they are skinned together in one batch (`update_gpu_batch`). Hence `GPU_SKIN_MIN_VERTICES = 1024` and `GPU_BATCH_MIN_MESHES = 4`; `MORPH_COST_FACTOR = 2` is an estimate (the benchmark has no morph case).
+
+## TSR upscale (PST-07)
+
+Bench: `cargo test -p redox_render --test tsr -- --ignored --nocapture` (1080 and 2160 square targets, scales 1.0 / 0.77 / 0.67 / 0.5, wall-clock ms per frame including readback, PSNR to the native frame). Numbers are not recorded yet; the coordinator fills this table after the first run.

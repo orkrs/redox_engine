@@ -76,6 +76,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - Minimum supported Rust version is 1.88 (verified with `cargo check --workspace`).
 - Line endings normalized to LF (`.gitattributes`).
 - Large files split: editor `main.rs`, `viewport.rs`, `frame.rs`, VG `runtime.rs`, `vsm_clipmap.rs`, `prism_vault`.
+- Render: TSR path for `render_scale < 1` (PST-07): `post/tsr.rs` (jitter phases `ceil(8/scale²)`, LOD bias, sharpening, `1/scale` history scale), negative material LOD bias via `textureSampleBias`, wider TAA clip window and depth threshold when upscaling; native frames unchanged. Tests in `tests/tsr.rs`.
 
 ### Added
 - Physics: `CollisionLayers` (membership and filter bit masks), `set_collider_layers`, `PhysicsContext::cast_shape` (sphere, capsule, box sweeps), `overlap_shape` and `overlap_any`, with entity exclusion and layer masks in the queries.

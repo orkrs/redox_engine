@@ -42,6 +42,7 @@ impl Renderer {
         u.frame_index = self.taa_frame_count as u32;
         u.ibl_enabled = u32::from(!self.ibl_resource.is_dummy());
         u.gtao_enabled = u32::from(self.ssao_enabled);
+        u.lod_bias = crate::post::tsr::texture_lod_bias(self.render_scale);
         let bytes = bytemuck::bytes_of(&u).to_vec();
         self.staging_ring
             .write_immediate(&self.queue, &self.shader_debug_buffer, 0, &bytes, false);
