@@ -11,7 +11,8 @@ impl Renderer {
         cam_eye: Vec3,
         light_dir: Vec3,
     ) -> Vec<crate::shadow::vsm_clipmap::DirtyPage> {
-        if self.vsm_enabled {
+        // A probe capture renders from the probe centre: its faces must not move the clipmap.
+        if self.vsm_enabled && !self.probe_capture_active {
             self.vsm_clipmap.update(cam_eye, light_dir);
             let mut aabbs: Vec<redox_math::Aabb> = objects.iter().map(|o| o.bounds).collect();
             // Always request pages near the camera frustum, not only object bounds.

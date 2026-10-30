@@ -88,11 +88,20 @@ impl Renderer {
     ///
     /// Renders the six faces (sky and objects, post effects as the renderer applies them to
     /// the frame), prefilters the cube and copies it into the slot. Call again after the
-    /// scene changes. The light uniform and camera uniform are restored afterwards.
+    /// scene changes.
+    ///
+    /// Side effects: the capture leaves the renderer as it found it, so the next frame equals
+    /// the frame of a run without the capture. The faces go through the frame path, so the
+    /// renderer state they touch is saved and restored (TAA frame counter, history and
+    /// previous depth, VSM screen-shadow history, camera and light uniforms, and the
+    /// VSM clipmap, page feedback and object motion, which are not updated at all while the
+    /// faces render). See `renderer::capture_state`.
     ///
     /// Known limitation: the faces go through the normal tone-mapped path, so the capture is
     /// LDR in the surface format, not HDR; very bright sky or lights clip in reflections.
-    /// Probes are not sampled while capturing.
+    /// Moving the target to `Rgba16Float` is not local: the post chain (tone mapping, bloom,
+    /// TAA resolve) writes into the surface format, so faces would need a linear-HDR output
+    /// path first. Probes are not sampled while capturing.
     pub fn capture_reflection_probe(
         &mut self,
         slot: usize,
@@ -105,8 +114,7 @@ impl Renderer {
             .get(slot)
             .ok_or(ProbeCaptureError::SlotEmpty(slot))?;
         let target = self.create_probe_capture_target();
-        let saved_camera = self.camera_uniform;
-        let saved_light = self.pbr_pass_light_uniform();
+        let saved = self.begin_probe_capture();
         let camera = Camera::new(std::f32::consts::FRAC_PI_2, 1.0, CAPTURE_NEAR, CAPTURE_FAR);
 
         // Captures must not sample probes (recursion): the table is empty while the faces render.
@@ -114,8 +122,7 @@ impl Renderer {
             .write_table(&self.queue, &ProbesGpu::default());
         let result = self.render_probe_faces(&target, &camera, lights, objects, &probe);
         self.reflection_probes.upload(&self.queue);
-        self.camera_uniform = saved_camera;
-        self.update_light_buffer(&saved_light);
+        self.end_probe_capture(saved);
         result?;
 
         let cube = target.create_view(&wgpu::TextureViewDescriptor {

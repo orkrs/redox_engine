@@ -155,7 +155,7 @@ impl Renderer {
         );
 
         self.gpu_profiler.begin_frame(&self.device);
-        if self.vsm_enabled {
+        if self.vsm_enabled && !self.probe_capture_active {
             self.vsm_page_request.begin_frame(&self.device);
         }
         let mut ts_encoder = self
@@ -407,7 +407,7 @@ impl Renderer {
                 .chain(std::iter::once(encoder.finish())),
         );
         self.gpu_profiler.after_submit();
-        if self.vsm_enabled {
+        if self.vsm_enabled && !self.probe_capture_active {
             // The first frames wait for the feedback so shadows are fine-grained from the start.
             self.vsm_page_request
                 .after_submit(&self.device, self.vsm_request_frames < 4);
