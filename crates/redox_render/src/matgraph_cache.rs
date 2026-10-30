@@ -13,8 +13,8 @@ use std::collections::hash_map::Entry;
 use std::path::PathBuf;
 
 use redox_matgraph::{
-    CodegenOptions, Features, Generated, GraphError, MaterialGraph, ShaderKey, Variant,
-    compile_variant,
+    CodegenOptions, Features, Generated, GraphError, GraphReload, MatGraphWatcher, MaterialGraph,
+    ShaderKey, Variant, compile_variant,
 };
 
 use crate::matgraph_passes::{
@@ -601,6 +601,131 @@ fn parameter_bytes(values: &[[f32; 4]]) -> Vec<u8> {
         return vec![0; 16];
     }
     bytemuck::cast_slice(values).to_vec()
+}
+
+/// Poll interval of [`MaterialGraphHotReload::new`].
+const GRAPH_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// A `.matgraph` file bound to a material slot.
+struct WatchedGraph {
+    material_index: usize,
+    params: Vec<[f32; 4]>,
+    watcher: MatGraphWatcher,
+}
+
+/// One failed reload of a material slot. The slot keeps the graph it had before.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GraphReloadFailure {
+    /// Material slot whose file failed.
+    pub material_index: usize,
+    /// Why the new graph was not applied.
+    pub error: MaterialGraphError,
+}
+
+/// Watches `.matgraph` files of material slots and rebuilds a slot's variants when its file
+/// changes, without a restart (MAT-02 step 6).
+///
+/// Call [`Self::update`] once per frame, as the shader hot reload is called. A
+/// file that does not parse, validate or compile is reported once per change; the slot keeps
+/// its previous graph and pipelines.
+pub struct MaterialGraphHotReload {
+    watched: Vec<WatchedGraph>,
+    interval: std::time::Duration,
+    last_poll: Option<std::time::Instant>,
+}
+
+impl Default for MaterialGraphHotReload {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MaterialGraphHotReload {
+    /// Polls at most twice a second.
+    pub fn new() -> Self {
+        Self::with_interval(GRAPH_POLL_INTERVAL)
+    }
+
+    /// Polls at most once per `interval` (`Duration::ZERO` polls on every call).
+    pub fn with_interval(interval: std::time::Duration) -> Self {
+        Self {
+            watched: Vec::new(),
+            interval,
+            last_poll: None,
+        }
+    }
+
+    /// Watches `path` for material slot `material_index`, whose parameter values are `params`.
+    /// The file's current state counts as loaded: only later changes reload.
+    pub fn watch(
+        &mut self,
+        material_index: usize,
+        path: impl Into<std::path::PathBuf>,
+        params: Vec<[f32; 4]>,
+    ) {
+        self.unwatch(material_index);
+        self.watched.push(WatchedGraph {
+            material_index,
+            params,
+            watcher: MatGraphWatcher::new(path),
+        });
+    }
+
+    /// Stops watching the slot. Its graph stays bound. Returns `true` if it was watched.
+    pub fn unwatch(&mut self, material_index: usize) -> bool {
+        let before = self.watched.len();
+        self.watched.retain(|w| w.material_index != material_index);
+        self.watched.len() != before
+    }
+
+    /// Number of watched files.
+    pub fn len(&self) -> usize {
+        self.watched.len()
+    }
+
+    /// `true` when no file is watched.
+    pub fn is_empty(&self) -> bool {
+        self.watched.is_empty()
+    }
+
+    /// Polls the watched files (at most once per interval) and rebuilds the slots whose files
+    /// changed and now compile. Returns the failures of this call; they are also logged.
+    pub fn update(&mut self, renderer: &mut crate::Renderer) -> Vec<GraphReloadFailure> {
+        if self
+            .last_poll
+            .is_some_and(|last| last.elapsed() < self.interval)
+        {
+            return Vec::new();
+        }
+        self.last_poll = Some(std::time::Instant::now());
+        let mut failures = Vec::new();
+        for watched in &mut self.watched {
+            for reload in watched.watcher.poll() {
+                let material_index = watched.material_index;
+                let result = match reload {
+                    GraphReload::Ready(graph) => renderer
+                        .matgraphs
+                        .set_material(
+                            &renderer.device,
+                            &renderer.queue,
+                            material_index,
+                            &graph,
+                            &watched.params,
+                        )
+                        .map(|_| ()),
+                    GraphReload::Failed(errors) => Err(MaterialGraphError::Graph(errors)),
+                };
+                if let Err(error) = result {
+                    log::warn!("material {material_index}: graph reload failed: {error}");
+                    failures.push(GraphReloadFailure {
+                        material_index,
+                        error,
+                    });
+                }
+            }
+        }
+        failures
+    }
 }
 
 #[cfg(test)]
