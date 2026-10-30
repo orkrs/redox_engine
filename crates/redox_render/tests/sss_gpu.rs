@@ -250,3 +250,135 @@ fn px(frame: &[u8], x: u32, y: u32) -> [f32; 3] {
 fn distance(a: [f32; 3], b: [f32; 3]) -> f32 {
     ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
 }
+
+// ---------------------------------------------------------------- blur cost (MAT-05 step 4)
+
+const BENCH_W: u32 = 1920;
+const BENCH_H: u32 = 1080;
+const BENCH_WARMUP: usize = 10;
+const BENCH_FRAMES: usize = 60;
+
+/// Mean frame cost of one configuration, in milliseconds.
+struct BlurCost {
+    /// Wall-clock time of render plus wait for the GPU.
+    wall_ms: f32,
+    /// Sum of the GPU timestamps of the frame (all passes).
+    gpu_ms: f32,
+    /// Whether the adapter gave GPU timestamps; without them the GPU columns are zero.
+    gpu_timed: bool,
+}
+
+/// Mean costs over `BENCH_FRAMES` frames of a half-screen subsurface sphere at 1920x1080 with
+/// TAA on. `blur` keeps the blur on (the default with a subsurface material); otherwise it is
+/// switched off with `set_sss(None)`.
+fn measure_blur_cost(adapter: &wgpu::Adapter, blur: bool) -> Option<BlurCost> {
+    let mut renderer = common::renderer_sized(adapter, BENCH_W, BENCH_H)?;
+    renderer.enable_taa(true);
+    if !blur {
+        renderer.set_sss(None);
+    }
+    let sphere = renderer.upload_mesh(&create_sphere(0.5, 32));
+    let slot = renderer.add_material(
+        Material::solid(Vec3::new(0.8, 0.6, 0.5))
+            .roughness(0.6)
+            .subsurface(SubsurfaceProfile {
+                color: [1.0, 0.35, 0.2],
+                radius_mm: 8.0,
+                wrap: 0.4,
+            }),
+    );
+    let target = renderer.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("sss_bench_target"),
+        size: wgpu::Extent3d {
+            width: BENCH_W,
+            height: BENCH_H,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        view_formats: &[],
+    });
+    let view = target.create_view(&Default::default());
+    // Radius 0.75 m at 3 m: about half of the frame height.
+    let camera = Camera::new(0.9, BENCH_W as f32 / BENCH_H as f32, 0.1, 200.0);
+    renderer
+        .camera_uniform
+        .update(&camera, Vec3::ZERO, Quat::IDENTITY);
+    renderer.update_camera_buffer();
+    let lights = LightScene::new(DirectionalLight::new(
+        Vec3::new(1.0, -0.2, -0.4),
+        Vec3::ONE,
+        3.0,
+    ));
+    let object = RenderObject {
+        id: 1,
+        shadow_class: ShadowClass::Auto,
+        deforms: false,
+        pose_version: 0,
+        model_matrix: Mat4::from_scale_rotation_translation(
+            Vec3::splat(1.5),
+            Quat::IDENTITY,
+            Vec3::new(0.0, 0.0, -3.0),
+        ),
+        color: [1.0; 4],
+        mesh_index: sphere,
+        material_index: slot,
+        bounds: Aabb::from_center_size(Vec3::new(0.0, 0.0, -3.0), Vec3::splat(1.5)),
+    };
+    let objects = [object];
+
+    let (mut wall, mut gpu) = (0.0_f32, 0.0_f32);
+    let mut frames = 0_u32;
+    for step in 0..BENCH_WARMUP + BENCH_FRAMES {
+        let fv = FrameView::new(&camera, &objects, &lights);
+        let start = std::time::Instant::now();
+        renderer.render_frame_view(&fv, &view).expect("frame");
+        let _ = renderer.device.poll(wgpu::PollType::wait_indefinitely());
+        let elapsed = start.elapsed().as_secs_f32() * 1000.0;
+        if step >= BENCH_WARMUP {
+            wall += elapsed;
+            gpu += renderer.gpu_profiler.total_ms();
+            frames += 1;
+        }
+    }
+    let n = frames.max(1) as f32;
+    Some(BlurCost {
+        wall_ms: wall / n,
+        gpu_ms: gpu / n,
+        gpu_timed: renderer.gpu_profiler.is_enabled(),
+    })
+}
+
+/// Cost of the SSS blur at 1920x1080. Run with
+/// `cargo test --release -p redox_render --test sss_gpu sss_blur_cost -- --ignored --nocapture`.
+#[test]
+#[ignore = "measurement"]
+fn sss_blur_cost_at_1080p() {
+    let _gpu = lock();
+    let Some(adapter) = common::adapter() else {
+        eprintln!("no GPU adapter, skipping");
+        return;
+    };
+    let (Some(with), Some(without)) = (
+        measure_blur_cost(&adapter, true),
+        measure_blur_cost(&adapter, false),
+    ) else {
+        eprintln!("no device, skipping");
+        return;
+    };
+    println!(
+        "sss_blur_cost {BENCH_W}x{BENCH_H} frames={BENCH_FRAMES} (mean): \
+         blur on: wall {:.3} ms, gpu total {:.3} ms | \
+         blur off: wall {:.3} ms, gpu total {:.3} ms",
+        with.wall_ms, with.gpu_ms, without.wall_ms, without.gpu_ms
+    );
+    println!(
+        "sss_blur_cost delta: wall {:.3} ms, gpu {:.3} ms (GPU timestamps: {})",
+        with.wall_ms - without.wall_ms,
+        with.gpu_ms - without.gpu_ms,
+        with.gpu_timed
+    );
+}
