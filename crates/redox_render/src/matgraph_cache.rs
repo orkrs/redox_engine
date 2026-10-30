@@ -116,8 +116,9 @@ pub fn graph_pass_source(base: &str, generated: &Generated) -> Result<String, Va
         GRAPH_VERTEX_POSITION,
         1,
     );
+    let textures = texture_decls_wgsl(GRAPH_PARAMS_GROUP);
     Ok(shader_with_vertex_decode(&format!(
-        "{body}\n{}\n{}\n\
+        "{body}\n{}\n{}\n{textures}\
          @group({GRAPH_PARAMS_GROUP}) @binding(0) var<uniform> mat_graph_params: MaterialParams;\n\
          @group({GRAPH_PARAMS_GROUP}) @binding(1) var<uniform> mat_graph_time: vec4<f32>;\n\
          fn material_surface_graph_variant(uv: vec2<f32>, time: f32, surface_in: SurfaceInput, \
@@ -699,6 +700,29 @@ impl MaterialGraphs {
 pub(crate) const GRAPH_TEXTURE_BINDING: u32 = 2;
 /// First binding of the samplers: default at this binding, then repeat and clamp.
 pub(crate) const GRAPH_SAMPLER_BINDING: u32 = GRAPH_TEXTURE_BINDING + GRAPH_TEXTURE_SLOTS as u32;
+
+/// WGSL declarations of the texture slots `tex<i>` and the samplers `samp_default`,
+/// `samp_repeat` and `samp_clamp` in `group`, at the bindings of [`GRAPH_TEXTURE_BINDING`] and
+/// [`GRAPH_SAMPLER_BINDING`]. Every generated module declares them, used or not.
+pub(crate) fn texture_decls_wgsl(group: u32) -> String {
+    let mut text = String::new();
+    for slot in 0..GRAPH_TEXTURE_SLOTS {
+        let binding = GRAPH_TEXTURE_BINDING + u32::from(slot);
+        text.push_str(&format!(
+            "@group({group}) @binding({binding}) var tex{slot}: texture_2d<f32>;\n"
+        ));
+    }
+    for (i, name) in ["samp_default", "samp_repeat", "samp_clamp"]
+        .iter()
+        .enumerate()
+    {
+        let binding = GRAPH_SAMPLER_BINDING + i as u32;
+        text.push_str(&format!(
+            "@group({group}) @binding({binding}) var {name}: sampler;\n"
+        ));
+    }
+    text
+}
 
 /// Parameter group entries: the parameter block and frame time (both vertex and fragment), then
 /// the texture slots and the three samplers (fragment only).
