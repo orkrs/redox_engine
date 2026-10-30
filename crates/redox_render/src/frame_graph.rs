@@ -26,11 +26,22 @@ pub fn frame_graph(width: u32, height: u32) -> RenderGraph {
     let (w, h) = (width.max(1), height.max(1));
     let mut g = RenderGraph::new();
 
-    // Persistent resources that live outside the frame.
+    // Persistent resources that live outside the frame (owned by the renderer, created at init and
+    // resize). Imported so that a read before the first write is not a graph error.
     let shadow_maps = g.import_texture("vsm_pool", target(8192, 8192, F::Depth32Float));
     let ddgi = g.import_texture("ddgi_irradiance", target(1024, 1024, F::Rgba16Float));
     let taa_history = g.import_texture("taa_history", target(w, h, F::Rgba16Float));
     let backbuffer = g.import_texture("backbuffer", target(w, h, F::Bgra8UnormSrgb));
+    // VSM screen shadow (filtered output of the temporal pass, `vsm_shadow_filtered_view`).
+    let vsm_shadow = g.import_texture("vsm_shadow_filtered", target(w, h, F::R8Unorm));
+    // Material surface target written by the normal prepass (`material_surface_view`).
+    let material_surface = g.import_texture("material_surface", target(w, h, F::Rgba8Unorm));
+    // Visibility targets of the virtual geometry (id, normal/depth and uv views, one group here).
+    let vg_vis = g.import_texture("vg_vis_targets", target(w, h, F::Rgba16Float));
+    // Post-chain intermediates: TAA velocity, LDR after tonemap, SMAA output.
+    let taa_velocity = g.import_texture("taa_velocity", target(w, h, F::Rg16Float));
+    let ldr = g.import_texture("ldr", target(w, h, F::Rgba8Unorm));
+    let smaa_out = g.import_texture("smaa_out", target(w, h, F::Rgba8Unorm));
 
     // Per-frame transients.
     let clusters = g.create_texture("vg_clusters", target(w, h, F::R32Uint));
@@ -38,9 +49,7 @@ pub fn frame_graph(width: u32, height: u32) -> RenderGraph {
     let normals = g.create_texture("normals", target(w, h, F::Rgba8Unorm));
     let hiz = g.create_texture("hiz", target(w, h, F::R32Float));
     let ao = g.create_texture("ao", target(w, h, F::R8Unorm));
-    let shadow_mask = g.create_texture("shadow_mask", target(w, h, F::R8Unorm));
     let hdr = g.create_texture("hdr_color", target(w, h, F::Rgba16Float));
-    let hdr_resolved = g.create_texture("hdr_resolved", target(w, h, F::Rgba16Float));
 
     g.add_pass("shadow_passes", |p| {
         p.write(shadow_maps);
@@ -52,36 +61,54 @@ pub fn frame_graph(width: u32, height: u32) -> RenderGraph {
         p.write(clusters);
     });
     g.add_pass("normal_prepass_hiz", |p| {
-        p.read(clusters).write(depth).write(normals).write(hiz);
+        p.read(clusters)
+            .write(depth)
+            .write(normals)
+            .write(hiz)
+            .write(material_surface);
     });
     g.add_pass("gtao", |p| {
         p.read(depth).read(normals).read(hiz).write(ao);
     });
     g.add_pass("vsm_screen_shadow", |p| {
-        p.read(depth).read(shadow_maps).write(shadow_mask);
+        p.read(depth)
+            .read(normals)
+            .read(shadow_maps)
+            .write(vsm_shadow);
     });
     g.add_pass("forward", |p| {
         p.read(ao)
-            .read(shadow_mask)
+            .read(vsm_shadow)
             .read(ddgi)
             .read(depth)
             .write(hdr);
     });
+    // Writes the visibility targets, then resolves them into HDR in the same pass.
     g.add_pass("vg_visibility_resolve", |p| {
-        p.read(clusters).read(depth).read(shadow_mask).write(hdr);
+        p.read(clusters)
+            .read(depth)
+            .read(vsm_shadow)
+            .read_write(vg_vis)
+            .write(hdr);
     });
     g.add_pass("transparent", |p| {
-        p.read(depth).read(shadow_mask).write(hdr);
+        p.read(depth).read(vsm_shadow).write(hdr);
     });
+    // The MSAA resolve and the particles draw into the HDR target (`hdr_view`).
     g.add_pass("msaa_resolve_particles", |p| {
-        p.read(hdr).read(depth).write(hdr_resolved);
+        p.read(depth).write(hdr);
     });
+    // Additive light scatter into HDR (LoadOp::Load on `hdr_view`).
     g.add_pass("scatter_light", |p| {
-        p.read(depth).read(shadow_maps).write(hdr_resolved);
+        p.read(depth).read(shadow_maps).read_write(hdr);
     });
+    // TAA, bloom and tonemap read HDR; the velocity, LDR and SMAA steps are intermediates of this
+    // pass (written and read inside it, hence read_write).
     g.add_pass("taa_tonemap_bloom_smaa", |p| {
-        p.read(hdr_resolved)
-            .read(normals)
+        p.read(hdr)
+            .read_write(taa_velocity)
+            .read_write(ldr)
+            .read_write(smaa_out)
             .read_write(taa_history)
             .write(backbuffer);
     });
@@ -161,10 +188,10 @@ mod tests {
             "culled passes: {:?}",
             compiled.culled
         );
-        // The frame's transients overlap in time or differ in format (ao and shadow_mask share
-        // R8 but live together; hdr and hdr_resolved overlap in the resolve pass), so today the
-        // plan needs one slot each. A future format merge would lower this number.
-        let transients = 8;
+        // Transients: vg_clusters, depth, normals, hiz, ao, hdr_color (the other frame targets are
+        // imports). They overlap in time or differ in format, so today the plan needs one slot
+        // each. A future format merge would lower this number.
+        let transients = 6;
         assert!(compiled.slot_count <= transients);
         assert_eq!(
             compiled.physical.iter().flatten().count(),

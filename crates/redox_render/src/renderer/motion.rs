@@ -90,7 +90,9 @@ impl super::Renderer {
     /// Records the pass that overwrites the velocity of moving objects (after the fullscreen
     /// camera-motion pass, which it loads).
     pub(super) fn record_object_velocity(&self, encoder: &mut wgpu::CommandEncoder) {
-        if self.object_motion.moving.is_empty() {
+        self.object_velocity_draws
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+        if self.skip_object_velocity_pass || self.object_motion.moving.is_empty() {
             return;
         }
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -118,6 +120,7 @@ impl super::Renderer {
         });
         pass.set_pipeline(&self.object_velocity_pass.pipeline);
         pass.set_bind_group(0, &self.object_velocity_bg, &[]);
+        let mut draws = 0u32;
         for &(instance, mesh_slot) in &self.object_motion.moving {
             let Some(mesh) = self.registry.mesh_by_slot(mesh_slot) else {
                 continue;
@@ -125,7 +128,24 @@ impl super::Renderer {
             pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
             pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
             pass.draw_indexed(0..mesh.index_count, 0, instance..instance + 1);
+            draws += 1;
         }
+        self.object_velocity_draws
+            .store(draws, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test switch (RND-10 step 1 measurement): when `skip` is true the separate object-velocity
+    /// pass is not recorded, so moving objects keep only the camera-motion value.
+    #[doc(hidden)]
+    pub fn debug_skip_object_velocity(&mut self, skip: bool) {
+        self.skip_object_velocity_pass = skip;
+    }
+
+    /// Draw calls of the object-velocity pass in the last frame (0 when skipped or nothing moved).
+    #[doc(hidden)]
+    pub fn debug_object_velocity_draws(&self) -> u32 {
+        self.object_velocity_draws
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 }
 

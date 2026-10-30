@@ -197,3 +197,85 @@ fn ids_keep_the_motion_right_when_the_object_order_changes() {
     let (vx, _) = rig.velocity_at(px, py);
     assert!((vx - 0.115).abs() < JITTER, "motion follows the id: {vx}");
 }
+
+/// Velocities read after two frames, plus the pass counters of the second frame.
+struct Readings {
+    moving: (f32, f32),
+    still: (f32, f32),
+    sky: (f32, f32),
+    forward_calls: u32,
+    object_draws: u32,
+}
+
+/// Two frames: a cube moves 0.5 m to the right while a second cube stays; the camera moves by
+/// `camera_x` between the frames. `skip` sets the debug flag before any frame is rendered.
+fn two_frames(skip: bool, camera_x: f32) -> Option<Readings> {
+    let mut rig = rig()?;
+    rig.renderer.debug_skip_object_velocity(skip);
+    let moving_before = rig.object(Vec3::new(-0.25, 0.0, 0.0), Vec3::ONE);
+    let moving_after = rig.object(Vec3::new(0.25, 0.0, 0.0), Vec3::ONE);
+    let still = rig.object(Vec3::new(-1.5, 0.0, 0.0), Vec3::ONE);
+    rig.draw(&[moving_before, still.clone()], None);
+    rig.renderer
+        .camera_uniform
+        .update(&rig.camera, Vec3::new(camera_x, 0.0, 5.0), Quat::IDENTITY);
+    rig.renderer.update_camera_buffer();
+    rig.draw(&[moving_after, still], None);
+
+    let (mx, my) = pixel_of(0.25);
+    let (sx, sy) = pixel_of(-1.5);
+    Some(Readings {
+        moving: rig.velocity_at(mx, my),
+        still: rig.velocity_at(sx, sy),
+        sky: rig.velocity_at(8, 8),
+        forward_calls: rig.renderer.forward_draw_calls(),
+        object_draws: rig.renderer.debug_object_velocity_draws(),
+    })
+}
+
+#[test]
+fn the_debug_flag_removes_exactly_the_object_velocity_pass() {
+    let (Some(on), Some(off)) = (two_frames(false, 0.0), two_frames(true, 0.0)) else {
+        eprintln!("no GPU adapter, skipping");
+        return;
+    };
+    assert_eq!(off.object_draws, 1, "one moving object, one pass draw");
+    assert_eq!(on.object_draws, 0, "the flag skips the pass");
+    assert_eq!(
+        off.forward_calls, on.forward_calls,
+        "the rest of the frame is unchanged"
+    );
+    assert!(
+        (off.moving.0 - 0.115).abs() < JITTER,
+        "without the flag the mover carries its motion: {:?}",
+        off.moving
+    );
+    assert!(
+        on.moving.0.abs() < JITTER && on.moving.1.abs() < JITTER,
+        "with the flag the mover keeps only the camera motion (none): {:?}",
+        on.moving
+    );
+}
+
+#[test]
+fn skipping_the_pass_leaves_camera_motion_intact() {
+    let (Some(on), Some(off)) = (two_frames(false, 0.2), two_frames(true, 0.2)) else {
+        return;
+    };
+    // The camera moved, so the still cube and the sky carry camera motion in both modes.
+    assert!(
+        off.still.0.abs() > 0.02,
+        "camera motion is present: {:?}",
+        off.still
+    );
+    let close = |a: (f32, f32), b: (f32, f32)| {
+        (a.0 - b.0).abs() < 1e-3 && (a.1 - b.1).abs() < 1e-3
+    };
+    assert!(
+        close(off.still, on.still),
+        "still cube: {:?} vs {:?}",
+        off.still,
+        on.still
+    );
+    assert!(close(off.sky, on.sky), "sky: {:?} vs {:?}", off.sky, on.sky);
+}

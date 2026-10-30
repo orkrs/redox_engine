@@ -5,6 +5,7 @@ use super::FrameState;
 
 impl Renderer {
     pub(super) fn pass_ddgi_fill(&mut self, f: &mut FrameState<'_>) {
+        f.touch("ddgi_irradiance");
         self.gi.poll(&self.device, &self.queue);
         let objects = f.objects;
         let encoder = &mut f.encoder;

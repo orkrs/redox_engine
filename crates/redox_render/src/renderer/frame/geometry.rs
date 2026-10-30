@@ -5,6 +5,11 @@ use super::FrameState;
 
 impl Renderer {
     pub(super) fn pass_normal_prepass_hiz(&mut self, f: &mut FrameState<'_>) {
+        f.touch("normals");
+        f.touch("depth");
+        // The Hi-Z pyramid is built from the depth buffer by `build_from_depth` below.
+        f.touch("hiz");
+        f.touch("material_surface");
         let objects = f.objects;
         let cam_eye = f.cam_eye;
         let encoder = &mut f.encoder;
@@ -81,6 +86,7 @@ impl Renderer {
     }
 
     pub(super) fn pass_forward(&mut self, f: &mut FrameState<'_>) {
+        f.touch("hdr_color");
         let objects = f.objects;
         let encoder = &mut f.encoder;
         let hdr_resolve_pass = f.hdr_resolve_pass;
@@ -132,6 +138,7 @@ impl Renderer {
     }
 
     pub(super) fn pass_transparent(&mut self, f: &mut FrameState<'_>) {
+        f.touch("hdr_color");
         let objects = f.objects;
         let encoder = &mut f.encoder;
         let hdr_resolve_pass = f.hdr_resolve_pass;
@@ -169,6 +176,9 @@ impl Renderer {
     }
 
     pub(super) fn pass_msaa_resolve_particles(&mut self, f: &mut FrameState<'_>) {
+        // The resolve and the particle draw both use the HDR view and the depth view.
+        f.touch("hdr_color");
+        f.touch("depth");
         let encoder = &mut f.encoder;
         if self.aa_sharp && self.msaa_sample_count > 1 {
             self.msaa_resolve_pass

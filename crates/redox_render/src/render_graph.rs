@@ -733,6 +733,19 @@ impl CompiledGraph {
         self.pass_names[pass.0]
     }
 
+    /// Pass with the given name (compiled or culled), if the graph declares it.
+    pub fn pass_by_name(&self, name: &str) -> Option<PassId> {
+        self.pass_names.iter().position(|&n| n == name).map(PassId)
+    }
+
+    /// Texture with the given name, if the graph declares it.
+    pub fn texture_by_name(&self, name: &str) -> Option<TexHandle> {
+        self.resource_names
+            .iter()
+            .position(|&n| n == name)
+            .map(|i| TexHandle(i as u32))
+    }
+
     /// Name of a texture.
     pub fn texture_name(&self, tex: TexHandle) -> &'static str {
         self.resource_names[tex.0 as usize]

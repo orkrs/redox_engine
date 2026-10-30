@@ -404,6 +404,13 @@ pub struct Renderer {
     frame_object_ids: Option<Vec<u64>>,
     /// Draw calls recorded by the opaque forward pass in the last frame.
     forward_draw_calls: std::sync::atomic::AtomicU32,
+    /// Test switch (RND-10): when set, the separate object-velocity pass is not recorded.
+    skip_object_velocity_pass: bool,
+    /// Draw calls recorded by the object-velocity pass in the last frame.
+    object_velocity_draws: std::sync::atomic::AtomicU32,
+    /// Differences between the frame graph and the texture uses of the last frame (RND-09).
+    #[cfg(debug_assertions)]
+    frame_usage_mismatches: Vec<crate::render_graph::AccessMismatch>,
     /// CPU time of the last `render_frame_into` call, split into prepare, record and submit.
     last_cpu_timings: FrameCpuTimings,
     /// Byte limits per memory category (usage is computed on demand, see `memory_usage`).
