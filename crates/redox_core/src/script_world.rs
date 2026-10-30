@@ -144,8 +144,12 @@ impl WorldQueries for WorldAdapter {
         let snap = self.lock();
         let physics = snap.physics.as_ref()?;
         let origin = Vec3::from_array(origin);
-        let (point, _, _) =
-            physics.cast_ray_with_normal(origin, Vec3::from_array(direction), max_distance, &snap.inactive)?;
+        let (point, _, _) = physics.cast_ray_with_normal(
+            origin,
+            Vec3::from_array(direction),
+            max_distance,
+            &snap.inactive,
+        )?;
         Some(point.distance(origin))
     }
 
@@ -158,8 +162,12 @@ impl WorldQueries for WorldAdapter {
         let snap = self.lock();
         let physics = snap.physics.as_ref()?;
         let origin = Vec3::from_array(origin);
-        let (point, _, entity) =
-            physics.cast_ray_with_normal(origin, Vec3::from_array(direction), max_distance, &snap.inactive)?;
+        let (point, _, entity) = physics.cast_ray_with_normal(
+            origin,
+            Vec3::from_array(direction),
+            max_distance,
+            &snap.inactive,
+        )?;
         Some((ScriptEntityId(entity?.id()), point.distance(origin)))
     }
 
