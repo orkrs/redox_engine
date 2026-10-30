@@ -52,7 +52,9 @@ impl MaterialGraph {
 /// Texture fetches a node performs (a triplanar sample reads three times).
 fn texture_samples(kind: &NodeKind) -> usize {
     match kind {
-        NodeKind::Texture2d { .. } | NodeKind::TextureSample { .. } | NodeKind::NormalMap { .. } => 1,
+        NodeKind::Texture2d { .. }
+        | NodeKind::TextureSample { .. }
+        | NodeKind::NormalMap { .. } => 1,
         NodeKind::Triplanar { .. } => 3,
         _ => 0,
     }
@@ -150,10 +152,16 @@ impl<'a> Checker<'a> {
                 out_min,
                 out_max,
             } => {
-                if ![in_min, in_max, out_min, out_max].iter().all(|v| v.is_finite()) {
+                if ![in_min, in_max, out_min, out_max]
+                    .iter()
+                    .all(|v| v.is_finite())
+                {
                     self.fail(Some(id), "параметры remap не конечны");
                 } else if in_min == in_max {
-                    self.fail(Some(id), "remap: входной диапазон вырожден (in_min = in_max)");
+                    self.fail(
+                        Some(id),
+                        "remap: входной диапазон вырожден (in_min = in_max)",
+                    );
                 }
             }
             NodeKind::Fresnel { power } | NodeKind::Triplanar { scale: power, .. }

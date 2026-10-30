@@ -76,3 +76,4 @@ pub fn vertical_albedo(coat: &Coat, slab: &Slab, n_dot_v: f32, samples: u32) -> 
 
 - **Осталось (шаг 5):** узлы графа для слоёв Substrate-лайт (coat, анизотропия) после MAT-02.
 - **Приёмка:** узлы проходят `validate`, тест энергосбережения сохраняется.
+- **Исход шага 5: 📌** (2026-10-30). Узлы `Slab/Coat` в графе не делаются: coat и анизотропия живут в параметрах материала (`Material::coat`, uniform), а не в `SurfaceData`. Чтобы граф мог их задавать, нужно вынести coat в `SurfaceData` и `SurfaceOutput` (правка `material_surface.wgsl`, `pbr.wgsl`, `vg_resolve.wgsl` и кодогена). Объём не оправдан, пока нет сцены, где coat задаётся графом. Записано в `KNOWN_LIMITS.md`.

@@ -24,11 +24,7 @@ pub fn normal_map(texel: [f32; 4], n: [f32; 3], t: [f32; 3]) -> [f32; 3] {
 /// Triplanar blend weights of normal `n`: `|n_i|^4` normalised to sum to 1 (the sum is clamped
 /// by `1e-6` so a zero normal gives zero weights instead of NaN). Matches `mg_triplanar`.
 pub fn triplanar_weights(n: [f32; 3]) -> [f32; 3] {
-    let w = [
-        n[0].abs().powi(4),
-        n[1].abs().powi(4),
-        n[2].abs().powi(4),
-    ];
+    let w = [n[0].abs().powi(4), n[1].abs().powi(4), n[2].abs().powi(4)];
     let sum = (w[0] + w[1] + w[2]).max(1e-6);
     [w[0] / sum, w[1] / sum, w[2] / sum]
 }

@@ -24,8 +24,8 @@ pub mod watch;
 pub use check::{GraphWarning, node_types};
 pub use codegen::{CodegenOptions, Features, Generated, Pass, generate};
 pub use eval::{
-    EvalEnv, EvalInputs, FlatTexture, SurfaceValues, TextureSampler, Value, apply, eval,
-    eval_with, try_eval,
+    EvalEnv, EvalInputs, FlatTexture, SurfaceValues, TextureSampler, Value, apply, eval, eval_with,
+    try_eval,
 };
 pub use graph::{
     FORMAT_VERSION, GraphError, MaterialGraph, Node, NodeId, NodeKind, PortRef, Ty, arity,

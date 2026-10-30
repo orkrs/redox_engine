@@ -53,7 +53,11 @@ pub(crate) fn expr(ir: &Ir, op: &Op) -> String {
         ),
         OpKind::OneMinus => format!("(1.0 - {})", arg(0)),
         OpKind::Texture { slot, sampler } => {
-            format!("textureSample(tex{slot}, {}, {})", sampler_name(*sampler), arg(0))
+            format!(
+                "textureSample(tex{slot}, {}, {})",
+                sampler_name(*sampler),
+                arg(0)
+            )
         }
         OpKind::NormalMap { slot } => format!(
             "mg_normal_map(tex{slot}, samp_default, {}, in.world_normal, in.world_tangent)",
@@ -88,7 +92,10 @@ pub(crate) fn expr(ir: &Ir, op: &Op) -> String {
             literal(*power)
         ),
         OpKind::Split(index) => {
-            let swizzle = ["x", "y", "z", "w"].get(usize::from(*index)).copied().unwrap_or("x");
+            let swizzle = ["x", "y", "z", "w"]
+                .get(usize::from(*index))
+                .copied()
+                .unwrap_or("x");
             format!("{}.{swizzle}", arg(0))
         }
         OpKind::Merge => format!("vec3<f32>({}, {}, {})", arg(0), arg(1), arg(2)),

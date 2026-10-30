@@ -268,10 +268,7 @@ fn each_noise_node_matches_the_reference_at_a_uv_point() {
         (NoiseKind::Gradient, NodeKind::GradientNoise),
         (NoiseKind::Worley, NodeKind::Worley),
     ] {
-        let v = scalar(
-            vec![node(1, NodeKind::Uv, vec![]), un(2, node_kind, 1)],
-            2,
-        );
+        let v = scalar(vec![node(1, NodeKind::Uv, vec![]), un(2, node_kind, 1)], 2);
         close(v, noise::eval(kind, [0.25, 0.75, 0.0], 2));
     }
 }
@@ -293,7 +290,14 @@ fn texture2d_node_reads_the_sampler_texel() {
 fn texture_sample_node_reads_the_sampler_texel() {
     let nodes = vec![
         node(1, NodeKind::Uv, vec![]),
-        un(2, NodeKind::TextureSample { slot: 0, clamp: true }, 1),
+        un(
+            2,
+            NodeKind::TextureSample {
+                slot: 0,
+                clamp: true,
+            },
+            1,
+        ),
         un(3, NodeKind::Split { component: 1 }, 2),
     ];
     let v = run(&finish(nodes, 3, 1), &Solid([0.2, 0.4, 0.6, 1.0]), None).opacity;
@@ -341,7 +345,15 @@ fn triplanar_of_a_constant_texture_is_that_texel() {
     let nodes = vec![
         node(1, NodeKind::WorldPos, vec![]),
         node(2, NodeKind::Normal, vec![]),
-        bin(3, NodeKind::Triplanar { slot: 0, scale: 1.0 }, 1, 2),
+        bin(
+            3,
+            NodeKind::Triplanar {
+                slot: 0,
+                scale: 1.0,
+            },
+            1,
+            2,
+        ),
         un(4, NodeKind::Split { component: 0 }, 3),
     ];
     let v = run(&finish(nodes, 4, 1), &Solid([0.2, 0.4, 0.6, 1.0]), None).opacity;

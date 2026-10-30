@@ -39,19 +39,13 @@ pub fn pcg(v: u32) -> u32 {
 /// Pseudo-random value in `[0, 1]` for a lattice cell and a channel. Uses 24 bits, so the
 /// largest value is exactly 1.0 and float rounding cannot leave the range.
 pub fn hash01(cell: [i32; 3], channel: u32) -> f32 {
-    let h = pcg(
-        (cell[0] as u32) ^ pcg((cell[1] as u32) ^ pcg((cell[2] as u32) ^ pcg(channel))),
-    );
+    let h = pcg((cell[0] as u32) ^ pcg((cell[1] as u32) ^ pcg((cell[2] as u32) ^ pcg(channel))));
     (h >> 8) as f32 / 16_777_215.0
 }
 
 /// Lattice offset of corner `k` (bit 0 along x, bit 1 along y, bit 2 along z).
 fn corner_offset(k: u32) -> [i32; 3] {
-    [
-        (k & 1) as i32,
-        ((k >> 1) & 1) as i32,
-        ((k >> 2) & 1) as i32,
-    ]
+    [(k & 1) as i32, ((k >> 1) & 1) as i32, ((k >> 2) & 1) as i32]
 }
 
 /// Interpolation weight of corner `k`. Axes beyond `dims` contribute weight 1.

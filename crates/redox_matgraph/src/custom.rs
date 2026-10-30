@@ -29,12 +29,7 @@ pub fn function_text(node: NodeId, inputs: &[(String, Ty)], output: Ty, body: &s
 }
 
 /// Checks a custom node; returns every problem found (empty when valid).
-pub fn check(
-    node: NodeId,
-    inputs: &[(String, Ty)],
-    output: Ty,
-    body: &str,
-) -> Vec<GraphError> {
+pub fn check(node: NodeId, inputs: &[(String, Ty)], output: Ty, body: &str) -> Vec<GraphError> {
     let mut errors = Vec::new();
     for (name, ty) in inputs {
         if !is_identifier(name) {
@@ -132,7 +127,7 @@ fn parse_and_validate(
         Ok(module) => module,
         Err(e) => {
             let line = e.location(&source).map(|l| l.line_number);
-            return vec![located(node, line, &e.message().to_string())];
+            return vec![located(node, line, e.message())];
         }
     };
     let mut validator = naga::valid::Validator::new(

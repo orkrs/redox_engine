@@ -71,13 +71,27 @@ fn texture_graph() -> MaterialGraph {
         node(1, NodeKind::Uv, vec![]),
         node(2, NodeKind::Texture2d { slot: 0 }, vec![link(1)]),
         node(3, NodeKind::Split { component: 0 }, vec![link(2)]),
-        node(4, NodeKind::TextureSample { slot: 0, clamp: true }, vec![link(1)]),
+        node(
+            4,
+            NodeKind::TextureSample {
+                slot: 0,
+                clamp: true,
+            },
+            vec![link(1)],
+        ),
         node(5, NodeKind::Split { component: 1 }, vec![link(4)]),
         node(6, NodeKind::Add, vec![link(3), link(5)]),
         node(7, NodeKind::NormalMap { slot: 0 }, vec![link(1)]),
         node(8, NodeKind::Normal, vec![]),
         node(9, NodeKind::WorldPos, vec![]),
-        node(10, NodeKind::Triplanar { slot: 0, scale: 2.0 }, vec![link(9), link(8)]),
+        node(
+            10,
+            NodeKind::Triplanar {
+                slot: 0,
+                scale: 2.0,
+            },
+            vec![link(9), link(8)],
+        ),
         node(11, NodeKind::Split { component: 2 }, vec![link(10)]),
         node(12, NodeKind::Add, vec![link(6), link(11)]),
         node(
@@ -94,8 +108,14 @@ fn a_texture_graph_validates_and_generates() {
     assert!(g.validate().is_empty(), "{:?}", g.validate());
     let source = full_source(&g, TEXTURE_DECLS);
     validate_wgsl(&source);
-    assert!(source.contains("textureSample(tex0, samp_default"), "{source}");
-    assert!(source.contains("textureSample(tex0, samp_clamp"), "{source}");
+    assert!(
+        source.contains("textureSample(tex0, samp_default"),
+        "{source}"
+    );
+    assert!(
+        source.contains("textureSample(tex0, samp_clamp"),
+        "{source}"
+    );
     assert!(source.contains("mg_normal_map(tex0"), "{source}");
     assert!(source.contains("mg_triplanar(tex0"), "{source}");
 }
@@ -130,7 +150,8 @@ fn a_noise_graph_validates_and_generates() {
 #[test]
 fn math_and_logic_nodes_validate_and_generate() {
     let g = graph(vec![
-        node(1, NodeKind::ConstF32(0.5), vec![]),
+        // Inputs that do not fold away, so the generated code keeps every operation.
+        node(1, NodeKind::Time, vec![]),
         node(2, NodeKind::Abs, vec![link(1)]),
         node(3, NodeKind::Floor, vec![link(2)]),
         node(4, NodeKind::Fract, vec![link(2)]),
@@ -155,9 +176,13 @@ fn math_and_logic_nodes_validate_and_generate() {
         node(14, NodeKind::ConstVec3([0.1, 0.2, 0.3]), vec![]),
         node(15, NodeKind::Split { component: 1 }, vec![link(14)]),
         node(16, NodeKind::Merge, vec![link(13), link(15), link(12)]),
-        node(17, NodeKind::ConstVec3([1.0, 0.0, 0.0]), vec![]),
-        node(18, NodeKind::ConstVec3([0.0, 0.0, 1.0]), vec![]),
-        node(19, NodeKind::Fresnel { power: 3.0 }, vec![link(17), link(18)]),
+        node(17, NodeKind::Normal, vec![]),
+        node(18, NodeKind::ViewDir, vec![]),
+        node(
+            19,
+            NodeKind::Fresnel { power: 3.0 },
+            vec![link(17), link(18)],
+        ),
         node(20, NodeKind::If, vec![link(19), link(13), link(12)]),
         node(
             21,
@@ -208,14 +233,17 @@ fn a_syntax_error_reports_the_line_inside_the_body() {
     let errors = custom_graph("    let t = a;\n    let u = t +;\n    return t;").validate();
     assert!(!errors.is_empty());
     assert!(
-        errors.iter().any(|e| e.node == Some(2) && e.message.contains("строка 2")),
+        errors
+            .iter()
+            .any(|e| e.node == Some(2) && e.message.contains("строка 2")),
         "{errors:?}"
     );
 }
 
 #[test]
 fn a_custom_node_cannot_declare_bindings() {
-    let errors = custom_graph("    @group(0) @binding(0) var<uniform> x: f32;\n    return a;").validate();
+    let errors =
+        custom_graph("    @group(0) @binding(0) var<uniform> x: f32;\n    return a;").validate();
     assert!(errors.iter().any(|e| e.node == Some(2)), "{errors:?}");
 }
 
