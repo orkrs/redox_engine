@@ -54,3 +54,16 @@ Measured 2026-10-30, release, RTX 4060 Ti (`cargo test --release -p redox_render
 | 50 000 | 100 | 262.608 | 3.800 | 2.134 |
 
 Reading: at 500 vertices one mesh costs the same on both paths; from about 1 000 vertices the GPU wins even with a submit per mesh; for small meshes the GPU only wins when they are skinned together in one batch (`update_gpu_batch`). Hence `GPU_SKIN_MIN_VERTICES = 1024` and `GPU_BATCH_MIN_MESHES = 4`; `MORPH_COST_FACTOR = 2` is an estimate (the benchmark has no morph case).
+
+## VG-02: выбор кластеров DAG на GPU (2026-10-30)
+
+Тест `dag_bench_thousand_spheres` (`crates/redox_render/tests/vg_dag_frame.rs`, `--release -- --ignored --nocapture`): 1000 экземпляров сферы 99 856 треугольников (DAG строится 1,6 с), окно 512×512, порог ошибки 1 px, камера на расстоянии 30 м, 5 прогревочных и 30 замеряемых кадров. Отрисовано 56 228 кластеров.
+
+| Что | Время |
+|---|---:|
+| GPU: `cluster_vg_cull` (в него входит обход DAG; отдельной метки у обхода нет) | 0,28 мс |
+| GPU: `vg_visibility_resolve` | 1,03 мс |
+| GPU: весь кадр по меткам | 1,61 мс |
+| Стена: кадр от `render_frame_view` до `poll(wait)` | 12,75 мс |
+
+Цель проход выбора ≤ 1 мс: по метке `cluster_vg_cull` (0,28 мс) достигнута; точное время обхода без отдельной метки не выделено. Расхождение «GPU 1,6 мс» и «стена 12,75 мс» означает, что кадр упирается в CPU (запись команд, загрузка данных экземпляров); причина не искалась. Замер на машине разработчика, не на эталонной станции; по умолчанию `VGConfig` мал для такого ассета (нужно `max_vertices` 1<<20, `max_indices` 1<<22), без этого `register_dag_asset` возвращает `None`.

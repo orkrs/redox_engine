@@ -144,3 +144,86 @@ fn a_dag_sphere_outside_the_view_is_not_drawn() {
         "an off-screen sphere changed {covered} pixels"
     );
 }
+
+/// VG-02 benchmark: 1000 instances of a sphere of about 100k triangles. Prints the GPU time of
+/// the passes (when the adapter has timestamps) and the wall time of a frame.
+#[test]
+#[ignore = "timing: run with --release -- --ignored --nocapture"]
+fn dag_bench_thousand_spheres() {
+    let _guard = lock();
+    let Some(adapter) = common::adapter() else {
+        return;
+    };
+    let size = 512;
+    let Some(mut renderer) = common::renderer(&adapter, size) else {
+        return;
+    };
+    let material = renderer.add_material(Material::solid(Vec3::new(0.8, 0.3, 0.2)));
+    renderer.init_virtual_geometry(VGConfig {
+        max_vertices: 1 << 20,
+        max_indices: 1 << 22,
+        max_meshlets: 1 << 18,
+        ..VGConfig::default()
+    });
+    let mesh = create_sphere(1.0, 316);
+    eprintln!("sphere: {} triangles", mesh.indices.len() / 3);
+    let built = std::time::Instant::now();
+    let asset =
+        build_vg_dag_asset(&mesh, &DagParams::default(), material as u32).expect("dag asset");
+    eprintln!("dag build: {:.1} s", built.elapsed().as_secs_f32());
+    let vg = renderer.vg_system.as_mut().expect("vg");
+    let id = vg
+        .register_dag_asset(asset, &renderer.queue)
+        .expect("register");
+    for i in 0..1000u32 {
+        let at = Vec3::new(
+            (i % 10) as f32 * 3.0 - 13.5,
+            ((i / 10) % 10) as f32 * 3.0 - 13.5,
+            -((i / 100) as f32) * 6.0,
+        );
+        let transform = Mat4::from_translation(at).to_cols_array_2d();
+        vg.spawn_dag_instance(id, transform).expect("spawn");
+    }
+    let texture = renderer.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("vg_dag_bench_target"),
+        size: wgpu::Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        view_formats: &[],
+    });
+    let view = texture.create_view(&Default::default());
+    let camera = Camera::new(0.9, 1.0, 0.1, 400.0);
+    let lights = LightScene::new(DirectionalLight::new(
+        Vec3::new(0.3, -0.6, -1.0),
+        Vec3::ONE,
+        3.0,
+    ));
+    let frames = 30;
+    let mut wall = std::time::Duration::ZERO;
+    for n in 0..(frames + 5) {
+        renderer
+            .camera_uniform
+            .update(&camera, Vec3::new(0.0, 0.0, 30.0), Quat::IDENTITY);
+        renderer.update_camera_buffer();
+        let frame = FrameView::new(&camera, &[], &lights);
+        let started = std::time::Instant::now();
+        renderer.render_frame_view(&frame, &view).expect("frame");
+        let _ = renderer.device.poll(wgpu::PollType::wait_indefinitely());
+        if n >= 5 {
+            wall += started.elapsed();
+        }
+    }
+    eprintln!(
+        "1000 spheres: {:.2} ms wall per frame, dag draws {}",
+        wall.as_secs_f64() * 1000.0 / f64::from(frames),
+        renderer.vg_system.as_ref().map_or(0, |v| v.dag_draw_count())
+    );
+    eprintln!("{}", renderer.gpu_profiler.report());
+}

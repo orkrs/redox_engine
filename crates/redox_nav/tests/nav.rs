@@ -784,3 +784,48 @@ fn avoidance_bench_two_hundred_agents() {
     let per_frame = started.elapsed().as_secs_f64() * 1000.0 / f64::from(frames);
     eprintln!("200 agents: {per_frame:.3} ms per update");
 }
+
+/// Mean time of `update_agents` in milliseconds for `count` agents, with the integration of the
+/// agents outside the timed part.
+fn profile_update(count: u16, goal: bool, neighbour_distance: f32) -> f64 {
+    let mut w = open_floor();
+    let params = AvoidanceParams {
+        neighbour_distance,
+        ..AvoidanceParams::default()
+    };
+    let mut agents = Vec::new();
+    for i in 0..count {
+        let start = p(1.5 + f32::from(i % 20) * 0.8, 1.0 + f32::from(i / 20) * 0.8);
+        let id = w.add_agent(start, 0.3, 2.0, params).unwrap();
+        w.set_goal(id, goal.then(|| p(27.0, 6.0)));
+        agents.push((id, start, Vec3::ZERO));
+    }
+    let frames = 120;
+    let mut spent = std::time::Duration::ZERO;
+    for _ in 0..frames {
+        let started = std::time::Instant::now();
+        let desired = w.update_agents(1.0 / 60.0, &agents);
+        spent += started.elapsed();
+        for (slot, (_, v)) in agents.iter_mut().zip(desired) {
+            slot.2 = v;
+            slot.1 += v / 60.0;
+        }
+    }
+    spent.as_secs_f64() * 1000.0 / f64::from(frames)
+}
+
+#[test]
+#[ignore = "timing: run with --release -- --ignored --nocapture"]
+fn profile_update_agents() {
+    eprintln!("agents | full | no goal (avoidance only) | tiny neighbourhood (path only) | 2 m | 1 m");
+    for count in [50u16, 100, 200, 400] {
+        eprintln!(
+            "{count:6} | {:.3} | {:.3} | {:.3} | {:.3} | {:.3}",
+            profile_update(count, true, 5.0),
+            profile_update(count, false, 5.0),
+            profile_update(count, true, 0.1),
+            profile_update(count, true, 2.0),
+            profile_update(count, true, 1.0),
+        );
+    }
+}
