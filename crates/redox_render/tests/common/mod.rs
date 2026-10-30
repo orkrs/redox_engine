@@ -25,12 +25,21 @@ pub fn device_with_bc(adapter: &wgpu::Adapter) -> Option<(wgpu::Device, wgpu::Qu
 }
 
 pub fn renderer(adapter: &wgpu::Adapter, size: u32) -> Option<redox_render::Renderer> {
+    renderer_sized(adapter, size, size)
+}
+
+/// A renderer whose surface is `width` x `height` (for tests that need a non-square size).
+pub fn renderer_sized(
+    adapter: &wgpu::Adapter,
+    width: u32,
+    height: u32,
+) -> Option<redox_render::Renderer> {
     let (device, queue) = device_with_bc(adapter)?;
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         format: wgpu::TextureFormat::Rgba8Unorm,
-        width: size,
-        height: size,
+        width,
+        height,
         present_mode: wgpu::PresentMode::Fifo,
         alpha_mode: wgpu::CompositeAlphaMode::Auto,
         view_formats: vec![],

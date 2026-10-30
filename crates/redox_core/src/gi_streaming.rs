@@ -7,11 +7,19 @@
 //! `Renderer::set_gi_static_bricks`.
 
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use redox_ecs::World;
 use redox_math::Vec3;
+use redox_render::context::RenderContext;
 use redox_render::sdf::atlas::SdfBrick;
 use redox_render::sdf::format::read_bricks;
+
+use crate::app::AppBuilder;
+use crate::dispatcher::Stage;
+use crate::hlod_system::active_camera_position;
+use crate::plugin::Plugin;
+use crate::time::Time;
 
 /// A world cell as `(x, y)`; the cell covers `[x * size, (x + 1) * size)` along world X and
 /// `[y * size, (y + 1) * size)` along world Z.
@@ -167,6 +175,80 @@ pub fn load_cell_bricks(dir: &Path, cells: &[Cell]) -> Result<Vec<SdfBrick>, Str
     Ok(bricks)
 }
 
+/// Colour `[r, g, b, emission]` given to every streamed brick.
+pub const GI_SDF_BRICK_COLOUR: [f32; 4] = [0.7, 0.7, 0.7, 0.0];
+
+/// Streaming state as an ECS resource: the cells on disk in `dir`, the streamer that decides
+/// which are loaded, and its settings.
+pub struct GiSdfStreaming {
+    /// Folder with `<x>_<y>.sdf` files.
+    pub dir: PathBuf,
+    /// Side of a cell, metres.
+    pub cell_size: f32,
+    /// Cells that have a file.
+    pub available: Vec<Cell>,
+    /// Radius, hysteresis, brick budget and rebuild interval.
+    pub settings: GiStreamingSettings,
+    /// Decides when the loaded set changes.
+    pub streamer: GiSdfStreamer,
+}
+
+/// One streaming step: advances the streamer by `dt` seconds for a camera at `camera`. When
+/// the loaded set changed, reads the bricks of the new cells (a cell whose file cannot be read
+/// is logged and skipped) and keeps the `max_bricks` nearest to the camera. Returns `None`
+/// when nothing changed.
+pub fn gi_sdf_streaming_step(
+    res: &mut GiSdfStreaming,
+    dt: f32,
+    camera: Vec3,
+) -> Option<Vec<SdfBrick>> {
+    let cells = res
+        .streamer
+        .update(dt, camera, &res.available, res.cell_size, &res.settings)?;
+    let mut bricks = Vec::new();
+    for cell in cells {
+        match load_cell_bricks(&res.dir, &[cell]) {
+            Ok(mut cell_bricks) => bricks.append(&mut cell_bricks),
+            Err(message) => log::warn!("GI SDF cell {}_{} skipped: {message}", cell.0, cell.1),
+        }
+    }
+    limit_bricks(&mut bricks, camera, res.settings.max_bricks);
+    Some(bricks)
+}
+
+/// Frame step of the streaming: runs [`gi_sdf_streaming_step`] for the active camera and, when
+/// the window changed, gives the bricks to the renderer. Does nothing without a
+/// [`GiSdfStreaming`] resource or an active camera.
+pub fn gi_sdf_streaming_system(world: &mut World, renderer: &mut RenderContext) {
+    let Some(camera) = active_camera_position(world) else {
+        return;
+    };
+    let dt = world.get_resource::<Time>().map_or(0.0, |t| t.delta_time);
+    let Some(res) = world.get_resource_mut::<GiSdfStreaming>() else {
+        return;
+    };
+    let Some(bricks) = gi_sdf_streaming_step(res, dt, camera) else {
+        return;
+    };
+    let pairs: Vec<(SdfBrick, [f32; 4])> = bricks
+        .into_iter()
+        .map(|brick| (brick, GI_SDF_BRICK_COLOUR))
+        .collect();
+    renderer.set_gi_static_bricks(&pairs);
+}
+
+/// Registers [`gi_sdf_streaming_system`] on [`Stage::Render`]. Inert until the game inserts a
+/// [`GiSdfStreaming`] resource.
+pub struct GiSdfStreamingPlugin;
+
+impl Plugin for GiSdfStreamingPlugin {
+    fn build(&self, app: &mut AppBuilder) {
+        app.add_system_mut(Stage::Render, |world, renderer| {
+            gi_sdf_streaming_system(world, renderer);
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,6 +364,82 @@ mod tests {
         .unwrap();
         let bricks = load_cell_bricks(&dir, &[(0, 0), (0, 0), (9, 9)]).unwrap();
         assert_eq!(bricks.len(), 1);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A fresh folder for one streaming test, removed by the caller.
+    fn stream_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("redox_gi_step_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn write_cell(dir: &Path, cell: Cell, bricks: &[SdfBrick]) {
+        let path = dir.join(format!("{}_{}.sdf", cell.0, cell.1));
+        std::fs::write(path, redox_render::sdf::format::write_bricks(bricks)).unwrap();
+    }
+
+    fn solid_brick(x: f32) -> SdfBrick {
+        let mut brick = brick_at(x);
+        brick.field.data = vec![0.5; 64 * 64 * 64];
+        brick
+    }
+
+    fn streaming(dir: PathBuf, available: Vec<Cell>) -> GiSdfStreaming {
+        GiSdfStreaming {
+            dir,
+            cell_size: SIZE,
+            available,
+            settings: GiStreamingSettings::default(),
+            streamer: GiSdfStreamer::new(),
+        }
+    }
+
+    /// Camera at the centre of cell (0, 0) for `SIZE` cells.
+    const CAMERA: Vec3 = Vec3::new(32.0, 0.0, 32.0);
+
+    #[test]
+    fn step_loads_the_cells_in_range_on_the_first_call() {
+        let dir = stream_dir("first_call");
+        write_cell(&dir, (0, 0), &[solid_brick(1.0)]);
+        write_cell(&dir, (1, 0), &[solid_brick(2.0)]);
+        let mut res = streaming(dir.clone(), vec![(0, 0), (1, 0)]);
+        let bricks = gi_sdf_streaming_step(&mut res, 1.0, CAMERA).unwrap();
+        assert_eq!(bricks.len(), 2);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn step_returns_none_when_the_set_is_unchanged() {
+        let dir = stream_dir("unchanged");
+        write_cell(&dir, (0, 0), &[solid_brick(1.0)]);
+        let mut res = streaming(dir.clone(), vec![(0, 0)]);
+        assert!(gi_sdf_streaming_step(&mut res, 1.0, CAMERA).is_some());
+        assert!(gi_sdf_streaming_step(&mut res, 1.0, CAMERA).is_none());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn step_skips_a_cell_without_a_file_and_does_not_panic() {
+        let dir = stream_dir("missing_file");
+        write_cell(&dir, (0, 0), &[solid_brick(1.0)]);
+        // Cell (0, 1) is in range of the camera but has no file.
+        let mut res = streaming(dir.clone(), vec![(0, 0), (0, 1)]);
+        let bricks = gi_sdf_streaming_step(&mut res, 1.0, CAMERA).unwrap();
+        assert_eq!(bricks.len(), 1);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_corrupt_file_is_logged_and_skipped() {
+        let dir = stream_dir("corrupt");
+        std::fs::write(dir.join("0_0.sdf"), b"not a brick file").unwrap();
+        write_cell(&dir, (1, 0), &[solid_brick(2.0)]);
+        let mut res = streaming(dir.clone(), vec![(0, 0), (1, 0)]);
+        let bricks = gi_sdf_streaming_step(&mut res, 1.0, CAMERA).unwrap();
+        assert_eq!(bricks.len(), 1);
+        assert_eq!(bricks[0].origin_ws.x, 2.0);
         std::fs::remove_dir_all(&dir).ok();
     }
 }

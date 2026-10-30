@@ -139,7 +139,7 @@ pub struct HlodSettings {
 }
 
 /// World position of the entity of [`ActiveCamera`], if both exist.
-fn active_camera_position(world: &World) -> Option<Vec3> {
+pub(crate) fn active_camera_position(world: &World) -> Option<Vec3> {
     let camera = world.get_resource::<ActiveCamera>()?.0;
     let matrix = world.get_component::<GlobalTransform>(camera)?.matrix;
     Some(Vec3::new(matrix.w_axis.x, matrix.w_axis.y, matrix.w_axis.z))
