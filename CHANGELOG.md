@@ -47,6 +47,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - Scripting (B7c): `raycast_many`, `emit_command` (`ScriptCommand`, `take_commands`), `ScriptRuntime::set_inputs`; Courier coin pickup runs as a WASM module.
 - Audio (B8): streaming music through kira (`register_music`, looped streaming voices on the Music bus, `KiraMusicVoice`, `MusicVoices`).
 - Courier (B9): settings screen (volume and effect switches, saved between runs).
+- Render (PST-03): motion blur spreads beyond object edges. Velocity tile maxima (20×20, 3×3 neighbourhood) in `post/motion_blur_tiles.rs` and `shaders/motion_blur_tiles.wgsl`; `MotionBlurSettings::spread_beyond_edges` (off by default; off leaves the frame unchanged).
 
 ### Removed
 - Old examples `showcase`, `prism_vault`, `ball_score`, `shadow_lab` (kept: `skinned_demo`, `dino_runner`, `dino_game`).

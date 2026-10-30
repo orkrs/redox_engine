@@ -33,6 +33,7 @@ fn the_blur_length_is_limited_to_max_pixels() {
         shutter: 1.0,
         max_pixels: 10.0,
         taps: 5,
+        ..Default::default()
     };
     let o = motion_blur_offsets([0.5, 0.0], [1000.0, 1000.0], &s); // would be 500 px
     let span_px = (o[4][0] - o[0][0]) * 1000.0;

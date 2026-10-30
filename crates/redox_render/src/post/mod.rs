@@ -1,6 +1,8 @@
 pub mod bloom;
 /// Height fog (post effect, runs last in the chain).
 pub mod fog;
+/// Velocity tile maxima and the math of motion blur spreading beyond object edges (PST-03).
+pub mod motion_blur_tiles;
 /// Motion blur and depth of field, run between TAA and bloom.
 pub mod post_fx;
 /// Refraction offset and mip math for refractive materials (MAT-06).

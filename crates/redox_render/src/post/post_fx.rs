@@ -11,6 +11,7 @@ use bytemuck::{Pod, Zeroable};
 
 use crate::camera::CameraUniform;
 use crate::post::fog::{FOG_WGSL, FogSettings, fog_uniform};
+use crate::post::motion_blur_tiles::{SPREAD_SOFT_Z, TilePasses, TileTargets};
 use crate::post::ssr::{SSR_WGSL, SsrSettings, ssr_uniform};
 use crate::post::tone_mapping::create_tonemap_bind_group;
 use crate::shader::create_shader_module;
@@ -41,6 +42,9 @@ pub struct MotionBlurSettings {
     pub max_pixels: f32,
     /// Number of taps along the blur direction, clamped to `2..=32`.
     pub taps: u32,
+    /// Spread the blur of fast objects over the neighbouring pixels (PST-03). Off by default;
+    /// with it off the frame is bit-identical to the pass without spreading.
+    pub spread_beyond_edges: bool,
 }
 
 impl Default for MotionBlurSettings {
@@ -49,6 +53,7 @@ impl Default for MotionBlurSettings {
             shutter: 0.5,
             max_pixels: 24.0,
             taps: 8,
+            spread_beyond_edges: false,
         }
     }
 }
@@ -183,7 +188,11 @@ struct MotionBlurUniform {
     shutter: f32,
     max_pixels: f32,
     taps: u32,
-    _pad: [u32; 3],
+    spread: u32,
+    near: f32,
+    far: f32,
+    soft_z: f32,
+    _pad: [u32; 1],
 }
 
 #[repr(C)]
@@ -198,13 +207,21 @@ struct DofUniform {
     taps: u32,
 }
 
-fn motion_blur_uniform(s: &MotionBlurSettings, screen: [f32; 2]) -> MotionBlurUniform {
+fn motion_blur_uniform(
+    s: &MotionBlurSettings,
+    screen: [f32; 2],
+    near_far: [f32; 2],
+) -> MotionBlurUniform {
     MotionBlurUniform {
         screen,
         shutter: s.shutter,
         max_pixels: s.max_pixels,
         taps: clamp_taps(s.taps),
-        _pad: [0; 3],
+        spread: u32::from(s.spread_beyond_edges),
+        near: near_far[0],
+        far: near_far[1],
+        soft_z: SPREAD_SOFT_Z,
+        _pad: [0; 1],
     }
 }
 
@@ -481,6 +498,10 @@ pub(crate) struct PostFx {
     pub(crate) tone_bgs: [wgpu::BindGroup; 2],
     passes: EffectPasses,
     lanes: EffectLanes,
+    /// Compute passes that build the velocity tile maxima for motion blur spreading.
+    tile_passes: TilePasses,
+    /// Tile maxima the spreading pass reads, rebuilt on resize.
+    tiles: TileTargets,
 }
 
 impl PostFx {
@@ -493,13 +514,18 @@ impl PostFx {
     ) -> Self {
         let passes = create_passes(device);
         let (textures, views) = create_targets(device, width, height);
-        let (tone_bgs, lanes) = build_bindings(device, &passes, &views, inputs);
+        let tile_passes = TilePasses::new(device);
+        let tiles = TileTargets::new(device, &tile_passes, width, height, inputs.velocity_view);
+        let (tone_bgs, lanes) =
+            build_bindings(device, &passes, &views, tiles.neighbor_view(), inputs);
         Self {
             _textures: textures,
             views,
             tone_bgs,
             passes,
             lanes,
+            tile_passes,
+            tiles,
         }
     }
 
@@ -512,7 +538,10 @@ impl PostFx {
         inputs: &PostFxInputs<'_>,
     ) {
         let (textures, views) = create_targets(device, width, height);
-        let (tone_bgs, lanes) = build_bindings(device, &self.passes, &views, inputs);
+        self.tiles =
+            TileTargets::new(device, &self.tile_passes, width, height, inputs.velocity_view);
+        let (tone_bgs, lanes) =
+            build_bindings(device, &self.passes, &views, self.tiles.neighbor_view(), inputs);
         self._textures = textures;
         self.views = views;
         self.tone_bgs = tone_bgs;
@@ -549,9 +578,13 @@ impl PostFx {
         }
         if let Some(mb) = settings.motion_blur {
             let dst = source.next_target();
-            self.passes
-                .motion_blur
-                .write(queue, &motion_blur_uniform(&mb, frame.screen));
+            if mb.spread_beyond_edges {
+                self.tile_passes.record(encoder, &self.tiles);
+            }
+            self.passes.motion_blur.write(
+                queue,
+                &motion_blur_uniform(&mb, frame.screen, frame.near_far),
+            );
             self.passes.motion_blur.record(
                 encoder,
                 self.lanes.motion_blur.get(source),
@@ -635,8 +668,10 @@ fn create_passes(device: &wgpu::Device) -> EffectPasses {
         &[
             texture_entry(0, FILTERABLE),
             texture_entry(1, FILTERABLE),
-            sampler_entry(2),
-            uniform_entry(3),
+            texture_entry(2, wgpu::TextureSampleType::Depth),
+            texture_entry(3, FILTERABLE),
+            sampler_entry(4),
+            uniform_entry(5),
         ],
         std::mem::size_of::<MotionBlurUniform>() as u64,
     );
@@ -698,6 +733,7 @@ fn build_bindings(
     device: &wgpu::Device,
     passes: &EffectPasses,
     views: &[wgpu::TextureView; 2],
+    neighbor_view: &wgpu::TextureView,
     inputs: &PostFxInputs<'_>,
 ) -> ([wgpu::BindGroup; 2], EffectLanes) {
     let tone = |view: &wgpu::TextureView| {
@@ -724,7 +760,7 @@ fn build_bindings(
             &passes.motion_blur,
             history,
             views,
-            &[inputs.velocity_view],
+            &[inputs.velocity_view, inputs.depth_view, neighbor_view],
         ),
         dof: lane_bindings(device, &passes.dof, history, views, &[inputs.depth_view]),
         fog: lane_bindings(device, &passes.fog, history, views, &[inputs.depth_view]),

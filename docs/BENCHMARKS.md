@@ -54,3 +54,12 @@ Measured 2026-10-30, release, RTX 4060 Ti (`cargo test --release -p redox_render
 | 50 000 | 100 | 262.608 | 3.800 | 2.134 |
 
 Reading: at 500 vertices one mesh costs the same on both paths; from about 1 000 vertices the GPU wins even with a submit per mesh; for small meshes the GPU only wins when they are skinned together in one batch (`update_gpu_batch`). Hence `GPU_SKIN_MIN_VERTICES = 1024` and `GPU_BATCH_MIN_MESHES = 4`; `MORPH_COST_FACTOR = 2` is an estimate (the benchmark has no morph case).
+
+## Motion blur spreading (PST-03)
+
+Cost of the two tile compute passes and the spreading blur, `tests/motion_blur_spread.rs::spreading_cost_per_frame` (`#[ignore]`, 128×128, wall time per frame including the readback). Run: `cargo test -p redox_render --test motion_blur_spread -- --ignored --nocapture`.
+
+| Spreading | ms per frame | Notes |
+|---|---|---|
+| off | not measured | run the ignored test on the owner's GPU |
+| on | not measured | |
