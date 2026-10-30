@@ -99,6 +99,12 @@ impl Renderer {
         Ok(())
     }
 
+    /// Describes the frame graph at the current surface size: passes in execution order with
+    /// their resources, slots, culled passes and access changes. Does not touch the GPU.
+    pub fn frame_graph_report(&self) -> String {
+        crate::frame_graph::frame_graph_report(self.config.width, self.config.height)
+    }
+
     /// Runs the named pass of the frame graph.
     fn run_frame_pass(&mut self, name: &str, f: &mut FrameState<'_>) {
         match name {
