@@ -25,4 +25,4 @@ pub use graph::{
 pub use ir::{Ir, Op, OpKind, ParamSlot, SurfaceOutputs, lower, optimize, prune};
 pub use key::{ShaderKey, variant_key};
 pub use variant::{Variant, compile_variant};
-pub use watch::{GraphReload, MatGraphWatcher};
+pub use watch::{GraphReload, MatGraphWatcher, load_graph_file};

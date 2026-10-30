@@ -295,6 +295,7 @@ impl PhysicsContext {
         true
     }
 
+    /// Returns the rigid body handle bound to `entity`, if it has one.
     pub fn get_body_handle(&self, entity: Entity) -> Option<RigidBodyHandle> {
         self.entity_to_body.get(&entity).map(|(h, _)| *h)
     }

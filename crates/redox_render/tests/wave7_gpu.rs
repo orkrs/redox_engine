@@ -554,7 +554,13 @@ fn shadow_gate_walking_hero_cost() {
     for f in 0..frames {
         let x = -4.0 + f as f32 * 0.05;
         let mut objects: Vec<RenderObject> = scene.iter().map(CloneObject::clone_object).collect();
-        objects.push(rig.object(rig.cube, material, 999, Vec3::new(x, 0.0, -5.0), Vec3::new(0.5, 1.8, 0.5)));
+        objects.push(rig.object(
+            rig.cube,
+            material,
+            999,
+            Vec3::new(x, 0.0, -5.0),
+            Vec3::new(0.5, 1.8, 0.5),
+        ));
         rig.frame(&objects);
         pages += u64::from(rig.renderer.vsm_dirty_pages_last_frame);
         for t in rig.renderer.gpu_profiler.timings() {

@@ -43,12 +43,7 @@ impl MaterialGraphBindings {
 
     /// Binds `path` to material slot `material_index`. It is loaded and watched on the next
     /// frame. A later bind of the same slot replaces the earlier one.
-    pub fn bind(
-        &mut self,
-        material_index: usize,
-        path: impl Into<PathBuf>,
-        params: Vec<[f32; 4]>,
-    ) {
+    pub fn bind(&mut self, material_index: usize, path: impl Into<PathBuf>, params: Vec<[f32; 4]>) {
         self.pending.retain(|b| b.material_index != material_index);
         self.pending.push(GraphBinding {
             material_index,
@@ -121,13 +116,16 @@ fn sync_material_graphs(world: &mut World, renderer: &mut RenderContext) {
     };
     for binding in std::mem::take(&mut bindings.pending) {
         // Watch before reading, so a change made during the load is seen by the next poll.
-        bindings
-            .reload
-            .watch(binding.material_index, &binding.path, binding.params.clone());
+        bindings.reload.watch(
+            binding.material_index,
+            &binding.path,
+            binding.params.clone(),
+        );
         match load_graph_file(&binding.path) {
             // set_material_graph logs its own failures and keeps the previous graph.
             Ok(graph) => {
-                let _ = renderer.set_material_graph(binding.material_index, &graph, &binding.params);
+                let _ =
+                    renderer.set_material_graph(binding.material_index, &graph, &binding.params);
             }
             Err(errors) => {
                 let text: Vec<String> = errors.iter().map(ToString::to_string).collect();

@@ -350,7 +350,10 @@ fn a_disk_cache_file_is_reused_only_while_its_header_matches() {
         .unwrap();
     let file = dir.join(format!("{:016x}.wgsl", key.0));
     let written = std::fs::read_to_string(&file).unwrap();
-    assert!(written.starts_with("// matgraph-cache v1 "), "header written");
+    assert!(
+        written.starts_with("// matgraph-cache v1 "),
+        "header written"
+    );
     let body = written.split_once('\n').unwrap().1;
 
     // Matching header and body: a second renderer reads the file and does not rewrite it.
@@ -380,7 +383,8 @@ fn a_disk_cache_file_is_reused_only_while_its_header_matches() {
 
     // A file of another cache version is refused: the WGSL is generated again and the file is
     // rewritten with the current header.
-    let stale = format!("// matgraph-cache v0 format=1 source={hash:016x} body=0000000000000000\n{body}");
+    let stale =
+        format!("// matgraph-cache v0 format=1 source={hash:016x} body=0000000000000000\n{body}");
     std::fs::write(&file, &stale).unwrap();
     let Some(mut third) = rig() else {
         return;
@@ -427,7 +431,10 @@ fn a_changed_graph_file_rebuilds_the_slot_without_a_restart() {
         .unwrap();
     let mut reload = MaterialGraphHotReload::with_interval(Duration::ZERO);
     reload.watch(material, &path, Vec::new());
-    assert!(reload.update(&mut rig.renderer).is_empty(), "nothing changed yet");
+    assert!(
+        reload.update(&mut rig.renderer).is_empty(),
+        "nothing changed yet"
+    );
     let shaders_before = rig.renderer.matgraphs.shader_count();
 
     // Other colour text: a different length, so the watcher sees the change.
@@ -439,7 +446,12 @@ fn a_changed_graph_file_rebuilds_the_slot_without_a_restart() {
         rig.renderer.matgraphs.shader_count() > shaders_before,
         "the changed graph built new variants"
     );
-    assert!(rig.renderer.matgraphs.pass_binding(material, GraphPass::Forward).is_some());
+    assert!(
+        rig.renderer
+            .matgraphs
+            .pass_binding(material, GraphPass::Forward)
+            .is_some()
+    );
 }
 
 #[test]
@@ -473,7 +485,10 @@ fn a_broken_graph_file_is_reported_once_and_the_old_graph_stays() {
     let _ = std::fs::remove_file(&path);
     assert_eq!(rig.renderer.matgraphs.shader_count(), shaders_before);
     assert!(
-        rig.renderer.matgraphs.pass_binding(material, GraphPass::Forward).is_some(),
+        rig.renderer
+            .matgraphs
+            .pass_binding(material, GraphPass::Forward)
+            .is_some(),
         "the slot keeps its previous graph"
     );
 }
@@ -497,5 +512,9 @@ fn an_unchanged_graph_file_does_nothing() {
     assert!(reload.update(&mut rig.renderer).is_empty());
     let _ = std::fs::remove_file(&path);
     assert_eq!(rig.renderer.matgraphs.shader_count(), shaders_before);
-    assert_eq!(rig.renderer.matgraphs.material_count(), 0, "no graph was applied");
+    assert_eq!(
+        rig.renderer.matgraphs.material_count(),
+        0,
+        "no graph was applied"
+    );
 }

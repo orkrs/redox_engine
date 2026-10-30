@@ -96,8 +96,8 @@ pub fn load_hlod_scene(
         );
         return Ok(None);
     }
-    let kinds_text = fs::read_to_string(&kinds_path)
-        .map_err(|e| format!("{}: {e}", kinds_path.display()))?;
+    let kinds_text =
+        fs::read_to_string(&kinds_path).map_err(|e| format!("{}: {e}", kinds_path.display()))?;
     let kinds = ActorKindTable::from_ron(&kinds_text)
         .map_err(|e| format!("{}: {e}", kinds_path.display()))?;
 
@@ -170,9 +170,9 @@ impl Plugin for HlodPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use redox_math::{Aabb, Mat4};
     use redox_render::hlod::{HlodInput, HlodParams, build_proxy};
     use redox_render::hlod_gpu::ProxyGpu;
-    use redox_math::{Aabb, Mat4};
     use redox_scene::world_bin::write_world_bin;
     use redox_scene::{ActorRecord, WorldManifest};
 
@@ -183,10 +183,8 @@ mod tests {
 
     impl TempDir {
         fn new(tag: &str) -> Self {
-            let dir = std::env::temp_dir().join(format!(
-                "redox_hlod_load_{tag}_{}",
-                std::process::id()
-            ));
+            let dir =
+                std::env::temp_dir().join(format!("redox_hlod_load_{tag}_{}", std::process::id()));
             let _ = fs::remove_dir_all(&dir);
             fs::create_dir_all(&dir).unwrap();
             Self(dir)

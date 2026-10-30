@@ -83,8 +83,10 @@ fn time_frames(
     let mut total = 0.0;
     let mut count = 0;
     for _ in 0..frames {
-        let mut objects: Vec<RenderObject> =
-            entities.iter().map(|e| detail_object(e.id(), 0, 0)).collect();
+        let mut objects: Vec<RenderObject> = entities
+            .iter()
+            .map(|e| detail_object(e.id(), 0, 0))
+            .collect();
         let start = Instant::now();
         hlod_frame(world, viewer, dt, &mut objects);
         total += start.elapsed().as_secs_f64() * 1e6;

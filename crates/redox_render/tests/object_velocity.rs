@@ -235,7 +235,7 @@ fn two_frames(skip: bool, camera_x: f32) -> Option<Readings> {
 
 #[test]
 fn the_debug_flag_removes_exactly_the_object_velocity_pass() {
-    let (Some(on), Some(off)) = (two_frames(false, 0.0), two_frames(true, 0.0)) else {
+    let (Some(off), Some(on)) = (two_frames(false, 0.0), two_frames(true, 0.0)) else {
         eprintln!("no GPU adapter, skipping");
         return;
     };
@@ -259,7 +259,7 @@ fn the_debug_flag_removes_exactly_the_object_velocity_pass() {
 
 #[test]
 fn skipping_the_pass_leaves_camera_motion_intact() {
-    let (Some(on), Some(off)) = (two_frames(false, 0.2), two_frames(true, 0.2)) else {
+    let (Some(off), Some(on)) = (two_frames(false, 0.2), two_frames(true, 0.2)) else {
         return;
     };
     // The camera moved, so the still cube and the sky carry camera motion in both modes.
@@ -268,9 +268,7 @@ fn skipping_the_pass_leaves_camera_motion_intact() {
         "camera motion is present: {:?}",
         off.still
     );
-    let close = |a: (f32, f32), b: (f32, f32)| {
-        (a.0 - b.0).abs() < 1e-3 && (a.1 - b.1).abs() < 1e-3
-    };
+    let close = |a: (f32, f32), b: (f32, f32)| (a.0 - b.0).abs() < 1e-3 && (a.1 - b.1).abs() < 1e-3;
     assert!(
         close(off.still, on.still),
         "still cube: {:?} vs {:?}",

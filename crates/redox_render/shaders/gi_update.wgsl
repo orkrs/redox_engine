@@ -12,7 +12,7 @@
 // Storage: irradiance is kept as acc^(1/5) (perceptual), visibility as (mean t, mean t^2).
 
 struct UpdateParams {
-    layout: vec4<u32>,  // probes per row (x), probe count (y), rays per probe (z), frame index (w)
+    pl: vec4<u32>,  // probes per row (x), probe count (y), rays per probe (z), frame index (w)
     blend: vec4<f32>,   // hysteresis: weight of the old value (x); visibility distance clamp (y)
 };
 
@@ -123,7 +123,7 @@ fn tile_origin(workgroup: vec2<u32>, stride: u32) -> vec2<u32> {
 // Irradiance at inner texel `inner` (0..IRR_INNER) of `probe`, mixed with the old texel.
 // acc = (4 pi / rays) * sum L cos, which is pi for unit radiance over the sphere.
 fn irradiance_value(probe: u32, inner: vec2<u32>, origin: vec2<u32>, q: vec4<f32>) -> vec4<f32> {
-    let rays = params.layout.z;
+    let rays = params.pl.z;
     let n = oct_decode((vec2<f32>(inner) + 0.5) / f32(IRR_INNER));
     var acc = vec3<f32>(0.0);
     for (var r = 0u; r < rays; r = r + 1u) {
@@ -140,7 +140,7 @@ fn irradiance_value(probe: u32, inner: vec2<u32>, origin: vec2<u32>, q: vec4<f32
 
 // Mean and mean-square distance at visibility texel `inner` (0..VIS_INNER), mixed with the old.
 fn visibility_value(probe: u32, inner: vec2<u32>, origin: vec2<u32>, q: vec4<f32>) -> vec4<f32> {
-    let rays = params.layout.z;
+    let rays = params.pl.z;
     let n = oct_decode((vec2<f32>(inner) + 0.5) / f32(VIS_INNER));
     var weight_sum = 0.0;
     var acc = vec2<f32>(0.0);
@@ -163,12 +163,12 @@ fn update_irradiance(
     @builtin(local_invocation_id) lid: vec3<u32>,
     @builtin(local_invocation_index) lindex: u32,
 ) {
-    let ppr = params.layout.x;
+    let ppr = params.pl.x;
     let probe = wg.y * ppr + wg.x;
-    if (probe >= params.layout.y) {
+    if (probe >= params.pl.y) {
         return;
     }
-    let q = random_rotation(hash_u32(params.layout.w));
+    let q = random_rotation(hash_u32(params.pl.w));
     let origin = tile_origin(wg.xy, IRR_STRIDE);
     textureStore(
         t_irr_new,
@@ -195,12 +195,12 @@ fn update_visibility(
     @builtin(local_invocation_id) lid: vec3<u32>,
     @builtin(local_invocation_index) lindex: u32,
 ) {
-    let ppr = params.layout.x;
+    let ppr = params.pl.x;
     let probe = wg.y * ppr + wg.x;
-    if (probe >= params.layout.y) {
+    if (probe >= params.pl.y) {
         return;
     }
-    let q = random_rotation(hash_u32(params.layout.w));
+    let q = random_rotation(hash_u32(params.pl.w));
     let origin = tile_origin(wg.xy, VIS_STRIDE);
     textureStore(
         t_vis_new,

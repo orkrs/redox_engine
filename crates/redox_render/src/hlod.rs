@@ -195,9 +195,9 @@ impl Welder {
                     .copied()
                     .ok_or(HlodError::Degenerate)?;
                 let colour = match input.vertex_colors {
-                    Some(colors) => Vec3::from_array(
-                        *colors.get(local as usize).ok_or(HlodError::Degenerate)?,
-                    ),
+                    Some(colors) => {
+                        Vec3::from_array(*colors.get(local as usize).ok_or(HlodError::Degenerate)?)
+                    }
                     None => flat,
                 };
                 self.colour_sum[id as usize] += colour * weight;

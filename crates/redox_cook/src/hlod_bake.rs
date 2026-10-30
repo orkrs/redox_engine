@@ -121,10 +121,11 @@ fn load_mesh_parts(path: &Path) -> Result<Vec<MeshPart>, String> {
             // fall back to the kind table colour (textures are ignored by the proxy).
             let material = primitive.material();
             let pbr = material.pbr_metallic_roughness();
-            let base = (material.index().is_some() && pbr.base_color_texture().is_none()).then(|| {
-                let [r, g, b, _] = pbr.base_color_factor();
-                [r, g, b]
-            });
+            let base =
+                (material.index().is_some() && pbr.base_color_texture().is_none()).then(|| {
+                    let [r, g, b, _] = pbr.base_color_factor();
+                    [r, g, b]
+                });
             let colour = choose_colour(vertex_colors, base);
             parts.push(MeshPart {
                 positions,

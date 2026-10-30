@@ -152,12 +152,15 @@ fn active_camera_position(world: &World) -> Option<Vec3> {
 /// Does nothing unless [`HlodSettings`] is enabled, an [`HlodRuntime`] with at
 /// least one proxy exists, and an active camera and frame objects are present.
 pub fn hlod_frame_system(world: &mut World) {
-    if !world.get_resource::<HlodSettings>().is_some_and(|s| s.enabled) {
+    if !world
+        .get_resource::<HlodSettings>()
+        .is_some_and(|s| s.enabled)
+    {
         return;
     }
-    if !world
+    if world
         .get_resource::<HlodRuntime>()
-        .is_some_and(|runtime| !runtime.proxies.is_empty())
+        .is_none_or(|runtime| runtime.proxies.is_empty())
     {
         return;
     }
@@ -317,10 +320,12 @@ mod tests {
     /// (20, 0) that has a proxy. Returns the world and the ids of its two actors.
     fn far_cell_world(enabled: bool, with_proxy: bool) -> (World, Vec<u32>) {
         let mut world = World::new();
-        world.insert_resource(ActorKindTable::from_ron(
-            r#"(kinds: { "crate": (mesh: "c.glb", color: (0.5, 0.5, 0.5)) })"#,
-        )
-        .unwrap());
+        world.insert_resource(
+            ActorKindTable::from_ron(
+                r#"(kinds: { "crate": (mesh: "c.glb", color: (0.5, 0.5, 0.5)) })"#,
+            )
+            .unwrap(),
+        );
         let far = PartitionCell { x: 20, y: 0 };
         let mut ids = Vec::new();
         for n in 0..2 {
@@ -381,8 +386,12 @@ mod tests {
 
     #[test]
     fn a_far_cell_is_replaced_by_its_proxy_in_the_frame() {
-        let (mut world, _) = far_cell_world(true, true);
+        let (mut world, ids) = far_cell_world(true, true);
         for _ in 0..10 {
+            // The frame is extracted anew every tick; the system appends the proxy to it.
+            world.insert_resource(FrameRenderObjects(
+                ids.iter().map(|id| detail_object(*id)).collect(),
+            ));
             world.get_resource_mut::<Time>().unwrap().delta_time = 0.1;
             hlod_frame_system(&mut world);
         }

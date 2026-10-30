@@ -76,12 +76,13 @@ fn scene(slots: &Slots, step: usize) -> Vec<RenderObject> {
         objects.push(object(slots.cube, slots.solid, center, Vec3::splat(0.4)));
     }
     for i in 0..TRANSPARENT {
-        let center = Vec3::new(
-            (i % 10) as f32 - 4.5,
-            (i / 10) as f32 - 2.0,
-            -2.0,
-        );
-        objects.push(object(slots.cube, slots.glass, center, Vec3::new(0.8, 0.8, 0.1)));
+        let center = Vec3::new((i % 10) as f32 - 4.5, (i / 10) as f32 - 2.0, -2.0);
+        objects.push(object(
+            slots.cube,
+            slots.glass,
+            center,
+            Vec3::new(0.8, 0.8, 0.1),
+        ));
     }
     objects
 }
@@ -182,7 +183,9 @@ fn object_velocity_pass_cost_table() {
     };
     let gpu_saved_ms = with.gpu_ms - without.gpu_ms;
 
-    println!("| mode | GPU total ms (median) | CPU total ms (median) | forward draws | object-velocity draws | all draws |");
+    println!(
+        "| mode | GPU total ms (median) | CPU total ms (median) | forward draws | object-velocity draws | all draws |"
+    );
     println!("|---|---|---|---|---|---|");
     print_row("(а) как сейчас", &with);
     print_row("(б) без прохода скорости объектов", &without);
@@ -194,6 +197,10 @@ fn object_velocity_pass_cost_table() {
     let merge = gpu_saved_ms >= GATE_GPU_MS || draws_saved_percent >= GATE_DRAWS_PERCENT;
     println!(
         "verdict (gate: GPU >= {GATE_GPU_MS} ms or draws >= {GATE_DRAWS_PERCENT} %): {}",
-        if merge { "сливать" } else { "не сливать" }
+        if merge {
+            "сливать"
+        } else {
+            "не сливать"
+        }
     );
 }

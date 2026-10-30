@@ -434,8 +434,8 @@ impl MaterialGraphs {
             let source = match self.read_disk_copy(key, source_hash) {
                 Some(body) => body,
                 None => {
-                    let body =
-                        variant_module(pass, &variant.generated).map_err(MaterialGraphError::Wgsl)?;
+                    let body = variant_module(pass, &variant.generated)
+                        .map_err(MaterialGraphError::Wgsl)?;
                     self.write_disk_copy(key, source_hash, &body);
                     body
                 }

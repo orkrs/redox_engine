@@ -91,7 +91,11 @@ pub fn record_normal_prepass(
         |i| i < vis.len() && vis[i],
         |a, b| {
             objects[a].mesh_index == objects[b].mesh_index
-                && batch_compatible(ctx.graphs, objects[a].material_index, objects[b].material_index)
+                && batch_compatible(
+                    ctx.graphs,
+                    objects[a].material_index,
+                    objects[b].material_index,
+                )
         },
     ) {
         let material = objects[run.start as usize].material_index;

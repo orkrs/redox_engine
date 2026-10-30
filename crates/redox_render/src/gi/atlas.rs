@@ -101,7 +101,10 @@ impl AtlasLayout {
 
     /// Texture size in texels.
     pub fn size(&self) -> [u32; 2] {
-        [self.probes_per_row * self.stride(), self.rows() * self.stride()]
+        [
+            self.probes_per_row * self.stride(),
+            self.rows() * self.stride(),
+        ]
     }
 
     /// Texel of the tile's top-left corner (border included).
@@ -234,11 +237,7 @@ impl ProbeAtlas {
             mapped_at_creation: false,
         });
         Self {
-            irradiance: PingPong::new(
-                device,
-                "gi_irradiance_atlas",
-                irradiance_layout.size(),
-            ),
+            irradiance: PingPong::new(device, "gi_irradiance_atlas", irradiance_layout.size()),
             visibility: PingPong::new(device, "gi_visibility_atlas", visibility_layout.size()),
             irradiance_layout,
             visibility_layout,
