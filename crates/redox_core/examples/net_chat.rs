@@ -38,7 +38,12 @@ impl Message for Chat {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let result = match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+    let result = match args
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
         ["--selftest"] => selftest(),
         ["--host", addr] => parse_addr(addr).and_then(host),
         ["--connect", addr] => parse_addr(addr).and_then(|server| connect(server, "client")),
@@ -178,10 +183,7 @@ fn selftest() -> Result<(), String> {
 
 fn host(bind: SocketAddr) -> Result<(), String> {
     let transport = UdpTransport::server(bind).map_err(to_text)?;
-    println!(
-        "hosting on {}",
-        transport.local_addr().map_err(to_text)?
-    );
+    println!("hosting on {}", transport.local_addr().map_err(to_text)?);
     let mut server = NetServer::new(transport);
     let lines = spawn_stdin_reader();
     let mut last = Instant::now();

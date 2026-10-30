@@ -84,7 +84,9 @@ fn udp_spike_prints_rtt_and_delivery() {
 
     println!("udp spike (127.0.0.1, no injected loss):");
     println!("  rtt: {:?}", server.rtt(ClientId(1)));
-    println!("  unreliable {UNRELIABLE_BYTES} B x {UNRELIABLE_COUNT}: delivered {delivered_unreliable}");
+    println!(
+        "  unreliable {UNRELIABLE_BYTES} B x {UNRELIABLE_COUNT}: delivered {delivered_unreliable}"
+    );
     println!(
         "  reliable {RELIABLE_BYTES} B x {RELIABLE_COUNT}: delivered {delivered_reliable} in {reliable_time:?}"
     );

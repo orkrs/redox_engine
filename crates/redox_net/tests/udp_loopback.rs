@@ -64,7 +64,10 @@ fn a_client_connects_exchanges_messages_and_disconnects_over_udp() {
     let mut from_server = Vec::new();
     let mut from_client = Vec::new();
     while from_server.len() < 100 || from_client.len() < 100 {
-        assert!(Instant::now() < deadline, "reliable messages did not arrive");
+        assert!(
+            Instant::now() < deadline,
+            "reliable messages did not arrive"
+        );
         pump(&mut server, &mut client, &mut last, &mut server_events);
         while let Some(bytes) = client.recv(Channel::Reliable) {
             from_server.push(decode_index(&bytes));
@@ -91,7 +94,10 @@ fn a_client_connects_exchanges_messages_and_disconnects_over_udp() {
         ClientId(1),
         DisconnectReason::Closed,
     )) {
-        assert!(Instant::now() < deadline, "the server did not see the disconnect");
+        assert!(
+            Instant::now() < deadline,
+            "the server did not see the disconnect"
+        );
         pump(&mut server, &mut client, &mut last, &mut server_events);
     }
     assert!(server.client_ids().is_empty());

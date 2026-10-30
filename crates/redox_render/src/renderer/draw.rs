@@ -45,13 +45,9 @@ impl Renderer {
         graph: &redox_matgraph::MaterialGraph,
         params: &[[f32; 4]],
     ) -> Result<(), crate::matgraph_cache::MaterialGraphError> {
-        let result = self.matgraphs.set_material(
-            &self.device,
-            &self.queue,
-            material_index,
-            graph,
-            params,
-        );
+        let result =
+            self.matgraphs
+                .set_material(&self.device, &self.queue, material_index, graph, params);
         if let Err(error) = &result {
             log::warn!("material {material_index}: graph not applied: {error}");
         }

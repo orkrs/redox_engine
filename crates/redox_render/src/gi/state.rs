@@ -3,6 +3,7 @@
 //! A rebuild runs on a worker thread and is uploaded on the render thread once it finishes.
 //! Until then the previous volume stays in use.
 
+use std::sync::Mutex;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
 use crate::sdf::global::{GLOBAL_SDF_DIMS, GlobalSdf};
@@ -12,7 +13,8 @@ use crate::sdf::global_gpu::GlobalSdfGpu;
 pub struct GiState {
     /// The volume currently used by GI.
     pub global_sdf: GlobalSdfGpu,
-    pending: Option<Receiver<GlobalSdf>>,
+    // A mutex only to make the renderer `Sync`; `Receiver` is not.
+    pending: Option<Mutex<Receiver<GlobalSdf>>>,
 }
 
 impl GiState {
@@ -32,7 +34,7 @@ impl GiState {
             // The receiver is gone only when a newer rebuild replaced this one.
             let _ = tx.send(build());
         });
-        self.pending = Some(rx);
+        self.pending = Some(Mutex::new(rx));
     }
 
     /// Uploads a finished rebuild, if one is ready. Call once per frame on the render thread.
@@ -40,7 +42,10 @@ impl GiState {
         let Some(rx) = self.pending.as_ref() else {
             return;
         };
-        match rx.try_recv() {
+        let received = rx
+            .lock()
+            .map_or(Err(TryRecvError::Disconnected), |rx| rx.try_recv());
+        match received {
             Ok(sdf) => {
                 self.global_sdf.upload(device, queue, &sdf);
                 self.pending = None;

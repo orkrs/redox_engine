@@ -125,9 +125,7 @@ impl GiTracer {
         });
         let ray_data = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("gi_trace_ray_data"),
-            size: u64::from(max_probes.max(1))
-                * u64::from(MAX_RAYS_PER_PROBE)
-                * RAY_RECORD_BYTES,
+            size: u64::from(max_probes.max(1)) * u64::from(MAX_RAYS_PER_PROBE) * RAY_RECORD_BYTES,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
@@ -155,7 +153,10 @@ impl GiTracer {
         sky: &wgpu::TextureView,
     ) {
         let probes = params.dims[0] * params.dims[1] * params.dims[2];
-        debug_assert!(probes <= self.max_probes, "more probes than the ray buffer holds");
+        debug_assert!(
+            probes <= self.max_probes,
+            "more probes than the ray buffer holds"
+        );
         let rays = params.rays.clamp(1, MAX_RAYS_PER_PROBE);
         let gpu = GiTraceParamsGpu {
             grid_origin: [
@@ -165,12 +166,7 @@ impl GiTracer {
                 params.spacing,
             ],
             grid_dims: [params.dims[0], params.dims[1], params.dims[2], rays],
-            sun_dir: [
-                params.sun_dir.x,
-                params.sun_dir.y,
-                params.sun_dir.z,
-                0.0,
-            ],
+            sun_dir: [params.sun_dir.x, params.sun_dir.y, params.sun_dir.z, 0.0],
             sun_rad: [
                 params.sun_radiance.x,
                 params.sun_radiance.y,
@@ -238,7 +234,10 @@ fn uniform_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
     }
 }
 
-fn texture_entry(binding: u32, dimension: wgpu::TextureViewDimension) -> wgpu::BindGroupLayoutEntry {
+fn texture_entry(
+    binding: u32,
+    dimension: wgpu::TextureViewDimension,
+) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
         binding,
         visibility: wgpu::ShaderStages::COMPUTE,

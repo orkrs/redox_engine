@@ -68,7 +68,12 @@ fn sky_cube(device: &wgpu::Device, queue: &wgpu::Queue, colour: [u8; 4]) -> wgpu
     })
 }
 
-fn read_bytes(device: &wgpu::Device, queue: &wgpu::Queue, src: &wgpu::Buffer, bytes: u64) -> Vec<u8> {
+fn read_bytes(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    src: &wgpu::Buffer,
+    bytes: u64,
+) -> Vec<u8> {
     let staging = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("gi_test_readback"),
         size: bytes,
@@ -182,7 +187,13 @@ fn the_global_sdf_gpu_upload_roundtrips() {
     let data = slice.get_mapped_range().expect("mapped range").to_vec();
     staging.unmap();
 
-    for (x, y, z) in [(0, 0, 0), (3, 5, 7), (64, 2, 100), (127, 127, 127), (60, 60, 60)] {
+    for (x, y, z) in [
+        (0, 0, 0),
+        (3, 5, 7),
+        (64, 2, 100),
+        (127, 127, 127),
+        (60, 60, 60),
+    ] {
         let i = GlobalSdf::index(sdf.dims, x, y, z);
         let bits = u16::from_le_bytes([data[2 * i], data[2 * i + 1]]);
         let gpu_value = half::f16::from_bits(bits).to_f32();

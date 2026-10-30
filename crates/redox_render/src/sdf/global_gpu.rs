@@ -104,12 +104,7 @@ impl GlobalSdfGpu {
             &self.info,
             0,
             bytemuck::bytes_of(&GlobalSdfInfoGpu {
-                origin_voxel: [
-                    sdf.origin.x,
-                    sdf.origin.y,
-                    sdf.origin.z,
-                    sdf.voxel,
-                ],
+                origin_voxel: [sdf.origin.x, sdf.origin.y, sdf.origin.z, sdf.voxel],
                 dims: [sdf.dims[0], sdf.dims[1], sdf.dims[2], 0],
             }),
         );

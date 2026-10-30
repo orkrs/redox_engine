@@ -177,12 +177,7 @@ pub fn apply_hlod_to_render_objects(world: &World, objects: &mut Vec<RenderObjec
 
 /// One HLOD step for a frame: advances the cells and applies the result to the
 /// frame's render objects. The frame loop calls this once, after render extraction.
-pub fn hlod_frame(
-    world: &mut World,
-    viewer_pos: Vec3,
-    dt: f32,
-    objects: &mut Vec<RenderObject>,
-) {
+pub fn hlod_frame(world: &mut World, viewer_pos: Vec3, dt: f32, objects: &mut Vec<RenderObject>) {
     hlod_system(world, viewer_pos, dt);
     apply_hlod_to_render_objects(world, objects);
 }

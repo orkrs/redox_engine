@@ -170,8 +170,7 @@ impl UdpTransport {
         }
         let id = ClientId(self.next_id);
         self.next_id = self.next_id.saturating_add(1);
-        self.peers
-            .insert(id, RemotePeer::new(from, true, false));
+        self.peers.insert(id, RemotePeer::new(from, true, false));
         self.by_addr.insert(from, id);
         self.events.push(NetEvent::Connected(id));
         self.send_control(from, CLASS_ACCEPT, &[]);

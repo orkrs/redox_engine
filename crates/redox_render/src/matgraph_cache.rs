@@ -13,7 +13,7 @@ use std::collections::hash_map::Entry;
 use std::path::PathBuf;
 
 use redox_matgraph::{
-    CodegenOptions, Features, GraphError, Generated, MaterialGraph, Pass, ShaderKey,
+    CodegenOptions, Features, Generated, GraphError, MaterialGraph, Pass, ShaderKey,
     compile_variant,
 };
 
@@ -246,7 +246,10 @@ impl MaterialGraphs {
     }
 
     /// Pipeline and parameter bind group of a graph-driven material slot.
-    pub fn binding(&self, material_index: usize) -> Option<(&wgpu::RenderPipeline, &wgpu::BindGroup)> {
+    pub fn binding(
+        &self,
+        material_index: usize,
+    ) -> Option<(&wgpu::RenderPipeline, &wgpu::BindGroup)> {
         let material = self.materials.get(&material_index)?;
         let pipeline = self.pipelines.get(&material.key)?;
         Some((pipeline, &material.params))
@@ -271,7 +274,8 @@ impl MaterialGraphs {
         };
         let variant = compile_variant(graph, &options).map_err(MaterialGraphError::Graph)?;
         let key = variant.key;
-        let source = graph_pass_source(PBR_WGSL, &variant.generated).map_err(MaterialGraphError::Wgsl)?;
+        let source =
+            graph_pass_source(PBR_WGSL, &variant.generated).map_err(MaterialGraphError::Wgsl)?;
         if !self.cache.contains(key) {
             self.write_disk_copy(key, &source);
         }
@@ -352,7 +356,10 @@ impl MaterialGraphs {
         let result = std::fs::create_dir_all(dir)
             .and_then(|()| std::fs::write(dir.join(format!("{:016x}.wgsl", key.0)), source));
         if let Err(error) = result {
-            log::warn!("matgraph: could not write WGSL copy to {}: {error}", dir.display());
+            log::warn!(
+                "matgraph: could not write WGSL copy to {}: {error}",
+                dir.display()
+            );
         }
     }
 }

@@ -133,7 +133,8 @@ impl Renderer {
         let sc = self.msaa_sample_count;
         self.pbr_pass = PbrPass::new(&self.device, hdr_format, sc);
         self.transparent_pass = TransparentPass::new(&self.device, &self.pbr_pass, hdr_format, sc);
-        self.matgraphs.rebuild_pipelines(&self.device, &self.pbr_pass);
+        self.matgraphs
+            .rebuild_pipelines(&self.device, &self.pbr_pass);
         self.debug_lines_pass =
             DebugLinesPass::new(&self.device, &self.shared_layouts.camera_bgl, sc);
         self.vg_resolve_pass = VgResolvePass::new(

@@ -4,8 +4,8 @@
 
 mod common;
 
-use redox_math::{Aabb, Mat4, Quat, Vec3};
 use redox_matgraph::{MaterialGraph, Node, NodeKind, PortRef, Ty};
+use redox_math::{Aabb, Mat4, Quat, Vec3};
 use redox_render::Renderer;
 use redox_render::camera::Camera;
 use redox_render::frame::FrameView;
@@ -222,8 +222,14 @@ fn two_instances_share_one_shader_with_different_params() {
     let picture = rig.draw(&[cube_at(mesh, red_slot, -1.5), cube_at(mesh, blue_slot, 1.5)]);
     let [lr, lg, lb] = pixel(&picture, 31, SIZE / 2);
     let [rr, rg, rb] = pixel(&picture, 65, SIZE / 2);
-    assert!(lr > lg.saturating_add(60) && lr > lb.saturating_add(60), "left: {lr} {lg} {lb}");
-    assert!(rb > rr.saturating_add(60) && rb > rg.saturating_add(60), "right: {rr} {rg} {rb}");
+    assert!(
+        lr > lg.saturating_add(60) && lr > lb.saturating_add(60),
+        "left: {lr} {lg} {lb}"
+    );
+    assert!(
+        rb > rr.saturating_add(60) && rb > rg.saturating_add(60),
+        "right: {rr} {rg} {rb}"
+    );
 }
 
 #[test]
@@ -238,7 +244,9 @@ fn a_broken_graph_keeps_the_previous_shader() {
         .unwrap();
     let shaders_before = rig.renderer.matgraphs.shader_count();
 
-    let result = rig.renderer.set_material_graph(material, &broken_graph(), &[]);
+    let result = rig
+        .renderer
+        .set_material_graph(material, &broken_graph(), &[]);
     assert!(result.is_err(), "a graph without output must be refused");
     assert!(
         rig.renderer.matgraphs.binding(material).is_some(),

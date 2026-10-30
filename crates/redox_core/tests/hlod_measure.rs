@@ -59,11 +59,18 @@ fn spawn_scene(world: &mut World) -> Vec<Entity> {
 }
 
 /// Average microseconds of `hlod_frame` over `frames` frames, and the object count of the last one.
-fn time_frames(world: &mut World, entities: &[Entity], viewer: Vec3, dt: f32, frames: usize) -> (f64, usize) {
+fn time_frames(
+    world: &mut World,
+    entities: &[Entity],
+    viewer: Vec3,
+    dt: f32,
+    frames: usize,
+) -> (f64, usize) {
     let mut total = 0.0;
     let mut count = 0;
     for _ in 0..frames {
-        let mut objects: Vec<RenderObject> = entities.iter().map(|e| detail_object(e.id())).collect();
+        let mut objects: Vec<RenderObject> =
+            entities.iter().map(|e| detail_object(e.id())).collect();
         let start = Instant::now();
         hlod_frame(world, viewer, dt, &mut objects);
         total += start.elapsed().as_secs_f64() * 1e6;
@@ -86,7 +93,12 @@ fn four_thousand_objects_in_forty_cells_seen_from_300m() {
     let cells: Vec<PartitionCell> = (0..CELLS_X)
         .flat_map(|x| (0..CELLS_Y).map(move |y| PartitionCell { x, y }))
         .collect();
-    let mut runtime = HlodRuntime::new(HlodConfig::default(), CELL_SIZE, Vec3::ZERO, cells.iter().copied());
+    let mut runtime = HlodRuntime::new(
+        HlodConfig::default(),
+        CELL_SIZE,
+        Vec3::ZERO,
+        cells.iter().copied(),
+    );
     for cell in &cells {
         runtime.register_proxy(
             *cell,
@@ -104,6 +116,9 @@ fn four_thousand_objects_in_forty_cells_seen_from_300m() {
     println!("HLOD measurement, 4000 objects in 40 cells at about 300 m");
     println!("  without HLOD: {without_draws} draw calls, hlod_frame {without_us:.1} us/frame");
     println!("  with HLOD:    {with_draws} draw calls, hlod_frame {with_us:.1} us/frame");
-    assert_eq!(without_draws, CELLS_X as usize * CELLS_Y as usize * PER_CELL);
+    assert_eq!(
+        without_draws,
+        CELLS_X as usize * CELLS_Y as usize * PER_CELL
+    );
     assert_eq!(with_draws, CELLS_X as usize * CELLS_Y as usize);
 }

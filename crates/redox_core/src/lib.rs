@@ -49,9 +49,9 @@ pub use app::AppBuilder;
 pub use commands::{SharedCommands, flush_commands};
 pub use config::{EngineConfig, LightingMode};
 pub use dispatcher::{Dispatcher, Stage, SystemMeta, access_compatible, parallel_layers};
+pub use net_plugin::{NetMode, NetPlugin};
 pub use plugin::{
     App, AudioPlugin, CorePlugin, NavPlugin, PhysicsPlugin, Plugin, RenderPlugin, ScriptWorldPlugin,
 };
-pub use net_plugin::{NetMode, NetPlugin};
 pub use state::{AppState, NextState, State, in_state};
 pub use time::Time;

@@ -77,7 +77,9 @@ fn oct_decode_covers_the_sphere_uniformly_enough() {
         for i in 0..n {
             let uv = Vec2::new((i as f32 + 0.5) / n as f32, (j as f32 + 0.5) / n as f32);
             let d = oct_decode(uv);
-            let octant = (d.x > 0.0) as usize | (((d.y > 0.0) as usize) << 1) | (((d.z > 0.0) as usize) << 2);
+            let octant = (d.x > 0.0) as usize
+                | (((d.y > 0.0) as usize) << 1)
+                | (((d.z > 0.0) as usize) << 2);
             counts[octant] += 1;
         }
     }
@@ -130,14 +132,7 @@ fn a_ray_leaving_through_no_opening_never_escapes() {
 fn the_reference_floor_next_to_the_red_wall_is_redder_than_greener() {
     // Floor point 0.3 m from the red left wall (x = -2).
     let scene = cornell_box();
-    let e = reference_irradiance(
-        &scene,
-        Vec3::new(-1.7, 0.0, 0.0),
-        Vec3::Y,
-        3,
-        4096,
-        7,
-    );
+    let e = reference_irradiance(&scene, Vec3::new(-1.7, 0.0, 0.0), Vec3::Y, 3, 4096, 7);
     assert!(e.x > 1.3 * e.y, "R {} vs G {}", e.x, e.y);
     assert!(e.x > 1.3 * e.z, "R {} vs B {}", e.x, e.z);
 }
@@ -202,7 +197,10 @@ fn the_cascade_snaps_in_whole_cells_and_wraps_indices() {
             pos.cmpge(window_min).all() && pos.cmplt(window_max).all(),
             "slot {slot} at {pos:?} outside window"
         );
-        assert_eq!(cascade.storage_index(pos.to_array().map(|v| v as i32)), slot);
+        assert_eq!(
+            cascade.storage_index(pos.to_array().map(|v| v as i32)),
+            slot
+        );
     }
 }
 
@@ -274,7 +272,11 @@ fn the_trilinear_sample_is_continuous_across_voxel_boundaries() {
     for axis in [Vec3::X, Vec3::Y, Vec3::Z] {
         let below = sdf.sample(boundary - axis * 1e-5);
         let above = sdf.sample(boundary + axis * 1e-5);
-        assert!((below - above).abs() < 1e-3, "jump {}", (below - above).abs());
+        assert!(
+            (below - above).abs() < 1e-3,
+            "jump {}",
+            (below - above).abs()
+        );
     }
 }
 
