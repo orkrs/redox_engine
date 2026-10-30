@@ -77,11 +77,7 @@ pub fn frame_graph(width: u32, height: u32) -> RenderGraph {
             .write(vsm_shadow);
     });
     g.add_pass("forward", |p| {
-        p.read(ao)
-            .read(vsm_shadow)
-            .read(gi)
-            .read(depth)
-            .write(hdr);
+        p.read(ao).read(vsm_shadow).read(gi).read(depth).write(hdr);
     });
     // Writes the visibility targets, then resolves them into HDR in the same pass.
     g.add_pass("vg_visibility_resolve", |p| {

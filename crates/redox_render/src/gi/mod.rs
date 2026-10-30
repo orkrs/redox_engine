@@ -6,9 +6,8 @@ pub mod cascade;
 pub mod grid_gpu;
 pub mod oct;
 pub mod probes;
-pub mod relocate;
 pub mod reference;
+pub mod relocate;
 pub mod sdf_ref;
 pub mod state;
 pub mod trace;
-

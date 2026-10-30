@@ -4,8 +4,8 @@
 mod common;
 
 use redox_math::{Aabb, Vec3};
-use redox_render::gi::sdf_ref::cornell_box;
 use redox_render::gi::grid_gpu::GiGridGpu;
+use redox_render::gi::sdf_ref::cornell_box;
 use redox_render::gi::trace::{GiTraceParams, GiTracer, TraceInputs};
 use redox_render::sdf::global::{GLOBAL_SDF_DIMS, GlobalSdf, SdfBox};
 use redox_render::sdf::global_gpu::GlobalSdfGpu;

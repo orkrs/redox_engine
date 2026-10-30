@@ -281,7 +281,11 @@ impl GiProbes {
         encoder: &mut wgpu::CommandEncoder,
         frame: &GiFrame<'_>,
     ) {
-        queue.write_buffer(&self.prev_grid_buffer, 0, bytemuck::bytes_of(&self.prev_grid));
+        queue.write_buffer(
+            &self.prev_grid_buffer,
+            0,
+            bytemuck::bytes_of(&self.prev_grid),
+        );
         let layout = self.atlas.irradiance_layout();
         let cascade_count = self.quality.cascades();
         if !self.active() {
@@ -321,7 +325,12 @@ impl GiProbes {
             prev_irradiance: &self.irradiance_view,
             probe_offset: &self.probe_offset,
         };
-        for (slot, cascade) in self.cascades.iter().enumerate().take(cascade_count as usize) {
+        for (slot, cascade) in self
+            .cascades
+            .iter()
+            .enumerate()
+            .take(cascade_count as usize)
+        {
             let params = GiTraceParams {
                 grid_origin: cascade.origin,
                 spacing: cascade.spacing,

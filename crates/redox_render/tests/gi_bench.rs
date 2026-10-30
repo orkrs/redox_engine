@@ -173,6 +173,8 @@ fn gi_cost_by_quality() {
             std::thread::sleep(Duration::from_millis(5));
         }
         let mean = sum / count.max(1) as f32;
-        println!("gi_bench quality={name} gi_passes_ms_mean={mean:.3} frames={count} scene=cornell+{FLOOR_BOXES}boxes size={SIZE}");
+        println!(
+            "gi_bench quality={name} gi_passes_ms_mean={mean:.3} frames={count} scene=cornell+{FLOOR_BOXES}boxes size={SIZE}"
+        );
     }
 }
