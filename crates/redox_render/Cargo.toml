@@ -26,6 +26,7 @@ redox_asset = { path = "../redox_asset" }
 redox_vfx = { path = "../redox_vfx" }
 redox_reflect = { path = "../redox_reflect" }
 redox_anim = { path = "../redox_anim" }
+redox_matgraph = { path = "../redox_matgraph" }
 
 # Graphics
 wgpu = { workspace = true }
@@ -53,12 +54,13 @@ pollster = "1"
 
 # Mesh optimization (meshlet clustering + LOD simplification)
 meshopt = { workspace = true }
+# Shader validation of material graph variants (MAT-02 step 5)
+naga = { version = "30", features = ["wgsl-in"] }
 # Optional: runtime shader hot-reload (feature "shader-hot-reload")
 notify = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.7", default-features = false, features = ["cargo_bench_support"] }
-naga = "30"
 redox_asset = { path = "../redox_asset", features = ["testing"] }
 
 [[bench]]

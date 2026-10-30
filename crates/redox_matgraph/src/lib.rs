@@ -12,6 +12,8 @@ pub mod eval;
 pub mod graph;
 pub mod ir;
 pub mod key;
+pub mod variant;
+pub mod watch;
 
 pub use check::node_types;
 pub use codegen::{CodegenOptions, Features, Generated, Pass, generate};
@@ -22,3 +24,5 @@ pub use graph::{
 };
 pub use ir::{Ir, Op, OpKind, ParamSlot, SurfaceOutputs, lower, optimize, prune};
 pub use key::{ShaderKey, variant_key};
+pub use variant::{Variant, compile_variant};
+pub use watch::{GraphReload, MatGraphWatcher};
