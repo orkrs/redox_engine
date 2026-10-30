@@ -7,8 +7,8 @@ use crate::gi::probes::GiFrame;
 impl Renderer {
     /// Traces the probe cascades and updates their atlases. Runs before the lighting passes
     /// that read the stable atlas textures.
-    pub(super) fn pass_ddgi_fill(&mut self, f: &mut FrameState<'_>) {
-        f.touch("ddgi_irradiance");
+    pub(super) fn pass_gi_update(&mut self, f: &mut FrameState<'_>) {
+        f.touch("gi_irradiance");
         self.gi.poll(&self.device, &self.queue);
         let l = &self.light_uniform;
         let sun_radiance =

@@ -14,7 +14,7 @@
 //! # Stubs / not fully wired
 //! - Virtual Geometry meshlet path: constructed with the engine but unused (no
 //!   `VirtualMesh` entities in the editor world).
-//! - DDGI / SDF shadow bricks: GPU objects exist; editor does not seed probes/bricks.
+//! - GI / SDF shadow bricks: GPU objects exist; editor does not seed probes/bricks.
 //! - IBL: dummy environment (no HDR load); skybox off.
 //! - ViewportShading Unlit / Normals / Wireframe: Lit PBR only (selection tint).
 //! - Streaming GpuRegistry assets beyond procedural cubes.

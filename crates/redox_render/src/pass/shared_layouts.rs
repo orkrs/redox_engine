@@ -9,7 +9,7 @@
 //! | Group | Role            | Bindings                                                        |
 //! |-------|-----------------|----------------------------------------------------------------|
 //! | **0** | Frame / global  | Camera, shader debug, IBL textures, BRDF LUT, blue noise       |
-//! | **1** | Pass / scene    | Lights, shadows, clusters, VSM, DDGI, SDF atlas                |
+//! | **1** | Pass / scene    | Lights, shadows, clusters, VSM, GI, SDF atlas                |
 //! | **2** | Materials       | Material uniform + albedo/normal/MR textures                   |
 //! | **3** | Instances       | Model storage buffer                                           |
 

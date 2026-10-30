@@ -249,7 +249,7 @@ fn gi_tile_fetch(tex: texture_2d<f32>, probe: u32, dir: vec3<f32>, stride: u32, 
     return mix(mix(a, b, f.x), mix(d, e, f.x), f.y);
 }
 
-// DDGI blend inside one cascade. Returns (weighted irradiance sum, total weight); the caller
+// GI blend inside one cascade. Returns (weighted irradiance sum, total weight); the caller
 // divides. Eight probes around the biased point, weighted by trilinear position, a smooth
 // backface term and the Chebyshev visibility test.
 fn gi_sample_cascade(c: u32, world_pos: vec3<f32>, n: vec3<f32>, v: vec3<f32>) -> vec4<f32> {
@@ -1144,10 +1144,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Ambient factor from light uniform
     let ambient_factor = light_u.ambient.w;
 
-    // Combine IBL with DDGI diffuse bounce (bent normal) — single ambient source.
-    // Constant ambient (light_u.ambient.xyz) is small 0.02×albedo fallback when IBL/DDGI missing, not triple.
-    let ddgi = gi_irradiance(in.world_pos, bent_n, v);
-    let ambient_base = (w_base * (kD_ibl * diffuse_ibl + specular_ibl) + substrate_ibl + ddgi * albedo / PI + light_u.ambient.xyz * albedo) * ambient_factor * ao;
+    // Combine IBL with the GI diffuse bounce (bent normal) — single ambient source.
+    // Constant ambient (light_u.ambient.xyz) is small 0.02×albedo fallback when IBL/GI missing, not triple.
+    let gi_diffuse = gi_irradiance(in.world_pos, bent_n, v);
+    let ambient_base = (w_base * (kD_ibl * diffuse_ibl + specular_ibl) + substrate_ibl + gi_diffuse * albedo / PI + light_u.ambient.xyz * albedo) * ambient_factor * ao;
     // MAT-04: the clearcoat attenuates the base ambient and adds its own reflection.
     var ambient = ambient_base;
     if ((material.flags & MAT_FLAG_COAT) != 0u && shader_debug.ibl_enabled != 0u) {

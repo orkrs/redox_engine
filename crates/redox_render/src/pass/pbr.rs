@@ -5,7 +5,7 @@
 //!
 //! Bind groups (Phase 2.2):
 //!   0 — Frame/global (camera, IBL, blue noise)
-//!   1 — Pass/scene (lights, shadows, clusters, DDGI, SDF)
+//!   1 — Pass/scene (lights, shadows, clusters, GI, SDF)
 //!   2 — Materials
 //!   3 — Instances (model storage)
 
@@ -328,7 +328,7 @@ impl PbrPass {
                     },
                     count: None,
                 },
-                // 16: DDGI grid
+                // 16: GI cascade grid
                 wgpu::BindGroupLayoutEntry {
                     binding: 16,
                     visibility: wgpu::ShaderStages::FRAGMENT,

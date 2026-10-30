@@ -1,5 +1,5 @@
 //! SDF foundation: distance-field baking, sparse brick registry, and the
-//! CPU cone-tracing reference used by SDF shadows (and later by DDGI in
+//! CPU cone-tracing reference used by SDF shadows (and later by GI in
 //! Phase 5).
 //!
 //! Layout:
@@ -48,7 +48,7 @@ const VIS_EPS: f32 = 1.0e-3;
 /// Scene-level SDF shadow queries over a brick atlas.
 ///
 /// This is the CPU ground truth for `docs/reference/shaders/sdf_shadow.wgsl` and doubles as
-/// the offline validation path (unit tests, future DDGI ray budget checks).
+/// the offline validation path (unit tests, future GI ray budget checks).
 pub struct SdfShadowScene {
     /// The brick atlas.
     pub atlas: SdfBrickAtlas,

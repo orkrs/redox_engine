@@ -449,7 +449,7 @@ fn write_bake_report(root: &Path, bake: &BakeStatus) -> anyhow::Result<BakeRepor
     body.push_str("\n# Still deferred (scene GPU)\n");
     body.push_str("- VGSystem::register_asset / meshlet GPU upload\n");
     body.push_str("- SdfGpuAtlas brick upload\n");
-    body.push_str("- IBL / DDGI probes\n");
+    body.push_str("- IBL / GI probes\n");
     std::fs::write(&path, body)?;
     report.report_path = path;
     report.lines.insert(0, "bake_report written".into());

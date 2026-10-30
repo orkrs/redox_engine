@@ -137,7 +137,7 @@ impl Renderer {
     fn run_frame_pass(&mut self, name: &str, f: &mut FrameState<'_>) {
         match name {
             "shadow_passes" => self.pass_shadows(f),
-            "ddgi_fill" => self.pass_ddgi_fill(f),
+            "gi_update" => self.pass_gi_update(f),
             "cluster_vg_cull" => self.pass_cluster_vg_cull(f),
             "normal_prepass_hiz" => self.pass_normal_prepass_hiz(f),
             "gtao" => {
@@ -187,9 +187,6 @@ impl Renderer {
         objects: &'a [RenderObject],
         surface_view: &'a wgpu::TextureView,
     ) -> FrameState<'a> {
-        // ASSUMPTION (GI-01 5a): the old DDGI grid is no longer bound by any shader, so its
-        // per-frame update and AABB fill are skipped; `gi_probes` replaces it. Removed in 5b.
-
         self.gpu_profiler.begin_frame(&self.device);
         if self.vsm_enabled && !self.probe_capture_active {
             self.vsm_page_request.begin_frame(&self.device);

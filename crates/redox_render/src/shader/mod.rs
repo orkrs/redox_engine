@@ -128,8 +128,6 @@ pub const PARTICLE_SIM_WGSL: &str = include_str!("../../shaders/particle_sim.wgs
 pub const PARTICLE_BILLBOARD_WGSL: &str = include_str!("../../shaders/particle_billboard.wgsl");
 /// Source of `skin_compute.wgsl`.
 pub const SKIN_COMPUTE_WGSL: &str = include_str!("../../shaders/skin_compute.wgsl");
-/// Source of `ddgi_trace.wgsl`.
-pub const DDGI_TRACE_WGSL: &str = include_str!("../../shaders/ddgi_trace.wgsl");
 /// Source of `gi_trace.wgsl` (global SDF probe ray trace).
 pub const GI_TRACE_WGSL: &str = include_str!("../../shaders/gi_trace.wgsl");
 /// Source of `gi_relocate.wgsl` (probe relocation out of geometry).
@@ -230,7 +228,6 @@ const EMBEDDED: &[(&str, &str, &str)] = &[
         PARTICLE_BILLBOARD_WGSL,
     ),
     ("skin_compute", "skin_compute.wgsl", SKIN_COMPUTE_WGSL),
-    ("ddgi_trace", "ddgi_trace.wgsl", DDGI_TRACE_WGSL),
     ("gi_trace", "gi_trace.wgsl", GI_TRACE_WGSL),
     ("gi_update", "gi_update.wgsl", GI_UPDATE_WGSL),
     ("gi_relocate", "gi_relocate.wgsl", GI_RELOCATE_WGSL),
@@ -471,7 +468,6 @@ mod tests {
             ("particle_sim", super::PARTICLE_SIM_WGSL),
             ("particle_billboard", super::PARTICLE_BILLBOARD_WGSL),
             ("skin_compute", super::SKIN_COMPUTE_WGSL),
-            ("ddgi_trace", super::DDGI_TRACE_WGSL),
             ("gi_trace", super::GI_TRACE_WGSL),
             ("gi_update", super::GI_UPDATE_WGSL),
             ("gi_relocate", super::GI_RELOCATE_WGSL),

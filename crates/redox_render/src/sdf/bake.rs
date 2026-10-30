@@ -28,7 +28,7 @@
 //! of a cube, for example, where the closest triangle's face normal points
 //! sideways while the texel sits outside along the diagonal. Parity only
 //! assumes a watertight, consistently wound mesh, which is the same
-//! assumption every downstream consumer (shadows, DDGI) makes. Points
+//! assumption every downstream consumer (shadows, GI) makes. Points
 //! outside the mesh AABB skip the ray cast entirely (they are provably
 //! outside the solid).
 //!

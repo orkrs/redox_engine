@@ -573,10 +573,9 @@ impl Renderer {
             mapped_at_creation: false,
         });
 
-        // Phase 5: DDGI probe grid. SDF atlas starts empty — demo bricks must NOT
+        // Phase 5: SDF atlas starts empty — demo bricks must NOT
         // be uploaded globally (they multiply into directional shadows and look like
         // painted sliding blobs that don't match the real scene casters).
-        let ddgi_gpu = crate::gi::DdgiGpu::new_default(&device);
         let gi = crate::gi::state::GiState::new(&device, &queue);
         let gi_probes = crate::gi::probes::GiProbes::new(&device);
         let sdf_gpu = crate::sdf::SdfGpuAtlas::new(&device, &queue);
@@ -876,7 +875,6 @@ impl Renderer {
             bloom_down_bgs,
             bloom_up_bgs,
             bloom_composite_bg,
-            ddgi_gpu,
             gi,
             gi_probes,
             sdf_gpu,

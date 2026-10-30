@@ -29,7 +29,7 @@ pub fn frame_graph(width: u32, height: u32) -> RenderGraph {
     // Persistent resources that live outside the frame (owned by the renderer, created at init and
     // resize). Imported so that a read before the first write is not a graph error.
     let shadow_maps = g.import_texture("vsm_pool", target(8192, 8192, F::Depth32Float));
-    let ddgi = g.import_texture("ddgi_irradiance", target(1024, 1024, F::Rgba16Float));
+    let gi = g.import_texture("gi_irradiance", target(1024, 1024, F::Rgba16Float));
     let taa_history = g.import_texture("taa_history", target(w, h, F::Rgba16Float));
     let backbuffer = g.import_texture("backbuffer", target(w, h, F::Bgra8UnormSrgb));
     // VSM screen shadow (filtered output of the temporal pass, `vsm_shadow_filtered_view`).
@@ -54,8 +54,8 @@ pub fn frame_graph(width: u32, height: u32) -> RenderGraph {
     g.add_pass("shadow_passes", |p| {
         p.write(shadow_maps);
     });
-    g.add_pass("ddgi_fill", |p| {
-        p.read(shadow_maps).write(ddgi);
+    g.add_pass("gi_update", |p| {
+        p.read(shadow_maps).write(gi);
     });
     g.add_pass("cluster_vg_cull", |p| {
         p.write(clusters);
@@ -79,7 +79,7 @@ pub fn frame_graph(width: u32, height: u32) -> RenderGraph {
     g.add_pass("forward", |p| {
         p.read(ao)
             .read(vsm_shadow)
-            .read(ddgi)
+            .read(gi)
             .read(depth)
             .write(hdr);
     });
