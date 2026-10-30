@@ -42,6 +42,10 @@ pub fn frame_graph(width: u32, height: u32) -> RenderGraph {
     let taa_velocity = g.import_texture("taa_velocity", target(w, h, F::Rg16Float));
     let ldr = g.import_texture("ldr", target(w, h, F::Rgba8Unorm));
     let smaa_out = g.import_texture("smaa_out", target(w, h, F::Rgba8Unorm));
+    // Last frame's Hi-Z pyramid (read by the cull before this frame builds its own) and last
+    // frame's depth (TAA disocclusion test). Both persist across frames, hence imports.
+    let hiz_prev = g.import_texture("hiz_prev", target(w, h, F::R32Float));
+    let prev_depth = g.import_texture("prev_depth", target(w, h, F::Depth32Float));
 
     // Per-frame transients.
     let clusters = g.create_texture("vg_clusters", target(w, h, F::R32Uint));
@@ -55,40 +59,55 @@ pub fn frame_graph(width: u32, height: u32) -> RenderGraph {
         p.write(shadow_maps);
     });
     g.add_pass("gi_update", |p| {
-        p.read(shadow_maps).write(gi);
+        p.write(gi);
     });
+    // The cull reads last frame's Hi-Z (the current one is built later in normal_prepass_hiz).
     g.add_pass("cluster_vg_cull", |p| {
-        p.write(clusters);
+        p.read(hiz_prev).write(clusters);
     });
     g.add_pass("normal_prepass_hiz", |p| {
-        p.read(clusters)
-            .write(depth)
+        p.write(depth)
             .write(normals)
             .write(hiz)
             .write(material_surface);
     });
+    // GTAO reads the normals only (raw, blur and upsample share the normal target).
     g.add_pass("gtao", |p| {
-        p.read(depth).read(normals).read(hiz).write(ao);
+        p.read(normals).write(ao);
     });
     g.add_pass("vsm_screen_shadow", |p| {
-        p.read(depth)
-            .read(normals)
-            .read(shadow_maps)
-            .write(vsm_shadow);
+        p.read(normals).read(shadow_maps).write(vsm_shadow);
     });
+    // The lit passes read the scene bind group: clusters, AO, GI, VSM pages and VSM shadow.
     g.add_pass("forward", |p| {
-        p.read(ao).read(vsm_shadow).read(gi).read(depth).write(hdr);
+        p.read(clusters)
+            .read(ao)
+            .read(vsm_shadow)
+            .read(gi)
+            .read(shadow_maps)
+            .read(depth)
+            .write(hdr);
     });
     // Writes the visibility targets, then resolves them into HDR in the same pass.
     g.add_pass("vg_visibility_resolve", |p| {
         p.read(clusters)
             .read(depth)
+            .read(ao)
+            .read(gi)
+            .read(shadow_maps)
             .read(vsm_shadow)
             .read_write(vg_vis)
             .write(hdr);
     });
+    // Transparent and additive draws use the scene bind group too.
     g.add_pass("transparent", |p| {
-        p.read(depth).read(vsm_shadow).write(hdr);
+        p.read(clusters)
+            .read(depth)
+            .read(ao)
+            .read(gi)
+            .read(shadow_maps)
+            .read(vsm_shadow)
+            .write(hdr);
     });
     // The MSAA resolve and the particles draw into the HDR target (`hdr_view`).
     g.add_pass("msaa_resolve_particles", |p| {
@@ -96,20 +115,25 @@ pub fn frame_graph(width: u32, height: u32) -> RenderGraph {
     });
     // Additive light scatter into HDR (LoadOp::Load on `hdr_view`).
     g.add_pass("scatter_light", |p| {
-        p.read(depth).read(shadow_maps).read_write(hdr);
+        p.read(depth).read(clusters).read_write(hdr);
     });
-    // TAA, bloom and tonemap read HDR; the velocity, LDR and SMAA steps are intermediates of this
+    // TAA, bloom and tonemap read HDR; the velocity pass reads the depth and TAA reads last
+    // frame's depth (`prev_depth`). The velocity, LDR and SMAA steps are intermediates of this
     // pass (written and read inside it, hence read_write).
     g.add_pass("taa_tonemap_bloom_smaa", |p| {
         p.read(hdr)
+            .read(depth)
+            .read(prev_depth)
             .read_write(taa_velocity)
             .read_write(ldr)
             .read_write(smaa_out)
             .read_write(taa_history)
             .write(backbuffer);
     });
+    // Copies this frame's depth to `prev_depth` for the next frame's TAA test. The copy target
+    // is an import, so the pass is kept by its write.
     g.add_pass("frame_tail", |p| {
-        p.read(backbuffer).side_effects();
+        p.read(depth).write(prev_depth).side_effects();
     });
     g
 }

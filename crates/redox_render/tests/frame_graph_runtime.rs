@@ -2,9 +2,9 @@
 //! report the textures they hand to the GPU, and a debug build compares the two after every frame.
 //! Skipped without a GPU, and only meaningful in debug builds (the check is compiled out in release).
 //!
-//! The test is ignored until the declarations match the passes: run it with
-//! `cargo test -p redox_render --test frame_graph_runtime -- --ignored --nocapture` to print the
-//! differences.
+//! The declarations in `frame_graph.rs` match the textures the passes touch. On a mismatch the
+//! test prints every difference: run `cargo test -p redox_render --test frame_graph_runtime
+//! --nocapture` to see them.
 
 #![cfg(debug_assertions)]
 #![allow(clippy::unwrap_used)]
@@ -23,7 +23,6 @@ use redox_render::systems::RenderObject;
 const SIZE: u32 = 128;
 
 #[test]
-#[ignore = "residual: reads through bind groups and inner passes are not recorded yet (RND-09 report)"]
 fn every_declared_read_and_write_is_used_by_the_pass() {
     let Some(adapter) = common::adapter() else {
         eprintln!("no GPU adapter, skipping");

@@ -58,6 +58,20 @@ impl FrameState<'_> {
         let _ = texture;
     }
 
+    /// Reports the resources the lit passes read through the scene bind group (clustered
+    /// lights, AO, GI, VSM pages and the VSM screen shadow).
+    fn touch_scene_reads(&mut self) {
+        for name in [
+            "vg_clusters",
+            "ao",
+            "gi_irradiance",
+            "vsm_pool",
+            "vsm_shadow_filtered",
+        ] {
+            self.touch(name);
+        }
+    }
+
     /// Starts the pass `name` for the usage log.
     fn begin_pass(&mut self, name: &str) {
         #[cfg(debug_assertions)]
@@ -142,11 +156,13 @@ impl Renderer {
             "normal_prepass_hiz" => self.pass_normal_prepass_hiz(f),
             "gtao" => {
                 // Output: the blurred AO (`ssao_blurred_view`).
+                f.touch("normals");
                 f.touch("ao");
                 self.record_gtao_passes(&mut f.encoder);
             }
             "vsm_screen_shadow" => {
-                // Filtered VSM shadow output; the temporal bind group reads the normals.
+                // Filtered VSM shadow output; the trace reads the VSM pages and the normals.
+                f.touch("vsm_pool");
                 f.touch("vsm_shadow_filtered");
                 f.touch("normals");
                 self.record_vsm_screen_shadow(&mut f.encoder);
@@ -157,6 +173,8 @@ impl Renderer {
             "msaa_resolve_particles" => self.pass_msaa_resolve_particles(f),
             "scatter_light" => {
                 f.touch("hdr_color");
+                f.touch("depth");
+                f.touch("vg_clusters");
                 self.record_scatter_light_pass(&mut f.encoder);
             }
             "taa_tonemap_bloom_smaa" => {
@@ -164,6 +182,8 @@ impl Renderer {
                 // backbuffer and the TAA history; its intermediates are the velocity, LDR and
                 // SMAA targets (views handed over here).
                 f.touch("hdr_color");
+                f.touch("depth");
+                f.touch("prev_depth");
                 f.touch("taa_velocity");
                 f.touch("ldr");
                 f.touch("smaa_out");
@@ -299,6 +319,7 @@ impl Renderer {
     /// Point-light atlas and virtual shadow map pages; recorded into separate command buffers
     /// that are submitted before the frame encoder.
     fn pass_shadows(&mut self, f: &mut FrameState<'_>) {
+        f.touch("vsm_pool");
         let objects = f.objects;
         let cam_eye = f.cam_eye;
         let atlas_jobs = self.prepare_point_atlas_jobs(objects, cam_eye);
@@ -389,6 +410,8 @@ impl Renderer {
     }
 
     fn pass_frame_tail(&mut self, f: &mut FrameState<'_>) {
+        f.touch("depth");
+        f.touch("prev_depth");
         let encoder = &mut f.encoder;
         // Copy current depth → prev depth for next frame's TAA disocclusion test.
         if self.taa_enabled {

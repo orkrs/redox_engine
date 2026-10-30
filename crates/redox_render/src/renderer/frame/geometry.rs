@@ -88,6 +88,8 @@ impl Renderer {
 
     pub(super) fn pass_forward(&mut self, f: &mut FrameState<'_>) {
         f.touch("hdr_color");
+        f.touch("depth");
+        f.touch_scene_reads();
         let objects = f.objects;
         let encoder = &mut f.encoder;
         let hdr_resolve_pass = f.hdr_resolve_pass;
@@ -140,6 +142,8 @@ impl Renderer {
 
     pub(super) fn pass_transparent(&mut self, f: &mut FrameState<'_>) {
         f.touch("hdr_color");
+        f.touch("depth");
+        f.touch_scene_reads();
         let objects = f.objects;
         let encoder = &mut f.encoder;
         let hdr_resolve_pass = f.hdr_resolve_pass;

@@ -8,6 +8,8 @@ const DAG_ERROR_THRESHOLD_PX: f32 = 1.0;
 
 impl Renderer {
     pub(super) fn pass_cluster_vg_cull(&mut self, f: &mut FrameState<'_>) {
+        f.touch("hiz_prev");
+        f.touch("vg_clusters");
         let encoder = &mut f.encoder;
         // ── GPU cluster light cull (optional; CPU fallback in update_clusters) ─
         if self.cluster_manager.gpu_cull {
@@ -78,6 +80,7 @@ impl Renderer {
         f.touch("depth");
         f.touch("vg_vis_targets");
         f.touch("hdr_color");
+        f.touch_scene_reads();
         let encoder = &mut f.encoder;
         let hdr_resolve_pass = f.hdr_resolve_pass;
         let msaa_sample_count = self.msaa_sample_count;
