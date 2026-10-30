@@ -214,8 +214,16 @@ fn two_instances_share_one_shader_with_different_params() {
         .unwrap();
 
     let matgraphs = &rig.renderer.matgraphs;
-    assert_eq!(matgraphs.shader_count(), 1, "one module for both slots");
-    assert_eq!(matgraphs.pipeline_count(), 1);
+    assert_eq!(
+        matgraphs.shader_count(),
+        3,
+        "one module per codegen pass (main, depth, shadow) for both slots"
+    );
+    assert_eq!(
+        matgraphs.pipeline_count(),
+        5,
+        "forward, alpha, additive, depth and shadow pipelines"
+    );
     assert_eq!(matgraphs.material_count(), 2);
 
     // Cubes left and right of the centre: about pixel 31 and 65 at this camera.
@@ -288,4 +296,29 @@ fn the_debug_copy_of_a_variant_is_written_once() {
     let file = dir.join(format!("{:016x}.wgsl", key.0));
     let text = std::fs::read_to_string(&file).expect("debug copy is written");
     assert!(text.contains("material_surface_graph_variant"));
+}
+
+#[test]
+fn a_graph_slot_has_a_pipeline_for_every_pass() {
+    use redox_render::matgraph_passes::GraphPass;
+
+    let Some(mut rig) = rig() else {
+        eprintln!("no GPU adapter, skipping");
+        return;
+    };
+    let graphed = rig.renderer.add_material(Material::solid(Vec3::ONE));
+    let plain = rig.renderer.add_material(Material::solid(Vec3::ONE));
+    rig.renderer
+        .set_material_graph(graphed, &colour_graph([0.0, 1.0, 0.0]), &[])
+        .unwrap();
+    for pass in GraphPass::ALL {
+        assert!(
+            rig.renderer.matgraphs.pass_binding(graphed, pass).is_some(),
+            "graph slot has no {pass:?} pipeline"
+        );
+        assert!(
+            rig.renderer.matgraphs.pass_binding(plain, pass).is_none(),
+            "plain slot must keep the default {pass:?} pipeline"
+        );
+    }
 }

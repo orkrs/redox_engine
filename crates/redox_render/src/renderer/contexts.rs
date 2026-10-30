@@ -3,6 +3,8 @@
 use redox_math::Mat4;
 
 use super::batching;
+use crate::matgraph_cache::MaterialGraphs;
+use crate::matgraph_passes::{GraphPass, batch_compatible};
 use crate::pass::normal::NormalPass;
 use crate::pass::shadow::ShadowPass;
 use crate::pass::vg_resolve::VgShadowPass;
@@ -20,6 +22,8 @@ pub struct PrepassContext<'a> {
     pub surface_view: &'a wgpu::TextureView,
     pub depth_view: &'a wgpu::TextureView,
     pub registry: &'a GpuRegistry,
+    /// Graph slots of the prepass (MAT-02); `None` when no graph is bound.
+    pub graphs: Option<&'a MaterialGraphs>,
 }
 
 /// Records the normal + depth prepass into a fresh command buffer.
@@ -81,11 +85,31 @@ pub fn record_normal_prepass(
 
     normal_render_pass.set_pipeline(&ctx.normal_pass.pipeline);
     normal_render_pass.set_bind_group(0, ctx.normal_bind_group, &[]);
+    let mut on_graph = false;
     for run in batching::runs(
         objects.len(),
         |i| i < vis.len() && vis[i],
-        |a, b| objects[a].mesh_index == objects[b].mesh_index,
+        |a, b| {
+            objects[a].mesh_index == objects[b].mesh_index
+                && batch_compatible(ctx.graphs, objects[a].material_index, objects[b].material_index)
+        },
     ) {
+        let material = objects[run.start as usize].material_index;
+        match ctx
+            .graphs
+            .and_then(|graphs| graphs.pass_binding(material, GraphPass::Depth))
+        {
+            Some((pipeline, params)) => {
+                normal_render_pass.set_pipeline(pipeline);
+                normal_render_pass.set_bind_group(GraphPass::Depth.params_group(), params, &[]);
+                on_graph = true;
+            }
+            None if on_graph => {
+                normal_render_pass.set_pipeline(&ctx.normal_pass.pipeline);
+                on_graph = false;
+            }
+            None => {}
+        }
         if let Some(gpu_mesh) = ctx
             .registry
             .mesh_by_slot(objects[run.start as usize].mesh_index)
@@ -131,6 +155,8 @@ pub struct AtlasContext<'a> {
     pub vg_shadow_pass: &'a VgShadowPass,
     pub vg_shadow_instances_bg: &'a wgpu::BindGroup,
     pub registry: &'a GpuRegistry,
+    /// Graph slots of the shadow atlas (MAT-02); `None` when no graph is bound.
+    pub graphs: Option<&'a MaterialGraphs>,
 }
 
 pub fn record_point_atlas_shadows(
@@ -173,7 +199,6 @@ pub fn record_point_atlas_shadows(
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        shadow_pass.set_pipeline(&ctx.shadow_pass.pipeline);
         shadow_pass.set_bind_group(1, ctx.shadow_model_bind_group, &[]);
 
         for face_i in 0..6usize {
@@ -181,14 +206,40 @@ pub fn record_point_atlas_shadows(
                 crate::shadow::atlas_allocator::tile_grid(job.tile_base + face_i as u32);
             let x = col * TILE_PX;
             let y = row * TILE_PX;
+            // Reset per face: the indirect VG draw may have left another pipeline bound.
+            shadow_pass.set_pipeline(&ctx.shadow_pass.pipeline);
             shadow_pass.set_bind_group(0, &ctx.face_matrix_bgs[job.face_base + face_i], &[]);
             shadow_pass.set_viewport(x as f32, y as f32, TILE_PX as f32, TILE_PX as f32, 0.0, 1.0);
             shadow_pass.set_scissor_rect(x, y, TILE_PX, TILE_PX);
+            let mut on_graph = false;
             for run in batching::runs(
                 objects.len(),
                 |i| job.face_vis[face_i][i],
-                |a, b| objects[a].mesh_index == objects[b].mesh_index,
+                |a, b| {
+                    objects[a].mesh_index == objects[b].mesh_index
+                        && batch_compatible(
+                            ctx.graphs,
+                            objects[a].material_index,
+                            objects[b].material_index,
+                        )
+                },
             ) {
+                let material = objects[run.start as usize].material_index;
+                match ctx
+                    .graphs
+                    .and_then(|graphs| graphs.pass_binding(material, GraphPass::Shadow))
+                {
+                    Some((pipeline, params)) => {
+                        shadow_pass.set_pipeline(pipeline);
+                        shadow_pass.set_bind_group(GraphPass::Shadow.params_group(), params, &[]);
+                        on_graph = true;
+                    }
+                    None if on_graph => {
+                        shadow_pass.set_pipeline(&ctx.shadow_pass.pipeline);
+                        on_graph = false;
+                    }
+                    None => {}
+                }
                 if let Some(gpu_mesh) = ctx
                     .registry
                     .mesh_by_slot(objects[run.start as usize].mesh_index)

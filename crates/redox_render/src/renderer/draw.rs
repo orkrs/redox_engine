@@ -1,6 +1,7 @@
 //! Per-object draw recording (opaque and transparent).
 
 use super::*;
+use crate::matgraph_passes::GraphPass;
 
 impl Renderer {
     /// Renders a single frame given a list of [`RenderObject`]s.
@@ -182,8 +183,25 @@ impl Renderer {
         render_pass.set_bind_group(1, &self.scene_bind_group, &[]);
         render_pass.set_bind_group(3, &self.model_bind_group, &[]);
 
+        let mut on_graph = false;
         for (i, _) in order {
             let obj = &objects[i];
+            // Graph-driven alpha material (MAT-02): its variant pipeline and parameter block.
+            match self
+                .matgraphs
+                .pass_binding(obj.material_index, GraphPass::Alpha)
+            {
+                Some((pipeline, params)) => {
+                    render_pass.set_pipeline(pipeline);
+                    render_pass.set_bind_group(GraphPass::Alpha.params_group(), params, &[]);
+                    on_graph = true;
+                }
+                None if on_graph => {
+                    render_pass.set_pipeline(&self.transparent_pass.pipeline);
+                    on_graph = false;
+                }
+                None => {}
+            }
             let material_bg = self
                 .registry
                 .legacy_material_bind_group(obj.material_index)
@@ -236,8 +254,25 @@ impl Renderer {
         render_pass.set_bind_group(1, &self.scene_bind_group, &[]);
         render_pass.set_bind_group(3, &self.model_bind_group, &[]);
 
+        let mut on_graph = false;
         for i in indices {
             let obj = &objects[i];
+            // Graph-driven additive material (MAT-02): its variant pipeline and parameter block.
+            match self
+                .matgraphs
+                .pass_binding(obj.material_index, GraphPass::Additive)
+            {
+                Some((pipeline, params)) => {
+                    render_pass.set_pipeline(pipeline);
+                    render_pass.set_bind_group(GraphPass::Additive.params_group(), params, &[]);
+                    on_graph = true;
+                }
+                None if on_graph => {
+                    render_pass.set_pipeline(&self.transparent_pass.additive_pipeline);
+                    on_graph = false;
+                }
+                None => {}
+            }
             let Some(material_bg) = self
                 .registry
                 .legacy_material_bind_group(obj.material_index)
