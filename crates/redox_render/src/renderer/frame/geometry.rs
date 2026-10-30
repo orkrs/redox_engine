@@ -9,6 +9,7 @@ impl Renderer {
         f.touch("depth");
         // The Hi-Z pyramid is built from the depth buffer by `build_from_depth` below.
         f.touch("hiz");
+        f.touch("material_surface");
         let objects = f.objects;
         let cam_eye = f.cam_eye;
         let encoder = &mut f.encoder;

@@ -23,7 +23,7 @@ use redox_render::systems::RenderObject;
 const SIZE: u32 = 128;
 
 #[test]
-#[ignore = "declarations differ from the passes (RND-09 step 2 finding); run with --ignored"]
+#[ignore = "residual: reads through bind groups and inner passes are not recorded yet (RND-09 report)"]
 fn every_declared_read_and_write_is_used_by_the_pass() {
     let Some(adapter) = common::adapter() else {
         eprintln!("no GPU adapter, skipping");

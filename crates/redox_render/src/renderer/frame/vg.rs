@@ -76,6 +76,7 @@ impl Renderer {
 
     pub(super) fn pass_vg_visibility_resolve(&mut self, f: &mut FrameState<'_>) {
         f.touch("depth");
+        f.touch("vg_vis_targets");
         f.touch("hdr_color");
         let encoder = &mut f.encoder;
         let hdr_resolve_pass = f.hdr_resolve_pass;

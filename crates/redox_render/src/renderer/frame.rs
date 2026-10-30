@@ -140,17 +140,33 @@ impl Renderer {
             "ddgi_fill" => self.pass_ddgi_fill(f),
             "cluster_vg_cull" => self.pass_cluster_vg_cull(f),
             "normal_prepass_hiz" => self.pass_normal_prepass_hiz(f),
-            "gtao" => self.record_gtao_passes(&mut f.encoder),
-            "vsm_screen_shadow" => self.record_vsm_screen_shadow(&mut f.encoder),
+            "gtao" => {
+                // Output: the blurred AO (`ssao_blurred_view`).
+                f.touch("ao");
+                self.record_gtao_passes(&mut f.encoder);
+            }
+            "vsm_screen_shadow" => {
+                // Filtered VSM shadow output; the temporal bind group reads the normals.
+                f.touch("vsm_shadow_filtered");
+                f.touch("normals");
+                self.record_vsm_screen_shadow(&mut f.encoder);
+            }
             "forward" => self.pass_forward(f),
             "vg_visibility_resolve" => self.pass_vg_visibility_resolve(f),
             "transparent" => self.pass_transparent(f),
             "msaa_resolve_particles" => self.pass_msaa_resolve_particles(f),
-            "scatter_light" => self.record_scatter_light_pass(&mut f.encoder),
+            "scatter_light" => {
+                f.touch("hdr_color");
+                self.record_scatter_light_pass(&mut f.encoder);
+            }
             "taa_tonemap_bloom_smaa" => {
                 // The post chain reads the HDR target for bloom and tonemap and writes the
-                // backbuffer and the TAA history (its views are handed over here).
+                // backbuffer and the TAA history; its intermediates are the velocity, LDR and
+                // SMAA targets (views handed over here).
                 f.touch("hdr_color");
+                f.touch("taa_velocity");
+                f.touch("ldr");
+                f.touch("smaa_out");
                 f.touch("taa_history");
                 f.touch("backbuffer");
                 self.record_post_chain(
