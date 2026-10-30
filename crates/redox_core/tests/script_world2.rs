@@ -346,6 +346,35 @@ fn set_active_toggles_the_inactive_marker() {
 }
 
 #[test]
+fn a_switched_off_entity_is_not_found_by_name() {
+    let mut world = physics_world();
+    let ghost = world.spawn();
+    world.add_component(ghost, Name("ghost".to_owned()));
+    world.add_component(ghost, ScriptInactive);
+    let mut rt = ScriptRuntime::new(ScriptConfig::default());
+    let id = rt
+        .instantiate(&module(
+            r#"(module
+  (import "env" "find_by_name" (func $find (param i32 i32) (result i32)))
+  (import "env" "set_f32" (func $set (param i32 i32 f32)))
+  (memory (export "memory") 1)
+  (data (i32.const 0) "ghost")
+  (data (i32.const 16) "found")
+  (func (export "on_update") (param f32)
+    (call $set (i32.const 16) (i32.const 5)
+      (f32.convert_i32_s (call $find (i32.const 0) (i32.const 5))))))"#,
+        ))
+        .unwrap();
+    run(&mut world, &mut rt, id);
+    assert_eq!(rt.read_output(id, "found"), Some(-1.0), "switched off");
+
+    world.remove_component::<ScriptInactive>(ghost);
+    run(&mut world, &mut rt, id);
+    let found = rt.read_output(id, "found").unwrap();
+    assert!(found >= 0.0, "switched on again, got {found}");
+}
+
+#[test]
 fn physics_is_back_in_the_world_after_the_call() {
     let mut world = physics_world();
     let mut rt = ScriptRuntime::new(ScriptConfig::default());

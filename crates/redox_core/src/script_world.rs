@@ -75,30 +75,48 @@ struct Snapshot {
     ids_by_tag: HashMap<String, Vec<u32>>,
     positions: HashMap<u32, [f32; 3]>,
     values: HashMap<u32, HashMap<String, f32>>,
+    /// Entities switched off with `sys.set_active.<id>` 0: scripts do not find them by name or
+    /// tag, and rays and overlaps pass through them.
+    inactive: Vec<Entity>,
 }
 
 impl Snapshot {
-    /// Names, tags, positions and values of every entity that has them.
+    /// Names, tags, positions and values of every active entity that has them.
     fn of(world: &World) -> Self {
+        let inactive: Vec<Entity> = world
+            .query::<(Entity, &ScriptInactive)>()
+            .iter(world)
+            .map(|(entity, _)| entity)
+            .collect();
+        let is_active = |entity: &Entity| !inactive.contains(entity);
         let mut snap = Self::default();
         for (entity, name) in world.query::<(Entity, &Name)>().iter(world) {
-            snap.ids_by_name
-                .entry(name.0.clone())
-                .or_insert(entity.id());
+            if is_active(&entity) {
+                snap.ids_by_name
+                    .entry(name.0.clone())
+                    .or_insert(entity.id());
+            }
         }
         for (entity, tag) in world.query::<(Entity, &Tag)>().iter(world) {
-            snap.ids_by_tag
-                .entry(tag.0.clone())
-                .or_default()
-                .push(entity.id());
+            if is_active(&entity) {
+                snap.ids_by_tag
+                    .entry(tag.0.clone())
+                    .or_default()
+                    .push(entity.id());
+            }
         }
         for (entity, transform) in world.query::<(Entity, &Transform)>().iter(world) {
-            snap.positions
-                .insert(entity.id(), transform.translation.to_array());
+            if is_active(&entity) {
+                snap.positions
+                    .insert(entity.id(), transform.translation.to_array());
+            }
         }
         for (entity, values) in world.query::<(Entity, &ScriptValues)>().iter(world) {
-            snap.values.insert(entity.id(), values.0.clone());
+            if is_active(&entity) {
+                snap.values.insert(entity.id(), values.0.clone());
+            }
         }
+        snap.inactive = inactive;
         snap
     }
 }
@@ -127,7 +145,7 @@ impl WorldQueries for WorldAdapter {
         let physics = snap.physics.as_ref()?;
         let origin = Vec3::from_array(origin);
         let (point, _, _) =
-            physics.cast_ray_with_normal(origin, Vec3::from_array(direction), max_distance, &[])?;
+            physics.cast_ray_with_normal(origin, Vec3::from_array(direction), max_distance, &snap.inactive)?;
         Some(point.distance(origin))
     }
 
@@ -141,7 +159,7 @@ impl WorldQueries for WorldAdapter {
         let physics = snap.physics.as_ref()?;
         let origin = Vec3::from_array(origin);
         let (point, _, entity) =
-            physics.cast_ray_with_normal(origin, Vec3::from_array(direction), max_distance, &[])?;
+            physics.cast_ray_with_normal(origin, Vec3::from_array(direction), max_distance, &snap.inactive)?;
         Some((ScriptEntityId(entity?.id()), point.distance(origin)))
     }
 
@@ -160,7 +178,7 @@ impl WorldQueries for WorldAdapter {
             QueryShape::Sphere { radius },
             Vec3::from_array(center),
             Quat::IDENTITY,
-            &[],
+            &snap.inactive,
             u32::MAX,
         );
         push_ids(out, hits.iter().map(|e| e.id()), limit);
@@ -183,7 +201,7 @@ impl WorldQueries for WorldAdapter {
             },
             Vec3::from_array(center),
             Quat::IDENTITY,
-            &[],
+            &snap.inactive,
             u32::MAX,
         );
         push_ids(out, hits.iter().map(|e| e.id()), limit);
