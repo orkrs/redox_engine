@@ -500,8 +500,14 @@ impl LabState {
                 egui::Grid::new("analysis_grid")
                     .striped(true)
                     .show(ui, |ui| {
-                        for head in ["File", "LUFS", "Peak, dBFS", "Length, s", "Seam, dB", "Problems"]
-                        {
+                        for head in [
+                            "File",
+                            "LUFS",
+                            "Peak, dBFS",
+                            "Length, s",
+                            "Seam, dB",
+                            "Problems",
+                        ] {
                             ui.strong(head);
                         }
                         ui.end_row();

@@ -96,7 +96,9 @@ mod tests {
 
     #[test]
     fn a_missing_file_is_an_error_not_a_panic() {
-        let err = load_from(Path::new("no/such/Fox.glb")).unwrap_err();
+        let err = load_from(Path::new("no/such/Fox.glb"))
+            .err()
+            .expect("loading a missing file fails");
         assert!(err.contains("Fox.glb"));
     }
 }

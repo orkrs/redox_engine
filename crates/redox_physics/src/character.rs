@@ -101,7 +101,7 @@ fn platform_carry(
 
 /// Moves every [`CharacterController`] this step: gravity, wall slide, autostep, moving platforms.
 pub fn move_character_controllers(world: &mut World, dt: f32) {
-    let Some(mut physics) = world.remove_resource::<PhysicsContext>() else {
+    let Some(physics) = world.remove_resource::<PhysicsContext>() else {
         return;
     };
     let entities: Vec<_> = world
