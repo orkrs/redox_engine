@@ -29,17 +29,20 @@ pub const VISIBILITY_CLAMP: f32 = 0.75;
 pub const HYSTERESIS_STABLE: f32 = 0.97;
 /// Old-value weight after a lighting change.
 pub const HYSTERESIS_CHANGED: f32 = 0.8;
-/// Frames that use [`HYSTERESIS_CHANGED`] after a lighting change.
+/// Old-value weight after the sun moved by more than 2 degrees.
+pub const HYSTERESIS_SUN: f32 = 0.9;
+/// Frames that use the changed hysteresis after a lighting change.
 pub const CHANGE_FRAMES: u32 = 8;
 
-/// Hysteresis for a frame, `frames_since_change` frames after a lighting change.
-/// ASSUMPTION: the spec's 0.9 variant for large sun moves is not implemented; only 0.8 for
-/// [`CHANGE_FRAMES`] frames.
-pub fn hysteresis_after_change(frames_since_change: u32) -> f32 {
-    if frames_since_change < CHANGE_FRAMES {
-        HYSTERESIS_CHANGED
-    } else {
+/// Hysteresis for a frame, `frames_since_change` frames after a lighting change. `sun_moved`
+/// selects [`HYSTERESIS_SUN`] over [`HYSTERESIS_CHANGED`].
+pub fn hysteresis_after_change(frames_since_change: u32, sun_moved: bool) -> f32 {
+    if frames_since_change >= CHANGE_FRAMES {
         HYSTERESIS_STABLE
+    } else if sun_moved {
+        HYSTERESIS_SUN
+    } else {
+        HYSTERESIS_CHANGED
     }
 }
 

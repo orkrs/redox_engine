@@ -1,6 +1,7 @@
 //! Renderer entry points that give global illumination the static scene.
 
 use super::Renderer;
+use crate::gi::probes::GiQuality;
 use crate::sdf::SdfBrick;
 use crate::sdf::global::{GLOBAL_SDF_DIMS, GlobalSdf, SdfBox};
 use redox_math::{Aabb, Vec3};
@@ -40,6 +41,18 @@ impl Renderer {
             .spawn_rebuild(move || GlobalSdf::from_bricks(&bricks, bounds, GLOBAL_SDF_DIMS));
         self.gi_probes.set_enabled(true);
         self.gi_probes.notify_lighting_changed();
+    }
+
+    /// Switches global illumination on or off. Off, the frame is as before GI: no probes are
+    /// traced and the light from them is not added. Probes are on after a static scene is given.
+    pub fn set_gi_enabled(&mut self, enabled: bool) {
+        self.gi_probes.set_enabled(enabled);
+    }
+
+    /// Sets the trace quality: `Low` 32 rays and one cascade, `Medium` 64 rays and two cascades,
+    /// `High` 128 rays and two cascades. `Off` disables the probes.
+    pub fn set_gi_quality(&mut self, quality: GiQuality) {
+        self.gi_probes.set_quality(quality);
     }
 }
 

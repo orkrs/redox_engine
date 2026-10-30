@@ -93,6 +93,7 @@ pub use pass::smaa::SmaaPass;
 // Post-processing scaffolds (Phase 5)
 pub use post::bloom::BloomPass;
 // Global illumination (Phase 5)
+pub use gi::probes::GiQuality;
 pub use gi::{DdgiProbe, DdgiProbeGrid};
 // ScatterLight stochastic lighting (Phase 4)
 pub use pass::scatter_light::{SCATTER_LIGHT_SAMPLE_COUNT, ScatterLightPass, ScatterLightUniform};

@@ -1,5 +1,5 @@
-//! Renderer-side probe set for GI (GI-01 step 5a): two cascades that follow the camera, traced
-//! against the global SDF, filtered into the irradiance and visibility atlases.
+//! Renderer-side probe set for GI: two cascades that follow the camera, relocated out of
+//! geometry, traced against the global SDF, filtered into the irradiance and visibility atlases.
 //!
 //! The atlases ping-pong inside [`ProbeAtlas`]. Their readable result is copied every frame into
 //! two textures with fixed views, which the scene bind group reads (`@binding(17)`, `@binding(23)`),
@@ -20,12 +20,46 @@ pub const CASCADE_DIMS: [u32; 3] = [16, 8, 16];
 pub const FINE_SPACING: f32 = 0.5;
 /// Probe spacing of the coarse cascade, metres.
 pub const COARSE_SPACING: f32 = 2.0;
-/// Rays per probe per frame (the Medium quality of the spec).
-pub const RAYS_PER_PROBE: u32 = 64;
 /// Longest ray distance; visibility distances are clamped below it.
 pub const MAX_PROBE_DISTANCE: f32 = 40.0;
 /// Probes in one cascade.
 const PROBES_PER_CASCADE: u32 = CASCADE_DIMS[0] * CASCADE_DIMS[1] * CASCADE_DIMS[2];
+/// Sun direction change, as the cosine of 2 degrees, that restarts the lighting hysteresis.
+const SUN_MOVE_COS: f32 = 0.999_390_8;
+
+/// Quality of the probe trace. `Off` traces nothing and the frame is as before GI.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum GiQuality {
+    /// No probes are traced or read.
+    Off,
+    /// 32 rays per probe, one cascade.
+    Low,
+    /// 64 rays per probe, two cascades.
+    #[default]
+    Medium,
+    /// 128 rays per probe, two cascades.
+    High,
+}
+
+impl GiQuality {
+    /// Rays per probe per frame.
+    pub fn rays(self) -> u32 {
+        match self {
+            Self::Off => 0,
+            Self::Low => 32,
+            Self::Medium => 64,
+            Self::High => 128,
+        }
+    }
+
+    /// Cascades traced and read.
+    pub fn cascades(self) -> u32 {
+        match self {
+            Self::Low => 1,
+            Self::Off | Self::Medium | Self::High => GI_CASCADE_COUNT as u32,
+        }
+    }
+}
 
 /// Per-frame inputs of the GI update.
 pub struct GiFrame<'a> {
@@ -60,6 +94,12 @@ pub struct GiProbes {
     frame_index: u32,
     /// Frames since the last lighting change or cascade move; selects the hysteresis.
     frames_since_change: u32,
+    /// True when the last change was a sun move (hysteresis 0.9 instead of 0.8).
+    sun_changed: bool,
+    /// Sun direction of the previous enabled frame; zero when there was none.
+    last_sun_dir: Vec3,
+    /// Trace and shading quality.
+    quality: GiQuality,
     /// Off until a static scene is given: with an empty volume every ray would return the sky and
     /// double the ambient light of scenes that do not use GI.
     enabled: bool,
@@ -111,6 +151,9 @@ impl GiProbes {
             frame_index: 0,
             // A fresh atlas is blended with the short hysteresis until it has filled in.
             frames_since_change: 0,
+            sun_changed: false,
+            last_sun_dir: Vec3::ZERO,
+            quality: GiQuality::default(),
             enabled: false,
         }
     }
@@ -121,9 +164,20 @@ impl GiProbes {
         self.frames_since_change = 0;
     }
 
-    /// Whether the probes are traced and read.
-    pub fn enabled(&self) -> bool {
-        self.enabled
+    /// Sets the trace quality. Changing it restarts the hysteresis.
+    pub fn set_quality(&mut self, quality: GiQuality) {
+        self.quality = quality;
+        self.frames_since_change = 0;
+    }
+
+    /// Current trace quality.
+    pub fn quality(&self) -> GiQuality {
+        self.quality
+    }
+
+    /// Whether the probes are traced and read: enabled and not at `Off` quality.
+    pub fn active(&self) -> bool {
+        self.enabled && self.quality != GiQuality::Off
     }
 
     /// Uniform buffer with the cascade description (`@binding(16)`).
@@ -154,10 +208,11 @@ impl GiProbes {
     /// Marks a lighting or scene change; the next frames blend with the shorter hysteresis.
     pub fn notify_lighting_changed(&mut self) {
         self.frames_since_change = 0;
+        self.sun_changed = false;
     }
 
-    /// Moves the cascades to the camera, traces, updates the atlases and refreshes the stable
-    /// textures and the grid uniform. Records into `encoder`.
+    /// Moves the cascades to the camera, relocates the probes, traces, updates the atlases and
+    /// refreshes the stable textures and the grid uniform. Records into `encoder`.
     ///
     /// The trace reads last frame's grid and stable atlas (the bounce term), so `prev_grid` is
     /// uploaded before this frame's grid replaces it.
@@ -170,19 +225,26 @@ impl GiProbes {
     ) {
         queue.write_buffer(&self.prev_grid_buffer, 0, bytemuck::bytes_of(&self.prev_grid));
         let layout = self.atlas.irradiance_layout();
-        if !self.enabled {
-            let grid = GiGridGpu::new(&self.cascades, layout.probes_per_row, false);
+        let cascade_count = self.quality.cascades();
+        if !self.active() {
+            let grid = GiGridGpu::new(&self.cascades, layout.probes_per_row, false, cascade_count);
             queue.write_buffer(&self.grid_buffer, 0, bytemuck::bytes_of(&grid));
             self.prev_grid = grid;
             return;
         }
         if self.snap_cascades(frame.camera_pos) {
             self.frames_since_change = 0;
+            self.sun_changed = false;
         }
-        let hysteresis = hysteresis_after_change(self.frames_since_change);
+        if self.sun_moved(frame.sun_dir) {
+            self.frames_since_change = 0;
+            self.sun_changed = true;
+        }
+        self.last_sun_dir = frame.sun_dir;
+        let hysteresis = hysteresis_after_change(self.frames_since_change, self.sun_changed);
         self.frames_since_change = self.frames_since_change.saturating_add(1);
 
-        let grid = GiGridGpu::new(&self.cascades, layout.probes_per_row, true);
+        let grid = GiGridGpu::new(&self.cascades, layout.probes_per_row, true, cascade_count);
         queue.write_buffer(&self.grid_buffer, 0, bytemuck::bytes_of(&grid));
         self.relocator.record(
             device,
@@ -190,9 +252,10 @@ impl GiProbes {
             &self.grid_buffer,
             frame.sdf,
             &self.probe_offset,
-            PROBES_PER_CASCADE * GI_CASCADE_COUNT as u32,
+            PROBES_PER_CASCADE * cascade_count,
         );
 
+        let rays = self.quality.rays();
         let inputs = TraceInputs {
             sdf: frame.sdf,
             sky: frame.sky,
@@ -200,12 +263,12 @@ impl GiProbes {
             prev_irradiance: &self.irradiance_view,
             probe_offset: &self.probe_offset,
         };
-        for (slot, cascade) in self.cascades.iter().enumerate() {
+        for (slot, cascade) in self.cascades.iter().enumerate().take(cascade_count as usize) {
             let params = GiTraceParams {
                 grid_origin: cascade.origin,
                 spacing: cascade.spacing,
                 dims: cascade.dims,
-                rays: RAYS_PER_PROBE,
+                rays,
                 frame_index: self.frame_index,
                 sun_dir: frame.sun_dir,
                 sun_radiance: frame.sun_radiance,
@@ -221,7 +284,7 @@ impl GiProbes {
             queue,
             encoder,
             &AtlasUpdate {
-                rays: RAYS_PER_PROBE,
+                rays,
                 frame_index: self.frame_index,
                 hysteresis,
                 max_probe_distance: MAX_PROBE_DISTANCE,
@@ -231,6 +294,14 @@ impl GiProbes {
         self.copy_readable_atlases(encoder);
         self.frame_index = self.frame_index.wrapping_add(1);
         self.prev_grid = grid;
+    }
+
+    /// True when the sun moved more than 2 degrees since the previous enabled frame. A sun that
+    /// was absent (zero direction) counts as not moved.
+    fn sun_moved(&self, sun_dir: Vec3) -> bool {
+        let had_sun = self.last_sun_dir.length() > 0.0;
+        let has_sun = sun_dir.length() > 0.0;
+        had_sun && has_sun && self.last_sun_dir.dot(sun_dir) < SUN_MOVE_COS
     }
 
     /// Re-centres both cascades on `camera_pos`. Returns true when any cascade moved.

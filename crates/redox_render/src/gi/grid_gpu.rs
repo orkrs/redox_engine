@@ -49,12 +49,13 @@ impl GiGridGpu {
         cascades: &[ProbeCascade; GI_CASCADE_COUNT],
         probes_per_row: u32,
         enabled: bool,
+        cascade_count: u32,
     ) -> Self {
         let per_cascade = cascades[0].probe_count();
         let mut out = Self {
             probes_per_row,
             enabled: u32::from(enabled),
-            cascade_count: GI_CASCADE_COUNT as u32,
+            cascade_count: cascade_count.clamp(1, GI_CASCADE_COUNT as u32),
             ..Self::default()
         };
         for (c, cascade) in cascades.iter().enumerate() {
@@ -110,7 +111,7 @@ mod tests {
     fn the_second_cascade_starts_after_the_first_probes() {
         let fine = ProbeCascade::new(Vec3::ZERO, 0.5, [8, 8, 8]);
         let coarse = ProbeCascade::new(Vec3::ZERO, 2.0, [8, 8, 8]);
-        let grid = GiGridGpu::new(&[fine, coarse], 32, true);
+        let grid = GiGridGpu::new(&[fine, coarse], 32, true, 2);
         assert_eq!(grid.cascades[0].dims[3], 0);
         assert_eq!(grid.cascades[1].dims[3], 512);
         assert_eq!(grid.cascades[1].origin[3], 2.0);
@@ -122,7 +123,7 @@ mod tests {
         let mut fine = ProbeCascade::new(Vec3::ZERO, 0.5, [8, 8, 8]);
         fine.snap_to_camera(Vec3::new(1.2, 0.0, 0.0));
         let coarse = ProbeCascade::new(Vec3::ZERO, 2.0, [8, 8, 8]);
-        let grid = GiGridGpu::new(&[fine, coarse], 32, false);
+        let grid = GiGridGpu::new(&[fine, coarse], 32, false, 2);
         assert_eq!(grid.cascades[0].scroll[0], fine.scroll[0]);
         assert_eq!(grid.enabled, 0);
     }
