@@ -19,6 +19,7 @@ mod sequence;
 mod server;
 mod tick;
 mod transport;
+mod transport_udp;
 
 pub use client::{ConnectionState, NetClient};
 pub use error::NetError;
@@ -33,3 +34,4 @@ pub use tick::{
     MAX_TICKS_PER_POLL, SERVER_TICK_DURATION, SERVER_TICK_RATE_HZ, TickEstimator, drain_fixed_ticks,
 };
 pub use transport::{Channel, ClientId, DisconnectReason, NetEvent, SERVER_PEER, Transport};
+pub use transport_udp::UdpTransport;
