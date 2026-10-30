@@ -286,7 +286,7 @@ fn run_on_gpu(
     let _ = device.poll(wgpu::PollType::wait_indefinitely());
     receiver.recv().unwrap().unwrap();
     let floats = {
-        let data = slice.get_mapped_range();
+        let data = slice.get_mapped_range().expect("mapped range");
         bytemuck::cast_slice::<u8, f32>(&data[..OUT_BYTES as usize]).to_vec()
     };
     readback.unmap();

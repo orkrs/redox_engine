@@ -78,6 +78,8 @@ impl Rig {
         RenderObject {
             id: 0,
             shadow_class: redox_render::shadow::ShadowClass::Auto,
+            deforms: false,
+            pose_version: 0,
             model_matrix: Mat4::from_scale_rotation_translation(Vec3::ONE, Quat::IDENTITY, center),
             color: [1.0; 4],
             mesh_index: self.mesh,

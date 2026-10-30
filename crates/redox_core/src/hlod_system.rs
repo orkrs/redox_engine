@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn a_cell_without_a_proxy_is_never_advanced() {
-        let mut rt = runtime();
+        let rt = runtime();
         let unbaked = PartitionCell { x: 5, y: 5 };
         assert_eq!(rt.proxy_opacity(unbaked), 0.0);
         assert_eq!(rt.state(unbaked), CellLod::Detail);

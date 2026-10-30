@@ -10,7 +10,6 @@
 use bytemuck::{Pod, Zeroable};
 
 use crate::camera::CameraUniform;
-use crate::post::fog::{FOG_WGSL, FogSettings, fog_uniform};
 use crate::post::motion_blur_tiles::{SPREAD_SOFT_Z, TilePasses, TileTargets};
 use crate::post::fog::{FOG_WGSL, FogSettings, FogUniform, fog_uniform};
 use crate::post::fog_froxel::{FROXEL_COMPOSITE_WGSL, FroxelVolume, volume_entry};
@@ -528,11 +527,15 @@ impl PostFx {
         let (textures, views) = create_targets(device, width, height);
         let tile_passes = TilePasses::new(device);
         let tiles = TileTargets::new(device, &tile_passes, width, height, inputs.velocity_view);
-        let (tone_bgs, lanes) =
-            build_bindings(device, &passes, &views, tiles.neighbor_view(), inputs);
         let froxel = FroxelVolume::new(device, inputs.vsm_info, inputs.vsm_pages);
-        let (tone_bgs, lanes) =
-            build_bindings(device, &passes, &views, inputs, &froxel.integrated_view);
+        let (tone_bgs, lanes) = build_bindings(
+            device,
+            &passes,
+            &views,
+            tiles.neighbor_view(),
+            inputs,
+            &froxel.integrated_view,
+        );
         Self {
             _textures: textures,
             views,
@@ -556,12 +559,11 @@ impl PostFx {
         let (textures, views) = create_targets(device, width, height);
         self.tiles =
             TileTargets::new(device, &self.tile_passes, width, height, inputs.velocity_view);
-        let (tone_bgs, lanes) =
-            build_bindings(device, &self.passes, &views, self.tiles.neighbor_view(), inputs);
         let (tone_bgs, lanes) = build_bindings(
             device,
             &self.passes,
             &views,
+            self.tiles.neighbor_view(),
             inputs,
             &self.froxel.integrated_view,
         );

@@ -88,7 +88,6 @@ struct Rig {
     cube: usize,
     camera: Camera,
     lights: LightScene,
-    size: u32,
 }
 
 fn rig(taa: bool, scale: f32, size: u32) -> Option<Rig> {
@@ -139,6 +138,8 @@ impl Rig {
         RenderObject {
             id,
             shadow_class: ShadowClass::Auto,
+            deforms: false,
+            pose_version: 0,
             model_matrix: Mat4::from_scale_rotation_translation(scale, Quat::IDENTITY, center),
             color: [1.0; 4],
             mesh_index: self.cube,
@@ -280,7 +281,7 @@ fn read_taa_uniform(renderer: &Renderer) -> Vec<f32> {
         .device
         .poll(wgpu::PollType::wait_indefinitely());
     let values = {
-        let data = slice.get_mapped_range();
+        let data = slice.get_mapped_range().expect("mapped range");
         data.chunks_exact(4)
             .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
             .collect::<Vec<f32>>()
