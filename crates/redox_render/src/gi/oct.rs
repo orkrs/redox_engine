@@ -54,6 +54,22 @@ pub fn golden_angle() -> f32 {
     std::f32::consts::TAU / (GOLDEN_RATIO * GOLDEN_RATIO)
 }
 
+/// Octahedral edge rule for the one-texel border of a probe tile with `inner` texels per side
+/// (the WGSL mirror is `border_source` in `shaders/gi_update.wgsl`).
+///
+/// `texel` is a tile coordinate in `0..inner + 2`: the border ring sits at 0 and `inner + 1`.
+/// The border texel's direction is decoded beyond the square, folded back by the octahedral
+/// rule and re-encoded; the result is the inner texel (tile coordinates `1..=inner`) that
+/// contains that direction. Inner texels map to themselves; corners map to the opposite
+/// inner corner.
+pub fn border_source(texel: [u32; 2], inner: u32) -> [u32; 2] {
+    let n = inner as f32;
+    let uv = Vec2::new((texel[0] as f32 - 0.5) / n, (texel[1] as f32 - 0.5) / n);
+    let e = oct_encode(oct_decode(uv));
+    let pick = |v: f32| ((v * n).floor().clamp(0.0, n - 1.0) as u32) + 1;
+    [pick(e.x), pick(e.y)]
+}
+
 fn sign_nonzero(x: f32) -> f32 {
     if x >= 0.0 { 1.0 } else { -1.0 }
 }

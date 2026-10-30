@@ -132,6 +132,8 @@ pub const SKIN_COMPUTE_WGSL: &str = include_str!("../../shaders/skin_compute.wgs
 pub const DDGI_TRACE_WGSL: &str = include_str!("../../shaders/ddgi_trace.wgsl");
 /// Source of `gi_trace.wgsl` (global SDF probe ray trace).
 pub const GI_TRACE_WGSL: &str = include_str!("../../shaders/gi_trace.wgsl");
+/// Source of `gi_update.wgsl` (probe atlas irradiance and visibility update).
+pub const GI_UPDATE_WGSL: &str = include_str!("../../shaders/gi_update.wgsl");
 /// Source of `smaa/edge.wgsl`.
 pub const SMAA_EDGE_WGSL: &str = include_str!("../../shaders/smaa/edge.wgsl");
 /// Source of `smaa/blend_weights.wgsl`.
@@ -228,6 +230,7 @@ const EMBEDDED: &[(&str, &str, &str)] = &[
     ("skin_compute", "skin_compute.wgsl", SKIN_COMPUTE_WGSL),
     ("ddgi_trace", "ddgi_trace.wgsl", DDGI_TRACE_WGSL),
     ("gi_trace", "gi_trace.wgsl", GI_TRACE_WGSL),
+    ("gi_update", "gi_update.wgsl", GI_UPDATE_WGSL),
     ("smaa_edge", "smaa/edge.wgsl", SMAA_EDGE_WGSL),
     ("smaa_blend", "smaa/blend_weights.wgsl", SMAA_BLEND_WGSL),
     (
@@ -467,6 +470,7 @@ mod tests {
             ("skin_compute", super::SKIN_COMPUTE_WGSL),
             ("ddgi_trace", super::DDGI_TRACE_WGSL),
             ("gi_trace", super::GI_TRACE_WGSL),
+            ("gi_update", super::GI_UPDATE_WGSL),
             ("smaa_edge", super::SMAA_EDGE_WGSL),
             ("smaa_blend", super::SMAA_BLEND_WGSL),
             ("smaa_neighborhood", super::SMAA_NEIGHBORHOOD_WGSL),
