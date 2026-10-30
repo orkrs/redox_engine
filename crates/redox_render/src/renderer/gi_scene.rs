@@ -1,7 +1,7 @@
 //! Renderer entry points that give global illumination the static scene.
 
-use super::Renderer;
-use crate::gi::probes::GiQuality;
+use super::{Renderer, ShaderDebugVizMode};
+use crate::gi::probes::{GiDebug, GiQuality};
 use crate::sdf::SdfBrick;
 use crate::sdf::global::{GLOBAL_SDF_DIMS, GlobalSdf, SdfBox};
 use redox_math::{Aabb, Vec3};
@@ -53,6 +53,19 @@ impl Renderer {
     /// `High` 128 rays and two cascades. `Off` disables the probes.
     pub fn set_gi_quality(&mut self, quality: GiQuality) {
         self.gi_probes.set_quality(quality);
+    }
+
+    /// Selects a GI debug overlay (GI-01 step 6). `Probes` draws crosses through the debug-line
+    /// pass each frame; `Irradiance` and `Visibility` replace the shading output (PBR path only).
+    /// Setting an overlay replaces any other shader debug mode.
+    pub fn set_gi_debug(&mut self, debug: GiDebug) {
+        self.gi_probes.set_debug(debug);
+        let mode = match debug {
+            GiDebug::Off | GiDebug::Probes => ShaderDebugVizMode::None,
+            GiDebug::Irradiance => ShaderDebugVizMode::GiIrradiance,
+            GiDebug::Visibility => ShaderDebugVizMode::GiVisibility,
+        };
+        self.update_shader_debug_buffer(mode);
     }
 }
 

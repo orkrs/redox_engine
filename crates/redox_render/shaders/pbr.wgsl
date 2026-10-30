@@ -305,6 +305,24 @@ fn gi_sample_cascade(c: u32, world_pos: vec3<f32>, n: vec3<f32>, v: vec3<f32>) -
     return vec4<f32>(accum, wsum);
 }
 
+// GI debug view (ShaderDebugVizMode::GiVisibility): mean probe distance in direction n of the fine
+// probe nearest to the point, grey with 40 m white. Blue where the point is outside the window.
+const GI_DEBUG_DISTANCE: f32 = 40.0;
+fn gi_visibility_debug(world_pos: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
+    let fine = gi_cascade(0u);
+    let dims = vec3<i32>(fine.dims.xyz);
+    let cell = vec3<i32>(round((world_pos - fine.origin.xyz) / fine.origin.w));
+    let rel = cell - fine.scroll.xyz;
+    if (gi_grid.enabled == 0u || any(rel < vec3<i32>(0)) || any(rel >= dims)) {
+        return vec3<f32>(0.0, 0.0, 1.0);
+    }
+    let slot = ((cell % dims) + dims) % dims;
+    let su = vec3<u32>(slot);
+    let index = fine.dims.w + su.x + su.y * fine.dims.x + su.z * fine.dims.x * fine.dims.y;
+    let mean = gi_tile_fetch(t_gi_visibility, index, n, GI_STRIDE_VIS, GI_INNER_VIS).r;
+    return vec3<f32>(clamp(mean / GI_DEBUG_DISTANCE, 0.0, 1.0));
+}
+
 // Irradiance at a surface point: cascade blend with a soft hand-over to the coarse cascade
 // over the outer 15% of the fine window.
 fn gi_irradiance(world_pos: vec3<f32>, n: vec3<f32>, v: vec3<f32>) -> vec3<f32> {
@@ -946,6 +964,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // MAT-04: anisotropy frame (tangent from the vertex stream, orthogonal to n).
     let aniso_t = orthonormal_tangent(in.world_tangent, n);
     let aniso_b = cross(n, aniso_t);
+
+    // --- GI DEBUG (GI-01 step 6) ---
+    if (shader_debug.debug_viz_mode == 4u) {
+        return vec4<f32>(gi_irradiance(in.world_pos, n, v) / PI, 1.0);
+    }
+    if (shader_debug.debug_viz_mode == 5u) {
+        return vec4<f32>(gi_visibility_debug(in.world_pos, n), 1.0);
+    }
 
     // --- DEBUG VISUALIZATION OVERLAY ---
     if (shader_debug.debug_viz_mode == 1u) {

@@ -61,6 +61,20 @@ impl GiQuality {
     }
 }
 
+/// Debug overlay of the probes (GI-01 step 6).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum GiDebug {
+    /// No overlay.
+    #[default]
+    Off,
+    /// A cross at every probe of the active cascades (lines through the debug-line pass).
+    Probes,
+    /// The GI term alone, without albedo, as the shading output.
+    Irradiance,
+    /// Mean probe distance of the nearest fine probe, grey (40 m is white); blue outside the window.
+    Visibility,
+}
+
 /// Per-frame inputs of the GI update.
 pub struct GiFrame<'a> {
     /// Camera position; the cascades are centred on it.
@@ -100,6 +114,8 @@ pub struct GiProbes {
     last_sun_dir: Vec3,
     /// Trace and shading quality.
     quality: GiQuality,
+    /// Debug overlay selected by the application.
+    debug: GiDebug,
     /// Off until a static scene is given: with an empty volume every ray would return the sky and
     /// double the ambient light of scenes that do not use GI.
     enabled: bool,
@@ -154,6 +170,7 @@ impl GiProbes {
             sun_changed: false,
             last_sun_dir: Vec3::ZERO,
             quality: GiQuality::default(),
+            debug: GiDebug::default(),
             enabled: false,
         }
     }
@@ -173,6 +190,47 @@ impl GiProbes {
     /// Current trace quality.
     pub fn quality(&self) -> GiQuality {
         self.quality
+    }
+
+    /// Selects the debug overlay.
+    pub fn set_debug(&mut self, debug: GiDebug) {
+        self.debug = debug;
+    }
+
+    /// Current debug overlay.
+    pub fn debug(&self) -> GiDebug {
+        self.debug
+    }
+
+    /// Cross lines (`false` = cyan) at the lattice position of every probe of the active cascades.
+    /// ASSUMPTION: relocation offsets live on the GPU and are not read back, so the crosses sit on
+    /// the lattice; a probe moved out of geometry is drawn at its unmoved place.
+    pub fn probe_lines(&self) -> Vec<(Vec3, Vec3, bool)> {
+        if !self.active() {
+            return Vec::new();
+        }
+        let count = self.quality.cascades() as usize;
+        let mut lines = Vec::new();
+        for casc in self.cascades.iter().take(count) {
+            let arm = 0.1 * casc.spacing;
+            let [dx, dy, dz] = casc.dims;
+            for z in 0..dz {
+                for y in 0..dy {
+                    for x in 0..dx {
+                        let cell = Vec3::new(
+                            (casc.scroll[0] + x as i32) as f32,
+                            (casc.scroll[1] + y as i32) as f32,
+                            (casc.scroll[2] + z as i32) as f32,
+                        );
+                        let p = casc.origin + cell * casc.spacing;
+                        for axis in [Vec3::X, Vec3::Y, Vec3::Z] {
+                            lines.push((p - axis * arm, p + axis * arm, false));
+                        }
+                    }
+                }
+            }
+        }
+        lines
     }
 
     /// Whether the probes are traced and read: enabled and not at `Off` quality.

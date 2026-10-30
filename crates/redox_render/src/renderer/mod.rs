@@ -62,6 +62,10 @@ pub enum ShaderDebugVizMode {
     ShadowValue = 2,
     /// Magenta=SSAO · Lime=VSM · Yellow=SDF (darkening amounts).
     ShadowSources = 3,
+    /// GI term alone (no albedo), as the shading output.
+    GiIrradiance = 4,
+    /// GI visibility: mean probe distance of the nearest fine probe, grey.
+    GiVisibility = 5,
 }
 use crate::camera::Camera;
 use crate::frame::FrameView;

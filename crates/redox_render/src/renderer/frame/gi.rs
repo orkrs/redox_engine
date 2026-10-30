@@ -2,7 +2,7 @@
 
 use super::super::*;
 use super::FrameState;
-use crate::gi::probes::GiFrame;
+use crate::gi::probes::{GiDebug, GiFrame};
 
 impl Renderer {
     /// Traces the probe cascades and updates their atlases. Runs before the lighting passes
@@ -27,5 +27,8 @@ impl Renderer {
                 sdf: &self.gi.global_sdf,
             },
         );
+        if self.gi_probes.debug() == GiDebug::Probes {
+            self.current_debug_lines = self.gi_probes.probe_lines();
+        }
     }
 }
