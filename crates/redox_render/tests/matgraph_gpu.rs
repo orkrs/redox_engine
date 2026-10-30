@@ -190,7 +190,11 @@ fn expected_floats(values: &SurfaceValues) -> Vec<f32> {
 
 fn device() -> Option<(wgpu::Device, wgpu::Queue)> {
     let adapter = common::adapter()?;
-    pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).ok()
+    pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        required_limits: redox_render::renderer::required_device_limits(&adapter.limits()),
+        ..Default::default()
+    }))
+    .ok()
 }
 
 /// Runs the generated function of `graph` on the GPU and returns the 12 output floats.
@@ -411,4 +415,207 @@ fn a_broken_graph_keeps_the_previous_shader() {
     assert_eq!(cache.len(), 1);
     assert!(cache.contains(good.key));
     assert!(!cache.contains(broken_key));
+}
+
+/// Graph that routes the scalar result of `op` to `roughness` (port 4).
+fn scalar_case(mut nodes: Vec<Node>, op: u32) -> MaterialGraph {
+    nodes.push(node(
+        90,
+        NodeKind::SurfaceOutput,
+        vec![None, None, None, None, link(op), None],
+    ));
+    graph(nodes)
+}
+
+/// Graph that routes the vector result of `op` to `base_color` (port 0).
+fn vector_case(mut nodes: Vec<Node>, op: u32) -> MaterialGraph {
+    nodes.push(node(
+        90,
+        NodeKind::SurfaceOutput,
+        vec![link(op), None, None, None, None, None],
+    ));
+    graph(nodes)
+}
+
+fn constant(id: u32, value: f32) -> Node {
+    node(id, NodeKind::ConstF32(value), vec![])
+}
+
+/// Checks every graph of `cases` against the interpreter.
+fn assert_all_match(cases: &[MaterialGraph]) {
+    for case in cases {
+        assert_matches_interpreter(case, vec![]);
+    }
+}
+
+#[test]
+fn unary_scalar_nodes_match_the_interpreter() {
+    let kinds = [
+        NodeKind::Abs,
+        NodeKind::Floor,
+        NodeKind::Fract,
+        NodeKind::Saturate,
+        NodeKind::Sin,
+        NodeKind::Cos,
+        NodeKind::Sqrt,
+        NodeKind::OneMinus,
+        NodeKind::Remap {
+            in_min: 0.0,
+            in_max: 1.0,
+            out_min: -1.0,
+            out_max: 1.0,
+        },
+    ];
+    let cases: Vec<MaterialGraph> = kinds
+        .into_iter()
+        .map(|kind| {
+            scalar_case(
+                vec![constant(1, 2.3), node(2, kind, vec![link(1)])],
+                2,
+            )
+        })
+        .collect();
+    assert_all_match(&cases);
+}
+
+#[test]
+fn binary_and_ternary_scalar_nodes_match_the_interpreter() {
+    let binary = [
+        NodeKind::Add,
+        NodeKind::Sub,
+        NodeKind::Mul,
+        NodeKind::Pow,
+        NodeKind::Min,
+        NodeKind::Max,
+        NodeKind::Step,
+    ];
+    let mut cases: Vec<MaterialGraph> = binary
+        .into_iter()
+        .map(|kind| {
+            scalar_case(
+                vec![
+                    constant(1, 0.5),
+                    constant(2, 0.75),
+                    node(3, kind, vec![link(1), link(2)]),
+                ],
+                3,
+            )
+        })
+        .collect();
+    let ternary = [NodeKind::Lerp, NodeKind::Clamp, NodeKind::Smoothstep];
+    cases.extend(ternary.into_iter().map(|kind| {
+        scalar_case(
+            vec![
+                constant(1, 0.2),
+                constant(2, 0.9),
+                constant(3, 0.6),
+                node(4, kind, vec![link(1), link(2), link(3)]),
+            ],
+            4,
+        )
+    }));
+    // select: mask 0.7 >= 0.5 picks input 1.
+    cases.push(scalar_case(
+        vec![
+            constant(1, 0.7),
+            constant(2, 0.3),
+            constant(3, 0.8),
+            node(4, NodeKind::If, vec![link(1), link(2), link(3)]),
+        ],
+        4,
+    ));
+    assert_all_match(&cases);
+}
+
+#[test]
+fn vector_and_derived_nodes_match_the_interpreter() {
+    let cases = [
+        // Dot of uv with itself.
+        scalar_case(
+            vec![node(1, NodeKind::Uv, vec![]), node(2, NodeKind::Dot, vec![link(1), link(1)])],
+            2,
+        ),
+        // Normalised constant vector.
+        vector_case(
+            vec![
+                node(1, NodeKind::ConstVec3([1.0, 2.0, 2.0]), vec![]),
+                node(2, NodeKind::Normalize, vec![link(1)]),
+            ],
+            2,
+        ),
+        // Component of uv.
+        scalar_case(
+            vec![node(1, NodeKind::Uv, vec![]), node(2, NodeKind::Split { component: 1 }, vec![link(1)])],
+            2,
+        ),
+        // Component of vertex colour.
+        scalar_case(
+            vec![
+                node(1, NodeKind::VertexColor, vec![]),
+                node(2, NodeKind::Split { component: 3 }, vec![link(1)]),
+            ],
+            2,
+        ),
+        // Three scalars merged into a colour.
+        vector_case(
+            vec![
+                constant(1, 0.1),
+                constant(2, 0.5),
+                constant(3, 0.9),
+                node(4, NodeKind::Merge, vec![link(1), link(2), link(3)]),
+            ],
+            4,
+        ),
+        // Vector mix with a scalar factor from uv.
+        vector_case(
+            vec![
+                node(1, NodeKind::ConstVec3([0.0, 1.0, 0.0]), vec![]),
+                node(2, NodeKind::ConstVec3([1.0, 0.0, 1.0]), vec![]),
+                node(3, NodeKind::Uv, vec![]),
+                node(4, NodeKind::Split { component: 0 }, vec![link(3)]),
+                node(5, NodeKind::Lerp, vec![link(1), link(2), link(4)]),
+            ],
+            5,
+        ),
+        // Fresnel of the normal against the view direction.
+        scalar_case(
+            vec![
+                node(1, NodeKind::Normal, vec![]),
+                node(2, NodeKind::ViewDir, vec![]),
+                node(3, NodeKind::Fresnel { power: 2.0 }, vec![link(1), link(2)]),
+            ],
+            3,
+        ),
+        // Time input.
+        scalar_case(vec![node(1, NodeKind::Time, vec![])], 1),
+    ];
+    assert_all_match(&cases);
+}
+
+#[test]
+fn noise_nodes_match_the_interpreter() {
+    let cases = [
+        scalar_case(
+            vec![node(1, NodeKind::Uv, vec![]), node(2, NodeKind::ValueNoise, vec![link(1)])],
+            2,
+        ),
+        scalar_case(
+            vec![node(1, NodeKind::Uv, vec![]), node(2, NodeKind::GradientNoise, vec![link(1)])],
+            2,
+        ),
+        scalar_case(
+            vec![node(1, NodeKind::Uv, vec![]), node(2, NodeKind::Worley, vec![link(1)])],
+            2,
+        ),
+        scalar_case(
+            vec![
+                node(1, NodeKind::WorldPos, vec![]),
+                node(2, NodeKind::ConstVec3([0.3, 0.6, 0.9]), vec![]),
+                node(3, NodeKind::Add, vec![link(1), link(2)]),
+                node(4, NodeKind::GradientNoise, vec![link(3)]),
+            ],
+            4,
+        ),
+    ];
+    assert_all_match(&cases);
 }
