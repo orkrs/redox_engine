@@ -1,5 +1,5 @@
-//! Graph format: nodes, ports, value types and RON (de)serialisation (MAT-02 step 1).
-//! Checks live in [`crate::check`].
+//! Graph format: nodes, ports, value types and RON (de)serialisation (MAT-02 step 1, extended by
+//! MAT-03). Checks live in [`crate::check`].
 
 use serde::{Deserialize, Serialize};
 
@@ -27,9 +27,9 @@ pub enum Ty {
     Vec3,
     /// Four-component float vector.
     Vec4,
-    /// 2D texture (reserved for MAT-03).
+    /// 2D texture (reserved; texture nodes read textures through their slot).
     Texture2d,
-    /// Texture sampler (reserved for MAT-03).
+    /// Texture sampler (reserved).
     Sampler,
 }
 
@@ -121,6 +121,97 @@ pub enum NodeKind {
     Pow,
     /// `1 - x`.
     OneMinus,
+    /// Sample of texture `slot` with the default sampler; input `uv`, output rgba.
+    Texture2d {
+        /// Texture slot; bound by the renderer.
+        slot: u8,
+    },
+    /// Sample of texture `slot` with an explicit wrap mode (`clamp: true` clamps, otherwise
+    /// repeats); input `uv`, output rgba.
+    TextureSample {
+        /// Texture slot.
+        slot: u8,
+        /// Clamp to edge instead of repeating.
+        clamp: bool,
+    },
+    /// Tangent-space normal map in `slot`, decoded and rotated into world space by the surface
+    /// normal and tangent; input `uv`, output `vec3`.
+    NormalMap {
+        /// Texture slot.
+        slot: u8,
+    },
+    /// Triplanar sampling of texture `slot` along the world axes; inputs `position` and
+    /// `normal` (`vec3`), output rgba.
+    Triplanar {
+        /// Texture slot.
+        slot: u8,
+        /// Texture repeats per metre.
+        scale: f32,
+    },
+    /// Absolute value (component-wise).
+    Abs,
+    /// Floor (component-wise).
+    Floor,
+    /// `x - floor(x)` (component-wise).
+    Fract,
+    /// Clamp to `[0, 1]`.
+    Saturate,
+    /// Sine (component-wise).
+    Sin,
+    /// Cosine (component-wise).
+    Cos,
+    /// Square root (component-wise).
+    Sqrt,
+    /// Linear remap of `x` from `[in_min, in_max]` to `[out_min, out_max]`.
+    Remap {
+        /// Input range start.
+        in_min: f32,
+        /// Input range end; must differ from `in_min`.
+        in_max: f32,
+        /// Output range start.
+        out_min: f32,
+        /// Output range end.
+        out_max: f32,
+    },
+    /// Component-wise minimum.
+    Min,
+    /// Component-wise maximum.
+    Max,
+    /// `step(edge, x)`: 0 below the edge, 1 otherwise.
+    Step,
+    /// `smoothstep(e0, e1, x)`.
+    Smoothstep,
+    /// Fresnel term `(1 - saturate(dot(normal, view)))^power`; inputs `normal`, `view` (`vec3`).
+    Fresnel {
+        /// Exponent.
+        power: f32,
+    },
+    /// One component of a vector as `f32`.
+    Split {
+        /// Component index: 0 = x, 1 = y, 2 = z, 3 = w.
+        component: u8,
+    },
+    /// Three scalars into a `vec3`.
+    Merge,
+    /// Selects input 1 when the scalar mask (input 0) is at least 0.5, else input 2.
+    If,
+    /// Value noise, input `position` (`vec2` or `vec3`), output `f32`.
+    ValueNoise,
+    /// Gradient noise, input `position` (`vec2` or `vec3`), output `f32`.
+    GradientNoise,
+    /// Worley F1 distance, input `position` (`vec2` or `vec3`), output `f32`.
+    Worley,
+    /// Custom WGSL function. The body is the function body; `inputs` are its parameters.
+    Custom {
+        /// Display name (not part of the generated code).
+        name: String,
+        /// Parameters in order, with their types.
+        inputs: Vec<(String, Ty)>,
+        /// Return type.
+        output: Ty,
+        /// Function body (WGSL statements, `return` included).
+        body: String,
+    },
     /// Sink of the graph: the six surface properties.
     SurfaceOutput,
 }
@@ -170,7 +261,7 @@ impl GraphError {
 }
 
 /// Input types of the surface output, in port order.
-const SURFACE_INPUTS: &[Option<Ty>] = &[
+const SURFACE_INPUTS: [Option<Ty>; 6] = [
     Some(Ty::Vec3),
     Some(Ty::F32),
     Some(Ty::Vec3),
@@ -178,10 +269,6 @@ const SURFACE_INPUTS: &[Option<Ty>] = &[
     Some(Ty::F32),
     Some(Ty::Vec3),
 ];
-const NO_INPUTS: &[Option<Ty>] = &[];
-const ARITY_ONE: &[Option<Ty>] = &[None];
-const ARITY_TWO: &[Option<Ty>] = &[None, None];
-const ARITY_THREE: &[Option<Ty>] = &[None, None, None];
 
 /// Number of input ports of a node kind.
 pub fn arity(kind: &NodeKind) -> usize {
@@ -190,33 +277,79 @@ pub fn arity(kind: &NodeKind) -> usize {
 
 /// Input port types of a kind. `Some(ty)` fixes the port type; `None` marks an arithmetic
 /// operand, whose type is joined with the other arithmetic operands (scalars broadcast).
-pub fn input_types(kind: &NodeKind) -> &'static [Option<Ty>] {
+pub fn input_types(kind: &NodeKind) -> Vec<Option<Ty>> {
+    use NodeKind as K;
     match kind {
-        NodeKind::Add | NodeKind::Sub | NodeKind::Mul | NodeKind::Dot | NodeKind::Pow => ARITY_TWO,
-        NodeKind::Lerp | NodeKind::Clamp => ARITY_THREE,
-        NodeKind::Normalize | NodeKind::OneMinus => ARITY_ONE,
-        NodeKind::SurfaceOutput => SURFACE_INPUTS,
-        _ => NO_INPUTS,
+        K::Add | K::Sub | K::Mul | K::Dot | K::Pow | K::Min | K::Max | K::Step => vec![None; 2],
+        K::Lerp | K::Clamp | K::Smoothstep => vec![None; 3],
+        K::Normalize
+        | K::OneMinus
+        | K::Abs
+        | K::Floor
+        | K::Fract
+        | K::Saturate
+        | K::Sin
+        | K::Cos
+        | K::Sqrt
+        | K::Remap { .. }
+        | K::Split { .. }
+        | K::ValueNoise
+        | K::GradientNoise
+        | K::Worley => vec![None],
+        K::Texture2d { .. } | K::TextureSample { .. } | K::NormalMap { .. } => {
+            vec![Some(Ty::Vec2)]
+        }
+        K::Triplanar { .. } | K::Fresnel { .. } => vec![Some(Ty::Vec3), Some(Ty::Vec3)],
+        K::Merge => vec![Some(Ty::F32); 3],
+        K::If => vec![Some(Ty::F32), None, None],
+        K::Custom { inputs, .. } => inputs.iter().map(|(_, ty)| Some(*ty)).collect(),
+        K::SurfaceOutput => SURFACE_INPUTS.to_vec(),
+        _ => Vec::new(),
     }
 }
 
 /// Output type of a kind given the actual (already checked) input types.
 pub fn output_type(kind: &NodeKind, inputs: &[Ty]) -> Ty {
+    use NodeKind as K;
     match kind {
-        NodeKind::Uv => Ty::Vec2,
-        NodeKind::WorldPos | NodeKind::Normal | NodeKind::ViewDir | NodeKind::ConstVec3(_) => {
+        K::Uv => Ty::Vec2,
+        K::WorldPos | K::Normal | K::ViewDir | K::ConstVec3(_) | K::Merge | K::NormalMap { .. } => {
             Ty::Vec3
         }
-        NodeKind::VertexColor => Ty::Vec4,
-        NodeKind::Time | NodeKind::ConstF32(_) | NodeKind::Dot | NodeKind::SurfaceOutput => Ty::F32,
-        NodeKind::Param { ty, .. } => *ty,
-        NodeKind::Normalize | NodeKind::OneMinus => inputs.first().copied().unwrap_or(Ty::F32),
-        NodeKind::Add
-        | NodeKind::Sub
-        | NodeKind::Mul
-        | NodeKind::Lerp
-        | NodeKind::Clamp
-        | NodeKind::Pow => join(inputs),
+        K::VertexColor => Ty::Vec4,
+        K::Time
+        | K::ConstF32(_)
+        | K::Dot
+        | K::SurfaceOutput
+        | K::Fresnel { .. }
+        | K::Split { .. }
+        | K::ValueNoise
+        | K::GradientNoise
+        | K::Worley => Ty::F32,
+        K::Texture2d { .. } | K::TextureSample { .. } | K::Triplanar { .. } => Ty::Vec4,
+        K::Param { ty, .. } => *ty,
+        K::Custom { output, .. } => *output,
+        K::Normalize
+        | K::OneMinus
+        | K::Abs
+        | K::Floor
+        | K::Fract
+        | K::Saturate
+        | K::Sin
+        | K::Cos
+        | K::Sqrt
+        | K::Remap { .. } => inputs.first().copied().unwrap_or(Ty::F32),
+        K::Add
+        | K::Sub
+        | K::Mul
+        | K::Lerp
+        | K::Clamp
+        | K::Pow
+        | K::Min
+        | K::Max
+        | K::Step
+        | K::Smoothstep
+        | K::If => join(inputs),
     }
 }
 

@@ -4,9 +4,12 @@
 //! struct. The surrounding module (`SurfaceInput`, `SurfaceData`) comes from
 //! `material_surface.wgsl`.
 
+use crate::custom;
 use crate::emit;
 use crate::graph::Ty;
-use crate::ir::{self, Ir};
+use crate::ir::{self, Ir, OpKind};
+use crate::noise;
+use crate::texture;
 
 /// Shader pass the variant is built for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -68,8 +71,11 @@ pub fn generate(ir: &Ir, opts: &CodegenOptions) -> Generated {
         ));
     }
     let ret = return_expr(&pruned, opts.pass);
+    let helpers = helper_text(&pruned);
+    let customs = custom_text(&pruned);
     let wgsl = format!(
         "// material graph: pass {:?}, features {:?}\n\
+         {helpers}{customs}\
          fn material_surface_graph(in: SurfaceInput, uv: vec2<f32>, time: f32, params: MaterialParams) -> SurfaceData {{\n\
          {body}    return {ret};\n\
          }}\n",
@@ -80,6 +86,42 @@ pub fn generate(ir: &Ir, opts: &CodegenOptions) -> Generated {
         uniform_wgsl: uniform_struct(ir),
         param_bytes: ir.params.len() * 16,
     }
+}
+
+/// Helper functions the ops of `ir` call: noise and texture helpers, emitted once when needed.
+fn helper_text(ir: &Ir) -> String {
+    let needs_noise = ir.ops.iter().any(|op| matches!(op.kind, OpKind::Noise(_)));
+    let needs_texture = ir.ops.iter().any(|op| {
+        matches!(
+            op.kind,
+            OpKind::Texture { .. } | OpKind::NormalMap { .. } | OpKind::Triplanar { .. }
+        )
+    });
+    let mut text = String::new();
+    if needs_noise {
+        text.push_str(noise::WGSL);
+    }
+    if needs_texture {
+        text.push_str(texture::WGSL);
+    }
+    text
+}
+
+/// One WGSL function per custom node of `ir`.
+fn custom_text(ir: &Ir) -> String {
+    ir.ops
+        .iter()
+        .filter_map(|op| match &op.kind {
+            OpKind::Custom {
+                node,
+                inputs,
+                output,
+                body,
+            } => Some(custom::function_text(*node, inputs, *output, body)),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// `SurfaceData(...)` constructor with the six graph values (zero for fields the pass drops).

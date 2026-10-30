@@ -1,8 +1,14 @@
 //! CPU interpreter for the IR. Reference semantics for constant folding and for GPU
-//! comparisons of the generated WGSL (MAT-02 steps 2 and 4).
+//! comparisons of the generated WGSL (MAT-02 steps 2 and 4, extended by MAT-03).
+//!
+//! Texture reads go through a [`TextureSampler`]; [`eval`] uses [`FlatTexture`], whose texel
+//! is a flat tangent-space normal `(0.5, 0.5, 1)`. Custom WGSL nodes have no CPU meaning:
+//! [`try_eval`] returns `None` for graphs that contain one.
 
 use crate::graph::Ty;
-use crate::ir::{Ir, OpKind};
+use crate::ir::{Ir, MathFn, OpKind};
+use crate::noise;
+use crate::texture;
 
 /// Runtime value: components in `c[0..components]`, the rest unused.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -55,8 +61,53 @@ pub struct SurfaceValues {
     pub emissive: [f32; 3],
 }
 
-/// Runs the IR on one fragment.
+/// Source of texels for the interpreter.
+pub trait TextureSampler {
+    /// RGBA texel of texture `slot` at `uv`.
+    fn sample(&self, slot: u8, uv: [f32; 2]) -> [f32; 4];
+}
+
+/// Sampler returning the flat tangent-space normal texel `(0.5, 0.5, 1, 1)` for every slot.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FlatTexture;
+
+impl TextureSampler for FlatTexture {
+    fn sample(&self, _slot: u8, _uv: [f32; 2]) -> [f32; 4] {
+        [0.5, 0.5, 1.0, 1.0]
+    }
+}
+
+/// What a fragment evaluation can read besides [`EvalInputs`].
+pub struct EvalEnv<'a> {
+    /// Texel source.
+    pub textures: &'a dyn TextureSampler,
+    /// Surface tangent for normal maps. `None` derives one from the normal.
+    pub tangent: Option<[f32; 3]>,
+}
+
+/// Runs the IR on one fragment with flat textures and a derived tangent.
 pub fn eval(ir: &Ir, inputs: &EvalInputs) -> SurfaceValues {
+    eval_with(
+        ir,
+        inputs,
+        &EvalEnv {
+            textures: &FlatTexture,
+            tangent: None,
+        },
+    )
+}
+
+/// Like [`eval`], but returns `None` when the graph has a custom node (no CPU reference).
+pub fn try_eval(ir: &Ir, inputs: &EvalInputs) -> Option<SurfaceValues> {
+    let custom = ir
+        .ops
+        .iter()
+        .any(|op| matches!(op.kind, OpKind::Custom { .. }));
+    (!custom).then(|| eval(ir, inputs))
+}
+
+/// Runs the IR on one fragment with an explicit environment.
+pub fn eval_with(ir: &Ir, inputs: &EvalInputs, env: &EvalEnv<'_>) -> SurfaceValues {
     let mut values: Vec<Value> = Vec::with_capacity(ir.ops.len());
     for op in &ir.ops {
         let args: Vec<Value> = op
@@ -91,6 +142,21 @@ pub fn eval(ir: &Ir, inputs: &EvalInputs) -> SurfaceValues {
                 let c = inputs.params.get(*slot).copied().unwrap_or(fallback);
                 Value { ty: op.ty, c }
             }
+            OpKind::Texture { slot, .. } => {
+                let uv = [component(&args[0], 0), component(&args[0], 1)];
+                Value {
+                    ty: Ty::Vec4,
+                    c: env.textures.sample(*slot, uv),
+                }
+            }
+            OpKind::NormalMap { slot } => {
+                let uv = [component(&args[0], 0), component(&args[0], 1)];
+                let texel = env.textures.sample(*slot, uv);
+                let n = inputs.normal;
+                let t = env.tangent.unwrap_or_else(|| default_tangent(n));
+                vec3(Ty::Vec3, texture::normal_map(texel, n, t))
+            }
+            OpKind::Triplanar { slot, scale } => triplanar(env, *slot, *scale, &args),
             kind => apply(kind, op.ty, &args).unwrap_or(Value::zero(op.ty)),
         };
         values.push(value);
@@ -113,6 +179,43 @@ pub fn eval(ir: &Ir, inputs: &EvalInputs) -> SurfaceValues {
     }
 }
 
+/// Triplanar sample: the three axis projections blended with [`texture::triplanar_weights`].
+fn triplanar(env: &EvalEnv<'_>, slot: u8, scale: f32, args: &[Value]) -> Value {
+    let p = [
+        component(&args[0], 0),
+        component(&args[0], 1),
+        component(&args[0], 2),
+    ];
+    let n = [
+        component(&args[1], 0),
+        component(&args[1], 1),
+        component(&args[1], 2),
+    ];
+    let w = texture::triplanar_weights(n);
+    let x = env.textures.sample(slot, [p[2] * scale, p[1] * scale]);
+    let y = env.textures.sample(slot, [p[0] * scale, p[2] * scale]);
+    let z = env.textures.sample(slot, [p[0] * scale, p[1] * scale]);
+    let mut c = [0.0; 4];
+    for (i, slot) in c.iter_mut().enumerate() {
+        *slot = x[i] * w[0] + y[i] * w[1] + z[i] * w[2];
+    }
+    Value { ty: Ty::Vec4, c }
+}
+
+/// A tangent perpendicular to `n`, chosen deterministically; used when no tangent is given.
+fn default_tangent(n: [f32; 3]) -> [f32; 3] {
+    let helper = if n[1].abs() < 0.9 {
+        [0.0, 1.0, 0.0]
+    } else {
+        [1.0, 0.0, 0.0]
+    };
+    [
+        helper[1] * n[2] - helper[2] * n[1],
+        helper[2] * n[0] - helper[0] * n[2],
+        helper[0] * n[1] - helper[1] * n[0],
+    ]
+}
+
 fn vec3(ty: Ty, v: [f32; 3]) -> Value {
     Value {
         ty,
@@ -130,7 +233,7 @@ fn component(v: &Value, i: usize) -> f32 {
 }
 
 /// Applies a pure operation to already evaluated operands. `ty` is the result type.
-/// Returns `None` for operations that read inputs or parameters (not pure).
+/// Returns `None` for operations that read inputs, parameters, textures or custom code.
 pub fn apply(kind: &OpKind, ty: Ty, args: &[Value]) -> Option<Value> {
     let value = match kind {
         OpKind::Add => map_components(ty, args, |x| x[0] + x[1]),
@@ -140,6 +243,12 @@ pub fn apply(kind: &OpKind, ty: Ty, args: &[Value]) -> Option<Value> {
         OpKind::OneMinus => map_components(ty, args, |x| 1.0 - x[0]),
         OpKind::Lerp => map_components(ty, args, |x| x[0] + (x[1] - x[0]) * x[2]),
         OpKind::Clamp => map_components(ty, args, |x| x[0].max(x[1]).min(x[2])),
+        OpKind::Math(f) => map_components(ty, args, |x| math(f, x[0])),
+        OpKind::Min => map_components(ty, args, |x| x[0].min(x[1])),
+        OpKind::Max => map_components(ty, args, |x| x[0].max(x[1])),
+        OpKind::Step => map_components(ty, args, |x| if x[1] < x[0] { 0.0 } else { 1.0 }),
+        OpKind::Smoothstep => map_components(ty, args, |x| smoothstep(x[0], x[1], x[2])),
+        OpKind::Select => map_components(ty, args, |x| if x[0] >= 0.5 { x[1] } else { x[2] }),
         OpKind::Dot => {
             let first = args.first()?;
             let second = args.get(1)?;
@@ -150,6 +259,30 @@ pub fn apply(kind: &OpKind, ty: Ty, args: &[Value]) -> Option<Value> {
                 ty: Ty::F32,
                 c: [sum, 0.0, 0.0, 0.0],
             }
+        }
+        OpKind::Fresnel(power) => {
+            let normal = args.first()?;
+            let view = args.get(1)?;
+            let d: f32 = (0..3)
+                .map(|i| component(normal, i) * component(view, i))
+                .sum();
+            scalar((1.0 - d.clamp(0.0, 1.0)).powf(*power))
+        }
+        OpKind::Split(index) => scalar(component(args.first()?, usize::from(*index))),
+        OpKind::Merge => Value {
+            ty: Ty::Vec3,
+            c: [
+                args.first()?.c[0],
+                args.get(1)?.c[0],
+                args.get(2)?.c[0],
+                0.0,
+            ],
+        },
+        OpKind::Noise(kind) => {
+            let p = args.first()?;
+            let dims = p.ty.components() as u32;
+            let point = [p.c[0], p.c[1], p.c[2]];
+            scalar(noise::eval(*kind, point, dims))
         }
         OpKind::Normalize => {
             let x = args.first()?;
@@ -171,6 +304,38 @@ pub fn apply(kind: &OpKind, ty: Ty, args: &[Value]) -> Option<Value> {
         _ => return None,
     };
     Some(value)
+}
+
+fn scalar(x: f32) -> Value {
+    Value {
+        ty: Ty::F32,
+        c: [x, 0.0, 0.0, 0.0],
+    }
+}
+
+/// Single-argument math; the remap order matches `emit::math`.
+fn math(f: &MathFn, x: f32) -> f32 {
+    match f {
+        MathFn::Abs => x.abs(),
+        MathFn::Floor => x.floor(),
+        MathFn::Fract => x - x.floor(),
+        MathFn::Saturate => x.clamp(0.0, 1.0),
+        MathFn::Sin => x.sin(),
+        MathFn::Cos => x.cos(),
+        MathFn::Sqrt => x.sqrt(),
+        MathFn::Remap([in_min, in_max, out_min, out_max]) => {
+            ((x - in_min) / (in_max - in_min)) * (out_max - out_min) + out_min
+        }
+    }
+}
+
+/// `smoothstep(e0, e1, x)`; a degenerate edge pair (`e0 == e1`) acts as a step.
+fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
+    if e1 == e0 {
+        return if x < e0 { 0.0 } else { 1.0 };
+    }
+    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
 }
 
 /// Applies `f` to each component of the result, passing the operand components.

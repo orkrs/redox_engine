@@ -1,7 +1,8 @@
-//! Validation and port type inference for [`MaterialGraph`] (MAT-02 step 1).
+//! Validation and port type inference for [`MaterialGraph`] (MAT-02 step 1, extended by MAT-03).
 
 use std::collections::{HashMap, HashSet};
 
+use crate::custom;
 use crate::graph::{
     FORMAT_VERSION, GraphError, MaterialGraph, Node, NodeId, NodeKind, Ty, arity, input_types,
     output_type,
@@ -10,14 +11,50 @@ use crate::graph::{
 /// Output type of every node of a valid graph.
 pub type Types = HashMap<NodeId, Ty>;
 
+/// Texture samples per graph above which a warning is raised (not an error).
+pub const SAMPLE_WARNING_LIMIT: usize = 16;
+
+/// Non-fatal observation about a graph.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GraphWarning {
+    /// Node the warning belongs to, if any.
+    pub node: Option<NodeId>,
+    /// Message.
+    pub message: String,
+}
+
 impl MaterialGraph {
-    /// Checks ids, links, types, cycles, parameters and the surface output.
+    /// Checks ids, links, types, cycles, parameters, custom bodies and the surface output.
     /// Returns an empty vector for a valid graph.
     pub fn validate(&self) -> Vec<GraphError> {
         match node_types(self) {
             Ok(_) => Vec::new(),
             Err(errors) => errors,
         }
+    }
+
+    /// Non-fatal warnings (texture sample budget).
+    pub fn warnings(&self) -> Vec<GraphWarning> {
+        let samples: usize = self.nodes.iter().map(|n| texture_samples(&n.kind)).sum();
+        if samples > SAMPLE_WARNING_LIMIT {
+            vec![GraphWarning {
+                node: None,
+                message: format!(
+                    "текстурных выборок {samples}, рекомендуемый предел {SAMPLE_WARNING_LIMIT}"
+                ),
+            }]
+        } else {
+            Vec::new()
+        }
+    }
+}
+
+/// Texture fetches a node performs (a triplanar sample reads three times).
+fn texture_samples(kind: &NodeKind) -> usize {
+    match kind {
+        NodeKind::Texture2d { .. } | NodeKind::TextureSample { .. } | NodeKind::NormalMap { .. } => 1,
+        NodeKind::Triplanar { .. } => 3,
+        _ => 0,
     }
 }
 
@@ -74,7 +111,7 @@ impl<'a> Checker<'a> {
         self.errors.push(GraphError::new(node, detail));
     }
 
-    /// Parameters, constants, arity and the number of surface outputs.
+    /// Parameters, constants, custom nodes, arity and the number of surface outputs.
     fn check_static(&mut self, graph: &MaterialGraph) {
         let mut names: HashSet<&str> = HashSet::new();
         let mut surfaces = Vec::new();
@@ -82,24 +119,61 @@ impl<'a> Checker<'a> {
             if node.inputs.len() > arity(&node.kind) {
                 self.fail(Some(node.id), "лишние входы");
             }
-            match &node.kind {
-                NodeKind::Param { name, ty, default } => {
-                    self.check_param(node.id, name, *ty, default, &mut names);
-                }
-                NodeKind::ConstF32(v) if !v.is_finite() => {
-                    self.fail(Some(node.id), "константа не конечна");
-                }
-                NodeKind::ConstVec3(v) if v.iter().any(|x| !x.is_finite()) => {
-                    self.fail(Some(node.id), "константа не конечна");
-                }
-                NodeKind::SurfaceOutput => surfaces.push(node.id),
-                _ => {}
+            self.check_kind_values(node, &mut names);
+            if matches!(node.kind, NodeKind::SurfaceOutput) {
+                surfaces.push(node.id);
             }
         }
         match surfaces.len() {
             0 => self.fail(None, "нет узла SurfaceOutput"),
             1 => {}
             n => self.fail(None, format!("узлов SurfaceOutput {n}, ожидался один")),
+        }
+    }
+
+    /// Constant and parameter values of one node, and custom bodies.
+    fn check_kind_values<'n>(&mut self, node: &'n Node, names: &mut HashSet<&'n str>) {
+        let id = node.id;
+        match &node.kind {
+            NodeKind::Param { name, ty, default } => {
+                self.check_param(id, name, *ty, default, names);
+            }
+            NodeKind::ConstF32(v) if !v.is_finite() => {
+                self.fail(Some(id), "константа не конечна");
+            }
+            NodeKind::ConstVec3(v) if v.iter().any(|x| !x.is_finite()) => {
+                self.fail(Some(id), "константа не конечна");
+            }
+            NodeKind::Remap {
+                in_min,
+                in_max,
+                out_min,
+                out_max,
+            } => {
+                if ![in_min, in_max, out_min, out_max].iter().all(|v| v.is_finite()) {
+                    self.fail(Some(id), "параметры remap не конечны");
+                } else if in_min == in_max {
+                    self.fail(Some(id), "remap: входной диапазон вырожден (in_min = in_max)");
+                }
+            }
+            NodeKind::Fresnel { power } | NodeKind::Triplanar { scale: power, .. }
+                if !power.is_finite() =>
+            {
+                self.fail(Some(id), "число не конечно");
+            }
+            NodeKind::Split { component } if *component > 3 => {
+                self.fail(Some(id), "компонента вне 0..=3");
+            }
+            NodeKind::Custom {
+                inputs,
+                output,
+                body,
+                ..
+            } => {
+                let errors = custom::check(id, inputs, *output, body);
+                self.errors.extend(errors);
+            }
+            _ => {}
         }
     }
 
@@ -201,11 +275,12 @@ impl<'a> Checker<'a> {
         self.ty(source)
     }
 
-    /// Checks fixed port types, the arithmetic join rule and vector-only operations.
+    /// Checks fixed port types, the arithmetic join rule and per-kind rules.
     fn check_ports(&mut self, node: &Node, actual: &[Ty]) -> Option<Ty> {
         let kind = &node.kind;
+        let fixed_types = input_types(kind);
         let mut ok = true;
-        for (port, (fixed, ty)) in input_types(kind).iter().zip(actual).enumerate() {
+        for (port, (fixed, ty)) in fixed_types.iter().zip(actual).enumerate() {
             if let Some(expected) = fixed
                 && expected != ty
             {
@@ -216,18 +291,56 @@ impl<'a> Checker<'a> {
                 ok = false;
             }
         }
-        if input_types(kind).iter().all(Option::is_none) {
-            ok &= self.check_arithmetic(node.id, actual);
+        let arithmetic: Vec<Ty> = fixed_types
+            .iter()
+            .zip(actual)
+            .filter(|(fixed, _)| fixed.is_none())
+            .map(|(_, ty)| *ty)
+            .collect();
+        if !arithmetic.is_empty() {
+            ok &= self.check_arithmetic(node.id, &arithmetic);
         }
-        if matches!(kind, NodeKind::Dot | NodeKind::Normalize) {
-            for ty in actual {
-                if !ty.is_vector() {
-                    self.fail(Some(node.id), format!("ожидался вектор, получено {ty:?}"));
-                    ok = false;
+        ok &= self.check_kind_rules(node, actual);
+        ok.then(|| output_type(kind, actual))
+    }
+
+    /// Rules that depend on the kind: vector-only operands and noise dimensions.
+    fn check_kind_rules(&mut self, node: &Node, actual: &[Ty]) -> bool {
+        let id = node.id;
+        match &node.kind {
+            NodeKind::Dot | NodeKind::Normalize => self.require_vectors(id, actual),
+            NodeKind::Split { component } => {
+                let dim = actual.first().map_or(0, |t| t.components());
+                if dim == 0 || usize::from(*component) >= dim {
+                    self.fail(
+                        Some(id),
+                        format!("компонента {component} у значения типа {:?}", actual[0]),
+                    );
+                    false
+                } else {
+                    true
                 }
             }
+            NodeKind::ValueNoise | NodeKind::GradientNoise | NodeKind::Worley => {
+                let ok = matches!(actual.first(), Some(Ty::Vec2 | Ty::Vec3));
+                if !ok {
+                    self.fail(Some(id), "шум принимает Vec2 или Vec3");
+                }
+                ok
+            }
+            _ => true,
         }
-        ok.then(|| output_type(kind, actual))
+    }
+
+    fn require_vectors(&mut self, id: NodeId, actual: &[Ty]) -> bool {
+        let mut ok = true;
+        for ty in actual {
+            if !ty.is_vector() {
+                self.fail(Some(id), format!("ожидался вектор, получено {ty:?}"));
+                ok = false;
+            }
+        }
+        ok
     }
 
     /// Arithmetic operands: no resources, and all non-scalar operands share one type.
