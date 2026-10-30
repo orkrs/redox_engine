@@ -212,6 +212,24 @@ pub enum NodeKind {
         /// Function body (WGSL statements, `return` included).
         body: String,
     },
+    /// Blend of two colours by height: inputs `a`, `b` (`vec3`), `height_a`, `height_b` (`f32`).
+    /// Weight of `a` is `saturate((height_a - height_b) * sharpness + 0.5)`.
+    HeightBlend {
+        /// Contrast of the blend; larger means a harder transition.
+        sharpness: f32,
+    },
+    /// World-space normal bent by the screen-space derivatives of a height (`f32` input).
+    /// Fragment stage only; the CPU interpreter returns the unbent normal.
+    NormalFromHeight {
+        /// Bump strength.
+        strength: f32,
+    },
+    /// Sink of the vertex stage: world-space offset of the vertex in metres (`vec3`). Only
+    /// vertex-safe nodes may feed it (no texture reads, no derivatives).
+    PositionOffset {
+        /// Longest offset the graph can produce; culling bounds grow by this much.
+        max_offset: f32,
+    },
     /// Sink of the graph: the six surface properties.
     SurfaceOutput,
 }
@@ -300,6 +318,9 @@ pub fn input_types(kind: &NodeKind) -> Vec<Option<Ty>> {
             vec![Some(Ty::Vec2)]
         }
         K::Triplanar { .. } | K::Fresnel { .. } => vec![Some(Ty::Vec3), Some(Ty::Vec3)],
+        K::HeightBlend { .. } => vec![Some(Ty::Vec3), Some(Ty::Vec3), Some(Ty::F32), Some(Ty::F32)],
+        K::NormalFromHeight { .. } => vec![Some(Ty::F32)],
+        K::PositionOffset { .. } => vec![Some(Ty::Vec3)],
         K::Merge => vec![Some(Ty::F32); 3],
         K::If => vec![Some(Ty::F32), None, None],
         K::Custom { inputs, .. } => inputs.iter().map(|(_, ty)| Some(*ty)).collect(),
@@ -313,9 +334,15 @@ pub fn output_type(kind: &NodeKind, inputs: &[Ty]) -> Ty {
     use NodeKind as K;
     match kind {
         K::Uv => Ty::Vec2,
-        K::WorldPos | K::Normal | K::ViewDir | K::ConstVec3(_) | K::Merge | K::NormalMap { .. } => {
-            Ty::Vec3
-        }
+        K::WorldPos
+        | K::Normal
+        | K::ViewDir
+        | K::ConstVec3(_)
+        | K::Merge
+        | K::NormalMap { .. }
+        | K::HeightBlend { .. }
+        | K::NormalFromHeight { .. }
+        | K::PositionOffset { .. } => Ty::Vec3,
         K::VertexColor => Ty::Vec4,
         K::Time
         | K::ConstF32(_)

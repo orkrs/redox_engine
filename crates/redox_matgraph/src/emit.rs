@@ -85,6 +85,19 @@ pub(crate) fn expr(ir: &Ir, op: &Op) -> String {
             splat(&arg(1), arg_ty(1), op.ty),
             arg(0)
         ),
+        OpKind::HeightBlend(sharpness) => format!(
+            "mix({}, {}, saturate(({} - {}) * {} + 0.5))",
+            arg(1),
+            arg(0),
+            arg(2),
+            arg(3),
+            literal(*sharpness)
+        ),
+        OpKind::NormalFromHeight(strength) => format!(
+            "mg_bump_normal({}, {}, in.world_pos, in.world_normal)",
+            arg(0),
+            literal(*strength)
+        ),
         OpKind::Fresnel(power) => format!(
             "pow(1.0 - saturate(dot({}, {})), {})",
             arg(0),

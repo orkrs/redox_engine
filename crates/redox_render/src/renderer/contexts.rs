@@ -303,6 +303,8 @@ pub struct VsmContext<'a> {
     pub masked: &'a crate::shadow::masked::MaskedShadow,
     /// Per material slot: masked caster.
     pub alpha_test: &'a [bool],
+    /// Graph slots of the sun's shadow pages (MAT-07); `None` when no graph is bound.
+    pub graphs: Option<&'a MaterialGraphs>,
 }
 
 /// Draws every object that can cast into each dirty page. `page_vps[i]` is the view-projection
@@ -345,6 +347,11 @@ pub fn record_vsm_pages(
             |i| page_vp.is_none_or(|vp| aabb_overlaps_clip_xy(objects[i].bounds, vp)),
             |a, b| {
                 objects[a].mesh_index == objects[b].mesh_index
+                    && batch_compatible(
+                        ctx.graphs,
+                        objects[a].material_index,
+                        objects[b].material_index,
+                    )
                     && masked_compatible(
                         ctx.alpha_test,
                         objects[a].material_index,
@@ -352,10 +359,19 @@ pub fn record_vsm_pages(
                     )
             },
         ) {
-            // Masked casters use the alpha-tested pipeline; the plain one is rebound after them.
+            // Graph casters and masked casters use their own pipelines; the plain one is
+            // rebound after them.
             let material = objects[run.start as usize].material_index;
             let masked = is_masked(ctx.alpha_test, material);
-            if masked {
+            if let Some((pipeline, params)) = ctx
+                .graphs
+                .and_then(|graphs| graphs.pass_binding(material, GraphPass::VsmDepth))
+            {
+                page_pass.set_pipeline(pipeline);
+                page_pass.set_bind_group(0, ctx.vsm_pageinfo_bg, &[(page_ord as u32) * 256]);
+                page_pass.set_bind_group(GraphPass::VsmDepth.params_group(), params, &[]);
+                bound_masked = true;
+            } else if masked {
                 if let Some(bind_group) = ctx.registry.legacy_material_bind_group(material) {
                     page_pass.set_pipeline(&ctx.masked.vsm);
                     page_pass.set_bind_group(0, ctx.vsm_pageinfo_bg, &[(page_ord as u32) * 256]);

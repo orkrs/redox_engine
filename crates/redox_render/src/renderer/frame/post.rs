@@ -143,12 +143,35 @@ impl Renderer {
                 sun_direction: self.light_uniform.dir_direction,
                 sun_color: self.light_uniform.dir_color,
             };
+            // GI cache reflections: traced into their texture first, blended by the chain.
+            let mut fx_settings = self.post_fx_settings;
+            if let Some(reflect) = fx_settings.gi_reflect
+                && self.gi_probes.enabled()
+            {
+                self.gi_reflect.record(
+                    &self.device,
+                    &self.queue,
+                    encoder,
+                    &self.camera_uniform,
+                    &reflect,
+                    &crate::gi::reflect::ReflectInputs {
+                        normal: &self.normal_view,
+                        surface: &self.material_surface_view,
+                        sdf: &self.gi.global_sdf,
+                        grid: self.gi_probes.grid_buffer(),
+                        irradiance: self.gi_probes.irradiance_view(),
+                        probe_offset: self.gi_probes.probe_offset(),
+                    },
+                );
+            } else {
+                fx_settings.gi_reflect = None;
+            }
             let fx_out = self.post_fx.run_chain(
                 encoder,
                 &self.queue,
                 history_write_idx,
                 &chain_frame,
-                &self.post_fx_settings,
+                &fx_settings,
             );
             let bloom_src = match fx_out {
                 Some(i) => &self.post_fx.views[i],

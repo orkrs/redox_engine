@@ -78,6 +78,10 @@ pub enum OpKind {
     Select,
     /// Fresnel term with the given exponent; arguments `normal`, `view`.
     Fresnel(f32),
+    /// Blend by height with the given sharpness; arguments `a`, `b`, `height_a`, `height_b`.
+    HeightBlend(f32),
+    /// Normal bent by the derivatives of the argument height, with the given strength.
+    NormalFromHeight(f32),
     /// Component of a vector; argument is the vector.
     Split(u8),
     /// `vec3` from three scalars.
@@ -207,6 +211,10 @@ pub struct Ir {
     pub params: Vec<ParamSlot>,
     /// Surface outputs.
     pub outputs: SurfaceOutputs,
+    /// Op id of the vertex offset (`vec3`), when the graph has a `PositionOffset` node.
+    pub offset: Option<u32>,
+    /// Declared longest vertex offset in metres (0 without a `PositionOffset` node).
+    pub wpo_max: f32,
 }
 
 /// Default operation used for an unconnected surface port.
@@ -254,10 +262,29 @@ pub fn lower(graph: &MaterialGraph) -> Result<Ir, Vec<GraphError>> {
         roughness: args[4],
         emissive: args[5],
     };
+    let mut offset = None;
+    let mut wpo_max = 0.0;
+    if let Some(sink) = graph
+        .nodes
+        .iter()
+        .find(|n| matches!(n.kind, NodeKind::PositionOffset { .. }))
+    {
+        if let NodeKind::PositionOffset { max_offset } = sink.kind {
+            wpo_max = max_offset;
+        }
+        offset = sink
+            .inputs
+            .first()
+            .cloned()
+            .flatten()
+            .map(|link| lowering.value(link.node));
+    }
     Ok(Ir {
         ops: lowering.ops,
         params,
         outputs,
+        offset,
+        wpo_max,
     })
 }
 
@@ -372,6 +399,9 @@ impl Lowering<'_> {
             NodeKind::Smoothstep => OpKind::Smoothstep,
             NodeKind::If => OpKind::Select,
             NodeKind::Fresnel { power } => OpKind::Fresnel(*power),
+            NodeKind::HeightBlend { sharpness } => OpKind::HeightBlend(*sharpness),
+            NodeKind::NormalFromHeight { strength } => OpKind::NormalFromHeight(*strength),
+            NodeKind::PositionOffset { .. } => OpKind::Const([0.0; 4]),
             NodeKind::Split { component } => OpKind::Split(*component),
             NodeKind::Merge => OpKind::Merge,
             NodeKind::ValueNoise => OpKind::Noise(NoiseKind::Value),
@@ -419,6 +449,8 @@ pub fn optimize(ir: Ir) -> Ir {
         ops,
         params,
         outputs,
+        offset,
+        wpo_max,
     } = ir;
     let mut folded: Vec<Op> = Vec::with_capacity(ops.len());
     let mut remap: Vec<u32> = Vec::with_capacity(ops.len());
@@ -451,10 +483,13 @@ pub fn optimize(ir: Ir) -> Ir {
         remap.push(id);
     }
     let roots = outputs.map(|r| remap.get(r as usize).copied().unwrap_or(0));
+    let offset = offset.map(|r| remap.get(r as usize).copied().unwrap_or(0));
     prune(Ir {
         ops: folded,
         params,
         outputs: roots,
+        offset,
+        wpo_max,
     })
 }
 
@@ -484,6 +519,7 @@ fn is_pure(kind: &OpKind) -> bool {
             | OpKind::ViewDir
             | OpKind::VertexColor
             | OpKind::Time
+            | OpKind::NormalFromHeight(_)
             | OpKind::Const(_)
             | OpKind::Param(_)
             | OpKind::Texture { .. }
@@ -499,9 +535,12 @@ pub fn prune(ir: Ir) -> Ir {
         ops,
         params,
         outputs,
+        offset,
+        wpo_max,
     } = ir;
     let mut live = vec![false; ops.len()];
     let mut stack: Vec<u32> = outputs.as_array().to_vec();
+    stack.extend(offset);
     while let Some(id) = stack.pop() {
         let Some(flag) = live.get_mut(id as usize) else {
             continue;
@@ -531,10 +570,13 @@ pub fn prune(ir: Ir) -> Ir {
             .collect();
     }
     let outputs = outputs.map(|r| renumber.get(r as usize).copied().unwrap_or(0));
+    let offset = offset.map(|r| renumber.get(r as usize).copied().unwrap_or(0));
     Ir {
         ops: kept,
         params,
         outputs,
+        offset,
+        wpo_max,
     }
 }
 
@@ -553,5 +595,7 @@ pub fn opacity_only(ir: &Ir) -> Ir {
         ops: ir.ops.clone(),
         params: ir.params.clone(),
         outputs,
+        offset: None,
+        wpo_max: ir.wpo_max,
     })
 }

@@ -203,6 +203,11 @@ impl GiProbes {
         self.cards_enabled
     }
 
+    /// Whether the probes are traced and read (a static scene was given and GI is on).
+    pub fn enabled(&self) -> bool {
+        self.enabled && self.quality != GiQuality::Off
+    }
+
     /// Sets the trace quality. Changing it restarts the hysteresis.
     pub fn set_quality(&mut self, quality: GiQuality) {
         self.quality = quality;

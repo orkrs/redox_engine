@@ -142,6 +142,11 @@ pub const GI_TRACE_WGSL: &str = concat!(
     include_str!("../../shaders/gi_common.wgsl"),
     include_str!("../../shaders/gi_trace.wgsl"),
 );
+/// Source of `gi_reflect.wgsl` (rough reflections from the GI cache, GI-04), with `gi_common.wgsl` in front.
+pub const GI_REFLECT_WGSL: &str = concat!(
+    include_str!("../../shaders/gi_common.wgsl"),
+    include_str!("../../shaders/gi_reflect.wgsl"),
+);
 /// Shared GI helpers (previous-frame irradiance, card projection), in front of GI shaders.
 #[cfg_attr(not(feature = "shader-hot-reload"), allow(dead_code))]
 const GI_COMMON_WGSL: &str = include_str!("../../shaders/gi_common.wgsl");
@@ -509,6 +514,7 @@ mod tests {
             ("particle_billboard", super::PARTICLE_BILLBOARD_WGSL),
             ("skin_compute", super::SKIN_COMPUTE_WGSL),
             ("gi_trace", super::GI_TRACE_WGSL),
+            ("gi_reflect", super::GI_REFLECT_WGSL),
             ("gi_card_light", super::GI_CARD_LIGHT_WGSL),
             ("gi_update", super::GI_UPDATE_WGSL),
             ("gi_relocate", super::GI_RELOCATE_WGSL),

@@ -367,6 +367,8 @@ fn variants_are_cached() {
     }
     assert_eq!(builds, 1, "the second request reuses the module");
     assert_eq!(cache.len(), 1);
+    let stats = cache.stats();
+    assert_eq!((stats.modules, stats.hits, stats.misses), (1, 1, 1));
 }
 
 #[test]
@@ -659,4 +661,30 @@ fn a_custom_node_in_a_graph_is_evaluated_on_the_gpu() {
     assert!(graph.validate().is_empty(), "{:?}", graph.validate());
     let gpu = run_on_gpu(&device, &queue, &graph, &[]);
     assert!((gpu[3] - 0.4).abs() <= TOLERANCE, "opacity {}", gpu[3]);
+}
+
+/// MAT-07 step 4: one graph over the passes and feature sets stays within a small module count,
+/// and the same graph under another name shares its modules (the key hashes the IR, not the name).
+#[test]
+fn the_variant_count_stays_bounded_for_one_graph_across_passes() {
+    let mut keys = std::collections::HashSet::new();
+    for pass in [Pass::Main, Pass::Depth, Pass::Shadow] {
+        let options = CodegenOptions {
+            pass,
+            ..main_options()
+        };
+        keys.insert(compile_variant(&constant_graph(), &options).unwrap().key);
+    }
+    assert!(keys.len() <= 15, "{} variants for one graph", keys.len());
+
+    let mut renamed = constant_graph();
+    renamed.name = "another_name".into();
+    let a = compile_variant(&constant_graph(), &main_options())
+        .unwrap()
+        .key;
+    let b = compile_variant(&renamed, &main_options()).unwrap().key;
+    assert_eq!(
+        a, b,
+        "identical graphs share modules whatever they are called"
+    );
 }

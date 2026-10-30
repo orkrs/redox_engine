@@ -158,6 +158,11 @@ impl Renderer {
         let idx = self
             .registry
             .push_legacy_material(material, buffer, bind_group);
+        if self.material_alpha_test.last().copied().unwrap_or(false)
+            && let Some(vg) = self.vg_system.as_mut()
+        {
+            vg.mark_alpha_tested_material(idx as u32);
+        }
         self.registry.legacy_material_from_pool.push(from_pool);
         self.material_blend_flags.push(BlendMode::Opaque);
         self.vg_bind_groups_dirty = true;

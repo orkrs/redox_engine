@@ -382,3 +382,64 @@ fn a_custom_node_has_no_cpu_reference() {
     let ir = lower(&graph).unwrap();
     assert!(try_eval(&ir, &inputs()).is_none());
 }
+
+#[test]
+fn height_blend_picks_the_higher_surface() {
+    use redox_matgraph::{eval, lower, optimize};
+    let g = MaterialGraph {
+        version: 1,
+        name: "hb".into(),
+        nodes: vec![
+            Node {
+                id: 1,
+                kind: NodeKind::ConstVec3([1.0, 0.0, 0.0]),
+                inputs: vec![],
+            },
+            Node {
+                id: 2,
+                kind: NodeKind::ConstVec3([0.0, 0.0, 1.0]),
+                inputs: vec![],
+            },
+            Node {
+                id: 3,
+                kind: NodeKind::ConstF32(0.9),
+                inputs: vec![],
+            },
+            Node {
+                id: 4,
+                kind: NodeKind::ConstF32(0.1),
+                inputs: vec![],
+            },
+            Node {
+                id: 5,
+                kind: NodeKind::HeightBlend { sharpness: 8.0 },
+                inputs: vec![
+                    Some(PortRef { node: 1, port: 0 }),
+                    Some(PortRef { node: 2, port: 0 }),
+                    Some(PortRef { node: 3, port: 0 }),
+                    Some(PortRef { node: 4, port: 0 }),
+                ],
+            },
+            Node {
+                id: 6,
+                kind: NodeKind::SurfaceOutput,
+                inputs: vec![
+                    Some(PortRef { node: 5, port: 0 }),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ],
+            },
+        ],
+    };
+    let ir = optimize(lower(&g).unwrap());
+    let out = eval(&ir, &inputs());
+    // height_a 0.9 against height_b 0.1: a (red) wins completely.
+    assert!(
+        out.base_color[0] > 0.99 && out.base_color[2] < 0.01,
+        "{:?}",
+        out.base_color
+    );
+}

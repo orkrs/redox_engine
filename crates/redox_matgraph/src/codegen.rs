@@ -71,14 +71,32 @@ pub fn generate(ir: &Ir, opts: &CodegenOptions) -> Generated {
         ));
     }
     let ret = return_expr(&pruned, opts.pass);
-    let helpers = helper_text(&pruned);
-    let customs = custom_text(&pruned);
+    let offset_ir = ir.offset.map(|id| {
+        ir::prune(Ir {
+            ops: ir.ops.clone(),
+            params: ir.params.clone(),
+            outputs: ir::SurfaceOutputs {
+                base_color: id,
+                opacity: id,
+                normal: id,
+                metallic: id,
+                roughness: id,
+                emissive: id,
+            },
+            offset: None,
+            wpo_max: 0.0,
+        })
+    });
+    let all_irs: Vec<&Ir> = std::iter::once(&pruned).chain(offset_ir.as_ref()).collect();
+    let helpers = helper_text(&all_irs);
+    let customs = custom_text(&all_irs);
+    let vertex_fn = vertex_offset_text(offset_ir.as_ref());
     let wgsl = format!(
         "// material graph: pass {:?}, features {:?}\n\
          {helpers}{customs}\
          fn material_surface_graph(in: SurfaceInput, uv: vec2<f32>, time: f32, params: MaterialParams) -> SurfaceData {{\n\
          {body}    return {ret};\n\
-         }}\n",
+         }}\n{vertex_fn}",
         opts.pass, opts.features
     );
     Generated {
@@ -88,40 +106,80 @@ pub fn generate(ir: &Ir, opts: &CodegenOptions) -> Generated {
     }
 }
 
-/// Helper functions the ops of `ir` call: noise and texture helpers, emitted once when needed.
-fn helper_text(ir: &Ir) -> String {
-    let needs_noise = ir.ops.iter().any(|op| matches!(op.kind, OpKind::Noise(_)));
-    let needs_texture = ir.ops.iter().any(|op| {
-        matches!(
-            op.kind,
-            OpKind::Texture { .. } | OpKind::NormalMap { .. } | OpKind::Triplanar { .. }
-        )
-    });
+/// Helper functions the ops of `irs` call: noise, texture and bump helpers, emitted once when needed.
+fn helper_text(irs: &[&Ir]) -> String {
+    let any =
+        |f: &dyn Fn(&OpKind) -> bool| irs.iter().any(|ir| ir.ops.iter().any(|op| f(&op.kind)));
     let mut text = String::new();
-    if needs_noise {
+    if any(&|k| matches!(k, OpKind::Noise(_))) {
         text.push_str(noise::WGSL);
     }
-    if needs_texture {
+    if any(&|k| {
+        matches!(
+            k,
+            OpKind::Texture { .. } | OpKind::NormalMap { .. } | OpKind::Triplanar { .. }
+        )
+    }) {
         text.push_str(texture::WGSL);
+    }
+    if any(&|k| matches!(k, OpKind::NormalFromHeight(_))) {
+        text.push_str(BUMP_WGSL);
     }
     text
 }
 
-/// One WGSL function per custom node of `ir`.
-fn custom_text(ir: &Ir) -> String {
-    ir.ops
-        .iter()
+/// Bump mapping from screen-space derivatives (Mikkelsen): perturbs `n` by the gradient of `h`.
+const BUMP_WGSL: &str =
+    "fn mg_bump_normal(h: f32, strength: f32, pos: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
+    let sigma_x = dpdx(pos);
+    let sigma_y = dpdy(pos);
+    let r1 = cross(sigma_y, n);
+    let r2 = cross(n, sigma_x);
+    let det = dot(sigma_x, r1);
+    let grad = sign(det) * (dpdx(h) * r1 + dpdy(h) * r2);
+    return normalize(abs(det) * n - strength * grad);
+}
+";
+
+/// One WGSL function per custom node of `irs` (a node used by two of them is emitted once).
+fn custom_text(irs: &[&Ir]) -> String {
+    let mut seen = std::collections::HashSet::new();
+    irs.iter()
+        .flat_map(|ir| ir.ops.iter())
         .filter_map(|op| match &op.kind {
             OpKind::Custom {
                 node,
                 inputs,
                 output,
                 body,
-            } => Some(custom::function_text(*node, inputs, *output, body)),
+            } if seen.insert(*node) => Some(custom::function_text(*node, inputs, *output, body)),
             _ => None,
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// `material_vertex_offset_graph`: the vertex offset of the graph (zero without a
+/// `PositionOffset` node), with the same inputs as the surface function.
+fn vertex_offset_text(offset: Option<&Ir>) -> String {
+    let (body, ret) = match offset {
+        None => (String::new(), "vec3<f32>(0.0)".to_string()),
+        Some(sub) => {
+            let mut body = String::new();
+            for op in &sub.ops {
+                body.push_str(&format!(
+                    "    let v{}: {} = {};\n",
+                    op.id,
+                    op.ty.wgsl(),
+                    emit::expr(sub, op)
+                ));
+            }
+            (body, format!("v{}", sub.outputs.base_color))
+        }
+    };
+    format!(
+        "fn material_vertex_offset_graph(in: SurfaceInput, uv: vec2<f32>, time: f32, params: MaterialParams) -> vec3<f32> {{\n{body}    return {ret};\n}}\n"
+    )
 }
 
 /// `SurfaceData(...)` constructor with the six graph values (zero for fields the pass drops).

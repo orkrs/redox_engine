@@ -135,6 +135,12 @@ impl Renderer {
             hdr_fmt,
             depth_fmt,
         );
+        let mut vg = vg;
+        for (slot, &masked) in self.material_alpha_test.iter().enumerate() {
+            if masked {
+                vg.mark_alpha_tested_material(slot as u32);
+            }
+        }
         self.vg_system = Some(vg);
         self.rebuild_vg_bind_groups();
     }

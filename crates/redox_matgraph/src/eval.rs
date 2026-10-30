@@ -127,6 +127,8 @@ pub fn eval_with(ir: &Ir, inputs: &EvalInputs, env: &EvalEnv<'_>) -> SurfaceValu
             },
             OpKind::WorldPos => vec3(Ty::Vec3, inputs.world_pos),
             OpKind::Normal => vec3(Ty::Vec3, inputs.normal),
+            // No derivatives on the CPU: the normal stays as it is.
+            OpKind::NormalFromHeight(_) => vec3(Ty::Vec3, inputs.normal),
             OpKind::ViewDir => vec3(Ty::Vec3, inputs.view_dir),
             OpKind::VertexColor => Value {
                 ty: Ty::Vec4,
@@ -258,6 +260,20 @@ pub fn apply(kind: &OpKind, ty: Ty, args: &[Value]) -> Option<Value> {
             Value {
                 ty: Ty::F32,
                 c: [sum, 0.0, 0.0, 0.0],
+            }
+        }
+        OpKind::HeightBlend(sharpness) => {
+            let (a, b) = (args.first()?, args.get(1)?);
+            let (ha, hb) = (args.get(2)?.c[0], args.get(3)?.c[0]);
+            let w = ((ha - hb) * sharpness + 0.5).clamp(0.0, 1.0);
+            Value {
+                ty: Ty::Vec3,
+                c: [
+                    b.c[0] + (a.c[0] - b.c[0]) * w,
+                    b.c[1] + (a.c[1] - b.c[1]) * w,
+                    b.c[2] + (a.c[2] - b.c[2]) * w,
+                    0.0,
+                ],
             }
         }
         OpKind::Fresnel(power) => {

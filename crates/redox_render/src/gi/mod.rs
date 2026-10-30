@@ -11,6 +11,7 @@ pub mod grid_gpu;
 pub mod oct;
 pub mod probes;
 pub mod reference;
+pub mod reflect;
 pub mod relocate;
 pub mod sdf_ref;
 pub mod state;

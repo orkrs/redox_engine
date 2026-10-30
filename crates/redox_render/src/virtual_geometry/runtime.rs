@@ -115,6 +115,9 @@ pub struct VGSystem {
     pub config: VGConfig,
     /// Statistics of the last frame.
     pub stats: VGStats,
+    /// Material slots that are alpha-tested: VG assets using them are refused (they draw the
+    /// classic way; see `PLAN_GEOMETRY.md` 1.6).
+    alpha_tested_materials: std::collections::HashSet<u32>,
 }
 
 impl VGSystem {
@@ -260,7 +263,13 @@ impl VGSystem {
             instances_dirty: false,
             config,
             stats: VGStats::default(),
+            alpha_tested_materials: std::collections::HashSet::new(),
         }
+    }
+
+    /// Marks a material slot as alpha-tested; assets using it are not registered.
+    pub fn mark_alpha_tested_material(&mut self, material_index: u32) {
+        self.alpha_tested_materials.insert(material_index);
     }
 
     // ── Asset registration ────────────────────────────────────────────────────
@@ -269,6 +278,16 @@ impl VGSystem {
     ///
     /// Returns the [`VGAssetId`] needed to spawn instances.
     pub fn register_asset(&mut self, data: VGAssetData, queue: &wgpu::Queue) -> Option<VGAssetId> {
+        if data
+            .meshlets
+            .iter()
+            .any(|m| self.alpha_tested_materials.contains(&m.material_index))
+        {
+            log::warn!(
+                "[VGSystem] An asset uses an alpha-tested material; draw it the classic way (not registered)"
+            );
+            return None;
+        }
         let vert_needed = data.vertices.len();
         let idx_needed = data.indices.len();
         let meshlet_count = data.meshlets.len() as u32;

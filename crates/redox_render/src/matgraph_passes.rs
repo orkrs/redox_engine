@@ -36,16 +36,19 @@ pub enum GraphPass {
     Depth,
     /// Point-light shadow atlas (alpha cut-out only).
     Shadow,
+    /// Virtual shadow map pages of the sun (alpha cut-out only).
+    VsmDepth,
 }
 
 impl GraphPass {
     /// Every pass, in the order pipelines are built.
-    pub const ALL: [GraphPass; 5] = [
+    pub const ALL: [GraphPass; 6] = [
         GraphPass::Forward,
         GraphPass::Alpha,
         GraphPass::Additive,
         GraphPass::Depth,
         GraphPass::Shadow,
+        GraphPass::VsmDepth,
     ];
 
     /// Codegen pass whose WGSL this pass uses. Alpha and additive share the forward module.
@@ -53,7 +56,16 @@ impl GraphPass {
         match self {
             GraphPass::Forward | GraphPass::Alpha | GraphPass::Additive => Pass::Main,
             GraphPass::Depth => Pass::Depth,
-            GraphPass::Shadow => Pass::Shadow,
+            GraphPass::Shadow | GraphPass::VsmDepth => Pass::Shadow,
+        }
+    }
+
+    /// Codegen features of this pass. The sun's shadow pages are drawn instanced, which also
+    /// keeps their module key apart from the point-light atlas variant (same IR, other template).
+    pub fn features(self) -> redox_matgraph::Features {
+        redox_matgraph::Features {
+            instanced: self == GraphPass::VsmDepth,
+            ..redox_matgraph::Features::default()
         }
     }
 
@@ -61,7 +73,7 @@ impl GraphPass {
     pub fn params_group(self) -> u32 {
         match self {
             GraphPass::Forward | GraphPass::Alpha | GraphPass::Additive => GRAPH_PARAMS_GROUP,
-            GraphPass::Depth => 1,
+            GraphPass::Depth | GraphPass::VsmDepth => 1,
             GraphPass::Shadow => 2,
         }
     }
@@ -75,6 +87,8 @@ pub(crate) struct PassBindLayouts {
     pub shadow_scene: wgpu::BindGroupLayout,
     /// Model storage of the shadow atlas (group 1).
     pub shadow_model: wgpu::BindGroupLayout,
+    /// Model storage and page info (dynamic offset) of the virtual shadow pages (group 0).
+    pub vsm_scene: wgpu::BindGroupLayout,
 }
 
 impl PassBindLayouts {
@@ -96,10 +110,27 @@ impl PassBindLayouts {
             label: Some("matgraph_shadow_model_bgl"),
             entries: &[storage_entry(0, wgpu::ShaderStages::VERTEX)],
         });
+        let vsm_scene = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("matgraph_vsm_scene_bgl"),
+            entries: &[
+                storage_entry(0, wgpu::ShaderStages::VERTEX),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: true,
+                        min_binding_size: wgpu::BufferSize::new(256),
+                    },
+                    count: None,
+                },
+            ],
+        });
         Self {
             depth_scene,
             shadow_scene,
             shadow_model,
+            vsm_scene,
         }
     }
 }
@@ -144,6 +175,15 @@ pub fn depth_source(generated: &Generated) -> String {
 pub fn shadow_source(generated: &Generated) -> String {
     shader_with_vertex_decode(&format!(
         "{MATERIAL_SURFACE_WGSL}\n{}\n{}\n{SHADOW_TEMPLATE}",
+        generated.uniform_wgsl, generated.wgsl
+    ))
+}
+
+/// Module source of the sun's shadow page variant: depth only, graph parameters in group 1,
+/// alpha cut-out and the vertex offset.
+pub fn vsm_source(generated: &Generated) -> String {
+    shader_with_vertex_decode(&format!(
+        "{MATERIAL_SURFACE_WGSL}\n{}\n{}\n{VSM_TEMPLATE}",
         generated.uniform_wgsl, generated.wgsl
     ))
 }
@@ -321,6 +361,7 @@ struct GraphModel {
 @group(0) @binding(0) var<uniform> graph_camera: GraphCamera;
 @group(0) @binding(1) var<storage, read> graph_models: array<GraphModel>;
 @group(1) @binding(0) var<uniform> mat_graph_params: MaterialParams;
+@group(1) @binding(1) var<uniform> mat_graph_time: vec4<f32>;
 
 const GRAPH_NORMAL_FAR: f32 = 1000.0;
 const GRAPH_ALPHA_CUTOFF: f32 = 0.5;
@@ -347,10 +388,12 @@ fn vs_graph_depth(in: CompressedVertIn, @builtin(instance_index) instance_idx: u
     var out: GraphDepthVsOut;
     let mdl = graph_models[instance_idx];
     let local_pos = decode_local_position(in.pos_q, mdl.bounds_min.xyz, mdl.bounds_extent.xyz);
-    let world_pos = mdl.model * vec4<f32>(local_pos, 1.0);
+    var world_pos = mdl.model * vec4<f32>(local_pos, 1.0);
+    let normal_w = normalize(mdl.normal_matrix * oct_decode(in.normal_oct));
+    world_pos = world_pos + vec4<f32>(material_vertex_offset_graph(graph_surface_input(world_pos.xyz, normal_w), in.uv, mat_graph_time.x, mat_graph_params), 0.0);
     out.clip_pos = graph_camera.view_proj * world_pos;
     out.world_pos = world_pos.xyz;
-    out.world_normal = normalize(mdl.normal_matrix * oct_decode(in.normal_oct));
+    out.world_normal = normal_w;
     out.surface = vec2<f32>(mdl.bounds_min.w - 2.0 * step(1.5, mdl.bounds_min.w), mdl.bounds_extent.w);
     out.uv = in.uv;
     return out;
@@ -358,7 +401,7 @@ fn vs_graph_depth(in: CompressedVertIn, @builtin(instance_index) instance_idx: u
 
 @fragment
 fn fs_graph_depth(in: GraphDepthVsOut) -> GraphDepthFragOut {
-    let surf = material_surface_graph(graph_surface_input(in.world_pos, in.world_normal), in.uv, 0.0, mat_graph_params);
+    let surf = material_surface_graph(graph_surface_input(in.world_pos, in.world_normal), in.uv, mat_graph_time.x, mat_graph_params);
     if surf.opacity < GRAPH_ALPHA_CUTOFF {
         discard;
     }
@@ -389,6 +432,7 @@ struct GraphShadowModel {
 @group(0) @binding(0) var<uniform> graph_shadow: GraphShadowMatrix;
 @group(1) @binding(0) var<storage, read> graph_shadow_models: array<GraphShadowModel>;
 @group(2) @binding(0) var<uniform> mat_graph_params: MaterialParams;
+@group(2) @binding(1) var<uniform> mat_graph_time: vec4<f32>;
 
 const GRAPH_SHADOW_ALPHA_CUTOFF: f32 = 0.5;
 
@@ -408,22 +452,124 @@ fn vs_graph_shadow(in: CompressedVertIn, @builtin(instance_index) instance_idx: 
     var out: GraphShadowVsOut;
     let mdl = graph_shadow_models[instance_idx];
     let local_pos = decode_local_position(in.pos_q, mdl.bounds_min.xyz, mdl.bounds_extent.xyz);
-    let world_pos = mdl.model * vec4<f32>(local_pos, 1.0);
+    var world_pos = mdl.model * vec4<f32>(local_pos, 1.0);
+    let normal_w = normalize(mdl.normal_matrix * oct_decode(in.normal_oct));
+    world_pos = world_pos + vec4<f32>(material_vertex_offset_graph(graph_shadow_surface_input(world_pos.xyz, normal_w), in.uv, mat_graph_time.x, mat_graph_params), 0.0);
     out.clip_pos = graph_shadow.view_proj * world_pos;
     out.world_pos = world_pos.xyz;
-    out.world_normal = normalize(mdl.normal_matrix * oct_decode(in.normal_oct));
+    out.world_normal = normal_w;
     out.uv = in.uv;
     return out;
 }
 
 @fragment
 fn fs_graph_shadow(in: GraphShadowVsOut) {
-    let surf = material_surface_graph(graph_shadow_surface_input(in.world_pos, in.world_normal), in.uv, 0.0, mat_graph_params);
+    let surf = material_surface_graph(graph_shadow_surface_input(in.world_pos, in.world_normal), in.uv, mat_graph_time.x, mat_graph_params);
     if surf.opacity < GRAPH_SHADOW_ALPHA_CUTOFF {
         discard;
     }
 }
 "#;
+
+/// Sun shadow page variant: depth in the page atlas, with the vertex offset and the opacity cut-out.
+const VSM_TEMPLATE: &str = r#"
+// Graph VSM page pass (MAT-07): linear depth as vsm_depth.wgsl, graph parameters in group 1.
+struct GraphVsmModel {
+    model: mat4x4<f32>,
+    normal_matrix: mat3x3<f32>,
+    color: vec4<f32>,
+    bounds_min: vec4<f32>,
+    bounds_extent: vec4<f32>,
+};
+
+struct GraphPageInfo {
+    view_proj: mat4x4<f32>,
+    atlas_offset_x: f32,
+    atlas_offset_y: f32,
+    page_size_px: f32,
+    atlas_size_px: f32,
+};
+
+@group(0) @binding(0) var<storage, read> graph_vsm_models: array<GraphVsmModel>;
+@group(0) @binding(1) var<uniform> graph_page: GraphPageInfo;
+@group(1) @binding(0) var<uniform> mat_graph_params: MaterialParams;
+@group(1) @binding(1) var<uniform> mat_graph_time: vec4<f32>;
+
+struct GraphVsmVsOut {
+    @builtin(position) clip_pos: vec4<f32>,
+    @location(0) depth: f32,
+    @location(1) world_pos: vec3<f32>,
+    @location(2) world_normal: vec3<f32>,
+    @location(3) uv: vec2<f32>,
+};
+
+fn graph_vsm_surface_input(world_pos: vec3<f32>, world_normal: vec3<f32>) -> SurfaceInput {
+    return SurfaceInput(world_pos, world_normal, vec3<f32>(1.0, 0.0, 0.0), vec4<f32>(1.0), vec3<f32>(0.0));
+}
+
+@vertex
+fn vs_graph_vsm(in: CompressedVertIn, @builtin(instance_index) instance_idx: u32) -> GraphVsmVsOut {
+    var out: GraphVsmVsOut;
+    let mdl = graph_vsm_models[instance_idx];
+    let local_pos = decode_local_position(in.pos_q, mdl.bounds_min.xyz, mdl.bounds_extent.xyz);
+    var world_pos = mdl.model * vec4<f32>(local_pos, 1.0);
+    let normal_w = normalize(mdl.normal_matrix * oct_decode(in.normal_oct));
+    world_pos = world_pos + vec4<f32>(material_vertex_offset_graph(graph_vsm_surface_input(world_pos.xyz, normal_w), in.uv, mat_graph_time.x, mat_graph_params), 0.0);
+    out.clip_pos = graph_page.view_proj * world_pos;
+    out.depth = out.clip_pos.z / out.clip_pos.w;
+    out.world_pos = world_pos.xyz;
+    out.world_normal = normal_w;
+    out.uv = in.uv;
+    return out;
+}
+
+@fragment
+fn fs_graph_vsm(in: GraphVsmVsOut) -> @location(0) f32 {
+    let surf = material_surface_graph(graph_vsm_surface_input(in.world_pos, in.world_normal), in.uv, mat_graph_time.x, mat_graph_params);
+    if surf.opacity < 0.5 {
+        discard;
+    }
+    return in.depth;
+}
+"#;
+
+/// VSM page variant pipeline: the page atlas colour target, both faces cast.
+pub(crate) fn vsm_pipeline(
+    device: &wgpu::Device,
+    layout: &wgpu::PipelineLayout,
+    module: &wgpu::ShaderModule,
+) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        cache: crate::pipeline_cache::get(),
+        label: Some("matgraph_vsm_pipeline"),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module,
+            entry_point: Some("vs_graph_vsm"),
+            buffers: &[Some(CompressedVertex::buffer_layout())],
+            compilation_options: Default::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module,
+            entry_point: Some("fs_graph_vsm"),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: crate::shadow::shadow_atlas::VSM_ATLAS_FORMAT,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: Default::default(),
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: None,
+            ..Default::default()
+        },
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        multiview_mask: None,
+    })
+}
 
 #[cfg(test)]
 mod tests {
@@ -477,7 +623,8 @@ mod tests {
         assert_eq!(GraphPass::Forward.params_group(), GRAPH_PARAMS_GROUP);
         assert_eq!(GraphPass::Depth.params_group(), 1);
         assert_eq!(GraphPass::Shadow.params_group(), 2);
-        assert_eq!(GraphPass::ALL.len(), 5);
+        assert_eq!(GraphPass::ALL.len(), 6);
+        assert_eq!(GraphPass::VsmDepth.params_group(), 1);
     }
 
     #[test]

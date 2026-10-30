@@ -303,3 +303,22 @@ fn no_scene_copy_without_refractive_materials() {
     };
     assert_eq!(copies, 0);
 }
+
+// ---------------------------------------------------------------- VG and masked materials (MAT-07)
+
+/// Alpha-tested foliage does not go to the VG path: the asset is refused and the caller draws it
+/// the classic way. A plain material registers as before.
+#[test]
+fn an_alpha_tested_asset_is_not_registered_as_vg() {
+    let _gpu = lock();
+    let Some(mut rig) = rig(false) else { return };
+    let plain = rig.renderer.add_material(Material::solid(Vec3::splat(0.5)));
+    let leaf = rig
+        .renderer
+        .add_material(Material::solid(Vec3::splat(0.5)).masked(true));
+    rig.renderer
+        .init_virtual_geometry(redox_render::virtual_geometry::VGConfig::default());
+    let mesh = create_sphere(0.5, 16);
+    assert!(rig.renderer.register_vg_mesh(&mesh, plain as u32).is_some());
+    assert!(rig.renderer.register_vg_mesh(&mesh, leaf as u32).is_none());
+}

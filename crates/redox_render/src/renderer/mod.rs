@@ -365,6 +365,8 @@ pub struct Renderer {
     pub gi: crate::gi::state::GiState,
     /// Two camera-following probe cascades with their irradiance and visibility atlases (GI-01 5a).
     pub gi_probes: crate::gi::probes::GiProbes,
+    /// Cache reflection compute pass and its output (GI-04).
+    pub gi_reflect: crate::gi::reflect::GiReflect,
     /// GPU signed distance field atlas.
     pub sdf_gpu: crate::sdf::SdfGpuAtlas,
     #[allow(dead_code)]

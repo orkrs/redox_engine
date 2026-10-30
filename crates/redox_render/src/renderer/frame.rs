@@ -104,6 +104,20 @@ impl Renderer {
         surface_view: &wgpu::TextureView,
     ) -> Result<(), crate::surface::SurfaceError> {
         let t0 = std::time::Instant::now();
+        // Graph materials read one shared frame time in every stage and pass.
+        self.matgraphs
+            .set_time(&self.queue, self.taa_frame_count as f32 / 60.0);
+        // Vertex offsets (WPO) move geometry past its bounds: culling uses the widened bounds.
+        let widened: Vec<RenderObject>;
+        let objects = if self.matgraphs.any_wpo() {
+            widened = objects
+                .iter()
+                .map(|o| widen_bounds(o, self.matgraphs.wpo_max(o.material_index)))
+                .collect();
+            &widened[..]
+        } else {
+            objects
+        };
         // Group objects with the same mesh and material so the draw loops can instance them.
         let mut visible = Vec::new();
         compute_main_visibility(&self.camera_uniform.view_proj, objects, &mut visible);
@@ -377,6 +391,7 @@ impl Renderer {
                 registry: &self.registry,
                 masked: &self.masked_shadow,
                 alpha_test: &self.material_alpha_test,
+                graphs: Some(&self.matgraphs),
             };
             if self.mt_command_recording {
                 let (atlas_cmd, vsm_cmd) = join(
@@ -516,5 +531,24 @@ impl Renderer {
         self.render_frame_into(objects, &surface_view)?;
         self.queue.present(output);
         Ok(())
+    }
+}
+
+/// `object` with its bounds grown by `margin` metres on every side.
+fn widen_bounds(object: &RenderObject, margin: f32) -> RenderObject {
+    let grow = redox_math::Vec3::splat(margin);
+    RenderObject {
+        id: object.id,
+        shadow_class: object.shadow_class,
+        deforms: object.deforms,
+        pose_version: object.pose_version,
+        model_matrix: object.model_matrix,
+        color: object.color,
+        mesh_index: object.mesh_index,
+        material_index: object.material_index,
+        bounds: redox_math::Aabb {
+            min: object.bounds.min - grow,
+            max: object.bounds.max + grow,
+        },
     }
 }

@@ -12,6 +12,7 @@ use bytemuck::{Pod, Zeroable};
 use crate::camera::CameraUniform;
 use crate::post::fog::{FOG_WGSL, FogSettings, FogUniform, fog_uniform};
 use crate::post::fog_froxel::{FROXEL_COMPOSITE_WGSL, FroxelVolume, volume_entry};
+use crate::post::gi_reflect::{GI_REFLECT_APPLY_WGSL, GiReflectSettings};
 use crate::post::motion_blur_tiles::{SPREAD_SOFT_Z, TilePasses, TileTargets};
 use crate::post::ssr::{SSR_WGSL, SsrSettings, ssr_uniform};
 use crate::post::sss::{SSS_BLUR_WGSL, SssSettings, sss_uniform};
@@ -165,6 +166,8 @@ pub struct PostFxSettings {
     pub dof: Option<DofSettings>,
     /// Screen-space subsurface blur, or `None` when off. Runs before everything else.
     pub sss: Option<SssSettings>,
+    /// Rough reflections from the GI cache, or `None` when off. Runs before SSR.
+    pub gi_reflect: Option<GiReflectSettings>,
     /// Screen-space reflections, or `None` when off.
     pub ssr: Option<SsrSettings>,
     /// Height fog, or `None` when off. Runs last in the chain.
@@ -435,6 +438,8 @@ pub(crate) struct PostFxInputs<'a> {
     pub normal_view: &'a wgpu::TextureView,
     /// Material surface target (`Rg8Unorm`: roughness, metallic); SSR reads it.
     pub surface_view: &'a wgpu::TextureView,
+    /// GI cache reflection `(radiance, weight)` the blend pass reads.
+    pub reflect_view: &'a wgpu::TextureView,
     /// Bloom mip 0, which the tone-mapping bind groups read.
     pub bloom_view: &'a wgpu::TextureView,
     /// Tone-mapping pipeline the bind groups are laid out against.
@@ -451,6 +456,7 @@ pub(crate) struct PostFxInputs<'a> {
 
 /// Passes of the chain. Each owns its pipeline, sampler and uniform buffer.
 struct EffectPasses {
+    gi_reflect: EffectPass,
     sss_h: EffectPass,
     sss_v: EffectPass,
     ssr: EffectPass,
@@ -469,6 +475,7 @@ struct Lanes {
 
 /// Bind groups of every effect.
 struct EffectLanes {
+    gi_reflect: Lanes,
     sss_h: Lanes,
     sss_v: Lanes,
     ssr: Lanes,
@@ -598,6 +605,7 @@ impl PostFx {
         settings: &PostFxSettings,
     ) -> Option<usize> {
         if settings.sss.is_none()
+            && settings.gi_reflect.is_none()
             && settings.ssr.is_none()
             && settings.motion_blur.is_none()
             && settings.dof.is_none()
@@ -616,6 +624,16 @@ impl PostFx {
                 pass.record(encoder, lanes.get(source), &self.views[dst]);
                 source = Source::Target(dst);
             }
+        }
+        if settings.gi_reflect.is_some() {
+            let dst = source.next_target();
+            self.passes.gi_reflect.write(queue, &[0.0f32; 4]);
+            self.passes.gi_reflect.record(
+                encoder,
+                self.lanes.gi_reflect.get(source),
+                &self.views[dst],
+            );
+            source = Source::Target(dst);
         }
         if let Some(s) = settings.ssr {
             let dst = source.next_target();
@@ -723,6 +741,18 @@ fn create_passes(device: &wgpu::Device) -> EffectPasses {
             std::mem::size_of::<crate::post::sss::SssUniform>() as u64,
         )
     };
+    let gi_reflect = EffectPass::new(
+        device,
+        "gi_reflect_apply",
+        GI_REFLECT_APPLY_WGSL,
+        &[
+            texture_entry(0, FILTERABLE),
+            texture_entry(1, FILTERABLE),
+            sampler_entry(2),
+            uniform_entry(3),
+        ],
+        16,
+    );
     let sss_h = sss_pass("sss_blur_horizontal");
     let sss_v = sss_pass("sss_blur_vertical");
     let ssr = EffectPass::new(
@@ -790,6 +820,7 @@ fn create_passes(device: &wgpu::Device) -> EffectPasses {
         std::mem::size_of::<FogUniform>() as u64,
     );
     EffectPasses {
+        gi_reflect,
         sss_h,
         sss_v,
         ssr,
@@ -842,6 +873,13 @@ fn build_bindings(
     };
     let history = inputs.history_views;
     let lanes = EffectLanes {
+        gi_reflect: lane_bindings(
+            device,
+            &passes.gi_reflect,
+            history,
+            views,
+            &[inputs.reflect_view],
+        ),
         sss_h: lane_bindings(
             device,
             &passes.sss_h,

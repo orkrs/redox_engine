@@ -3,6 +3,8 @@ pub mod bloom;
 pub mod fog;
 /// Froxel fog volume: injected, integrated and composited fog with VSM sun shadows (PST-06 step 3).
 pub mod fog_froxel;
+/// Screen-space reflections (post effect, runs first in the chain).
+pub mod gi_reflect;
 /// Velocity tile maxima and the math of motion blur spreading beyond object edges (PST-03).
 pub mod motion_blur_tiles;
 /// Motion blur and depth of field, run between TAA and bloom.
@@ -11,7 +13,6 @@ pub mod post_fx;
 pub mod refraction;
 /// Screen-space ambient occlusion and the VSM screen-space shadow passes.
 pub mod ssao;
-/// Screen-space reflections (post effect, runs first in the chain).
 pub mod ssr;
 /// Subsurface-scattering math: wrap lighting and the separable kernel (MAT-05).
 pub mod sss;

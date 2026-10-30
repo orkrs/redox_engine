@@ -28,7 +28,7 @@ impl MaterialGraph {
     /// Returns an empty vector for a valid graph.
     pub fn validate(&self) -> Vec<GraphError> {
         match node_types(self) {
-            Ok(_) => Vec::new(),
+            Ok(_) => vertex_stage_errors(self),
             Err(errors) => errors,
         }
     }
@@ -164,7 +164,11 @@ impl<'a> Checker<'a> {
                     );
                 }
             }
-            NodeKind::Fresnel { power } | NodeKind::Triplanar { scale: power, .. }
+            NodeKind::Fresnel { power }
+            | NodeKind::Triplanar { scale: power, .. }
+            | NodeKind::HeightBlend { sharpness: power }
+            | NodeKind::NormalFromHeight { strength: power }
+            | NodeKind::PositionOffset { max_offset: power }
                 if !power.is_finite() =>
             {
                 self.fail(Some(id), "число не конечно");
@@ -386,4 +390,58 @@ fn is_identifier(name: &str) -> bool {
     let mut chars = name.chars();
     matches!(chars.next(), Some(c) if c.is_ascii_lowercase() || c == '_')
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+}
+
+/// Nodes that cannot run in the vertex stage: texture reads and anything using derivatives.
+fn fragment_only(kind: &NodeKind) -> bool {
+    matches!(
+        kind,
+        NodeKind::Texture2d { .. }
+            | NodeKind::TextureSample { .. }
+            | NodeKind::NormalMap { .. }
+            | NodeKind::Triplanar { .. }
+            | NodeKind::NormalFromHeight { .. }
+    )
+}
+
+/// Errors of the `PositionOffset` sink: at most one, and no fragment-only node feeding it.
+fn vertex_stage_errors(graph: &MaterialGraph) -> Vec<GraphError> {
+    let sinks: Vec<&Node> = graph
+        .nodes
+        .iter()
+        .filter(|n| matches!(n.kind, NodeKind::PositionOffset { .. }))
+        .collect();
+    let mut errors = Vec::new();
+    if sinks.len() > 1 {
+        errors.push(GraphError::new(
+            None,
+            format!(
+                "узлов PositionOffset {}, ожидался не больше одного",
+                sinks.len()
+            ),
+        ));
+    }
+    let Some(sink) = sinks.first() else {
+        return errors;
+    };
+    let index: std::collections::HashMap<NodeId, &Node> =
+        graph.nodes.iter().map(|n| (n.id, n)).collect();
+    let mut stack: Vec<NodeId> = sink.inputs.iter().flatten().map(|l| l.node).collect();
+    let mut seen = std::collections::HashSet::new();
+    while let Some(id) = stack.pop() {
+        if !seen.insert(id) {
+            continue;
+        }
+        let Some(node) = index.get(&id) else {
+            continue;
+        };
+        if fragment_only(&node.kind) {
+            errors.push(GraphError::new(
+                Some(id),
+                "узел работает только во фрагментной стадии и не может питать PositionOffset",
+            ));
+        }
+        stack.extend(node.inputs.iter().flatten().map(|l| l.node));
+    }
+    errors
 }

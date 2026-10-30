@@ -285,3 +285,109 @@ fn a_texture_budget_above_sixteen_samples_warns() {
     assert!(g.validate().is_empty(), "{:?}", g.validate());
     assert_eq!(g.warnings().len(), 1);
 }
+
+// ---------------------------------------------------------------- MAT-03 step 4: vertex offset
+
+/// A graph whose surface is grey and whose `PositionOffset` moves vertices up by `sin(time)`.
+fn wpo_graph() -> MaterialGraph {
+    graph(vec![
+        node(1, NodeKind::Time, vec![]),
+        node(2, NodeKind::Sin, vec![link(1)]),
+        node(3, NodeKind::ConstF32(0.0), vec![]),
+        node(4, NodeKind::Merge, vec![link(3), link(2), link(3)]),
+        node(
+            5,
+            NodeKind::PositionOffset { max_offset: 1.0 },
+            vec![link(4)],
+        ),
+        node(
+            6,
+            NodeKind::SurfaceOutput,
+            vec![None, None, None, None, None, None],
+        ),
+    ])
+}
+
+#[test]
+fn a_wpo_graph_generates_a_vertex_offset_function() {
+    let g = wpo_graph();
+    assert!(g.validate().is_empty(), "{:?}", g.validate());
+    let source = full_source(&g, "");
+    validate_wgsl(&source);
+    assert!(
+        source.contains("fn material_vertex_offset_graph("),
+        "{source}"
+    );
+    let ir = optimize(lower(&g).unwrap());
+    assert_eq!(ir.wpo_max, 1.0);
+    assert!(ir.offset.is_some());
+}
+
+#[test]
+fn a_graph_without_wpo_returns_a_zero_offset() {
+    let g = graph(vec![node(
+        1,
+        NodeKind::SurfaceOutput,
+        vec![None, None, None, None, None, None],
+    )]);
+    let source = full_source(&g, "");
+    validate_wgsl(&source);
+    assert!(source.contains("return vec3<f32>(0.0);"), "{source}");
+}
+
+#[test]
+fn wpo_in_a_fragment_only_node_set_is_rejected() {
+    let g = graph(vec![
+        node(1, NodeKind::Time, vec![]),
+        node(
+            2,
+            NodeKind::NormalFromHeight { strength: 1.0 },
+            vec![link(1)],
+        ),
+        node(
+            3,
+            NodeKind::PositionOffset { max_offset: 1.0 },
+            vec![link(2)],
+        ),
+        node(
+            4,
+            NodeKind::SurfaceOutput,
+            vec![None, None, None, None, None, None],
+        ),
+    ]);
+    let errors = g.validate();
+    assert!(
+        errors.iter().any(|e| e.to_string().contains('2')),
+        "node 2 must be named: {errors:?}"
+    );
+}
+
+#[test]
+fn height_blend_and_normal_from_height_generate_valid_wgsl() {
+    let g = graph(vec![
+        node(1, NodeKind::Uv, vec![]),
+        node(2, NodeKind::Split { component: 0 }, vec![link(1)]),
+        node(3, NodeKind::Split { component: 1 }, vec![link(1)]),
+        node(4, NodeKind::ConstVec3([1.0, 0.0, 0.0]), vec![]),
+        node(5, NodeKind::ConstVec3([0.0, 0.0, 1.0]), vec![]),
+        node(
+            6,
+            NodeKind::HeightBlend { sharpness: 4.0 },
+            vec![link(4), link(5), link(2), link(3)],
+        ),
+        node(
+            7,
+            NodeKind::NormalFromHeight { strength: 0.5 },
+            vec![link(2)],
+        ),
+        node(
+            8,
+            NodeKind::SurfaceOutput,
+            vec![link(6), None, link(7), None, None, None],
+        ),
+    ]);
+    assert!(g.validate().is_empty(), "{:?}", g.validate());
+    let source = full_source(&g, "");
+    validate_wgsl(&source);
+    assert!(source.contains("mg_bump_normal"), "{source}");
+}

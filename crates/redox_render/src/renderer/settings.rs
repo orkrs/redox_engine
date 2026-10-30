@@ -169,6 +169,21 @@ impl Renderer {
         self.post_fx_settings.sss = settings;
     }
 
+    /// Rough reflections from the GI cache (`None` turns them off). They need GI on (a static
+    /// scene given to `set_gi_static_geometry` or `set_gi_static_bricks`) and, like the other post
+    /// effects, TAA on.
+    pub fn set_gi_reflections(
+        &mut self,
+        settings: Option<crate::post::gi_reflect::GiReflectSettings>,
+    ) {
+        self.post_fx_settings.gi_reflect = settings;
+    }
+
+    /// Cache reflection settings, or `None` when off.
+    pub fn gi_reflections(&self) -> Option<crate::post::gi_reflect::GiReflectSettings> {
+        self.post_fx_settings.gi_reflect
+    }
+
     /// Screen-space subsurface scattering settings, `None` when off.
     pub fn sss(&self) -> Option<crate::post::sss::SssSettings> {
         self.post_fx_settings.sss

@@ -338,6 +338,8 @@ impl Renderer {
             make_tone(&self.taa_history_view[0]),
             make_tone(&self.taa_history_view[1]),
         ];
+        self.gi_reflect
+            .resize(&self.device, [new_width, new_height]);
         self.post_fx.rebuild(
             &self.device,
             new_width,
@@ -348,6 +350,7 @@ impl Renderer {
                 depth_view: &self.depth_view,
                 normal_view: &self.normal_view,
                 surface_view: &self.material_surface_view,
+                reflect_view: self.gi_reflect.view(),
                 bloom_view: &self.bloom_mip_views[0],
                 tone_pipeline: &self.tone_mapping_pipeline,
                 tone_uniform: &self.tonemap_uniform_buffer,

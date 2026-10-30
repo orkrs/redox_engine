@@ -13,13 +13,13 @@ use std::collections::hash_map::Entry;
 use std::path::PathBuf;
 
 use redox_matgraph::{
-    CodegenOptions, Features, Generated, GraphError, GraphReload, MatGraphWatcher, MaterialGraph,
-    ShaderKey, Variant, compile_variant,
+    CodegenOptions, Generated, GraphError, GraphReload, MatGraphWatcher, MaterialGraph, ShaderKey,
+    Variant, compile_variant,
 };
 
 use crate::matgraph_passes::{
     GraphPass, PassBindLayouts, blended_pipeline, depth_pipeline, depth_source, shadow_pipeline,
-    shadow_source,
+    shadow_source, vsm_pipeline, vsm_source,
 };
 use crate::pass::pbr::{PbrPass, pbr_render_pipeline};
 use crate::pass::transparent::ADDITIVE_BLEND;
@@ -35,7 +35,19 @@ const SURFACE_CALL: &str = "let surf = material_surface(";
 /// Replacement call. Time is the frame index at 60 Hz (ASSUMPTION: no time uniform in the
 /// forward pass yet).
 const GRAPH_SURFACE_CALL: &str =
-    "let surf = material_surface_graph_variant(in.uv, f32(shader_debug.frame_index) / 60.0, ";
+    "let surf = material_surface_graph_variant(in.uv, mat_graph_time.x, ";
+
+/// The world position line of `vs_main` in `pbr.wgsl`, which graph variants extend with the
+/// vertex offset of the graph.
+const VERTEX_POSITION_LINE: &str = "let world_pos = model * vec4<f32>(local_pos, 1.0);";
+
+/// Replacement: the same position plus `material_vertex_offset_graph`.
+const GRAPH_VERTEX_POSITION: &str = "var world_pos = model * vec4<f32>(local_pos, 1.0);
+    {
+        let wpo_n = normalize(mdl.normal_matrix * oct_decode(in.normal_oct));
+        let wpo_in = SurfaceInput(world_pos.xyz, wpo_n, vec3<f32>(1.0, 0.0, 0.0), mdl.color, camera.camera_pos.xyz - world_pos.xyz);
+        world_pos = world_pos + vec4<f32>(material_vertex_offset_graph(wpo_in, in.uv, mat_graph_time.x, mat_graph_params), 0.0);
+    }";
 
 /// Why a variant module was not built.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -99,10 +111,15 @@ pub fn graph_pass_source(base: &str, generated: &Generated) -> Result<String, Va
             "pass shader has no material_surface call".to_string(),
         ));
     }
-    let body = base.replacen(SURFACE_CALL, GRAPH_SURFACE_CALL, 1);
+    let body = base.replacen(SURFACE_CALL, GRAPH_SURFACE_CALL, 1).replacen(
+        VERTEX_POSITION_LINE,
+        GRAPH_VERTEX_POSITION,
+        1,
+    );
     Ok(shader_with_vertex_decode(&format!(
         "{body}\n{}\n{}\n\
          @group({GRAPH_PARAMS_GROUP}) @binding(0) var<uniform> mat_graph_params: MaterialParams;\n\
+         @group({GRAPH_PARAMS_GROUP}) @binding(1) var<uniform> mat_graph_time: vec4<f32>;\n\
          fn material_surface_graph_variant(uv: vec2<f32>, time: f32, surface_in: SurfaceInput, \
          mat: Material, tex: TextureSamples) -> SurfaceData {{\n\
          \x20   return material_surface_graph(surface_in, uv, time, mat_graph_params);\n\
@@ -170,12 +187,37 @@ pub fn validate_wgsl(source: &str) -> Result<(), VariantError> {
 #[derive(Default)]
 pub struct MaterialShaderCache {
     modules: HashMap<ShaderKey, wgpu::ShaderModule>,
+    hits: u64,
+    misses: u64,
+}
+
+/// More modules than this in one cache is logged once: the variant count is meant to stay small.
+pub const MAX_VARIANTS_WARN: usize = 256;
+
+/// Counters of a [`MaterialShaderCache`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CacheStats {
+    /// Modules held.
+    pub modules: usize,
+    /// Requests answered from the cache.
+    pub hits: u64,
+    /// Requests that built a module.
+    pub misses: u64,
 }
 
 impl MaterialShaderCache {
     /// Empty cache.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Modules held and the hit / miss counters.
+    pub fn stats(&self) -> CacheStats {
+        CacheStats {
+            modules: self.modules.len(),
+            hits: self.hits,
+            misses: self.misses,
+        }
     }
 
     /// Number of modules held.
@@ -208,11 +250,18 @@ impl MaterialShaderCache {
         label: &str,
         source: impl FnOnce() -> String,
     ) -> Result<&wgpu::ShaderModule, VariantError> {
+        if self.modules.len() + 1 == MAX_VARIANTS_WARN && !self.modules.contains_key(&key) {
+            log::warn!("material graph cache reaches {MAX_VARIANTS_WARN} shader variants");
+        }
         match self.modules.entry(key) {
-            Entry::Occupied(entry) => Ok(&*entry.into_mut()),
+            Entry::Occupied(entry) => {
+                self.hits += 1;
+                Ok(&*entry.into_mut())
+            }
             Entry::Vacant(entry) => {
                 let text = source();
                 validate_wgsl(&text)?;
+                self.misses += 1;
                 Ok(&*entry.insert(create_shader_module(device, label, &text)))
             }
         }
@@ -227,6 +276,10 @@ struct GraphMaterial {
     depth_key: ShaderKey,
     /// Key of the shadow atlas module.
     shadow_key: ShaderKey,
+    /// Key of the sun shadow page module.
+    vsm_key: ShaderKey,
+    /// Longest vertex offset the graph declares, metres.
+    wpo_max: f32,
     /// Keeps the parameter block alive for the bind groups.
     _params_buffer: wgpu::Buffer,
     params: wgpu::BindGroup,
@@ -239,6 +292,7 @@ impl GraphMaterial {
             GraphPass::Forward | GraphPass::Alpha | GraphPass::Additive => self.key,
             GraphPass::Depth => self.depth_key,
             GraphPass::Shadow => self.shadow_key,
+            GraphPass::VsmDepth => self.vsm_key,
         }
     }
 }
@@ -257,6 +311,10 @@ pub struct MaterialGraphs {
     depth_layout: wgpu::PipelineLayout,
     /// Shadow atlas layout: shadow matrix group 0, model group 1, graph parameter group 2.
     shadow_layout: wgpu::PipelineLayout,
+    /// Sun shadow page layout: page scene group 0 and the graph parameter group 1.
+    vsm_layout: wgpu::PipelineLayout,
+    /// Frame time uniform bound at binding 1 of every parameter group.
+    time_buffer: wgpu::Buffer,
     cache: MaterialShaderCache,
     pipelines: HashMap<(ShaderKey, GraphPass), wgpu::RenderPipeline>,
     materials: HashMap<usize, GraphMaterial>,
@@ -274,16 +332,36 @@ impl MaterialGraphs {
     ) -> Self {
         let graph_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("matgraph_params_bgl"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                // 0: the parameter block; the vertex stage reads it for the vertex offset.
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                // 1: the frame time (x, seconds), shared by every graph material and pass.
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+        let time_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("matgraph_time"),
+            size: 16,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
         let layout = graph_layout(device, pbr, &graph_bgl);
         let bind_layouts = PassBindLayouts::new(device);
@@ -301,13 +379,20 @@ impl MaterialGraphs {
             ],
             immediate_size: 0,
         });
+        let vsm_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("matgraph_vsm_pipeline_layout"),
+            bind_group_layouts: &[Some(&bind_layouts.vsm_scene), Some(&graph_bgl)],
+            immediate_size: 0,
+        });
         Self {
             surface_format,
             sample_count,
             graph_bgl,
+            time_buffer,
             layout,
             depth_layout,
             shadow_layout,
+            vsm_layout,
             cache: MaterialShaderCache::new(),
             pipelines: HashMap::new(),
             materials: HashMap::new(),
@@ -333,6 +418,28 @@ impl MaterialGraphs {
     /// Number of material slots bound to a graph.
     pub fn material_count(&self) -> usize {
         self.materials.len()
+    }
+
+    /// Sets the frame time (seconds) every graph material reads as `time`; call once per frame
+    /// so the vertex and fragment stages of all passes see the same value.
+    pub fn set_time(&self, queue: &wgpu::Queue, seconds: f32) {
+        queue.write_buffer(
+            &self.time_buffer,
+            0,
+            bytemuck::cast_slice(&[seconds, 0.0, 0.0, 0.0]),
+        );
+    }
+
+    /// Longest vertex offset the graph of `material_index` declares (0 without a graph or offset).
+    pub fn wpo_max(&self, material_index: usize) -> f32 {
+        self.materials
+            .get(&material_index)
+            .map_or(0.0, |m| m.wpo_max)
+    }
+
+    /// `true` when some graph material has a vertex offset.
+    pub fn any_wpo(&self) -> bool {
+        self.materials.values().any(|m| m.wpo_max > 0.0)
     }
 
     /// `true` when the material slot `material_index` is bound to a graph.
@@ -387,6 +494,7 @@ impl MaterialGraphs {
         let (key, forward) = self.ensure_variant(device, graph, source_hash, GraphPass::Forward)?;
         let (depth_key, _) = self.ensure_variant(device, graph, source_hash, GraphPass::Depth)?;
         let (shadow_key, _) = self.ensure_variant(device, graph, source_hash, GraphPass::Shadow)?;
+        let (vsm_key, _) = self.ensure_variant(device, graph, source_hash, GraphPass::VsmDepth)?;
         for pass in [GraphPass::Alpha, GraphPass::Additive] {
             self.ensure_pipeline(device, key, pass);
         }
@@ -403,10 +511,16 @@ impl MaterialGraphs {
         let params_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("matgraph_params_bg"),
             layout: &self.graph_bgl,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: buffer.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: self.time_buffer.as_entire_binding(),
+                },
+            ],
         });
         self.materials.insert(
             material_index,
@@ -414,6 +528,8 @@ impl MaterialGraphs {
                 key,
                 depth_key,
                 shadow_key,
+                vsm_key,
+                wpo_max: forward.ir.wpo_max,
                 _params_buffer: buffer,
                 params: params_bg,
             },
@@ -434,7 +550,7 @@ impl MaterialGraphs {
     ) -> Result<(ShaderKey, Variant), MaterialGraphError> {
         let options = CodegenOptions {
             pass: pass.codegen(),
-            features: Features::default(),
+            features: pass.features(),
         };
         let variant = compile_variant(graph, &options).map_err(MaterialGraphError::Graph)?;
         let key = variant.key;
@@ -525,6 +641,7 @@ impl MaterialGraphs {
             }
             GraphPass::Depth => depth_pipeline(device, &self.depth_layout, module),
             GraphPass::Shadow => shadow_pipeline(device, &self.shadow_layout, module),
+            GraphPass::VsmDepth => vsm_pipeline(device, &self.vsm_layout, module),
         };
         self.pipelines.insert((key, pass), pipeline);
     }
@@ -563,6 +680,7 @@ fn variant_module(pass: GraphPass, generated: &Generated) -> Result<String, Vari
         }
         GraphPass::Depth => Ok(depth_source(generated)),
         GraphPass::Shadow => Ok(shadow_source(generated)),
+        GraphPass::VsmDepth => Ok(vsm_source(generated)),
     }
 }
 
