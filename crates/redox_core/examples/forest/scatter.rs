@@ -81,6 +81,21 @@ fn place(x: f32, z: f32, sink: f32) -> Vec3 {
     Vec3::new(x, ground_height(x, z) - sink, z)
 }
 
+/// One model at the origin, unscaled, for single-asset checks (`FOREST_ONLY`).
+pub fn single() -> World {
+    World {
+        instances: vec![Instance {
+            near: 0,
+            far: 0,
+            switch: f32::MAX,
+            cull: f32::MAX,
+            pos: Vec3::ZERO,
+            yaw: 0.0,
+            scale: 1.0,
+        }],
+    }
+}
+
 /// Builds the scene. `index` maps model names to their position in the loaded list.
 pub fn populate(index: &HashMap<&str, usize>, seed: u64) -> World {
     let m = |name: &str| index[name];
