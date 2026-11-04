@@ -13,6 +13,9 @@ pub const MODEL_NAMES: &[&str] = &[
     "fir_a_lod",
     "fir_b_lod",
     "fir_c_lod",
+    "sapling_a",
+    "sapling_b",
+    "sapling_c",
     "boulder",
     "boulder_mid",
     "boulder_lod",
@@ -129,6 +132,25 @@ pub fn populate(index: &HashMap<&str, usize>, seed: u64) -> World {
             pos: place(x, z, 0.15),
             yaw: rng.range(0.0, std::f32::consts::TAU),
             scale: rng.range(0.85, 1.2),
+        });
+    }
+
+    // Saplings between the big trees.
+    let saplings = [m("sapling_a"), m("sapling_b"), m("sapling_c")];
+    for _ in 0..70 {
+        let (x, z) = (rng.range(-45.0, 45.0), rng.range(-70.0, 8.0));
+        if (x * x + (z - 4.0) * (z - 4.0)).sqrt() < 4.0 {
+            continue;
+        }
+        let model = rng.pick(&saplings);
+        instances.push(Instance {
+            near: model,
+            far: model,
+            switch: f32::MAX,
+            cull: 90.0,
+            pos: place(x, z, 0.05),
+            yaw: rng.range(0.0, std::f32::consts::TAU),
+            scale: rng.range(0.7, 1.3),
         });
     }
 

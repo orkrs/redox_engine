@@ -15,14 +15,14 @@ pub(super) fn fix_tex_coord_minus_one(bytes: &[u8]) -> Option<Vec<u8>> {
     let mut changed = false;
     let mut i = json.start;
     while i + KEY.len() <= json.end {
-        if bytes[i..i + KEY.len()] == *KEY {
-            if let Some(minus) = minus_one_after(bytes, i + KEY.len(), json.end) {
-                out[minus] = b'0';
-                out[minus + 1] = b' ';
-                changed = true;
-                i = minus + 2;
-                continue;
-            }
+        if bytes[i..i + KEY.len()] == *KEY
+            && let Some(minus) = minus_one_after(bytes, i + KEY.len(), json.end)
+        {
+            out[minus] = b'0';
+            out[minus + 1] = b' ';
+            changed = true;
+            i = minus + 2;
+            continue;
         }
         i += 1;
     }

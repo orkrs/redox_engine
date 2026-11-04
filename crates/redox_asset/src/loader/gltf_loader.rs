@@ -342,18 +342,38 @@ fn read_primitive(
         normals = vec![[0.0, 1.0, 0.0]; vertex_count];
     }
 
-    // Without TEXCOORD_0 the UVs are generated (cylindrical around Y), as the
-    // forest example does for its trunks.
+    // Without TEXCOORD_0 the UVs are generated (cylindrical around Y), as the forest example
+    // does for its trunks, but only when the material samples a texture: a plain mesh keeps
+    // zero UVs as before.
+    let material = primitive.material();
+    let textured = material
+        .pbr_metallic_roughness()
+        .base_color_texture()
+        .is_some()
+        || material
+            .pbr_metallic_roughness()
+            .metallic_roughness_texture()
+            .is_some()
+        || material.normal_texture().is_some()
+        || material.occlusion_texture().is_some()
+        || material.emissive_texture().is_some();
+    let generate = |positions: &[[f32; 3]]| {
+        if textured {
+            (cylindrical_uvs(positions), true)
+        } else {
+            (vec![[0.0, 0.0]; positions.len()], false)
+        }
+    };
     let (uvs, generated_uv) = match reader.read_tex_coords(0) {
         Some(tex_coords) => {
             let uvs: Vec<[f32; 2]> = tex_coords.into_f32().collect();
             if uvs.len() == vertex_count {
                 (uvs, false)
             } else {
-                (cylindrical_uvs(&positions), true)
+                generate(&positions)
             }
         }
-        None => (cylindrical_uvs(&positions), true),
+        None => generate(&positions),
     };
     let uvs1 = read_exact(
         reader.read_tex_coords(1).map(|t| t.into_f32().collect()),

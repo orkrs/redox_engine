@@ -246,7 +246,11 @@ fn normalize3(v: [f32; 3]) -> [f32; 3] {
     [v[0] / len, v[1] / len, v[2] / len]
 }
 
-fn lut_view(device: &wgpu::Device, label: &str, size: (u32, u32)) -> (wgpu::Texture, wgpu::TextureView) {
+fn lut_view(
+    device: &wgpu::Device,
+    label: &str,
+    size: (u32, u32),
+) -> (wgpu::Texture, wgpu::TextureView) {
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some(label),
         size: wgpu::Extent3d {
@@ -486,8 +490,14 @@ impl SkyAtmosphere {
             lut_sampler,
             sky_sampler,
         };
-        let (pass_pipeline, pass_bind_group) =
-            build_pass(device, camera_buffer, &uniform, &luts, hdr_format, sample_count);
+        let (pass_pipeline, pass_bind_group) = build_pass(
+            device,
+            camera_buffer,
+            &uniform,
+            &luts,
+            hdr_format,
+            sample_count,
+        );
         Self {
             params,
             sun_angle: DEFAULT_SUN_ANGLE,
@@ -539,7 +549,11 @@ impl SkyAtmosphere {
         queue.write_buffer(
             &self.uniform,
             0,
-            bytemuck::bytes_of(&AtmosphereUniform::new(&self.params, &frame, self.sun_angle)),
+            bytemuck::bytes_of(&AtmosphereUniform::new(
+                &self.params,
+                &frame,
+                self.sun_angle,
+            )),
         );
         self.record_sky_view(encoder);
     }
@@ -551,11 +565,7 @@ impl SkyAtmosphere {
         });
         pass.set_pipeline(&self.sky_view_pipeline);
         pass.set_bind_group(0, &self.sky_view_bind_group, &[]);
-        pass.dispatch_workgroups(
-            SKY_VIEW_SIZE.0.div_ceil(8),
-            SKY_VIEW_SIZE.1.div_ceil(8),
-            1,
-        );
+        pass.dispatch_workgroups(SKY_VIEW_SIZE.0.div_ceil(8), SKY_VIEW_SIZE.1.div_ceil(8), 1);
     }
 
     /// True when the IBL cube has never been built or the sun moved by at least one degree
@@ -586,7 +596,11 @@ impl SkyAtmosphere {
         queue.write_buffer(
             &self.uniform,
             0,
-            bytemuck::bytes_of(&AtmosphereUniform::new(&self.params, &frame, self.sun_angle)),
+            bytemuck::bytes_of(&AtmosphereUniform::new(
+                &self.params,
+                &frame,
+                self.sun_angle,
+            )),
         );
         let cubemap = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("sky_ibl_cubemap"),
@@ -851,7 +865,11 @@ impl Renderer {
         let skybox = sky.build_cube(&self.device, &self.queue, frame);
         let resource =
             IBLResource::from_skybox(&self.device, &self.queue, &self.ibl_processor, skybox);
-        self.set_ibl_resource(resource);
+        let previous = self.swap_ibl_resource(resource);
+        // The first resource replaced is the one `set_sky_mode(Hdri)` brings back.
+        if self.pre_sky_ibl.is_none() {
+            self.pre_sky_ibl = Some(previous);
+        }
     }
 
     /// Sky inputs of the frame: sun from the light uniform, camera altitude from the eye

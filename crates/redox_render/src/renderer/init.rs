@@ -925,6 +925,7 @@ impl Renderer {
             ibl_resource,
             reflection_probes,
             skybox_pass: None,
+            pre_sky_ibl: None,
             transparent_pass,
             debug_lines_pass,
             current_debug_lines: Vec::new(),

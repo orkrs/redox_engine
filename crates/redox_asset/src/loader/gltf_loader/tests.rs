@@ -333,6 +333,19 @@ fn tri_glb(with_uvs: bool, primitive_extra: &str, root_extra: &str) -> Vec<u8> {
     wrap_glb_bin(&json, &bin)
 }
 
+/// Loads a fixture through a file: the `gltf` crate resolves image URIs (data URIs included)
+/// only when it is given a base directory, which a bytes-only import does not have.
+fn load_with_base(glb: &[u8]) -> Result<GltfSceneData, crate::error::AssetError> {
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let path =
+        std::env::temp_dir().join(format!("redox_gltf_fixture_{}_{n}.glb", std::process::id()));
+    std::fs::write(&path, glb).expect("write fixture");
+    let scene = load_scene_from_path(&path);
+    let _ = std::fs::remove_file(&path);
+    scene
+}
+
 /// A `data:` URI holding a 1x1 RGBA8 PNG of `pixel`.
 fn png_uri(pixel: [u8; 4]) -> String {
     let mut png = std::io::Cursor::new(Vec::new());
@@ -364,9 +377,8 @@ fn a_material_gets_its_own_textures() {
         red = png_uri([255, 0, 0, 255]),
         green = png_uri([0, 255, 0, 255]),
     );
-    let scene = GltfLoader
-        .load(&tri_glb(false, r#", "material": 1"#, &root))
-        .expect("load should succeed");
+    let scene =
+        load_with_base(&tri_glb(false, r#", "material": 1"#, &root)).expect("load should succeed");
 
     assert_eq!(scene.meshes[0].material, Some(1));
     assert_eq!(scene.materials.len(), 2);
@@ -389,9 +401,7 @@ fn texture_transform_is_reported() {
 "textures": [{{ "source": 0 }}], "images": [{{ "uri": "{uri}" }}]"#,
         uri = png_uri([9, 9, 9, 255]),
     );
-    let scene = GltfLoader
-        .load(&tri_glb(true, "", &root))
-        .expect("load should succeed");
+    let scene = load_with_base(&tri_glb(true, "", &root)).expect("load should succeed");
 
     let base = scene.materials[0]
         .base_color
@@ -422,11 +432,11 @@ fn a_blender_texcoord_minus_one_still_loads() {
     );
     let glb = tri_glb(true, "", &root);
     assert!(
-        gltf::import_slice(&glb).is_err(),
-        "the unrepaired file must fail to import, or this test proves nothing"
+        gltf::Gltf::from_slice(&glb).is_err(),
+        "the unrepaired file must fail to parse, or this test proves nothing"
     );
 
-    let scene = GltfLoader.load(&glb).expect("repaired file should load");
+    let scene = load_with_base(&glb).expect("repaired file should load");
     let base = scene.materials[0]
         .base_color
         .as_ref()
@@ -442,9 +452,8 @@ fn alpha_modes_and_double_sided_are_read() {
   { "alphaMode": "BLEND" },
   {}
 ]"#;
-    let scene = GltfLoader
-        .load(&tri_glb(false, r#", "material": 0"#, root))
-        .expect("load should succeed");
+    let scene =
+        load_with_base(&tri_glb(false, r#", "material": 0"#, root)).expect("load should succeed");
 
     let masked = &scene.materials[0];
     assert_eq!(masked.alpha_mode, GltfAlphaMode::Mask);
@@ -466,9 +475,8 @@ fn sixteen_bit_normals_are_converted() {
 "textures": [{{ "source": 0 }}], "images": [{{ "uri": "{uri}" }}]"#,
         uri = png16_uri([65535, 32768, 0, 65535]),
     );
-    let scene = GltfLoader
-        .load(&tri_glb(false, r#", "material": 0"#, &root))
-        .expect("load should succeed");
+    let scene =
+        load_with_base(&tri_glb(false, r#", "material": 0"#, &root)).expect("load should succeed");
 
     assert_eq!(scene.textures[0].rgba_bytes, vec![255, 128, 0, 255]);
     assert_eq!(
@@ -479,13 +487,19 @@ fn sixteen_bit_normals_are_converted() {
 
 #[test]
 fn a_mesh_without_uvs_gets_generated_ones() {
-    let scene = GltfLoader
-        .load(&tri_glb(false, "", ""))
-        .expect("load should succeed");
+    // A textured material needs UVs; a mesh without a material or texture keeps zero UVs
+    // (see `loads_triangle_gltf_from_temp_file`).
+    let root = format!(
+        r#", "materials": [{{ "pbrMetallicRoughness": {{ "baseColorTexture": {{ "index": 0 }} }} }}],
+"textures": [{{ "source": 0 }}], "images": [{{ "uri": "{uri}" }}]"#,
+        uri = png_uri([9, 9, 9, 255]),
+    );
+    let scene =
+        load_with_base(&tri_glb(false, r#", "material": 0"#, &root)).expect("load should succeed");
 
     assert!(scene.meshes[0].generated_uv);
     assert_eq!(scene.meshes[0].uvs.len(), 3);
-    assert_eq!(scene.meshes[0].material, None);
+    assert_eq!(scene.meshes[0].material, Some(0));
 
     let uvs = cylindrical_uvs(&[[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 0.0, -1.0]]);
     let expected = [[0.5, 0.0], [0.0, 0.0], [-0.5, 0.0]];
@@ -493,8 +507,6 @@ fn a_mesh_without_uvs_gets_generated_ones() {
         assert!((got[0] - want[0]).abs() < 1e-6 && (got[1] - want[1]).abs() < 1e-6);
     }
 
-    let with_uvs = GltfLoader
-        .load(&tri_glb(true, "", ""))
-        .expect("load should succeed");
+    let with_uvs = load_with_base(&tri_glb(true, "", "")).expect("load should succeed");
     assert!(!with_uvs.meshes[0].generated_uv);
 }

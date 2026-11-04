@@ -282,8 +282,9 @@ pub fn vg_resolve_source(generated: &Generated, slot: usize) -> String {
             &format!("{VG_GRAPH_SURFACE}    {VG_SPEC_ROUGHNESS_LINE}"),
             1,
         );
+    let textures = texture_decls_wgsl(GraphPass::VgResolve.params_group());
     format!(
-        "{VG_GRAPH_STRUCTS}\nconst GRAPH_MATERIAL_SLOT: u32 = {slot}u;\n{body}\n{}\n{}\n\
+        "{VG_GRAPH_STRUCTS}\nconst GRAPH_MATERIAL_SLOT: u32 = {slot}u;\n{body}\n{}\n{}\n{textures}\n\
          @group(3) @binding(0) var<uniform> mat_graph_params: MaterialParams;\n\
          @group(3) @binding(1) var<uniform> mat_graph_time: vec4<f32>;\n",
         generated.uniform_wgsl, generated.wgsl
@@ -293,8 +294,9 @@ pub fn vg_resolve_source(generated: &Generated, slot: usize) -> String {
 /// Module source of the object velocity variant: the previous and current positions both carry
 /// the vertex offset of the graph (current time and previous time), graph parameters in group 1.
 pub fn velocity_source(generated: &Generated) -> String {
+    let textures = texture_decls_wgsl(GraphPass::Velocity.params_group());
     shader_with_vertex_decode(&format!(
-        "{MATERIAL_SURFACE_WGSL}\n{}\n{}\n{VELOCITY_TEMPLATE}",
+        "{MATERIAL_SURFACE_WGSL}\n{}\n{}\n{textures}\n{VELOCITY_TEMPLATE}",
         generated.uniform_wgsl, generated.wgsl
     ))
 }
@@ -859,7 +861,7 @@ mod tests {
         assert_eq!(GraphPass::Forward.params_group(), GRAPH_PARAMS_GROUP);
         assert_eq!(GraphPass::Depth.params_group(), 1);
         assert_eq!(GraphPass::Shadow.params_group(), 2);
-        assert_eq!(GraphPass::ALL.len(), 7);
+        assert_eq!(GraphPass::ALL.len(), 8);
         assert_eq!(GraphPass::VsmDepth.params_group(), 1);
         assert_eq!(GraphPass::VgResolve.params_group(), 3);
         assert_eq!(GraphPass::VgResolve.codegen(), Pass::Main);

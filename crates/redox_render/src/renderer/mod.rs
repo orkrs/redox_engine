@@ -461,6 +461,8 @@ pub struct Renderer {
     // --- Skybox (background env pass; None until set_skybox(true)) ---
     /// Skybox pass; present once a real environment is set.
     pub skybox_pass: Option<SkyboxPass>,
+    /// IBL maps in place when the procedural sky took over; `set_sky_mode(Hdri)` restores them.
+    pub(crate) pre_sky_ibl: Option<IBLResource>,
 
     // --- Transparent geometry (alpha-blended PBR variant) ---
     /// Transparent object pass.

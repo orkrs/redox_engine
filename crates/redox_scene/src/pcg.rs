@@ -391,12 +391,19 @@ mod tests {
     fn scatter_respects_slope_and_height() {
         let cell = PartitionCell { x: 0, y: 0 };
         let steep = scatter_layer(&rule(20.0, (-1.0, 100.0)), cell, CELL, 7, ramp);
-        assert!(steep.is_empty(), "a 26.6 degree slope passed a 20 degree limit");
+        assert!(
+            steep.is_empty(),
+            "a 26.6 degree slope passed a 20 degree limit"
+        );
 
         let gentle = scatter_layer(&rule(30.0, (0.0, 10.0)), cell, CELL, 7, ramp);
         assert!(!gentle.is_empty());
         for inst in &gentle {
-            assert!((0.0..=10.0).contains(&inst.pos[1]), "height {}", inst.pos[1]);
+            assert!(
+                (0.0..=10.0).contains(&inst.pos[1]),
+                "height {}",
+                inst.pos[1]
+            );
             assert_eq!(inst.pos[1], ramp(inst.pos[0], inst.pos[2]));
         }
     }

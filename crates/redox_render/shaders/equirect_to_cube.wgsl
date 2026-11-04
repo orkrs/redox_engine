@@ -19,9 +19,11 @@ fn get_cube_dir(id: vec3<u32>, size: vec2<u32>) -> vec3<f32> {
 }
 
 fn sample_equirect(v: vec3<f32>) -> vec2<f32> {
-    let phi   = atan2(v.z, v.x);
+    // The picture centre looks along -Z, +X is to its right, and the top row of the file is
+    // straight up (image v grows downwards).
+    let phi   = atan2(v.x, -v.z);
     let theta = asin(v.y);
-    return vec2<f32>(phi / (2.0 * PI) + 0.5, theta / PI + 0.5);
+    return vec2<f32>(phi / (2.0 * PI) + 0.5, 0.5 - theta / PI);
 }
 
 @compute @workgroup_size(8, 8, 1)

@@ -9,6 +9,7 @@ use redox_math::{Aabb, Mat4, Quat, Vec3};
 use redox_render::camera::Camera;
 use redox_render::frame::FrameView;
 use redox_render::light::{DirectionalLight, LightScene};
+use redox_render::material::Material;
 use redox_render::mesh::primitive::create_cube;
 use redox_render::resource::ibl::read_texture_ktx2;
 use redox_render::shadow::ShadowClass;
@@ -20,7 +21,14 @@ const CAPACITY: usize = 10_000;
 /// Objects past the capacity: they must be dropped, not drawn.
 const EXTRA: usize = 500;
 
-fn cube_at(mesh: usize, center: Vec3, scale: f32, color: [f32; 4], id: u32) -> RenderObject {
+fn cube_at(
+    mesh: usize,
+    material: usize,
+    center: Vec3,
+    scale: f32,
+    color: [f32; 4],
+    id: u32,
+) -> RenderObject {
     let scale = Vec3::splat(scale);
     RenderObject {
         id,
@@ -30,7 +38,7 @@ fn cube_at(mesh: usize, center: Vec3, scale: f32, color: [f32; 4], id: u32) -> R
         model_matrix: Mat4::from_scale_rotation_translation(scale, Quat::IDENTITY, center),
         color,
         mesh_index: mesh,
-        material_index: 0,
+        material_index: material,
         bounds: Aabb::from_center_size(center, scale),
     }
 }
@@ -44,6 +52,7 @@ fn a_frame_with_more_objects_than_the_buffer_holds_does_not_panic() {
         return;
     };
     let mesh = renderer.upload_mesh(&create_cube());
+    let material = renderer.add_material(Material::solid(Vec3::ONE));
     let target = renderer.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("object_limit_target"),
         size: wgpu::Extent3d {
@@ -75,15 +84,24 @@ fn a_frame_with_more_objects_than_the_buffer_holds_does_not_panic() {
     let red = [1.0, 0.0, 0.0, 1.0];
     // Filler objects far off screen (kept, but invisible) fill up to the capacity.
     let off_screen = Vec3::new(1000.0, 0.0, -10.0);
-    let mut objects = vec![cube_at(mesh, Vec3::new(0.0, 0.0, -10.0), 0.5, red, 0)];
+    let mut objects = vec![cube_at(
+        mesh,
+        material,
+        Vec3::new(0.0, 0.0, -10.0),
+        0.5,
+        red,
+        0,
+    )];
     objects.extend(
-        (1..CAPACITY as u32).map(|i| cube_at(mesh, off_screen, 0.1, [0.0, 0.0, 1.0, 1.0], i)),
+        (1..CAPACITY as u32)
+            .map(|i| cube_at(mesh, material, off_screen, 0.1, [0.0, 0.0, 1.0, 1.0], i)),
     );
     // Past the capacity: a green cube in front of the red one. If it were drawn, the centre
     // pixel would be green.
     objects.extend((0..EXTRA as u32).map(|i| {
         cube_at(
             mesh,
+            material,
             Vec3::new(0.0, 0.0, -5.0),
             0.5,
             [0.0, 1.0, 0.0, 1.0],

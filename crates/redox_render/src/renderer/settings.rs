@@ -14,7 +14,12 @@ impl Renderer {
     /// [`IBLResource::from_ktx2`]. Skips the GPU convolution that
     /// [`Self::set_environment`] runs.
     pub fn set_ibl_resource(&mut self, resource: IBLResource) {
-        self.ibl_resource = resource;
+        drop(self.swap_ibl_resource(resource));
+    }
+
+    /// Installs `resource` as the IBL environment and returns the one it replaced.
+    pub(crate) fn swap_ibl_resource(&mut self, resource: IBLResource) -> IBLResource {
+        let previous = std::mem::replace(&mut self.ibl_resource, resource);
         self.update_shader_debug_buffer(ShaderDebugVizMode::None);
         self.update_global_bind_group();
         // The skybox samples the environment view directly: rebind it so a
@@ -27,6 +32,7 @@ impl Renderer {
                 &self.ibl_processor.sampler,
             );
         }
+        previous
     }
 
     /// The Basis Universal target this device handles best: BC7 when the device supports
@@ -262,6 +268,9 @@ impl Renderer {
             crate::sky::SkyMode::Hdri => {
                 if let Some(sb) = self.skybox_pass.as_mut() {
                     sb.sky = None;
+                }
+                if let Some(previous) = self.pre_sky_ibl.take() {
+                    self.set_ibl_resource(previous);
                 }
             }
             crate::sky::SkyMode::Procedural => {

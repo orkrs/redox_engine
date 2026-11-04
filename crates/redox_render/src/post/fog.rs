@@ -116,10 +116,12 @@ fn unit_or_zero(v: [f32; 3]) -> [f32; 3] {
 /// Builds the fog uniform for this frame from the settings, the camera and the sun.
 pub(crate) fn fog_uniform(s: &FogSettings, frame: &ChainFrame<'_>) -> FogUniform {
     let [near, far] = frame.near_far;
+    // `sun_direction` points towards the sun (the light uniform's convention); the fog shaders
+    // want the direction the light travels.
     let sun = unit_or_zero([
-        frame.sun_direction[0],
-        frame.sun_direction[1],
-        frame.sun_direction[2],
+        -frame.sun_direction[0],
+        -frame.sun_direction[1],
+        -frame.sun_direction[2],
     ]);
     let inv_view_proj = Mat4::from_cols_array_2d(&frame.camera.inv_view)
         * Mat4::from_cols_array_2d(&frame.camera.inv_proj);

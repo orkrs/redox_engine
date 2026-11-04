@@ -22,7 +22,7 @@ const SIZE: u32 = 128;
 
 /// FNV-1a of the frame bytes of [`single_sided_frames_are_bitwise_unchanged`], recorded on the
 /// renderer before MAT-08 step 2 changed any pipeline.
-const SINGLE_SIDED_FRAME_HASH: u64 = 0;
+const SINGLE_SIDED_FRAME_HASH: u64 = 6546600085312106948;
 
 static GPU: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
