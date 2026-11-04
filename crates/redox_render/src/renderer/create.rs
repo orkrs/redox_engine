@@ -110,6 +110,8 @@ impl Renderer {
         required_features |= adapter.features() & wgpu::Features::TEXTURE_COMPRESSION_BC;
         // Lets pipelines be cached on disk between runs (Vulkan).
         required_features |= adapter.features() & wgpu::Features::PIPELINE_CACHE;
+        // The VG traversal writes the instance slot into `first_instance` of its indirect draws.
+        required_features |= adapter.features() & wgpu::Features::INDIRECT_FIRST_INSTANCE;
         let required_limits = if adapter.get_info().backend == wgpu::Backend::Vulkan {
             required_device_limits(&adapter.limits())
         } else {

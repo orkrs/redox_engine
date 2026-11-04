@@ -11,6 +11,7 @@ pub fn device_with_bc(adapter: &wgpu::Adapter) -> Option<(wgpu::Device, wgpu::Qu
         | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
         | wgpu::Features::TEXTURE_COMPRESSION_BC
         | wgpu::Features::PIPELINE_CACHE
+        | wgpu::Features::INDIRECT_FIRST_INSTANCE
         | redox_render::profiler::PROFILER_FEATURES;
     pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         required_features: adapter.features() & wanted,

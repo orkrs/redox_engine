@@ -29,6 +29,7 @@ mod rig;
 mod scripted_coins;
 mod settings;
 mod settings_menu;
+mod showcase;
 mod sounds;
 mod ui;
 mod world_assets;
@@ -377,6 +378,7 @@ fn main() {
     ctx.set_exposure(0.9);
     ctx.set_ibl_intensity(0.55);
     load_environment(&mut ctx);
+    showcase::apply(&mut ctx, &level, !std::env::args().any(|a| a == "--no-gi"));
 
     let mut assets = AssetManager::with_workers(".", 2);
     assets.set_source(source);

@@ -997,7 +997,8 @@ fn fs_main(in: FsInput) -> @location(0) vec4<f32> {
     let diffuse_ibl = irradiance * albedo;
     let specular_ibl = prefiltered_color * (kS_ibl * env_brdf.x + env_brdf.y);
 
-    let ao = textureSample(t_ssao, s_ssao, sample_uv).r;
+    // Without GTAO the target holds nothing usable (zero or garbage): occlusion is off then, as in pbr.wgsl.
+    let ao = select(textureSample(t_ssao, s_ssao, sample_uv).r, 1.0, shader_debug.gtao_enabled == 0u);
 
     let ambient_factor = light_u.ambient.w;
 

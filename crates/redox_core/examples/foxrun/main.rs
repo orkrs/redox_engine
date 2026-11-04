@@ -291,6 +291,7 @@ fn screenshot(path: &str, seconds: f32, gem_dist: Option<f32>) {
         | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
         | wgpu::Features::TEXTURE_COMPRESSION_BC
         | wgpu::Features::PIPELINE_CACHE
+        | wgpu::Features::INDIRECT_FIRST_INSTANCE
         | redox_render::profiler::PROFILER_FEATURES;
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         required_features: adapter.features() & wanted,

@@ -7,6 +7,7 @@ Run any example with `cargo run --release --example <name> -p redox_core`.
 |---|---|---|
 | `courier` | third-person prototype: animation graph (blend tree, wave layer, root motion), game UI (menus, HUD, EN/RU), level and textures from a `.pak`, texture streaming | `cargo test --example courier -p redox_core` runs its game rules |
 | `skinned_demo` | clip-driven skinned rigs, two-bone IK, TAA/GTAO/VSM; `--golden` runs the regression frames, `--screenshot` renders headless | also the visual regression test |
+| `forest` | еловый лес со скалами, папоротником и травой из Poly Haven (`.glb` из Blender): VSM+SMRT, GTAO, IBL, туман с рассеянием, bloom, TAA; WASD + стрелки; `--shot out.png [w h]` рисует без окна | нужны `assets/forest/models/*.glb` (в git их нет) |
 | `dino_runner` | 3D endless runner on the full plugin stack | KCC, triggers, spatial SFX |
 | `ragdoll_demo` | humanoid ragdoll dropped on a floor, bone heights printed; `--throw`, `--lift <m>` | headless; exits non-zero if the figure does not come to rest |
 | `ragdoll_window` | window version: a box figure stands on a floor; `R` drops it into a ragdoll, `T` stands it up; `--shot <png>` renders headless, `--selftest` checks the transitions | box man, not the Fox (the Fox skeleton is not humanoid) |

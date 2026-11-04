@@ -57,6 +57,8 @@ impl Renderer {
             if vg.config.gpu_cull {
                 vg.poll_gpu_cull_count(&self.device);
             }
+            // Records that carry a DAG asset's material must reach the GPU in every mode.
+            vg.upload_meshlets_if_dirty(&self.queue);
             if vg.config.gpu_cull && vg.active_instance_count() > 0 {
                 let cam_pos = Vec3::new(
                     self.camera_uniform.camera_pos[0],

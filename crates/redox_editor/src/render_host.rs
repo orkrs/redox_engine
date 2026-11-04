@@ -41,7 +41,9 @@ pub fn engine_required_features(adapter: &wgpu::Adapter) -> wgpu::Features {
     required |= adapter.features() & redox_render::PROFILER_FEATURES;
     // Block-compressed textures and the on-disk pipeline cache, when the adapter has them.
     required |= adapter.features()
-        & (wgpu::Features::TEXTURE_COMPRESSION_BC | wgpu::Features::PIPELINE_CACHE);
+        & (wgpu::Features::TEXTURE_COMPRESSION_BC
+            | wgpu::Features::PIPELINE_CACHE
+            | wgpu::Features::INDIRECT_FIRST_INSTANCE);
     required
 }
 

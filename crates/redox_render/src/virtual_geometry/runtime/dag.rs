@@ -18,7 +18,7 @@ use crate::virtual_geometry::dag_gpu::DagFrame;
 use crate::virtual_geometry::dag_gpu::DagTraversal;
 use crate::virtual_geometry::gpu_cull::CullParamsUniform;
 use crate::virtual_geometry::indirect::IndirectDrawBuffer;
-use crate::virtual_geometry::meshlet::VGInstanceData;
+use crate::virtual_geometry::meshlet::{MeshletDescriptor, VGInstanceData};
 
 use super::{VGAssetId, VGInstanceHandle, VGSystem};
 
@@ -44,6 +44,9 @@ struct DagStoredAsset {
     /// Local bounds, as the flat path stores them for vertex decoding.
     bounds_min: [f32; 4],
     bounds_extent: [f32; 4],
+    /// Slot in the global meshlet table of the record that carries the asset's material: the
+    /// resolve pass reads the material of an instance from `meshlets[meshlet_offset]`.
+    material_slot: u32,
 }
 
 /// DAG-path state of [`VGSystem`].
@@ -138,13 +141,40 @@ impl VGSystem {
             u64::from(vertex_base) * std::mem::size_of::<CompressedVertex>() as u64,
             bytemuck::cast_slice(&compressed),
         );
+        // The cluster builder emits triangles clockwise as the visibility pass sees them (its
+        // pipeline culls back faces, counter-clockwise front): flip each triangle on upload, or
+        // the surface that faces the camera is culled and the far side shows through.
+        let facing: Vec<u32> = asset
+            .indices
+            .chunks_exact(3)
+            .flat_map(|t| [t[0], t[2], t[1]])
+            .collect();
         queue.write_buffer(
             &self.index_buffer,
             u64::from(index_base) * std::mem::size_of::<u32>() as u64,
-            bytemuck::cast_slice(&asset.indices),
+            bytemuck::cast_slice(&facing),
         );
         self.vertex_watermark += vert_needed as u32;
         self.index_watermark += idx_needed as u32;
+
+        // The resolve pass finds an instance's material through a meshlet record. DAG assets draw
+        // their own clusters, so this record is a stand-in that only carries the material.
+        let material_slot = self.global_meshlets.len() as u32;
+        self.global_meshlets.push(MeshletDescriptor {
+            vertex_offset: 0,
+            vertex_count: 0,
+            index_offset: 0,
+            index_count: 0,
+            sphere_center: [0.0; 3],
+            sphere_radius: 0.0,
+            cone_axis: [0.0, 0.0, 1.0],
+            cone_cutoff: -1.0,
+            lod_error: 0.0,
+            lod_level: 0,
+            material_index: asset.material_index,
+            _pad: 0,
+        });
+        self.meshlets_dirty = true;
 
         let id = VGAssetId(self.next_asset_id);
         self.next_asset_id += 1;
@@ -154,6 +184,7 @@ impl VGSystem {
                 dag_index,
                 bounds_min,
                 bounds_extent,
+                material_slot,
             },
         );
         Some(id)
@@ -176,7 +207,7 @@ impl VGSystem {
         self.next_instance_id += 1;
         let inst = VGInstanceData {
             transform,
-            meshlet_offset: 0,
+            meshlet_offset: stored.material_slot,
             meshlet_count: 0,
             flags: 0,
             _pad: 0,

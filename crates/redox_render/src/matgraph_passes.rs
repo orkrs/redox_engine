@@ -41,11 +41,13 @@ pub enum GraphPass {
     /// Visibility buffer resolve of virtual geometry (MAT-07 step 2): the surface of the graph
     /// replaces the base shading of the pixels of its slot.
     VgResolve,
+    /// Object velocity pass: the motion of vertices that a graph offsets (WPO).
+    Velocity,
 }
 
 impl GraphPass {
     /// Every pass, in the order pipelines are built.
-    pub const ALL: [GraphPass; 7] = [
+    pub const ALL: [GraphPass; 8] = [
         GraphPass::Forward,
         GraphPass::Alpha,
         GraphPass::Additive,
@@ -53,6 +55,7 @@ impl GraphPass {
         GraphPass::Shadow,
         GraphPass::VsmDepth,
         GraphPass::VgResolve,
+        GraphPass::Velocity,
     ];
 
     /// Codegen pass whose WGSL this pass uses. Alpha and additive share the forward module.
@@ -61,7 +64,7 @@ impl GraphPass {
             GraphPass::Forward | GraphPass::Alpha | GraphPass::Additive | GraphPass::VgResolve => {
                 Pass::Main
             }
-            GraphPass::Depth => Pass::Depth,
+            GraphPass::Depth | GraphPass::Velocity => Pass::Depth,
             GraphPass::Shadow | GraphPass::VsmDepth => Pass::Shadow,
         }
     }
@@ -72,6 +75,7 @@ impl GraphPass {
     pub fn features(self) -> redox_matgraph::Features {
         redox_matgraph::Features {
             instanced: self == GraphPass::VsmDepth,
+            vertex_anim: self == GraphPass::Velocity,
             skinning: self == GraphPass::VgResolve,
             ..redox_matgraph::Features::default()
         }
@@ -81,7 +85,7 @@ impl GraphPass {
     pub fn params_group(self) -> u32 {
         match self {
             GraphPass::Forward | GraphPass::Alpha | GraphPass::Additive => GRAPH_PARAMS_GROUP,
-            GraphPass::Depth | GraphPass::VsmDepth => 1,
+            GraphPass::Depth | GraphPass::VsmDepth | GraphPass::Velocity => 1,
             GraphPass::Shadow => 2,
             GraphPass::VgResolve => 3,
         }
@@ -98,6 +102,8 @@ pub(crate) struct PassBindLayouts {
     pub shadow_model: wgpu::BindGroupLayout,
     /// Model storage and page info (dynamic offset) of the virtual shadow pages (group 0).
     pub vsm_scene: wgpu::BindGroupLayout,
+    /// Camera, current and previous models, velocity uniform of the object velocity pass (group 0).
+    pub velocity_scene: wgpu::BindGroupLayout,
 }
 
 impl PassBindLayouts {
@@ -135,11 +141,21 @@ impl PassBindLayouts {
                 },
             ],
         });
+        let velocity_scene = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("matgraph_velocity_scene_bgl"),
+            entries: &[
+                uniform_entry(0, wgpu::ShaderStages::VERTEX),
+                storage_entry(1, wgpu::ShaderStages::VERTEX),
+                storage_entry(2, wgpu::ShaderStages::VERTEX),
+                uniform_entry(3, wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT),
+            ],
+        });
         Self {
             depth_scene,
             shadow_scene,
             shadow_model,
             vsm_scene,
+            velocity_scene,
         }
     }
 }
@@ -272,6 +288,15 @@ pub fn vg_resolve_source(generated: &Generated, slot: usize) -> String {
          @group(3) @binding(1) var<uniform> mat_graph_time: vec4<f32>;\n",
         generated.uniform_wgsl, generated.wgsl
     )
+}
+
+/// Module source of the object velocity variant: the previous and current positions both carry
+/// the vertex offset of the graph (current time and previous time), graph parameters in group 1.
+pub fn velocity_source(generated: &Generated) -> String {
+    shader_with_vertex_decode(&format!(
+        "{MATERIAL_SURFACE_WGSL}\n{}\n{}\n{VELOCITY_TEMPLATE}",
+        generated.uniform_wgsl, generated.wgsl
+    ))
 }
 
 /// Whether two objects may share one draw run in a prepass or shadow pass. Objects of graph
@@ -618,6 +643,131 @@ fn fs_graph_vsm(in: GraphVsmVsOut) -> @location(0) f32 {
     return in.depth;
 }
 "#;
+
+/// Object velocity variant: as `object_velocity.wgsl`, with the graph vertex offset applied to the
+/// current position (time) and to the previous one (previous time).
+const VELOCITY_TEMPLATE: &str = r#"
+struct GraphVelCamera {
+    view_proj: mat4x4<f32>,
+    camera_pos: vec4<f32>,
+};
+
+struct GraphVelModel {
+    model: mat4x4<f32>,
+    normal_matrix: mat3x3<f32>,
+    color: vec4<f32>,
+    bounds_min: vec4<f32>,
+    bounds_extent: vec4<f32>,
+};
+
+struct GraphVelPrev {
+    model: mat4x4<f32>,
+};
+
+struct GraphVelUniform {
+    inv_curr_vp : mat4x4<f32>,
+    prev_vp     : mat4x4<f32>,
+    screen_size : vec2<f32>,
+    jitter_uv   : vec2<f32>,
+};
+
+@group(0) @binding(0) var<uniform> graph_vel_camera: GraphVelCamera;
+@group(0) @binding(1) var<storage, read> graph_vel_models: array<GraphVelModel>;
+@group(0) @binding(2) var<storage, read> graph_vel_prev: array<GraphVelPrev>;
+@group(0) @binding(3) var<uniform> graph_vel_u: GraphVelUniform;
+@group(1) @binding(0) var<uniform> mat_graph_params: MaterialParams;
+@group(1) @binding(1) var<uniform> mat_graph_time: vec4<f32>;
+
+const GRAPH_VEL_DEPTH_PULL: f32 = 2.0e-5;
+
+struct GraphVelVsOut {
+    @builtin(position) clip_pos : vec4<f32>,
+    @location(0) prev_clip : vec4<f32>,
+    @location(1) world_pos : vec3<f32>,
+    @location(2) world_normal : vec3<f32>,
+    @location(3) uv : vec2<f32>,
+};
+
+fn graph_vel_surface_input(world_pos: vec3<f32>, world_normal: vec3<f32>) -> SurfaceInput {
+    return SurfaceInput(world_pos, world_normal, vec3<f32>(1.0, 0.0, 0.0), vec4<f32>(1.0), vec3<f32>(0.0));
+}
+
+@vertex
+fn vs_graph_velocity(in: CompressedVertIn, @builtin(instance_index) instance_idx: u32) -> GraphVelVsOut {
+    var out: GraphVelVsOut;
+    let mdl = graph_vel_models[instance_idx];
+    let local_pos = decode_local_position(in.pos_q, mdl.bounds_min.xyz, mdl.bounds_extent.xyz);
+    let normal_w = normalize(mdl.normal_matrix * oct_decode(in.normal_oct));
+    var world_pos = mdl.model * vec4<f32>(local_pos, 1.0);
+    world_pos = world_pos + vec4<f32>(material_vertex_offset_graph(graph_vel_surface_input(world_pos.xyz, normal_w), in.uv, mat_graph_time.x, mat_graph_params), 0.0);
+    var prev_world = graph_vel_prev[instance_idx].model * vec4<f32>(local_pos, 1.0);
+    prev_world = prev_world + vec4<f32>(material_vertex_offset_graph(graph_vel_surface_input(prev_world.xyz, normal_w), in.uv, mat_graph_time.y, mat_graph_params), 0.0);
+    var clip = graph_vel_camera.view_proj * world_pos;
+    clip.z = clip.z - GRAPH_VEL_DEPTH_PULL * clip.w;
+    out.clip_pos = clip;
+    out.prev_clip = graph_vel_u.prev_vp * prev_world;
+    out.world_pos = world_pos.xyz;
+    out.world_normal = normal_w;
+    out.uv = in.uv;
+    return out;
+}
+
+@fragment
+fn fs_graph_velocity(in: GraphVelVsOut) -> @location(0) vec4<f32> {
+    let surf = material_surface_graph(graph_vel_surface_input(in.world_pos, in.world_normal), in.uv, mat_graph_time.x, mat_graph_params);
+    if surf.opacity < 0.5 {
+        discard;
+    }
+    let uv = in.clip_pos.xy / graph_vel_u.screen_size;
+    let prev_ndc = in.prev_clip.xy / in.prev_clip.w;
+    let prev_uv = vec2<f32>(prev_ndc.x * 0.5 + 0.5, 0.5 - prev_ndc.y * 0.5);
+    return vec4<f32>(uv - prev_uv, in.clip_pos.z, 1.0);
+}
+"#;
+
+/// Velocity variant pipeline: the object velocity pass state with the graph vertex stage.
+pub(crate) fn velocity_pipeline(
+    device: &wgpu::Device,
+    layout: &wgpu::PipelineLayout,
+    module: &wgpu::ShaderModule,
+) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        cache: crate::pipeline_cache::get(),
+        label: Some("matgraph_velocity_pipeline"),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module,
+            entry_point: Some("vs_graph_velocity"),
+            buffers: &[Some(CompressedVertex::buffer_layout())],
+            compilation_options: Default::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module,
+            entry_point: Some("fs_graph_velocity"),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: wgpu::TextureFormat::Rgba16Float,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: Default::default(),
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: Some(wgpu::Face::Back),
+            ..Default::default()
+        },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: DEPTH_FORMAT,
+            depth_write_enabled: Some(false),
+            depth_compare: Some(wgpu::CompareFunction::LessEqual),
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
+        multisample: wgpu::MultisampleState::default(),
+        multiview_mask: None,
+    })
+}
 
 /// VSM page variant pipeline: the page atlas colour target, both faces cast.
 pub(crate) fn vsm_pipeline(

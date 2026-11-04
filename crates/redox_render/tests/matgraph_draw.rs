@@ -217,13 +217,13 @@ fn two_instances_share_one_shader_with_different_params() {
     let matgraphs = &rig.renderer.matgraphs;
     assert_eq!(
         matgraphs.shader_count(),
-        3,
-        "one module per codegen pass (main, depth, shadow) for both slots"
+        7,
+        "one module per codegen pass (main, depth, shadow, vsm, velocity) shared by both slots, plus one VG resolve module per slot"
     );
     assert_eq!(
         matgraphs.pipeline_count(),
-        5,
-        "forward, alpha, additive, depth and shadow pipelines"
+        7,
+        "forward, alpha, additive, depth, shadow, VSM and velocity pipelines"
     );
     assert_eq!(matgraphs.material_count(), 2);
 
@@ -311,7 +311,11 @@ fn a_graph_slot_has_a_pipeline_for_every_pass() {
     rig.renderer
         .set_material_graph(graphed, &colour_graph([0.0, 1.0, 0.0]), &[])
         .unwrap();
-    for pass in GraphPass::ALL {
+    // The VG resolve pipeline is built on demand, when a frame has VG content.
+    for pass in GraphPass::ALL
+        .into_iter()
+        .filter(|p| *p != GraphPass::VgResolve)
+    {
         assert!(
             rig.renderer.matgraphs.pass_binding(graphed, pass).is_some(),
             "graph slot has no {pass:?} pipeline"

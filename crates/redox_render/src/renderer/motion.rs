@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use redox_math::Mat4;
 
+use crate::matgraph_passes::GraphPass;
 use crate::systems::RenderObject;
 
 /// Matrices closer than this (largest element difference) count as "did not move".
@@ -23,6 +24,10 @@ pub(super) struct ObjectMotion {
     pub(super) prev_matrices: Vec<[[f32; 4]; 4]>,
     /// `(instance index, mesh slot)` of the objects that moved.
     pub(super) moving: Vec<(u32, usize)>,
+    /// Material slot of every object of the current frame.
+    pub(super) materials: Vec<usize>,
+    /// Mesh slot of every object of the current frame.
+    pub(super) mesh_slots: Vec<usize>,
 }
 
 fn max_difference(a: &Mat4, b: &Mat4) -> f32 {
@@ -40,6 +45,11 @@ impl ObjectMotion {
         let ids = ids.filter(|ids| ids.len() == objects.len());
         self.prev_matrices.clear();
         self.moving.clear();
+        self.materials.clear();
+        self.materials
+            .extend(objects.iter().map(|o| o.material_index));
+        self.mesh_slots.clear();
+        self.mesh_slots.extend(objects.iter().map(|o| o.mesh_index));
         for (i, object) in objects.iter().enumerate() {
             let previous = match ids {
                 Some(ids) => self.by_id.get(&ids[i]).copied(),
@@ -92,7 +102,20 @@ impl super::Renderer {
     pub(super) fn record_object_velocity(&self, encoder: &mut wgpu::CommandEncoder) {
         self.object_velocity_draws
             .store(0, std::sync::atomic::Ordering::Relaxed);
-        if self.skip_object_velocity_pass || self.object_motion.moving.is_empty() {
+        // Objects whose graph offsets vertices move even when their matrix does not.
+        let mut drawn: Vec<(u32, usize)> = self.object_motion.moving.clone();
+        if self.matgraphs.any_wpo() {
+            for (i, &material) in self.object_motion.materials.iter().enumerate() {
+                let instance = i as u32;
+                if self.matgraphs.wpo_max(material) > 0.0
+                    && !drawn.iter().any(|(d, _)| *d == instance)
+                    && let Some(mesh_slot) = self.object_motion.mesh_slots.get(i).copied()
+                {
+                    drawn.push((instance, mesh_slot));
+                }
+            }
+        }
+        if self.skip_object_velocity_pass || drawn.is_empty() {
             return;
         }
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -121,10 +144,29 @@ impl super::Renderer {
         pass.set_pipeline(&self.object_velocity_pass.pipeline);
         pass.set_bind_group(0, &self.object_velocity_bg, &[]);
         let mut draws = 0u32;
-        for &(instance, mesh_slot) in &self.object_motion.moving {
+        let mut on_graph = false;
+        for &(instance, mesh_slot) in &drawn {
             let Some(mesh) = self.registry.mesh_by_slot(mesh_slot) else {
                 continue;
             };
+            let material = self
+                .object_motion
+                .materials
+                .get(instance as usize)
+                .copied()
+                .unwrap_or(0);
+            match self.matgraphs.pass_binding(material, GraphPass::Velocity) {
+                Some((pipeline, params)) => {
+                    pass.set_pipeline(pipeline);
+                    pass.set_bind_group(GraphPass::Velocity.params_group(), params, &[]);
+                    on_graph = true;
+                }
+                None if on_graph => {
+                    pass.set_pipeline(&self.object_velocity_pass.pipeline);
+                    on_graph = false;
+                }
+                None => {}
+            }
             pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
             pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
             pass.draw_indexed(0..mesh.index_count, 0, instance..instance + 1);

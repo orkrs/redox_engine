@@ -19,7 +19,7 @@ use redox_matgraph::{
 
 use crate::matgraph_passes::{
     GraphPass, PassBindLayouts, blended_pipeline, depth_pipeline, depth_source, shadow_pipeline,
-    shadow_source, vg_resolve_source, vsm_pipeline, vsm_source,
+    shadow_source, velocity_pipeline, velocity_source, vg_resolve_source, vsm_pipeline, vsm_source,
 };
 use crate::pass::pbr::{PbrPass, pbr_render_pipeline};
 use crate::pass::transparent::ADDITIVE_BLEND;
@@ -279,10 +279,14 @@ struct GraphMaterial {
     shadow_key: ShaderKey,
     /// Key of the sun shadow page module.
     vsm_key: ShaderKey,
+    /// Key of the object velocity module.
+    velocity_key: ShaderKey,
     /// Key of the VG resolve module of this slot (one per slot: the slot is in its text).
     vg_key: ShaderKey,
     /// Longest vertex offset the graph declares, metres.
     wpo_max: f32,
+    /// Texture views of the slots, kept so a rebuild without textures does not lose them.
+    textures: Vec<Option<wgpu::TextureView>>,
     /// Keeps the parameter block alive for the bind groups.
     _params_buffer: wgpu::Buffer,
     params: wgpu::BindGroup,
@@ -296,6 +300,7 @@ impl GraphMaterial {
             GraphPass::Depth => self.depth_key,
             GraphPass::Shadow => self.shadow_key,
             GraphPass::VsmDepth => self.vsm_key,
+            GraphPass::Velocity => self.velocity_key,
             GraphPass::VgResolve => self.vg_key,
         }
     }
@@ -317,6 +322,8 @@ pub struct MaterialGraphs {
     shadow_layout: wgpu::PipelineLayout,
     /// Sun shadow page layout: page scene group 0 and the graph parameter group 1.
     vsm_layout: wgpu::PipelineLayout,
+    /// Object velocity layout: the velocity scene group 0 and the graph parameter group 1.
+    velocity_layout: wgpu::PipelineLayout,
     /// Frame time uniform bound at binding 1 of every parameter group.
     time_buffer: wgpu::Buffer,
     /// 1x1 white texture bound to the texture slots a material does not fill.
@@ -375,10 +382,16 @@ impl MaterialGraphs {
             bind_group_layouts: &[Some(&bind_layouts.vsm_scene), Some(&graph_bgl)],
             immediate_size: 0,
         });
+        let velocity_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("matgraph_velocity_pipeline_layout"),
+            bind_group_layouts: &[Some(&bind_layouts.velocity_scene), Some(&graph_bgl)],
+            immediate_size: 0,
+        });
         Self {
             surface_format,
             sample_count,
             graph_bgl,
+            velocity_layout,
             time_buffer,
             white,
             samplers,
@@ -534,6 +547,8 @@ impl MaterialGraphs {
         let (depth_key, _) = self.ensure_variant(device, graph, source_hash, GraphPass::Depth)?;
         let (shadow_key, _) = self.ensure_variant(device, graph, source_hash, GraphPass::Shadow)?;
         let (vsm_key, _) = self.ensure_variant(device, graph, source_hash, GraphPass::VsmDepth)?;
+        let (velocity_key, _) =
+            self.ensure_variant(device, graph, source_hash, GraphPass::Velocity)?;
         let vg_key = self.ensure_vg_variant(device, graph, material_index)?;
         for pass in [GraphPass::Alpha, GraphPass::Additive] {
             self.ensure_pipeline(device, key, pass);
@@ -548,7 +563,17 @@ impl MaterialGraphs {
             mapped_at_creation: false,
         });
         queue.write_buffer(&buffer, 0, &bytes);
-        let params_bg = self.params_bind_group(device, &buffer, textures);
+        // A rebuild without textures (hot reload, material instance) keeps the slot's textures.
+        let kept: Vec<Option<wgpu::TextureView>> = if textures.is_empty() {
+            self.materials
+                .get(&material_index)
+                .map(|m| m.textures.clone())
+                .unwrap_or_default()
+        } else {
+            textures.iter().map(|t| t.cloned()).collect()
+        };
+        let kept_refs: Vec<Option<&wgpu::TextureView>> = kept.iter().map(Option::as_ref).collect();
+        let params_bg = self.params_bind_group(device, &buffer, &kept_refs);
         // A new graph replaces the slot's VG pipeline, which is built again on demand.
         self.vg_pipelines.remove(&material_index);
         self.materials.insert(
@@ -558,8 +583,10 @@ impl MaterialGraphs {
                 depth_key,
                 shadow_key,
                 vsm_key,
+                velocity_key,
                 vg_key,
                 wpo_max: forward.ir.wpo_max,
+                textures: kept,
                 _params_buffer: buffer,
                 params: params_bg,
             },
@@ -750,6 +777,7 @@ impl MaterialGraphs {
             GraphPass::Depth => depth_pipeline(device, &self.depth_layout, module),
             GraphPass::Shadow => shadow_pipeline(device, &self.shadow_layout, module),
             GraphPass::VsmDepth => vsm_pipeline(device, &self.vsm_layout, module),
+            GraphPass::Velocity => velocity_pipeline(device, &self.velocity_layout, module),
             // Built by the VG resolve pass per slot (step 3), never here.
             GraphPass::VgResolve => return,
         };
@@ -913,6 +941,7 @@ fn variant_module(pass: GraphPass, generated: &Generated) -> Result<String, Vari
         GraphPass::Depth => Ok(depth_source(generated)),
         GraphPass::Shadow => Ok(shadow_source(generated)),
         GraphPass::VsmDepth => Ok(vsm_source(generated)),
+        GraphPass::Velocity => Ok(velocity_source(generated)),
         GraphPass::VgResolve => Err(VariantError::InvalidWgsl(
             "VG resolve modules are built per slot".to_owned(),
         )),
