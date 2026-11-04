@@ -146,6 +146,8 @@ impl Renderer {
         );
         let bind_group = self.build_material_bind_group(&material, &buffer, from_pool);
         self.material_alpha_test.push(material.alpha_test);
+        // VG resolves back faces away, so double-sided materials stay on the classic path.
+        let keeps_classic_path = material.alpha_test || material.double_sided;
         if material.refraction.is_some() {
             self.refractive_materials += 1;
         }
@@ -158,9 +160,7 @@ impl Renderer {
         let idx = self
             .registry
             .push_legacy_material(material, buffer, bind_group);
-        if self.material_alpha_test.last().copied().unwrap_or(false)
-            && let Some(vg) = self.vg_system.as_mut()
-        {
+        if keeps_classic_path && let Some(vg) = self.vg_system.as_mut() {
             vg.mark_alpha_tested_material(idx as u32);
         }
         self.registry.legacy_material_from_pool.push(from_pool);

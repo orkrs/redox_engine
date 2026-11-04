@@ -116,7 +116,8 @@ impl Renderer {
         render_pass.set_bind_group(3, &self.model_bind_group, &[]);
 
         let mut calls = 0u32;
-        // True while the pass is bound to a graph variant pipeline (MAT-02).
+        // True while the pass is bound to a non-default pipeline: a graph variant (MAT-02) or
+        // the double-sided one (MAT-08).
         let mut on_graph = false;
         let same = |a: usize, b: usize| {
             objects[a].mesh_index == objects[b].mesh_index
@@ -137,6 +138,13 @@ impl Renderer {
                     params_bg,
                     &[],
                 );
+                on_graph = true;
+            } else if self
+                .registry
+                .legacy_material(obj.material_index)
+                .is_some_and(|material| material.double_sided)
+            {
+                render_pass.set_pipeline(&self.pbr_pass.double_sided_pipeline);
                 on_graph = true;
             } else if on_graph {
                 render_pass.set_pipeline(&self.pbr_pass.pipeline);

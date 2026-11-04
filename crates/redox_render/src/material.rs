@@ -58,6 +58,9 @@ pub struct Material {
     pub alpha_test: bool,
     /// Screen-space refraction of the scene behind the surface (glass, water); `None` = off.
     pub refraction: Option<Refraction>,
+    /// Both faces are shaded (foliage, cards). Back faces get the normal and tangent mirrored
+    /// and are drawn by a pipeline without back-face culling. Off = legacy single-sided path.
+    pub double_sided: bool,
 }
 
 /// Screen-space refraction of a transparent material (MAT-06 step 4).
@@ -159,6 +162,8 @@ pub mod material_flags {
     pub const HAS_SUBSURFACE: u32 = 1 << 7;
     /// The surface refracts the scene behind it (`sss_params.yz` = ior, strength).
     pub const HAS_REFRACTION: u32 = 1 << 8;
+    /// Back faces are shaded too: the normal and tangent are mirrored for them (MAT-08).
+    pub const DOUBLE_SIDED: u32 = 1 << 9;
 }
 
 /// Coat IOR used when a coat is enabled without an explicit IOR.
@@ -185,7 +190,14 @@ impl Material {
             subsurface: None,
             alpha_test: false,
             refraction: None,
+            double_sided: false,
         }
+    }
+
+    /// Shades back faces too (foliage, cards). Default: single-sided.
+    pub fn double_sided(mut self, double_sided: bool) -> Self {
+        self.double_sided = double_sided;
+        self
     }
 
     /// Enables screen-space refraction (use with `BlendMode::Alpha`).
@@ -283,6 +295,9 @@ impl Material {
         }
         if self.mr_texture_index.is_some() {
             flags |= material_flags::HAS_MR_TEX;
+        }
+        if self.double_sided {
+            flags |= material_flags::DOUBLE_SIDED;
         }
 
         let (l0, l1) = match &self.layers {
