@@ -19,6 +19,8 @@ pub struct SkyboxPass {
     /// Bind group over the environment view, sampler, and camera buffer.
     /// Refresh via [`Self::refresh_bind_group`] when the environment changes.
     pub bind_group: wgpu::BindGroup,
+    /// Procedural sky (`SkyMode::Procedural`). When present it draws instead of the cubemap.
+    pub sky: Option<crate::sky::SkyAtmosphere>,
 }
 
 impl SkyboxPass {
@@ -129,7 +131,34 @@ impl SkyboxPass {
             pipeline,
             bind_group_layout,
             bind_group,
+            sky: None,
         }
+    }
+
+    /// Recreates the pipelines for a new HDR format or sample count (window resize).
+    /// Keeps the procedural sky, rebuilding only its pass pipeline.
+    pub fn rebuild(
+        &mut self,
+        device: &wgpu::Device,
+        camera_buffer: &wgpu::Buffer,
+        env_view: &wgpu::TextureView,
+        env_sampler: &wgpu::Sampler,
+        hdr_format: wgpu::TextureFormat,
+        sample_count: u32,
+    ) {
+        let sky = self.sky.take();
+        *self = Self::new(
+            device,
+            camera_buffer,
+            env_view,
+            env_sampler,
+            hdr_format,
+            sample_count,
+        );
+        self.sky = sky.map(|mut s| {
+            s.rebuild_pass(device, camera_buffer, hdr_format, sample_count);
+            s
+        });
     }
 
     /// Recreates the group-0 bind group for a (possibly new) environment view.
@@ -182,6 +211,10 @@ impl SkyboxPass {
     /// Records one fullscreen-triangle draw. Call right after the depth clear,
     /// before opaque draws, inside the forward HDR render pass.
     pub fn draw<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
+        if let Some(sky) = &self.sky {
+            sky.draw(render_pass);
+            return;
+        }
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &self.bind_group, &[]);
         render_pass.draw(0..3, 0..1);

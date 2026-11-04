@@ -91,6 +91,8 @@ impl Renderer {
         f.touch("depth");
         f.touch_scene_reads();
         let objects = f.objects;
+        // Procedural sky: sky-view LUT (and IBL cube when the sun moved) before the pass.
+        self.prepare_procedural_sky(&mut f.encoder, f.cam_eye);
         let encoder = &mut f.encoder;
         let hdr_resolve_pass = f.hdr_resolve_pass;
         let msaa_sample_count = self.msaa_sample_count;
@@ -127,7 +129,7 @@ impl Renderer {
             // opaque fragment overwrites it. Skipped while the dummy (black)
             // IBL placeholder is active.
             if let Some(sb) = &self.skybox_pass
-                && !self.ibl_resource.is_dummy()
+                && (sb.sky.is_some() || !self.ibl_resource.is_dummy())
             {
                 sb.draw(&mut render_pass);
             }
