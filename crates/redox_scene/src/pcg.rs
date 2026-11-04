@@ -229,6 +229,111 @@ pub fn generate_to(root: impl AsRef<Path>, params: &PcgParams) -> SceneResult<Ge
     Ok(world)
 }
 
+/// Rule of a foliage layer scattered over the cells (FOL-03 step 5).
+#[derive(Clone, Debug)]
+pub struct FoliageRule {
+    /// Model the layer draws.
+    pub model: String,
+    /// Expected placements per square metre, before the mask and the filters.
+    pub density_per_m2: f32,
+    /// Smallest scale of a placement.
+    pub min_scale: f32,
+    /// Largest scale of a placement.
+    pub max_scale: f32,
+    /// Steepest accepted slope, in degrees.
+    pub max_slope: f32,
+    /// Accepted height range in metres, inclusive on both ends.
+    pub height_range: (f32, f32),
+    /// Optional mask over world `(x, z)`; `false` leaves the spot empty.
+    pub mask: Option<fn(f32, f32) -> bool>,
+}
+
+/// One placement made by [`scatter_layer`]. Converts field by field to the render instance.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScatteredInstance {
+    /// World position; `y` is the height at `(x, z)`.
+    pub pos: [f32; 3],
+    /// Rotation around Y, in radians.
+    pub yaw: f32,
+    /// Uniform scale.
+    pub scale: f32,
+    /// Per-instance random seed.
+    pub seed: u32,
+}
+
+/// Distance of the finite differences that give the slope.
+const SLOPE_STEP: f32 = 0.5;
+
+/// Scatters the instances of `rule` in one cell. Deterministic in `(seed, rule.model, cell)`:
+/// every candidate draws the same five random values whether it is accepted or not, so one
+/// rejected spot never shifts the others. Instances stay inside the cell's square of side
+/// `cell_size`, so neighbouring cells never share a placement.
+pub fn scatter_layer(
+    rule: &FoliageRule,
+    cell: PartitionCell,
+    cell_size: f32,
+    seed: u64,
+    height_fn: impl Fn(f32, f32) -> f32,
+) -> Vec<ScatteredInstance> {
+    let expected = (rule.density_per_m2 * cell_size * cell_size).max(0.0);
+    let mut rng = cell_seed(seed ^ name_hash(&rule.model), cell);
+    rng = splitmix64(rng);
+    let whole = expected.floor();
+    let count = whole as u32 + u32::from(unit(rng) < expected - whole);
+
+    let (x0, z0) = (cell.x as f32 * cell_size, cell.y as f32 * cell_size);
+    let mut out = Vec::new();
+    for _ in 0..count {
+        let x = x0 + unit(next(&mut rng)) * cell_size;
+        let z = z0 + unit(next(&mut rng)) * cell_size;
+        let yaw = unit(next(&mut rng)) * std::f32::consts::TAU;
+        let scale = rule.min_scale + (rule.max_scale - rule.min_scale) * unit(next(&mut rng));
+        let instance_seed = (next(&mut rng) >> 32) as u32;
+        if !rule.mask.is_none_or(|mask| mask(x, z)) {
+            continue;
+        }
+        let height = height_fn(x, z);
+        if height < rule.height_range.0 || height > rule.height_range.1 {
+            continue;
+        }
+        if slope_degrees(&height_fn, x, z) > rule.max_slope {
+            continue;
+        }
+        out.push(ScatteredInstance {
+            pos: [x, height, z],
+            yaw,
+            scale,
+            seed: instance_seed,
+        });
+    }
+    out
+}
+
+/// Advances `state` and returns the new value (splitmix stream).
+fn next(state: &mut u64) -> u64 {
+    *state = splitmix64(*state);
+    *state
+}
+
+/// Uniform value in `[0, 1)` from the top 24 bits.
+fn unit(bits: u64) -> f32 {
+    (bits >> 40) as f32 / (1u64 << 24) as f32
+}
+
+/// Slope in degrees from central differences of the height.
+fn slope_degrees(height_fn: &impl Fn(f32, f32) -> f32, x: f32, z: f32) -> f32 {
+    let gx = (height_fn(x + SLOPE_STEP, z) - height_fn(x - SLOPE_STEP, z)) / (2.0 * SLOPE_STEP);
+    let gz = (height_fn(x, z + SLOPE_STEP) - height_fn(x, z - SLOPE_STEP)) / (2.0 * SLOPE_STEP);
+    (1.0 / (gx * gx + gz * gz + 1.0).sqrt()).acos().to_degrees()
+}
+
+/// FNV-1a of the model name, so two rules with the same seed scatter differently.
+fn name_hash(name: &str) -> u64 {
+    name.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| {
+        (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+    })
+}
+
 /// Groups records by cell (for callers that already have a flat actor list).
 pub fn index_by_cell(
     cell_size: f32,
@@ -241,4 +346,69 @@ pub fn index_by_cell(
         map.entry(cell).or_default().push(actor);
     }
     map
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const CELL: f32 = 64.0;
+
+    fn rule(max_slope: f32, height_range: (f32, f32)) -> FoliageRule {
+        FoliageRule {
+            model: "fern".into(),
+            density_per_m2: 0.5,
+            min_scale: 0.8,
+            max_scale: 1.2,
+            max_slope,
+            height_range,
+            mask: None,
+        }
+    }
+
+    /// Flat ground at height 0.
+    fn flat(_: f32, _: f32) -> f32 {
+        0.0
+    }
+
+    /// A ramp rising 0.5 m per metre along X (slope about 26.6 degrees).
+    fn ramp(x: f32, _: f32) -> f32 {
+        0.5 * x
+    }
+
+    #[test]
+    fn scatter_is_deterministic() {
+        let r = rule(45.0, (-1.0, 1.0));
+        let cell = PartitionCell { x: 3, y: -2 };
+        let a = scatter_layer(&r, cell, CELL, 42, flat);
+        let b = scatter_layer(&r, cell, CELL, 42, flat);
+        assert!(!a.is_empty());
+        assert_eq!(a, b);
+        assert_ne!(a, scatter_layer(&r, cell, CELL, 43, flat));
+    }
+
+    #[test]
+    fn scatter_respects_slope_and_height() {
+        let cell = PartitionCell { x: 0, y: 0 };
+        let steep = scatter_layer(&rule(20.0, (-1.0, 100.0)), cell, CELL, 7, ramp);
+        assert!(steep.is_empty(), "a 26.6 degree slope passed a 20 degree limit");
+
+        let gentle = scatter_layer(&rule(30.0, (0.0, 10.0)), cell, CELL, 7, ramp);
+        assert!(!gentle.is_empty());
+        for inst in &gentle {
+            assert!((0.0..=10.0).contains(&inst.pos[1]), "height {}", inst.pos[1]);
+            assert_eq!(inst.pos[1], ramp(inst.pos[0], inst.pos[2]));
+        }
+    }
+
+    #[test]
+    fn adjacent_cells_do_not_overlap_instances() {
+        let r = rule(90.0, (-1.0, 1.0));
+        let left = scatter_layer(&r, PartitionCell { x: 0, y: 0 }, CELL, 9, flat);
+        let right = scatter_layer(&r, PartitionCell { x: 1, y: 0 }, CELL, 9, flat);
+        assert!(!left.is_empty() && !right.is_empty());
+        assert!(left.iter().all(|i| (0.0..CELL).contains(&i.pos[0])));
+        assert!(right.iter().all(|i| (CELL..2.0 * CELL).contains(&i.pos[0])));
+        assert!(left.iter().all(|a| right.iter().all(|b| a.pos != b.pos)));
+    }
 }

@@ -12,6 +12,8 @@ pub mod cluster_gpu_cull;
 pub mod cluster_manager;
 pub mod clustering;
 pub mod context;
+/// Foliage layers and their GPU culling (FOL-03 step 1).
+pub mod foliage;
 pub mod frame;
 pub mod frame_graph;
 pub mod gi;
