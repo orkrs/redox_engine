@@ -745,6 +745,7 @@ fn eval_substrate_lit(
 const MAT_FLAG_COAT: u32 = 32u;
 const MAT_FLAG_ANISO: u32 = 64u;
 const MAT_FLAG_SSS: u32 = 128u;
+const MAT_FLAG_DOUBLE_SIDED: u32 = 512u;
 
 /// Wrapped Lambert term, normalised so `n_dot_l = 1` maps to 1 (see `wrap_diffuse` in sss.rs).
 fn wrap_diffuse(n_dot_l: f32, wrap: f32) -> f32 {
@@ -946,12 +947,20 @@ fn material_sample_textures(mat: Material, uv: vec2<f32>, frag_coord: vec4<f32>)
 }
 
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+fn fs_main(in: VertexOutput, @builtin(front_facing) front_facing: bool) -> @location(0) vec4<f32> {
     let to_camera = camera.camera_pos.xyz - in.world_pos;
     let v = normalize(to_camera);
     let tex = material_sample_textures(material, in.uv, in.clip_pos);
+    // MAT-08: a back face of a double-sided material is lit as the surface it shows, so its
+    // normal and tangent are mirrored. Single-sided materials skip this and stay bit-identical.
+    var geo_normal = in.world_normal;
+    var geo_tangent = in.world_tangent;
+    if ((material.flags & MAT_FLAG_DOUBLE_SIDED) != 0u && !front_facing) {
+        geo_normal = -geo_normal;
+        geo_tangent = -geo_tangent;
+    }
     let surf = material_surface(
-        SurfaceInput(in.world_pos, in.world_normal, in.world_tangent, in.instance_color, to_camera),
+        SurfaceInput(in.world_pos, geo_normal, geo_tangent, in.instance_color, to_camera),
         material,
         tex,
     );
@@ -964,7 +973,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let n_dot_v = max(dot(n, v), 0.0);
     let f0 = mix(vec3<f32>(0.04), albedo, metallic);
     // MAT-04: anisotropy frame (tangent from the vertex stream, orthogonal to n).
-    let aniso_t = orthonormal_tangent(in.world_tangent, n);
+    let aniso_t = orthonormal_tangent(geo_tangent, n);
     let aniso_b = cross(n, aniso_t);
 
     // --- GI DEBUG (GI-01 step 6) ---

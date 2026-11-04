@@ -25,6 +25,28 @@ pub(crate) fn pbr_render_pipeline(
     sample_count: u32,
     label: &str,
 ) -> wgpu::RenderPipeline {
+    pbr_render_pipeline_culled(
+        device,
+        layout,
+        shader,
+        surface_format,
+        sample_count,
+        label,
+        Some(wgpu::Face::Back),
+    )
+}
+
+/// [`pbr_render_pipeline`] with an explicit culling mode; `None` draws both faces (MAT-08
+/// double-sided materials).
+pub(crate) fn pbr_render_pipeline_culled(
+    device: &wgpu::Device,
+    layout: &wgpu::PipelineLayout,
+    shader: &wgpu::ShaderModule,
+    surface_format: wgpu::TextureFormat,
+    sample_count: u32,
+    label: &str,
+    cull_mode: Option<wgpu::Face>,
+) -> wgpu::RenderPipeline {
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         cache: crate::pipeline_cache::get(),
         label: Some(label),
@@ -48,7 +70,7 @@ pub(crate) fn pbr_render_pipeline(
         primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList,
             front_face: wgpu::FrontFace::Ccw,
-            cull_mode: Some(wgpu::Face::Back),
+            cull_mode,
             ..Default::default()
         },
         depth_stencil: Some(wgpu::DepthStencilState {
@@ -67,6 +89,8 @@ pub(crate) fn pbr_render_pipeline(
 pub struct PbrPass {
     /// Render pipeline.
     pub pipeline: wgpu::RenderPipeline,
+    /// Same shader and layout with back-face culling off, for double-sided materials (MAT-08).
+    pub double_sided_pipeline: wgpu::RenderPipeline,
 
     // Bind-group layouts
     /// Layout of the per-frame bind group.
@@ -521,8 +545,19 @@ impl PbrPass {
             "pbr_pipeline",
         );
 
+        let double_sided_pipeline = pbr_render_pipeline_culled(
+            device,
+            &pipeline_layout,
+            &shader,
+            surface_format,
+            sample_count,
+            "pbr_double_sided_pipeline",
+            None,
+        );
+
         Self {
             pipeline,
+            double_sided_pipeline,
             frame_bgl,
             scene_bgl,
             material_bgl,
