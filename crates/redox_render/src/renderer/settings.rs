@@ -254,6 +254,53 @@ impl Renderer {
         }
     }
 
+    /// Selects the sky model. `Hdri` (default) keeps the cubemap skybox unchanged. `Procedural`
+    /// enables the atmosphere (sky pass, sun disc, IBL from the sky); it creates the skybox
+    /// pass if it is missing.
+    pub fn set_sky_mode(&mut self, mode: crate::sky::SkyMode) {
+        match mode {
+            crate::sky::SkyMode::Hdri => {
+                if let Some(sb) = self.skybox_pass.as_mut() {
+                    sb.sky = None;
+                }
+            }
+            crate::sky::SkyMode::Procedural => {
+                if self.skybox_pass.is_none() {
+                    self.set_skybox(true);
+                }
+                if let Some(sb) = self.skybox_pass.as_mut()
+                    && sb.sky.is_none()
+                {
+                    sb.sky = Some(crate::sky::SkyAtmosphere::new(
+                        &self.device,
+                        &self.queue,
+                        crate::sky::AtmosphereParams::default(),
+                        &self.camera_buffer,
+                        wgpu::TextureFormat::Rgba16Float,
+                        self.msaa_sample_count,
+                    ));
+                }
+            }
+        }
+    }
+
+    /// Current sky model.
+    pub fn sky_mode(&self) -> crate::sky::SkyMode {
+        if self.skybox_pass.as_ref().is_some_and(|sb| sb.sky.is_some()) {
+            crate::sky::SkyMode::Procedural
+        } else {
+            crate::sky::SkyMode::Hdri
+        }
+    }
+
+    /// Sets the angular radius of the sun disc in radians (default 0.0087, the
+    /// `DirectionalLight` default). Takes effect on the next frame. No-op in `Hdri` mode.
+    pub fn set_sky_sun_angle(&mut self, angle: f32) {
+        if let Some(sky) = self.skybox_pass.as_mut().and_then(|sb| sb.sky.as_mut()) {
+            sky.sun_angle = angle;
+        }
+    }
+
     /// Recreates the PBR frame and scene bind groups with current resources.
     pub fn update_global_bind_group(&mut self) {
         self.frame_bind_group = self.pbr_pass.create_frame_bind_group(

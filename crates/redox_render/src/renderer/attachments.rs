@@ -146,7 +146,7 @@ impl Renderer {
         );
         self.matgraphs.clear_vg_pipelines();
         if let Some(sb) = &mut self.skybox_pass {
-            *sb = SkyboxPass::new(
+            sb.rebuild(
                 &self.device,
                 &self.camera_buffer,
                 &self.ibl_resource.environment_view,
