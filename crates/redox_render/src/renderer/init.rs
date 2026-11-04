@@ -2,6 +2,9 @@
 
 use super::*;
 
+/// Objects per frame that the model buffers hold; a frame with more is cut to this many (FOL-01).
+pub(super) const MAX_OBJECTS_PER_FRAME: usize = 10_000;
+
 impl Renderer {
     /// Build a full engine [`Renderer`] on an existing device/queue (editor SharedGpu).
     ///
@@ -293,7 +296,7 @@ impl Renderer {
         // --- Per-object model buffer (Storage) ---
         let model_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("model_storage_buffer"),
-            size: (std::mem::size_of::<ModelUniform>() * 10000) as u64, // Support up to 10,000 objects
+            size: (std::mem::size_of::<ModelUniform>() * MAX_OBJECTS_PER_FRAME) as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -447,7 +450,7 @@ impl Renderer {
         let object_velocity_pass = ObjectVelocityPass::new(&device);
         let prev_model_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("prev_model_storage_buffer"),
-            size: (std::mem::size_of::<[[f32; 4]; 4]>() * 10000) as u64,
+            size: (std::mem::size_of::<[[f32; 4]; 4]>() * MAX_OBJECTS_PER_FRAME) as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });

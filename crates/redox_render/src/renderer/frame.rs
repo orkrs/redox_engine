@@ -104,6 +104,7 @@ impl Renderer {
         surface_view: &wgpu::TextureView,
     ) -> Result<(), crate::surface::SurfaceError> {
         let t0 = std::time::Instant::now();
+        let objects = self.keep_frame_objects(objects);
         // Graph materials read one shared frame time in every stage and pass.
         let frame_seconds = self.taa_frame_count as f32 / 60.0;
         let prev_seconds = (self.taa_frame_count as f32 - 1.0).max(0.0) / 60.0;
@@ -155,6 +156,26 @@ impl Renderer {
             submit_ms: ms_between(t2, t3),
         };
         Ok(())
+    }
+
+    /// Cuts `objects` to [`init::MAX_OBJECTS_PER_FRAME`] (the model buffers' capacity), keeping
+    /// the first ones and the matching object ids. Warns once per frame that drops anything.
+    fn keep_frame_objects<'a>(&mut self, objects: &'a [RenderObject]) -> &'a [RenderObject] {
+        let limit = init::MAX_OBJECTS_PER_FRAME;
+        if objects.len() <= limit {
+            return objects;
+        }
+        log::warn!(
+            "frame has {} objects, only the first {limit} are drawn ({} dropped)",
+            objects.len(),
+            objects.len() - limit
+        );
+        if let Some(ids) = self.frame_object_ids.as_mut()
+            && ids.len() > limit
+        {
+            ids.truncate(limit);
+        }
+        &objects[..limit]
     }
 
     /// Describes the frame graph at the current surface size: passes in execution order with
