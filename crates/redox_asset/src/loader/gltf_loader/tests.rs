@@ -264,3 +264,237 @@ fn loads_gltf_with_external_png() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Wraps a JSON document and a BIN chunk in a GLB container.
+fn wrap_glb_bin(json: &str, bin: &[u8]) -> Vec<u8> {
+    let json_bytes = json.as_bytes();
+    let json_len = json_bytes.len() + (4 - json_bytes.len() % 4) % 4;
+    let bin_len = bin.len() + (4 - bin.len() % 4) % 4;
+    let total = 12 + 8 + json_len + 8 + bin_len;
+
+    let mut out = Vec::with_capacity(total);
+    out.extend_from_slice(b"glTF");
+    out.extend_from_slice(&2u32.to_le_bytes());
+    out.extend_from_slice(&(total as u32).to_le_bytes());
+    out.extend_from_slice(&(json_len as u32).to_le_bytes());
+    out.extend_from_slice(b"JSON");
+    out.extend_from_slice(json_bytes);
+    out.extend(std::iter::repeat_n(b' ', json_len - json_bytes.len()));
+    out.extend_from_slice(&(bin_len as u32).to_le_bytes());
+    out.extend_from_slice(b"BIN\0");
+    out.extend_from_slice(bin);
+    out.extend(std::iter::repeat_n(0u8, bin_len - bin.len()));
+    out
+}
+
+/// One triangle as a GLB. `primitive_extra` is appended inside the primitive
+/// object (e.g. `,"material":0`); `root_extra` is appended to the document
+/// (e.g. `,"materials":[...]`), both with a leading comma.
+fn tri_glb(with_uvs: bool, primitive_extra: &str, root_extra: &str) -> Vec<u8> {
+    let (bin, _uv_offset, total) = triangle_buffer(with_uvs);
+    let (uv_attr, uv_accessor, uv_view, idx_view, idx) = if with_uvs {
+        (
+            r#", "TEXCOORD_0": 1"#,
+            r#",
+{ "bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC2" }"#,
+            r#",
+{ "buffer": 0, "byteOffset": 36, "byteLength": 24 }"#,
+            r#",
+{ "buffer": 0, "byteOffset": 60, "byteLength": 12 }"#,
+            2,
+        )
+    } else {
+        (
+            "",
+            "",
+            "",
+            r#",
+{ "buffer": 0, "byteOffset": 36, "byteLength": 12 }"#,
+            1,
+        )
+    };
+    let json = format!(
+        r#"{{
+  "asset": {{ "version": "2.0" }},
+  "scene": 0,
+  "scenes": [{{ "nodes": [0] }}],
+  "nodes": [{{ "name": "tri", "mesh": 0 }}],
+  "meshes": [{{ "name": "triangle", "primitives": [{{ "attributes": {{ "POSITION": 0{uv_attr} }}, "indices": {idx}{primitive_extra} }}] }}],
+  "accessors": [
+{{ "bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 0.0] }}{uv_accessor},
+{{ "bufferView": {idx}, "componentType": 5125, "count": 3, "type": "SCALAR" }}
+  ],
+  "bufferViews": [
+{{ "buffer": 0, "byteOffset": 0, "byteLength": 36 }}{uv_view}{idx_view}
+  ],
+  "buffers": [{{ "byteLength": {total} }}]{root_extra}
+}}"#
+    );
+    wrap_glb_bin(&json, &bin)
+}
+
+/// A `data:` URI holding a 1x1 RGBA8 PNG of `pixel`.
+fn png_uri(pixel: [u8; 4]) -> String {
+    let mut png = std::io::Cursor::new(Vec::new());
+    image::RgbaImage::from_pixel(1, 1, image::Rgba(pixel))
+        .write_to(&mut png, image::ImageFormat::Png)
+        .expect("encode fixture png");
+    format!("data:image/png;base64,{}", base64(&png.into_inner()))
+}
+
+/// A `data:` URI holding a 1x1 16-bit RGBA PNG.
+fn png16_uri(pixel: [u16; 4]) -> String {
+    let mut png = std::io::Cursor::new(Vec::new());
+    let buffer =
+        image::ImageBuffer::<image::Rgba<u16>, Vec<u16>>::from_pixel(1, 1, image::Rgba(pixel));
+    image::DynamicImage::ImageRgba16(buffer)
+        .write_to(&mut png, image::ImageFormat::Png)
+        .expect("encode fixture png16");
+    format!("data:image/png;base64,{}", base64(&png.into_inner()))
+}
+
+#[test]
+fn a_material_gets_its_own_textures() {
+    let root = format!(
+        r#", "materials": [
+  {{ "pbrMetallicRoughness": {{ "baseColorTexture": {{ "index": 0 }} }} }},
+  {{ "pbrMetallicRoughness": {{ "baseColorTexture": {{ "index": 1 }} }}, "normalTexture": {{ "index": 0 }} }}
+], "textures": [{{ "source": 0 }}, {{ "source": 1 }}],
+"images": [{{ "uri": "{red}" }}, {{ "uri": "{green}" }}]"#,
+        red = png_uri([255, 0, 0, 255]),
+        green = png_uri([0, 255, 0, 255]),
+    );
+    let scene = GltfLoader
+        .load(&tri_glb(false, r#", "material": 1"#, &root))
+        .expect("load should succeed");
+
+    assert_eq!(scene.meshes[0].material, Some(1));
+    assert_eq!(scene.materials.len(), 2);
+    let m0 = &scene.materials[0];
+    let m1 = &scene.materials[1];
+    assert_eq!(m0.base_color.as_ref().map(|t| t.image_index), Some(0));
+    assert!(m0.normal.is_none());
+    assert_eq!(m1.base_color.as_ref().map(|t| t.image_index), Some(1));
+    assert_eq!(m1.normal.as_ref().map(|t| t.image_index), Some(0));
+    assert_eq!(scene.textures[0].rgba_bytes, vec![255, 0, 0, 255]);
+    assert_eq!(scene.textures[1].rgba_bytes, vec![0, 255, 0, 255]);
+}
+
+#[test]
+fn texture_transform_is_reported() {
+    let root = format!(
+        r#", "extensionsUsed": ["KHR_texture_transform"],
+"materials": [{{ "pbrMetallicRoughness": {{ "baseColorTexture": {{ "index": 0,
+  "extensions": {{ "KHR_texture_transform": {{ "offset": [0.5, 0.25], "rotation": 0.5, "scale": [2.0, 3.0], "texCoord": 1 }} }} }} }} }}],
+"textures": [{{ "source": 0 }}], "images": [{{ "uri": "{uri}" }}]"#,
+        uri = png_uri([9, 9, 9, 255]),
+    );
+    let scene = GltfLoader
+        .load(&tri_glb(true, "", &root))
+        .expect("load should succeed");
+
+    let base = scene.materials[0]
+        .base_color
+        .as_ref()
+        .expect("base color slot");
+    assert_eq!(
+        base.tex_coord, 1,
+        "KHR_texture_transform texCoord overrides"
+    );
+    assert_eq!(
+        base.transform,
+        Some(GltfUvTransform {
+            offset: [0.5, 0.25],
+            rotation: 0.5,
+            scale: [2.0, 3.0],
+        })
+    );
+}
+
+#[test]
+fn a_blender_texcoord_minus_one_still_loads() {
+    let root = format!(
+        r#", "extensionsUsed": ["KHR_texture_transform"],
+"materials": [{{ "pbrMetallicRoughness": {{ "baseColorTexture": {{ "index": 0,
+  "extensions": {{ "KHR_texture_transform": {{ "offset": [0.0, 0.0], "rotation": 0.0, "scale": [1.0, 1.0], "texCoord": -1 }} }} }} }} }}],
+"textures": [{{ "source": 0 }}], "images": [{{ "uri": "{uri}" }}]"#,
+        uri = png_uri([1, 2, 3, 255]),
+    );
+    let glb = tri_glb(true, "", &root);
+    assert!(
+        gltf::import_slice(&glb).is_err(),
+        "the unrepaired file must fail to import, or this test proves nothing"
+    );
+
+    let scene = GltfLoader.load(&glb).expect("repaired file should load");
+    let base = scene.materials[0]
+        .base_color
+        .as_ref()
+        .expect("base color slot");
+    assert_eq!(base.tex_coord, 0);
+    assert!(base.transform.is_some());
+}
+
+#[test]
+fn alpha_modes_and_double_sided_are_read() {
+    let root = r#", "materials": [
+  { "alphaMode": "MASK", "alphaCutoff": 0.3, "doubleSided": true },
+  { "alphaMode": "BLEND" },
+  {}
+]"#;
+    let scene = GltfLoader
+        .load(&tri_glb(false, r#", "material": 0"#, root))
+        .expect("load should succeed");
+
+    let masked = &scene.materials[0];
+    assert_eq!(masked.alpha_mode, GltfAlphaMode::Mask);
+    assert!((masked.alpha_cutoff - 0.3).abs() < 1e-6);
+    assert!(masked.double_sided);
+
+    let blended = &scene.materials[1];
+    assert_eq!(blended.alpha_mode, GltfAlphaMode::Blend);
+    assert!((blended.alpha_cutoff - 0.5).abs() < 1e-6, "default cutoff");
+    assert!(!blended.double_sided);
+
+    assert_eq!(scene.materials[2].alpha_mode, GltfAlphaMode::Opaque);
+}
+
+#[test]
+fn sixteen_bit_normals_are_converted() {
+    let root = format!(
+        r#", "materials": [{{ "normalTexture": {{ "index": 0 }} }}],
+"textures": [{{ "source": 0 }}], "images": [{{ "uri": "{uri}" }}]"#,
+        uri = png16_uri([65535, 32768, 0, 65535]),
+    );
+    let scene = GltfLoader
+        .load(&tri_glb(false, r#", "material": 0"#, &root))
+        .expect("load should succeed");
+
+    assert_eq!(scene.textures[0].rgba_bytes, vec![255, 128, 0, 255]);
+    assert_eq!(
+        scene.materials[0].normal.as_ref().map(|t| t.image_index),
+        Some(0)
+    );
+}
+
+#[test]
+fn a_mesh_without_uvs_gets_generated_ones() {
+    let scene = GltfLoader
+        .load(&tri_glb(false, "", ""))
+        .expect("load should succeed");
+
+    assert!(scene.meshes[0].generated_uv);
+    assert_eq!(scene.meshes[0].uvs.len(), 3);
+    assert_eq!(scene.meshes[0].material, None);
+
+    let uvs = cylindrical_uvs(&[[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 0.0, -1.0]]);
+    let expected = [[0.5, 0.0], [0.0, 0.0], [-0.5, 0.0]];
+    for (got, want) in uvs.iter().zip(expected) {
+        assert!((got[0] - want[0]).abs() < 1e-6 && (got[1] - want[1]).abs() < 1e-6);
+    }
+
+    let with_uvs = GltfLoader
+        .load(&tri_glb(true, "", ""))
+        .expect("load should succeed");
+    assert!(!with_uvs.meshes[0].generated_uv);
+}

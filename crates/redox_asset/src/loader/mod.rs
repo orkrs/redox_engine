@@ -15,8 +15,8 @@ pub use basis::{BasisTarget, basis_file_format, basis_file_to_ktx2, uastc_dfd};
 #[cfg(feature = "encode")]
 pub use basis::{EncodeMode, EncodeOptions, EncodeShape, encode_basis, encode_ktx2};
 pub use gltf_loader::{
-    GltfLoader, GltfMaterialData, GltfMeshData, GltfNodeData, GltfSceneData, GltfTextureData,
-    load_scene_from_path,
+    GltfAlphaMode, GltfLoader, GltfMaterialData, GltfMeshData, GltfNodeData, GltfSceneData,
+    GltfTextureData, GltfTextureRef, GltfUvTransform, load_scene_from_path,
 };
 pub use image_loader::ImageLoader;
 #[cfg(any(test, feature = "testing"))]
