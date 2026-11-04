@@ -108,10 +108,18 @@ fn ground_mesh() -> Mesh {
 
 fn load_forest(r: &mut Renderer) -> Result<Forest, String> {
     let dir = assets_dir().join("models");
+    // Debug aids: `FOREST_ONLY=<model>` loads one model alone at the origin, `FOREST_SKIP=<text>`
+    // drops the primitives whose material name contains the text.
+    let only = std::env::var("FOREST_ONLY").ok();
+    let skip = std::env::var("FOREST_SKIP").ok();
+    let names: Vec<&str> = match &only {
+        Some(name) => vec![name.as_str()],
+        None => scatter::MODEL_NAMES.to_vec(),
+    };
     let mut cache = model::TextureCache::default();
     let mut models = Vec::new();
     let mut index = std::collections::HashMap::new();
-    for name in scatter::MODEL_NAMES {
+    for name in names {
         let tint = if name.starts_with("boulder") {
             Vec3::new(0.42, 0.47, 0.38)
         } else if name.starts_with("grass") || name.starts_with("fern") {
@@ -119,8 +127,14 @@ fn load_forest(r: &mut Renderer) -> Result<Forest, String> {
         } else {
             Vec3::ONE
         };
-        let loaded = model::load(r, &mut cache, &dir.join(format!("{name}.glb")), tint)?;
-        index.insert(*name, models.len());
+        let loaded = model::load(
+            r,
+            &mut cache,
+            &dir.join(format!("{name}.glb")),
+            tint,
+            skip.as_deref(),
+        )?;
+        index.insert(name, models.len());
         models.push(loaded);
     }
     let ground_material = model::load(
@@ -128,11 +142,16 @@ fn load_forest(r: &mut Renderer) -> Result<Forest, String> {
         &mut cache,
         &dir.join("ground_a.glb"),
         Vec3::new(0.55, 0.72, 0.42),
+        None,
     )?
     .parts[0]
         .material;
     let ground = (r.upload_mesh(&ground_mesh()), ground_material);
-    let world = scatter::populate(&index, 7);
+    let world = if only.is_some() {
+        scatter::single()
+    } else {
+        scatter::populate(&index, 7)
+    };
     Ok(Forest {
         models,
         ground,

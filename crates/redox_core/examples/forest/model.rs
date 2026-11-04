@@ -232,6 +232,7 @@ pub fn load(
     cache: &mut TextureCache,
     path: &Path,
     tint: Vec3,
+    skip: Option<&str>,
 ) -> Result<Model, String> {
     let (document, buffers, images) =
         gltf::import(path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -245,6 +246,10 @@ pub fn load(
                 .read_normals()
                 .map_or_else(|| vec![[0.0, 1.0, 0.0]; positions.len()], Iterator::collect);
             let material = primitive.material();
+            // Debug aid (`FOREST_SKIP`): drop primitives whose material name contains the text.
+            if skip.is_some_and(|s| material.name().is_some_and(|n| n.contains(s))) {
+                continue;
+            }
             let has_uv = reader.read_tex_coords(0).is_some();
             let mut uvs: Vec<[f32; 2]> = reader
                 .read_tex_coords(0)
