@@ -33,6 +33,13 @@ use serde::{Deserialize, Serialize};
 use crate::error::AssetError;
 use crate::loader::AssetLoader;
 
+mod materials;
+mod normalize;
+
+use materials::convert_material;
+
+pub use materials::{GltfAlphaMode, GltfTextureRef, GltfUvTransform};
+
 /// One renderable surface: a flattened primitive of a glTF mesh.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GltfMeshData {
@@ -43,13 +50,28 @@ pub struct GltfMeshData {
     pub positions: Vec<[f32; 3]>,
     /// Vertex normals; defaults to straight up when the file omits them.
     pub normals: Vec<[f32; 3]>,
-    /// Primary UV set; zeros when the file omits it.
+    /// Primary UV set (`TEXCOORD_0`); generated when the file omits it (see
+    /// [`GltfMeshData::generated_uv`]).
     pub uvs: Vec<[f32; 2]>,
     /// Per-vertex tangents `[tx, ty, tz, handedness]`.
     pub tangents: Vec<[f32; 4]>,
     /// Triangle indices (three per triangle); sequential when the primitive
     /// is non-indexed.
     pub indices: Vec<u32>,
+    /// Index into [`GltfSceneData::materials`]; `None` when the primitive has
+    /// no material.
+    #[serde(default)]
+    pub material: Option<usize>,
+    /// Whether [`GltfMeshData::uvs`] were generated (cylindrical around Y)
+    /// because the primitive had no `TEXCOORD_0`.
+    #[serde(default)]
+    pub generated_uv: bool,
+    /// Vertex colors (`COLOR_0`) as linear RGBA; empty when absent.
+    #[serde(default)]
+    pub colors: Vec<[f32; 4]>,
+    /// Secondary UV set (`TEXCOORD_1`); empty when absent.
+    #[serde(default)]
+    pub uvs1: Vec<[f32; 2]>,
 }
 
 /// PBR material parameters of a glTF primitive.
@@ -64,6 +86,38 @@ pub struct GltfMaterialData {
     pub metallic_factor: f32,
     /// `roughnessFactor`.
     pub roughness_factor: f32,
+    /// Base-color slot (embedded or external), with its UV set and transform.
+    #[serde(default)]
+    pub base_color: Option<GltfTextureRef>,
+    /// Normal-map slot. Its `transform` is always `None`: `KHR_texture_transform`
+    /// is only read for the `textureInfo` slots.
+    #[serde(default)]
+    pub normal: Option<GltfTextureRef>,
+    /// Metallic-roughness slot.
+    #[serde(default)]
+    pub metallic_roughness: Option<GltfTextureRef>,
+    /// Occlusion slot. Its `transform` is always `None` (see `normal`).
+    #[serde(default)]
+    pub occlusion: Option<GltfTextureRef>,
+    /// Emissive slot.
+    #[serde(default)]
+    pub emissive: Option<GltfTextureRef>,
+    /// `alphaMode`.
+    #[serde(default)]
+    pub alpha_mode: GltfAlphaMode,
+    /// `alphaCutoff` (0.5 when absent; used by `Mask` only).
+    #[serde(default = "default_alpha_cutoff")]
+    pub alpha_cutoff: f32,
+    /// `doubleSided`.
+    #[serde(default)]
+    pub double_sided: bool,
+    /// `emissiveFactor` (linear RGB).
+    #[serde(default)]
+    pub emissive_factor: [f32; 3],
+}
+
+fn default_alpha_cutoff() -> f32 {
+    0.5
 }
 
 /// A scene-graph node flattened in document order.
@@ -135,17 +189,50 @@ impl AssetLoader for GltfLoader {
 /// Parses a glTF document from a filesystem path, resolving sibling buffers
 /// and external image URIs relative to the file's directory.
 pub fn load_scene_from_path(path: &Path) -> Result<GltfSceneData, AssetError> {
-    let (document, buffers, images) = gltf::import(path)
-        .map_err(|e| AssetError::Gltf(format!("glTF import failed ({path:?}): {e}")))?;
     let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let (document, buffers, images) = match gltf::import(path) {
+        Ok(imported) => imported,
+        Err(error) => {
+            // Retry once with `"texCoord": -1` repaired; the original error is
+            // kept when the file has nothing to repair.
+            let bytes = std::fs::read(path)
+                .map_err(|e| AssetError::LoadFailed(format!("{path:?}: {e}")))?;
+            let fixed = normalize::fix_tex_coord_minus_one(&bytes).ok_or_else(|| {
+                AssetError::Gltf(format!("glTF import failed ({path:?}): {error}"))
+            })?;
+            import_bytes(&fixed, Some(base_dir))?
+        }
+    };
     assemble_scene(document, buffers, images, Some(base_dir))
 }
 
 /// Parses and converts a glTF document plus its embedded resources.
 pub fn load_scene_from_bytes(bytes: &[u8]) -> Result<GltfSceneData, AssetError> {
-    let (document, buffers, images) = gltf::import_slice(bytes)
-        .map_err(|e| AssetError::Gltf(format!("glTF import failed: {e}")))?;
+    let (document, buffers, images) = match gltf::import_slice(bytes) {
+        Ok(imported) => imported,
+        Err(error) => {
+            let fixed = normalize::fix_tex_coord_minus_one(bytes)
+                .ok_or_else(|| AssetError::Gltf(format!("glTF import failed: {error}")))?;
+            import_bytes(&fixed, None)?
+        }
+    };
     assemble_scene(document, buffers, images, None)
+}
+
+/// Decoded document, buffers and images, as returned by the `gltf` crate.
+type Imported = (
+    gltf::Document,
+    Vec<gltf::buffer::Data>,
+    Vec<gltf::image::Data>,
+);
+
+/// Imports already-repaired glTF bytes; external URIs resolve against `base`.
+fn import_bytes(bytes: &[u8], base: Option<&Path>) -> Result<Imported, AssetError> {
+    let to_error = |e: gltf::Error| AssetError::Gltf(format!("glTF import failed: {e}"));
+    let gltf = gltf::Gltf::from_slice(bytes).map_err(to_error)?;
+    let buffers = gltf::import_buffers(&gltf.document, base, gltf.blob).map_err(to_error)?;
+    let images = gltf::import_images(&gltf.document, base, &buffers).map_err(to_error)?;
+    Ok((gltf.document, buffers, images))
 }
 
 fn assemble_scene(
@@ -255,15 +342,27 @@ fn read_primitive(
         normals = vec![[0.0, 1.0, 0.0]; vertex_count];
     }
 
-    let uvs: Vec<[f32; 2]> = reader
-        .read_tex_coords(0)
-        .map(|tex_coords| tex_coords.into_f32().collect())
-        .unwrap_or_default();
-    let uvs = if uvs.len() == vertex_count {
-        uvs
-    } else {
-        vec![[0.0, 0.0]; vertex_count]
+    // Without TEXCOORD_0 the UVs are generated (cylindrical around Y), as the
+    // forest example does for its trunks.
+    let (uvs, generated_uv) = match reader.read_tex_coords(0) {
+        Some(tex_coords) => {
+            let uvs: Vec<[f32; 2]> = tex_coords.into_f32().collect();
+            if uvs.len() == vertex_count {
+                (uvs, false)
+            } else {
+                (cylindrical_uvs(&positions), true)
+            }
+        }
+        None => (cylindrical_uvs(&positions), true),
     };
+    let uvs1 = read_exact(
+        reader.read_tex_coords(1).map(|t| t.into_f32().collect()),
+        vertex_count,
+    );
+    let colors = read_exact(
+        reader.read_colors(0).map(|c| c.into_rgba_f32().collect()),
+        vertex_count,
+    );
 
     let indices: Vec<u32> = match reader.read_indices() {
         Some(read) => read.into_u32().collect(),
@@ -286,31 +385,28 @@ fn read_primitive(
         uvs,
         tangents,
         indices,
+        material: primitive.material().index(),
+        generated_uv,
+        colors,
+        uvs1,
     })
 }
 
-/// Extracts PBR parameters and the base-color texture reference (external
-/// URIs only) from a glTF material.
-fn convert_material(material: &gltf::Material<'_>, base_dir: Option<&Path>) -> GltfMaterialData {
-    let pbr = material.pbr_metallic_roughness();
-    let base_color_texture_path =
-        pbr.base_color_texture()
-            .and_then(|info| match info.texture().source().source() {
-                gltf::image::Source::Uri { uri, .. } => {
-                    let p = PathBuf::from(uri);
-                    Some(match base_dir {
-                        Some(dir) if !p.is_absolute() => dir.join(p),
-                        _ => p,
-                    })
-                }
-                gltf::image::Source::View { .. } => None,
-            });
-    GltfMaterialData {
-        base_color_factor: pbr.base_color_factor(),
-        base_color_texture_path,
-        metallic_factor: pbr.metallic_factor(),
-        roughness_factor: pbr.roughness_factor(),
+/// Keeps `values` only when it has one entry per vertex; otherwise empty.
+fn read_exact<T>(values: Option<Vec<T>>, vertex_count: usize) -> Vec<T> {
+    match values {
+        Some(values) if values.len() == vertex_count => values,
+        _ => Vec::new(),
     }
+}
+
+/// Cylindrical UVs around the Y axis for primitives without `TEXCOORD_0`: the
+/// texture repeats twice around and every 2 m along Y (the forest trunks).
+fn cylindrical_uvs(positions: &[[f32; 3]]) -> Vec<[f32; 2]> {
+    positions
+        .iter()
+        .map(|p| [p[2].atan2(p[0]) / std::f32::consts::TAU * 2.0, p[1] * 0.5])
+        .collect()
 }
 
 /// Converts decoded glTF image pixels to tightly packed RGBA8.

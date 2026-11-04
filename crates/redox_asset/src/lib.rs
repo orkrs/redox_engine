@@ -29,9 +29,9 @@ pub use guid::{AssetGuid, AssetMeta, AssetRegistry, RegistryError, ScanReport};
 pub use handle::{AssetId, AssetStatus, Handle, WeakHandle};
 pub use hot_reload::{HotReloadWatcher, ReloadRequest};
 pub use loader::{
-    AssetLoader, GltfLoader, GltfMaterialData, GltfMeshData, GltfNodeData, GltfSceneData,
-    GltfTextureData, ImageLoader, Ktx2Loader, Ktx2Texture, LoadOptions, TextureFormat,
-    load_scene_from_path,
+    AssetLoader, GltfAlphaMode, GltfLoader, GltfMaterialData, GltfMeshData, GltfNodeData,
+    GltfSceneData, GltfTextureData, GltfTextureRef, GltfUvTransform, ImageLoader, Ktx2Loader,
+    Ktx2Texture, LoadOptions, TextureFormat, load_scene_from_path,
 };
 #[cfg(feature = "basis")]
 pub use loader::{BasisTarget, basis_file_format, basis_file_to_ktx2, uastc_dfd};
