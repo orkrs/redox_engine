@@ -546,6 +546,17 @@ impl IBLResource {
         equirect: &Texture,
     ) -> Self {
         let skybox = processor.generate_cubemap(device, queue, equirect, 1024);
+        Self::from_skybox(device, queue, processor, skybox)
+    }
+
+    /// Generates the convolved IBL maps from an existing cube map (equirect-converted or the
+    /// procedural sky, see `crate::sky`).
+    pub fn from_skybox(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        processor: &IBLProcessor,
+        skybox: Skybox,
+    ) -> Self {
         let (irradiance_tex, irradiance) =
             processor.generate_irradiance_map(device, queue, &skybox.view);
         let (prefiltered_tex, prefiltered) =
