@@ -50,4 +50,10 @@ impl EditorContext {
             commands,
         }
     }
+
+    /// Whether the edited document differs from its last saved state, as tracked by the undo
+    /// history.
+    pub fn is_dirty(&self) -> bool {
+        self.undo.lock().is_dirty()
+    }
 }

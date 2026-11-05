@@ -427,6 +427,9 @@ pub struct UndoStack {
     last_push: Option<Instant>,
     /// The transaction in progress, if any.
     transaction: Option<Transaction>,
+    /// Number of applied steps when the document was last saved; `None` when that state can no
+    /// longer be reached (its step was cut off by the limit or discarded by a new edit).
+    saved_at: Option<usize>,
     /// Error of the last undo or redo that could not be applied.
     pub last_error: Option<UndoError>,
 }
@@ -453,7 +456,25 @@ impl UndoStack {
             clock,
             last_push: None,
             transaction: None,
+            saved_at: Some(0),
             last_error: None,
+        }
+    }
+
+    /// Remembers the current state as the saved one.
+    pub fn mark_saved(&mut self) {
+        self.saved_at = Some(self.done.len());
+    }
+
+    /// Whether the current state differs from the last saved one.
+    pub fn is_dirty(&self) -> bool {
+        self.saved_at != Some(self.done.len())
+    }
+
+    /// Forgets the saved state when a new edit discards the redo branch that contains it.
+    fn forget_saved_redo(&mut self) {
+        if self.saved_at.is_some_and(|saved| saved > self.done.len()) {
+            self.saved_at = None;
         }
     }
 
@@ -551,6 +572,7 @@ impl UndoStack {
     /// Stores a step, merging it into the previous one when allowed. Clears the redo history.
     fn record(&mut self, label: String, command: UndoCommand, may_merge: bool) {
         let now = self.clock.now();
+        self.forget_saved_redo();
         self.undone.clear();
         if may_merge && self.merge_into_last(&command, now) {
             self.last_push = Some(now);
@@ -611,6 +633,8 @@ impl UndoStack {
     fn trim(&mut self) {
         while self.done.len() > self.limit {
             self.done.remove(0);
+            // Positions shift down by one; the saved state is lost when it was the first one.
+            self.saved_at = self.saved_at.and_then(|saved| saved.checked_sub(1));
         }
     }
 

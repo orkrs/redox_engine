@@ -418,6 +418,80 @@ fn rename_is_undone_and_redone() {
     assert_eq!(name_of(&world, guid).as_deref(), Some("New"));
 }
 
+/// Records a step that changes nothing; used where only the history shape matters.
+fn push_step(undo: &mut UndoStack) {
+    undo.push(UndoCommand::Batch(Vec::new()));
+}
+
+#[test]
+fn a_new_history_is_clean_and_an_edit_makes_it_dirty() {
+    let mut undo = UndoStack::default();
+    assert!(!undo.is_dirty());
+
+    push_step(&mut undo);
+    assert!(undo.is_dirty());
+}
+
+#[test]
+fn undo_back_to_the_saved_step_is_clean_and_redo_is_dirty() {
+    let registry = registry();
+    let mut world = World::new();
+    let mut undo = UndoStack::default();
+    push_step(&mut undo);
+    undo.mark_saved();
+    push_step(&mut undo);
+    assert!(undo.is_dirty());
+
+    assert!(undo.undo(&mut world, &registry));
+    assert!(!undo.is_dirty());
+    assert!(undo.redo(&mut world, &registry));
+    assert!(undo.is_dirty());
+}
+
+#[test]
+fn history_cut_off_past_the_saved_state_stays_dirty_until_the_next_save() {
+    let registry = registry();
+    let mut world = World::new();
+    let mut undo = UndoStack::new(2);
+    undo.mark_saved();
+    push_step(&mut undo);
+    push_step(&mut undo);
+    assert!(undo.is_dirty());
+
+    // The first step is cut off, so the saved state (the start) is no longer reachable.
+    push_step(&mut undo);
+    assert_eq!(undo.len(), 2);
+    assert!(undo.undo(&mut world, &registry));
+    assert!(undo.undo(&mut world, &registry));
+    assert!(undo.is_dirty());
+
+    undo.mark_saved();
+    assert!(!undo.is_dirty());
+}
+
+#[test]
+fn a_new_edit_after_undoing_past_the_saved_state_keeps_the_document_dirty() {
+    let registry = registry();
+    let mut world = World::new();
+    let mut undo = UndoStack::default();
+    push_step(&mut undo);
+    push_step(&mut undo);
+    assert!(undo.undo(&mut world, &registry));
+    undo.mark_saved();
+    assert!(undo.undo(&mut world, &registry));
+    assert!(undo.is_dirty());
+
+    // The new edit discards the redo branch that held the saved state.
+    push_step(&mut undo);
+    assert_eq!(undo.len(), 1);
+    assert!(undo.is_dirty());
+    assert!(undo.undo(&mut world, &registry));
+    assert!(undo.is_dirty());
+
+    undo.mark_saved();
+    assert!(!undo.is_dirty());
+}
+
 #[test]
 fn limit_evicts_the_oldest_steps_and_keeps_the_order() {
     let registry = registry();
