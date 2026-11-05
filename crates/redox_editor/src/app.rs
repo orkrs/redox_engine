@@ -6,7 +6,9 @@ use crate::render_host::{RenderHost, SharedGpu};
 use parking_lot::Mutex;
 use rapier3d::prelude::{ColliderBuilder, RigidBodyBuilder};
 use redox_editor_core::EditorContext;
+use redox_editor_core::file_commands::{FileRequestQueue, register_file_commands};
 use redox_editor_scene::WorldSession;
+use redox_editor_ui::file_menu::FileMenu;
 use redox_editor_ui::{EditorDock, EditorUiCtx, egui_to_viewport_coords};
 use redox_editor_viewport::{
     EditorCamera, GizmoMode, GizmoState, ViewportLinesPass, ViewportShading,
@@ -27,6 +29,7 @@ pub(crate) struct EditorApp {
     egui_ctx: egui::Context,
     egui_winit: egui_winit::State,
     core: EditorContext,
+    files: FileMenu,
     gizmo: Arc<Mutex<GizmoState>>,
     camera: Arc<Mutex<EditorCamera>>,
     ui_ctx: Arc<EditorUiCtx>,
@@ -61,13 +64,16 @@ impl EditorApp {
             None,
         );
 
-        let core = EditorContext::new({
+        let mut core = EditorContext::new({
             let mut r = TypeRegistry::new();
             register_engine_defaults(&mut r);
             r.register::<redox_render::light::DirectionalLight>();
             r.register::<redox_render::light::PointLight>();
             r
         });
+        let file_queue = FileRequestQueue::new();
+        register_file_commands(&mut core.commands, &file_queue);
+        let files = FileMenu::new(file_queue, &core);
         let world = core.world.clone();
         let selection = core.selection.clone();
         let gizmo = Arc::new(Mutex::new(GizmoState::new()));
@@ -172,6 +178,7 @@ impl EditorApp {
             egui_ctx,
             egui_winit,
             core,
+            files,
             gizmo,
             camera,
             ui_ctx,
@@ -204,10 +211,9 @@ impl EditorApp {
                 let _ = self.egui_winit.on_window_event(&self.window, &event);
                 match event {
                     winit::event::WindowEvent::CloseRequested => {
-                        let _ = self
-                            .dock
-                            .save_to_file(std::path::Path::new("editor_layout.ron"));
-                        elwt.exit();
+                        if self.files.request_quit(&self.core) {
+                            self.exit_app(elwt);
+                        }
                     }
                     winit::event::WindowEvent::Resized(size) => self.on_resized(size),
                     winit::event::WindowEvent::MouseWheel { delta, .. } => {
@@ -227,10 +233,22 @@ impl EditorApp {
                 }
             }
             winit::event::Event::AboutToWait => {
-                self.window.request_redraw();
+                if self.files.take_quit_request() {
+                    self.exit_app(elwt);
+                } else {
+                    self.window.request_redraw();
+                }
             }
             _ => {}
         }
+    }
+
+    /// Saves the editor layout and leaves the event loop.
+    fn exit_app(&mut self, elwt: &winit::event_loop::ActiveEventLoop) {
+        let _ = self
+            .dock
+            .save_to_file(std::path::Path::new("editor_layout.ron"));
+        elwt.exit();
     }
 
     fn on_resized(&mut self, size: winit::dpi::PhysicalSize<u32>) {

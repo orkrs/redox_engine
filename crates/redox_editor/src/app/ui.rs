@@ -2,6 +2,7 @@
 
 use super::EditorApp;
 use crate::commands::{focus_selection, run_command};
+use redox_editor_core::file_commands::FileRequest;
 use redox_editor_scene::WorldSession;
 use redox_math::Transform;
 
@@ -16,10 +17,25 @@ impl EditorApp {
             if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::P)) {
                 ui_ctx_ref.palette.lock().toggle();
             }
+            // Ctrl+S saves the level; Ctrl+Shift+S saves the layout.
+            let (save_level_hotkey, save_layout_hotkey) = ctx.input(|i| {
+                let s_pressed = i.modifiers.command && i.key_pressed(egui::Key::S);
+                (s_pressed && !i.modifiers.shift, s_pressed && i.modifiers.shift)
+            });
+            if save_level_hotkey {
+                self.files.push_request(FileRequest::Save);
+            }
+            if save_layout_hotkey {
+                let _ = self
+                    .dock
+                    .save_to_file(std::path::Path::new("editor_layout.ron"));
+            }
 
             egui::Panel::top("top_bar").show(ui, |ui| {
                 ui.horizontal(|ui| {
+                    let mut save_layout = false;
                     ui.menu_button("File", |ui| {
+                        self.files.show_items(ui);
                         if ui.button("New World").clicked()
                             && let Ok(s) =
                                 WorldSession::create_new("worlds/untitled", "empty", 4, 4)
@@ -33,12 +49,16 @@ impl EditorApp {
                             *ui_ctx_ref.world_session.lock() = Some(s);
                             ui_ctx_ref.log("[INFO] Opened worlds/arena");
                         }
-                        if ui.button("Save Layout Ctrl+S").clicked() {
-                            let _ = self
-                                .dock
-                                .save_to_file(std::path::Path::new("editor_layout.ron"));
+                        ui.separator();
+                        if ui.button("Save Layout   Ctrl+Shift+S").clicked() {
+                            save_layout = true;
                         }
                     });
+                    if save_layout {
+                        let _ = self
+                            .dock
+                            .save_to_file(std::path::Path::new("editor_layout.ron"));
+                    }
                     ui.menu_button("Edit", |ui| {
                         if ui.button("Undo Ctrl+Z").clicked() {
                             let mut w = self.core.world.lock();
@@ -220,6 +240,12 @@ impl EditorApp {
                     });
                 });
             });
+
+            self.files.handle_requests(&self.core);
+            if let Some(title) = self.files.take_title_change(&self.core) {
+                self.window.set_title(&title);
+            }
+            self.files.show_windows(ctx, &self.core);
 
             self.dock.show_with_ui(
                 ui,
