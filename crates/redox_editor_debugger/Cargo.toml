@@ -1,0 +1,20 @@
+[package]
+name = "redox_editor_debugger"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+redox_ecs = { path = "../redox_ecs" }
+redox_reflect = { path = "../redox_reflect" }
+log = { workspace = true }
+
+[dev-dependencies]
+redox_math = { path = "../redox_math" }

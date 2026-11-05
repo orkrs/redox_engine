@@ -1,0 +1,22 @@
+[package]
+name = "redox_editor_viewport"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+redox_editor_core = { path = "../redox_editor_core" }
+redox_ecs = { path = "../redox_ecs" }
+redox_math = { path = "../redox_math" }
+redox_reflect = { path = "../redox_reflect" }
+redox_physics = { path = "../redox_physics" }
+wgpu = { workspace = true }
+bytemuck = { workspace = true }
+log = { workspace = true }
