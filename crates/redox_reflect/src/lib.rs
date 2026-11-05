@@ -128,14 +128,33 @@ impl ReflectValue {
         }
     }
 
-    /// Builds an asset-handle value: a struct with one `path` field (`Null` when the handle is unset).
+    /// Builds an asset-handle value with only a `path` hint (compatibility wrapper over [`Self::asset_ref`]).
     pub fn handle(type_name: impl Into<String>, asset_path: Option<String>) -> Self {
+        Self::asset_ref(type_name, None, asset_path)
+    }
+
+    /// Builds an asset-reference value: a struct with `guid` (32 hex digits, `Null` when unset)
+    /// and `path` (a hint relative to the assets root, `Null` when unset). The GUID is the source of truth.
+    pub fn asset_ref(
+        type_name: impl Into<String>,
+        guid: Option<String>,
+        path: Option<String>,
+    ) -> Self {
         Self::Struct {
             type_name: type_name.into(),
-            fields: vec![(
-                "path".into(),
-                asset_path.map(Self::String).unwrap_or(Self::Null),
-            )],
+            fields: vec![
+                ("guid".into(), guid.map(Self::String).unwrap_or(Self::Null)),
+                ("path".into(), path.map(Self::String).unwrap_or(Self::Null)),
+            ],
+        }
+    }
+
+    /// Reads the GUID text of an asset reference.
+    /// `None` when the value has no `guid` field (old format); `Some(None)` when the reference is unset.
+    pub fn as_asset_guid(&self) -> Option<Option<&str>> {
+        match self {
+            Self::Struct { .. } => self.field("guid").map(|v| v.as_string()),
+            _ => None,
         }
     }
 
@@ -584,5 +603,44 @@ mod tests {
             .find_map(|id| world2.get_component::<Transform>(id).copied())
             .expect("restored transform");
         assert!((t.translation - Vec3::new(1.0, 2.0, 3.0)).length() < 1e-4);
+    }
+
+    #[test]
+    fn asset_ref_keeps_guid_and_path_hint_through_ron() {
+        let guid = "0123456789abcdef0123456789abcdef".to_string();
+        let value = ReflectValue::asset_ref(
+            "MeshHandle",
+            Some(guid.clone()),
+            Some("models/crate.glb".into()),
+        );
+        assert_eq!(value.as_asset_guid(), Some(Some(guid.as_str())));
+        assert_eq!(
+            value.as_handle_path(),
+            Some(Some("models/crate.glb".to_string()))
+        );
+
+        let text = ron::to_string(&value).expect("serialize reference");
+        let back: ReflectValue = ron::from_str(&text).expect("parse reference");
+        assert_eq!(back, value);
+    }
+
+    #[test]
+    fn legacy_path_only_reference_has_no_guid_field() {
+        let legacy = ReflectValue::Struct {
+            type_name: "MeshHandle".into(),
+            fields: vec![("path".into(), ReflectValue::String("models/a.glb".into()))],
+        };
+        assert_eq!(legacy.as_asset_guid(), None);
+        assert_eq!(
+            legacy.as_handle_path(),
+            Some(Some("models/a.glb".to_string()))
+        );
+    }
+
+    #[test]
+    fn unset_reference_reports_guid_field_as_none() {
+        let unset = ReflectValue::handle("MaterialHandle", None);
+        assert_eq!(unset.as_asset_guid(), Some(None));
+        assert_eq!(unset.as_handle_path(), Some(None));
     }
 }

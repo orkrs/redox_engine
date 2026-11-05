@@ -7,6 +7,7 @@ use redox_editor_core::autosave::AutosavePolicy;
 use redox_editor_core::file_commands::FileRequest;
 use redox_editor_scene::WorldSession;
 use redox_editor_ui::{RecoveryAnswer, format_hhmm};
+use redox_editor_ui::asset_report::ReportAction;
 use redox_math::Transform;
 
 /// Text of an Edit menu entry: the verb, the step label when there is one, and the shortcut.
@@ -41,6 +42,7 @@ impl EditorApp {
         let ui_ctx_ref = self.ui_ctx.clone();
         let mut recovery_answer: Option<RecoveryAnswer> = None;
         let mut preferences_answer: Option<AutosavePolicy> = None;
+        let mut report_actions: Vec<ReportAction> = Vec::new();
         let output = self.egui_ctx.run_ui(raw_input, |ui| {
             let ctx = ui.ctx().clone();
             let ctx = &ctx;
@@ -83,6 +85,9 @@ impl EditorApp {
                         ui.separator();
                         if ui.button("Save Layout   Ctrl+Shift+S").clicked() {
                             save_layout = true;
+                        }
+                        if ui.button("Asset Diagnostics").clicked() {
+                            self.asset_report.open = true;
                         }
                     });
                     if save_layout {
@@ -244,6 +249,14 @@ impl EditorApp {
                     };
                     ui.label(git);
                     ui.separator();
+                    if let Some(service) = &self.assets {
+                        let counts = service.import_counts();
+                        ui.label(format!(
+                            "Importing {} / Failed {}",
+                            counts.importing, counts.failed
+                        ));
+                        ui.separator();
+                    }
                     let fps = *ui_ctx_ref.fps.lock();
                     let ms = *ui_ctx_ref.frame_ms.lock();
                     let low1 = ui_ctx_ref.profiler.lock().one_percent_low_fps();
@@ -307,6 +320,15 @@ impl EditorApp {
                 Some(self.viewport_rect.clone()),
             );
 
+            if self.asset_report.open
+                && let Some(service) = self.assets.as_ref()
+            {
+                let mut report = service.report().clone();
+                report.missing_refs = service.missing_refs();
+                let selected = ui_ctx_ref.assets.lock().model.selected().map(|e| e.guid);
+                report_actions.extend(self.asset_report.show(ctx, &report, selected));
+            }
+
             if let Some(cmd) = ui_ctx_ref.palette.lock().show(ctx) {
                 run_command(&ui_ctx_ref, &mut self.dock, &cmd);
             }
@@ -318,6 +340,9 @@ impl EditorApp {
         }
         if let Some(policy) = preferences_answer {
             self.apply_preferences(policy);
+        }
+        for action in report_actions {
+            self.apply_report_action(action);
         }
         output
     }

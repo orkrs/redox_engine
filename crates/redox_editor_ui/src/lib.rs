@@ -4,6 +4,8 @@
 
 /// Asset browser panel.
 pub mod asset_browser;
+/// Diagnostics window for the report of opening an assets root.
+pub mod asset_report;
 /// Brush tool panel.
 pub mod brush_panel;
 /// Command palette.
@@ -30,7 +32,8 @@ pub mod undo_history;
 /// Crash-recovery prompt and the Preferences window.
 pub mod recovery_dialog;
 
-pub use asset_browser::{AssetKind, AssetSpawnRequest, EditorMeshProxy};
+pub use asset_browser::{AssetKind, AssetRequest, AssetSpawnRequest, EditorMeshProxy};
+pub use asset_report::{AssetReportPanel, ReportAction, has_problems};
 pub use brush_panel::BrushPanel;
 pub use context::EditorUiCtx;
 pub use dock::{EditorDock, Tab};

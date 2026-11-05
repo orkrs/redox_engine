@@ -25,9 +25,12 @@ pub mod testing;
 
 pub use error::AssetError;
 pub use event::{AssetLoadFailedEvent, AssetLoadedEvent, AssetReloadedEvent};
-pub use guid::{AssetGuid, AssetMeta, AssetRegistry, RegistryError, ScanReport};
+pub use guid::{
+    AssetGuid, AssetMeta, AssetRegistry, DependentRef, RegistryChange, RegistryError, ScanReport,
+    is_sidecar_or_temp,
+};
 pub use handle::{AssetId, AssetStatus, Handle, WeakHandle};
-pub use hot_reload::{HotReloadWatcher, ReloadRequest};
+pub use hot_reload::{AssetEvent, HotReloadWatcher, ReloadRequest};
 pub use loader::{
     AssetLoader, GltfAlphaMode, GltfLoader, GltfMaterialData, GltfMeshData, GltfNodeData,
     GltfSceneData, GltfTextureData, GltfTextureRef, GltfUvTransform, ImageLoader, Ktx2Loader,

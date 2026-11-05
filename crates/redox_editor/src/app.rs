@@ -5,10 +5,12 @@ use crate::commands::{focus_selection, run_command};
 use crate::render_host::{RenderHost, SharedGpu};
 use parking_lot::Mutex;
 use rapier3d::prelude::{ColliderBuilder, RigidBodyBuilder};
+use redox_editor_assets::AssetService;
 use redox_editor_core::EditorContext;
 use redox_editor_core::autosave::AutosaveService;
 use redox_editor_core::file_commands::{FileRequestQueue, register_file_commands};
 use redox_editor_core::settings::{EditorSettings, SETTINGS_FILE};
+use redox_editor_ui::asset_report::AssetReportPanel;
 use redox_editor_scene::WorldSession;
 use redox_editor_ui::file_menu::FileMenu;
 use redox_editor_ui::{
@@ -25,6 +27,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 mod autosave;
+mod assets;
 mod redraw;
 mod ui;
 
@@ -61,6 +64,10 @@ pub(crate) struct EditorApp {
     preferences: PreferencesWindow,
     level_name: String,
     recovery_note: Option<String>,
+    /// Asset registry, import queue and watcher; `None` when the assets root cannot be opened.
+    assets: Option<AssetService>,
+    asset_report: AssetReportPanel,
+    last_asset_refresh: Instant,
 }
 
 impl EditorApp {
@@ -193,6 +200,7 @@ impl EditorApp {
         let fps_accum = 0.0f32;
         let fps_frames = 0u32;
         let stream_accum = 0.0f32;
+        let (asset_service, asset_report) = assets::open_assets(&ui_ctx);
 
         Self {
             window,
@@ -226,6 +234,9 @@ impl EditorApp {
             preferences: PreferencesWindow::default(),
             level_name,
             recovery_note: None,
+            assets: asset_service,
+            asset_report,
+            last_asset_refresh: Instant::now(),
         }
     }
 
