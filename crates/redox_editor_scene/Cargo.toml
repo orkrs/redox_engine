@@ -18,5 +18,7 @@ editor-git = ["dep:git2"]
 redox_ecs = { path = "../redox_ecs" }
 redox_math = { path = "../redox_math" }
 redox_scene = { path = "../redox_scene" }
+redox_reflect = { path = "../redox_reflect" }
+thiserror = { workspace = true }
 log = { workspace = true }
 git2 = { workspace = true, optional = true }
