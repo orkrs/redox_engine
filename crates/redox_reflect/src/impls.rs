@@ -1,10 +1,56 @@
 use redox_math::{Quat, Transform, Vec3};
 
-use crate::{Reflect, ReflectError, ReflectValue, TypeRegistry};
+use crate::meta::{FieldMeta, TypeMeta};
+use crate::{Reflect, ReflectError, ReflectField, ReflectSchema, ReflectValue, TypeRegistry};
 
 impl Reflect for Transform {
     fn type_name() -> &'static str {
         "Transform"
+    }
+
+    fn reflect_schema() -> ReflectSchema {
+        let transform_field = |name: &'static str, type_name: &'static str, meta: FieldMeta| {
+            ReflectField {
+                name,
+                type_name,
+                meta,
+            }
+        };
+        ReflectSchema {
+            type_name: Self::type_name(),
+            fields: vec![
+                transform_field(
+                    "translation",
+                    "Vec3",
+                    FieldMeta {
+                        category: Some("Transform"),
+                        unit: Some("m"),
+                        ..Default::default()
+                    },
+                ),
+                transform_field(
+                    "rotation",
+                    "Quat",
+                    FieldMeta {
+                        category: Some("Transform"),
+                        tooltip: Some("Rotation as a quaternion (x, y, z, w)"),
+                        ..Default::default()
+                    },
+                ),
+                transform_field(
+                    "scale",
+                    "Vec3",
+                    FieldMeta {
+                        category: Some("Transform"),
+                        ..Default::default()
+                    },
+                ),
+            ],
+            meta: TypeMeta {
+                category: Some("Transform"),
+                ..Default::default()
+            },
+        }
     }
 
     fn to_value(&self) -> ReflectValue {

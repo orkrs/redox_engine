@@ -14,6 +14,8 @@ pub mod command;
 pub mod context;
 /// Marker for entities that exist only inside the editor.
 pub mod editor_only;
+/// Inspector state without egui: rows, sections, filtering and the edit commands they produce.
+pub mod inspector_model;
 /// Console log ring buffer.
 pub mod log;
 /// Selection set and primary selection.
