@@ -1,0 +1,83 @@
+# EDT-A5 — Редактор, этап A, срез A5: метаданные свойств в reflect и переработка Inspector
+
+- **Статус:** не начат.
+- **Размер:** 6 шагов (M, S, M, M, M, S) ≈ 8 дней. **Крейты:** `redox_reflect`, `redox_reflect_derive`, `redox_editor_core`, `redox_editor_ui`, крейты компонентов (`redox_physics`, `redox_audio`, `redox_render`, `redox_scene`). **Зависит от:** EDT-A2 (набор зарегистрированных компонентов), EDT-A3 (транзакции для мультиредактирования). **Блокирует:** A6 (поле ссылки на ассет), B2.
+- **Исполнение:** агент (haiku) без cargo; координатор компилирует и тестирует после шагов. Шаги 1–2 меняют публичный API reflect: сдавать отдельно и проверять полным `cargo test --workspace` перед шагом 3.
+- Источник: `EDITOR_PLAN.md` §5 A5; ТЗ §1.3, §5.
+- **Не входит:** выбор значений через пикер ассетов (A6 дорисует поле ссылки на ассет), кривые и градиенты как типы значений, локализованные строки, плагины с пользовательскими виджетами (C6).
+
+## Суть
+Inspector сегодня общий для всех типов, но не знает о свойствах ничего, кроме имени и названия типа: нет диапазонов, подсказок, категорий, единиц, значений по умолчанию, признаков «только чтение» и «скрыто», нет мультиредактирования, поиска, сброса, добавления компонента (кнопка Add Component в `InspectorPanel` ничего не добавляет). Срез вводит метаданные, валидацию и версии компонентов в reflect и переносит логику Inspector в тестируемую модель без egui.
+
+## Что уже есть (проверено чтением кода)
+- `ReflectField { name, type_name }`; `ReflectSchema { type_name, fields }`; `Reflect::reflect_schema()` по умолчанию возвращает пустой список полей.
+- `#[derive(Reflect)]` (`redox_reflect_derive`, ~136 строк): структуры с именованными полями; атрибуты `#[reflect(name = "…")]` на типе и `#[reflect(skip)]` на поле; прочие атрибуты дают ошибку `unknown reflect attribute`. Тесты derive: `redox_reflect/tests/derive.rs` (3 структуры).
+- `FieldValue` (`field.rs`) преобразует отдельные значения полей.
+- `InspectorPanel::show` (`redox_editor_ui/src/inspector.rs`, 143 строки): для каждого зарегистрированного типа читает значение, рисует `edit_value` по варианту `ReflectValue`, при изменении пишет `insert_component` и `UndoCommand::SetComponent`; список из трёх чисел рисуется как Vec3; кнопка Add Component закрывает меню и ничего не делает; GAS-блок показывает `AttributeSet` отдельно.
+- Зарегистрированные типы после A2: `Transform`, `Name`, `Tag`, `EntityGuid`, `Parent`, три вида света, `Camera`, `MeshHandle`, `MaterialHandle`.
+
+## Шаг 1 — модель метаданных и derive-атрибуты (M)
+- `redox_reflect::meta`: 
+  - `FieldMeta { label: Option<&'static str>, category: Option<&'static str>, tooltip: Option<&'static str>, range: Option<(f64, f64)>, step: Option<f64>, unit: Option<&'static str>, default: Option<ReflectValue>, read_only: bool, hidden: bool, advanced: bool, editor_only: bool, widget: WidgetHint }` (`Default`, `Clone`, `Debug`);
+  - `WidgetHint { Auto, Color, Angle, Slider, Multiline, Path, Enum(&'static [&'static str]) }`;
+  - `TypeMeta { category: Option<&'static str>, tooltip: Option<&'static str>, requires: &'static [&'static str], version: u32 (1), editor_only: bool }`.
+- `ReflectField` получает поле `meta: FieldMeta`, `ReflectSchema` получает `meta: TypeMeta`; существующий код, создающий эти структуры, использует `..Default::default()`.
+- Derive-атрибуты на поле: `#[reflect(range(min = 0.0, max = 1.0), step = 0.01, tooltip = "…", category = "…", unit = "m", default = 1.0, read_only, hidden, advanced, editor_only, widget = "color")]`; на типе: `#[reflect(category = "…", tooltip = "…", requires("Transform"), version = 2, editor_only)]`. Значение `default` берётся из выражения-литерала (число, булево, строка) и оборачивается в `ReflectValue`; нелитеральные выражения не поддерживаются и дают понятную ошибку компиляции.
+- Неизвестные атрибуты остаются ошибкой с перечнем допустимых.
+- Тесты (`redox_reflect/tests/meta.rs`): структура со всеми атрибутами даёт ожидаемые `FieldMeta` и `TypeMeta`; поля без атрибутов получают значения по умолчанию; `skip` по-прежнему скрывает поле из схемы; старые тесты derive зелёные.
+
+## Шаг 2 — проверка значений и версии компонентов (S)
+- `FieldMeta::validate(&self, value: &ReflectValue) -> Result<ReflectValue, FieldError>`: числа приводятся к диапазону (`clamp`) и округляются к шагу, если он задан; для `read_only` возвращается `FieldError::ReadOnly`; тип значения должен совпадать с типом поля (`FieldError::TypeMismatch`).
+- `TypeRegistry::set_field(world, entity, type_name, field, value) -> Result<(), FieldError>` применяет проверку и меняет одно поле через `apply`.
+- Версии: `Reflect::version() -> u32` (по умолчанию из `TypeMeta.version`), `Reflect::migrate(from: u32, value: &mut ReflectValue)` (по умолчанию ничего не делает); `TypeRegistry::migrate_value(type_name, from, value)` вызывается загрузчиком сцены (A2 получает поле `component_versions: BTreeMap<String, u32>` с `#[serde(default)]` в `SceneFile`; старые файлы без поля читаются как версия 1 для всех типов).
+- Тесты: значение вне диапазона приводится к границе; шаг округляет; запись в `read_only` отклоняется; миграция v1 → v2 переименовывает поле и сцена v1 читается (тест на искусственном типе); сцена без `component_versions` загружается.
+
+## Шаг 3 — модель Inspector без egui (M)
+Новый модуль `redox_editor_core::inspector_model` (egui-свободный, используется панелью):
+- `InspectorModel::build(registry, world, entities: &[Entity], filter: &str, show_advanced: bool) -> InspectorModel` с секциями по компонентам и строками `Row { component, field, label, category, value: RowValue, tooltip, unit, range, read_only, modified_from_default, mixed }`, где `RowValue::{Single(ReflectValue), Mixed}`; `mixed = true`, если значения поля различаются у выбранных сущностей.
+- Мультивыбор показывает **только компоненты, присутствующие у всех** выбранных (остальные помечаются «у части объектов»); скрытые поля (`hidden`), редакторские (`editor_only`) и расширенные (`advanced`, если не включены) не попадают в строки.
+- Поиск по имени поля, метке, категории и подсказке без учёта регистра (подстрока).
+- Правка: `InspectorModel::edit(field, value) -> Vec<UndoCommand>` формирует по одной команде `SetComponent` на сущность; вызывающий оборачивает их в **одну транзакцию** `Edit <компонент>.<поле>` (A3); значение проходит `validate`.
+- Сброс: `reset_field`, `reset_component` используют `meta.default` или поле `T::default()` (получить через новый `TypeRegistry::default_value(type_name)`).
+- Копирование/вставка значений между сущностями: `copy_component`, `paste_component_values` (вставка только полей одинаковых имён и типов).
+- Тесты (`redox_editor_core/tests/inspector_model.rs`): одиночный выбор; два объекта с разными `Transform.translation` дают `Mixed` и после правки обе получают значение одной транзакцией (один Undo возвращает оба); фильтр находит поле по подсказке; `hidden` не виден, `advanced` виден только при включении; Reset возвращает значение по умолчанию; значение вне диапазона приводится; вставка значений игнорирует несовместимые поля; поле `modified_from_default` истинно только при отличии.
+
+## Шаг 4 — добавление и удаление компонентов (M)
+- `TypeRegistry::default_value(type_name) -> Option<ReflectValue>` (значение по умолчанию через `T::default()` и `to_value`) и `TypeRegistry::add_default(world, entity, type_name)`; список доступных типов для добавления исключает уже присутствующие и `editor_only` по настройке.
+- Зависимости: `TypeMeta.requires` проверяются при добавлении (недостающий компонент добавляется автоматически или показывается предупреждение — выбрать **автоматически с записью в журнал**) и при удалении (удаление нужного другому компоненту даёт предупреждение, не блокировку).
+- Команды `AddComponent`/`RemoveComponent` (A3) оборачиваются транзакциями «Add <Type>», «Remove <Type>».
+- Поиск компонентов при добавлении по имени и категории (`TypeMeta.category`).
+- Тесты: добавление типа с `requires` добавляет зависимость; Undo убирает оба одним шагом; удаление зависимости даёт предупреждение в модели; список добавляемых типов не содержит уже имеющихся.
+
+## Шаг 5 — панель Inspector на модели, метаданные существующих типов (M)
+- `InspectorPanel` переписывается: рисует `InspectorModel` (секции по категориям, сворачиваемые; подсказки; единицы; поле поиска сверху; чекбокс «Advanced»; кнопки Reset у строки и у компонента; значок «изменено»; серый вид для `read_only`; состояние Mixed как «—»); виджеты по `WidgetHint` (цвет, угол в градусах, ползунок, многострочный текст, выпадающий список); меню Add Component работает; GAS-блок остаётся.
+- Метаданные расставляются на зарегистрированных типах: `Transform` (категория Transform, единицы м/градусы), `Name`, `Tag`, свет (диапазоны интенсивности, цвет как `Color`), `Camera` (диапазоны FOV, near/far, расширенные поля), `EntityGuid` (`read_only`).
+- Регистрация дополнительных типов с метаданными: `RigidBody`, `Collider` (`redox_physics`), аудиоисточники (`redox_audio`), если типы подходят под `derive` (простые поля); те, что не подходят (например, содержат `Handle` или вложенные перечисления), получают **ручной `Reflect`** или исход 📌 в отчёте; для каждого типа указать исход.
+- Тесты: на модели (шаги 3–4) покрыта логика; UI проверяется ручным дым-тестом координатора (выбор объекта, правка, Undo, Mixed на двух объектах, Add Component, Reset).
+
+## Шаг 6 — ссылки на ассеты в Inspector (S, подготовка к A6)
+- Поле ссылки на ассет распознаётся по `ReflectValue::handle(...)` и `WidgetHint::Path`/типу: рисуется как «имя файла + кнопка выбрать»; перетаскивание из браузера ассетов назначает путь (до A6 по пути, после A6 по GUID); предупреждение, если тип файла не подходит (по расширению ожидаемого типа из метаданных поля `accepts: &'static [&'static str]`, расширение `FieldMeta` полем `accepts`).
+- Тесты (на модели): назначение пути нужного расширения проходит, ненужного даёт `FieldError::TypeMismatch`.
+
+## Границы
+- **Читать:** `redox_reflect/src/*`, `redox_reflect_derive/src/lib.rs`, `redox_reflect/tests/derive.rs`, `redox_editor_ui/src/inspector.rs`, `redox_editor_core/src/{undo,context}.rs` (после A3), `redox_physics/src/components.rs`, `redox_audio/src/components.rs`.
+- **Создать:** `redox_reflect/src/meta.rs`, `redox_reflect/tests/meta.rs`, `redox_editor_core/src/inspector_model.rs`, `redox_editor_core/tests/inspector_model.rs`.
+- **Менять:** `redox_reflect/src/lib.rs`, `redox_reflect_derive/src/lib.rs`, `redox_editor_ui/src/inspector.rs`, метаданные на типах (`redox_scene`, `redox_render`, `redox_physics`, `redox_audio`), загрузчик сцены (`component_versions`).
+- **Не трогать:** формат OFPA, рендер, поведение движка (метаданные не меняют семантику компонентов).
+
+## Проверка
+`cargo fmt`, `cargo clippy --workspace --lib --bins --tests -- -D warnings`, `cargo test --workspace` (шаги 1–2 меняют публичный API), `check_file_sizes.py`; ручной дым-тест Inspector (координатор).
+
+## Для исполнителя
+`git merge --ff-only main`; `Cargo.lock` из main. Не запускай cargo; форматируй только свои файлы; коммит по явным путям; не добавляй `assets/forest`, `examples/rus_universalis`, `RedOx_Editor_Full_Spec.md`. Один шаг за заход; шаги 1 и 2 сдавать отдельно. Отчёт `docs/engineering/notes/EDT-A5-report.md` (какие типы зарегистрированы, какие получили 📌).
+
+## Закрытие
+✅ / ⛔ / 📌 по шагам. Срез закрыт, когда: метаданные задаются атрибутами и читаются в схеме; значения проверяются по диапазону и «только чтение»; старые сцены читаются; Inspector строится из модели с категориями, поиском, мультиредактированием одной транзакцией и сбросом; Add Component работает с зависимостями; тесты модели зелёные.
+
+## Риски
+| Риск | Что делаем |
+|---|---|
+| Изменение `ReflectField`/`ReflectSchema` ломает код, создающий их вручную | Добавление полей с `Default`; обход использований (`grep`) в шаге 1 |
+| Derive не справляется с типами движка (вложенные структуры, перечисления) | Ручной `Reflect` для таких типов или 📌 по типу; не блокирует срез |
+| Мультиредактирование разных по составу выборок | Показываются только общие компоненты, остальное помечается; тесты на двух объектах разного состава |
+| Размер `inspector.rs`/модели > 800 строк | Делить модель на подмодули (`rows`, `edit`, `search`) заранее |

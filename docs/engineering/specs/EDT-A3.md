@@ -1,0 +1,78 @@
+# EDT-A3 — Редактор, этап A, срез A3: транзакции, надёжный Undo/Redo и состояние «изменено»
+
+- **Статус:** не начат.
+- **Размер:** 6 шагов (M, M, M, S, M, S) ≈ 7 дней. **Крейты:** `redox_reflect`, `redox_editor_core`, `redox_editor_viewport`, `redox_editor_ui`, `redox_editor`. **Зависит от:** EDT-A1, EDT-A2 (`EntityGuid`). **Блокирует:** A4 (dirty), A5 (мультиредактирование одной транзакцией), A6 (`MoveAsset`).
+- **Исполнение:** агент (haiku) без cargo; координатор компилирует и тестирует после каждого шага. Шаг 1 самый чувствительный, делать его одним из первых и проверять отдельно.
+- Источник: `EDITOR_PLAN.md` §5 A3; ТЗ §0.2.1, §1.4, §4.5.
+- **Не входит:** Undo операций с файлами ассетов (A6), Undo для вкладок и layout, ветвящаяся история, Undo при PIE (PIE восстанавливает мир своим снимком).
+
+## Суть
+ТЗ требует, чтобы любое изменение данных проходило через команды. Сейчас `UndoStack` хранит команды над `Entity`, а не над идентичностью сущности, и откат удаления создаёт **новую** сущность (`UndoCommand::Spawn.apply` игнорирует поле `entity` и вызывает `world.spawn()`), поэтому дальнейшие команды в истории указывают на несуществующий `Entity`. Откат «удалить компонент» не работает (`SetComponent` с `after: None` ничего не делает). Нет групп операций с названием, нет состояния «изменено», операции `create_entity`, `duplicate`, `delete` и размещение объектов не записываются в стек.
+
+## Что уже есть (проверено чтением кода)
+- `redox_editor_core/src/undo.rs`: `UndoCommand::{SetComponent{entity,type_name,before,after}, Spawn{entity,snapshot}, Despawn{entity,snapshot}, Batch(Vec)}`; `UndoStack { undo, redo, limit: 100, last_push_time, merge_window_secs: 0.5 }` (поля публичные); слияние последовательных `SetComponent` одного компонента одной сущности по времени (`Instant::now()`); `invert`, `apply`, `capture_entity`, `capture_world`, `restore_world`.
+- Записывают в стек: `InspectorPanel` (правка значения → `SetComponent`), `gizmo.rs` (`UndoStack::push` при перетаскивании). **Не записывают:** команды `create_entity`, `duplicate`, `delete` (`redox_editor/src/commands.rs`), размещение прокси из браузера ассетов (`app/redraw.rs`), кисть (`brush.rs`).
+- `TypeRegistry::insert_component` умеет добавлять и перезаписывать компонент по значению; удаления по имени типа нет (`World::remove_component::<T>` типизированный).
+- `redox_ecs::hierarchy`: `Parent`, `Children`, `set_parent` (проверить наличие функции снятия родителя: **ПРОВЕРИТЬ**).
+- Тесты: `undo_redo_transform`, `capture_restore_world`.
+
+## Шаг 1 — идентичность и корректность откатов (M)
+- `redox_reflect::TypeRegistry::remove_component(world, entity, type_name) -> bool` (в `Registration` добавляется функция удаления, сделанная при `register::<T>()` через `World::remove_component::<T>`).
+- Команды адресуют сущность по `EntityGuid` (A2), а не по `Entity`: `SetComponent { guid, type_name, before, after }`, `Spawn { guid, snapshot }`, `Despawn { guid, snapshot }`; при применении команда находит `Entity` через `GuidIndex` (A2). Снимок сущности **содержит её `EntityGuid`**, поэтому откат удаления восстанавливает ту же идентичность.
+- `SetComponent` с `after: None` удаляет компонент (через `remove_component`); с `before: None` откат удаляет только что добавленный компонент.
+- Применение команды возвращает `Result<(), UndoError>` (сущность не найдена, неизвестный тип); ошибка попадает в журнал редактора, история не падает (`undo()` возвращает `false` и оставляет команду в стеке).
+- Тесты (`redox_editor_core/tests/undo.rs`, без GPU): последовательность «создать A, изменить A.Transform, удалить A, Undo (A вернулась с тем же GUID и компонентами), Undo (Transform прежний)» работает; «добавить компонент, Undo (удалён), Redo (на месте)»; «удалить компонент, Undo (вернулся со значением)»; команда над несуществующей сущностью не паникует и возвращает ошибку.
+
+## Шаг 2 — транзакции и подписи (M)
+- `UndoStack::begin(label)`, `commit()`, `cancel(world, registry)`; вложенные вызовы допустимы (счётчик глубины), на верхнем уровне итог записывается как одна запись с подписью.
+- Запись истории: `UndoEntry { label: String, command: UndoCommand, time }`; публичные поля `undo`/`redo` заменяются методами (`len`, `entries()`), все использования в `redox_editor_ui`, `gizmo`, тестах обновляются.
+- `cancel` **откатывает** уже применённые внутри транзакции команды (они применяются к миру сразу, как сейчас) и не оставляет записи.
+- Слияние по времени сохраняется для частых правок одного значения, но источник времени подменяется (`Clock` / `fn now() -> Instant` в конструкторе), чтобы тесты не зависели от реального времени; транзакция слиянию не подлежит.
+- Лимит истории считается по записям; при превышении старые записи удаляются из начала, точка сохранения (шаг 4) корректно сдвигается.
+- Тесты: вложенная транзакция даёт одну запись; `cancel` возвращает мир к состоянию до `begin`; слияние работает внутри окна и не работает вне (подмена часов); лимит вытесняет старые записи и не ломает порядок Undo/Redo.
+
+## Шаг 3 — недостающие команды (M)
+- `UndoCommand::Reparent { child, old_parent, new_parent, keep_world }` (через `redox_ecs::hierarchy`; при `keep_world` пересчёт локального трансформа сохраняет мировой; цикл родителей отклоняется ошибкой `UndoError::Cycle`), `Rename { guid, before, after }` (компонент `Name`), `AddComponent`/`RemoveComponent` как удобные конструкторы над `SetComponent`.
+- Тесты: Reparent с `keep_world` не меняет мировую позицию и откатывается; Reparent в потомка даёт ошибку и не меняет мир; Rename откатывается и повторяется.
+
+## Шаг 4 — состояние «изменено» (S)
+- `UndoStack::mark_saved()` запоминает позицию (`saved_at: Option<usize>`); `is_dirty()` истинно, если позиция в стеке отличается; если история обрезана за точкой сохранения (вытеснение по лимиту), `saved_at = None` и документ считается изменённым навсегда до следующего сохранения.
+- `EditorContext::is_dirty()` использует стек и заменяет подсчёт по хэшу из A2 (`Level::is_dirty`).
+- PIE (`pie_play`/`pie_stop`) не меняет `dirty` (проверяется в тесте A7).
+- Тесты: сохранить → правка → dirty; Undo к точке сохранения → не dirty; Redo → dirty; вытеснение за точку сохранения → dirty после Undo к началу; `mark_saved` после новой правки сбрасывает.
+
+## Шаг 5 — все изменения мира через стек (M)
+- Команды редактора `create_entity`, `duplicate`, `delete` (A1/A2) выполняются транзакциями с подписями «Create Entity», «Duplicate Entity», «Delete Entity».
+- Перетаскивание гизмо = одна транзакция: `begin` на нажатии, `commit` на отпускании (вместо слияния по времени для этого случая; слияние остаётся для ввода в Inspector).
+- Мазок кисти (`brush.rs`) и размещение прокси из браузера ассетов (`AssetSpawnRequest`) = одна транзакция («Brush Stroke», «Place <имя>»).
+- Тест-страж `redox_editor/tests/undo_discipline.rs`: сканирует исходники `redox_editor*/src` и запрещает прямые вызовы `.despawn(`, `.spawn(`, `.add_component(`, `.remove_component(`, `insert_component(` вне разрешённого списка файлов (`undo.rs`, `pie.rs`, загрузчик уровня, тесты, `commands.rs` где вызовы обёрнуты транзакцией помечены комментарием `// undo: tx`); список файлов и маркер задокументировать в самом тесте.
+- Тесты: `create_entity` → Undo удаляет → Redo возвращает с тем же GUID; `duplicate` → Undo; `delete` → Undo возвращает с компонентами; штрих кисти из N объектов откатывается одним Undo (ТЗ §4.5).
+
+## Шаг 6 — панель Undo History и меню Edit (S)
+- Новая вкладка `UndoHistory` в `EditorDock` (`redox_editor_ui`): список записей с подписями, текущая позиция, переход по клику к выбранной записи (последовательные Undo/Redo), кнопка очистки.
+- Меню Edit: `Undo <подпись>` и `Redo <подпись>` (неактивны, когда нечего отменять).
+- Логика перехода «к записи N» вынесена в `UndoStack::goto(n, world, registry)` и проверяется без окна.
+- Тесты: `goto` вперёд и назад даёт те же снимки мира, что последовательные Undo/Redo.
+
+## Границы
+- **Читать:** `redox_editor_core/src/{undo,context,command}.rs`, `redox_editor_viewport/src/{gizmo,brush}.rs`, `redox_editor_ui/src/inspector.rs`, `redox_editor/src/{commands,app/redraw}.rs`, `redox_ecs/src/hierarchy.rs`, `redox_reflect/src/lib.rs`.
+- **Создать:** `redox_editor_core/tests/undo.rs`, `redox_editor/tests/undo_discipline.rs`, вкладка `UndoHistory`.
+- **Менять:** `undo.rs`, `redox_reflect/src/lib.rs` (`remove_component`), `gizmo.rs`, `brush.rs`, команды редактора, панели, использования публичных полей стека.
+- **Не трогать:** `PieSession` (его восстановление остаётся снимком), формат сцены, рендерер.
+
+## Проверка
+`cargo fmt`, `cargo clippy --workspace --lib --bins --tests -- -D warnings`, `cargo test -p redox_reflect -p redox_editor_core -p redox_editor_viewport -p redox_editor_ui -p redox_editor`; ручной дым-тест (координатор): создать, дублировать, удалить, переместить гизмо, Undo/Redo по панели истории (ТЗ §23.3).
+
+## Для исполнителя
+`git merge --ff-only main`; `Cargo.lock` из main. Не запускай cargo; форматируй только свои файлы; коммит по явным путям, без `git add -A`; не добавляй `assets/forest`, `examples/rus_universalis`, `RedOx_Editor_Full_Spec.md`. Один шаг за заход. Отчёт `docs/engineering/notes/EDT-A3-report.md`. Если публичные поля `undo`/`redo` используются там, где в спеке не названо, перечисли места в отчёте.
+
+## Закрытие
+✅ / ⛔ / 📌 по шагам. Срез закрыт, когда: откат удаления возвращает ту же идентичность и последующие команды остаются применимыми; удаление и добавление компонентов откатываются; транзакции вложены и отменяемы; `is_dirty` ведёт себя по таблице шага 4; стража `undo_discipline` зелёная; панель истории работает; тесты зелёные.
+
+## Риски
+| Риск | Что делаем |
+|---|---|
+| Замена публичных полей `undo`/`redo` ломает код панелей и тестов | Шаг 2 включает полный обход использований (`grep`), правки в одном коммите |
+| Тест-страж даёт ложные срабатывания | Список разрешённых файлов и маркер `// undo: tx` документируются; страж проверяется на минимальном нарушении |
+| `keep_world` в Reparent требует `GlobalTransform` | Использовать `Transform` и мировую матрицу родителя из `redox_ecs::hierarchy`; при невозможности вынести в 📌 с описанием |
+| Идентичность по GUID ломает старый код, где сущности без GUID | До A2 `EntityGuid` назначается при создании; сущности без GUID получают его при первом попадании в команду (политика и отчёт) |
