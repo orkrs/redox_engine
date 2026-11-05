@@ -1,17 +1,17 @@
-//! Asset services of RedOx Studio (registry integration, import queue, thumbnails). Skeleton: filled by EDT-A6.
+//! Asset services of RedOx Studio: GUID registry integration, the reference index of scene files,
+//! moves and deletes that keep references intact, and the diagnostics of opening an assets root.
+//! Egui-free: the browser and the diagnostics panel live in `redox_editor_ui`.
 
 #![warn(missing_docs)]
 
-/// Placeholder for the asset service; the real service arrives with the asset registry slice.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct AssetServiceStub;
+pub mod reference_index;
+pub mod service;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_stub_is_constructible() {
-        assert_eq!(format!("{:?}", AssetServiceStub), "AssetServiceStub");
-    }
-}
+pub use reference_index::{
+    MissingRef, RefEdit, RefResolution, ReferenceError, ReferenceIndex, SceneRef, is_scene_path,
+    resolve_ref,
+};
+pub use service::{
+    AssetChange, AssetMoveOp, AssetReport, AssetService, AssetServiceError, DeleteOutcome,
+    MoveReport, RefFix,
+};
