@@ -1,6 +1,6 @@
-//! Asset service of the editor. Owns the GUID registry, the file watcher and the reference index,
-//! applies file-system changes incrementally in [`AssetService::tick`], and performs moves and
-//! deletes that keep references intact.
+//! Asset service of the editor. Owns the GUID registry, the file watcher, the reference index and
+//! the import queue. Applies file-system changes and import results incrementally in
+//! [`AssetService::tick`], and performs moves and deletes that keep references intact.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -11,6 +11,8 @@ use redox_asset::{
     RegistryError, ScanReport,
 };
 
+use crate::import::ImporterRegistry;
+use crate::import_queue::{ImportEvent, ImportQueue, default_worker_count};
 use crate::reference_index::{
     MissingRef, RefEdit, RefResolution, ReferenceError, ReferenceIndex, edit_scene_refs,
     is_scene_path, resolve_ref,
@@ -38,6 +40,33 @@ pub enum AssetServiceError {
     },
 }
 
+/// Import settings of the service. The editor settings (EDT-A4) fill it in.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImportSettings {
+    /// Number of import worker threads.
+    pub workers: usize,
+    /// Whether outdated assets are imported automatically.
+    pub auto_import: bool,
+}
+
+impl Default for ImportSettings {
+    fn default() -> Self {
+        Self {
+            workers: default_worker_count(),
+            auto_import: true,
+        }
+    }
+}
+
+/// Import counts for the status bar ("Importing N / Failed M").
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ImportCounts {
+    /// Jobs queued or running.
+    pub importing: usize,
+    /// Assets whose last import failed.
+    pub failed: usize,
+}
+
 /// Diagnostics produced when the assets root is opened (or rescanned).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AssetReport {
@@ -53,7 +82,7 @@ pub struct AssetReport {
     pub unreadable_scenes: Vec<String>,
 }
 
-/// A registry change the editor should react to (browser, dirty flags, log).
+/// A registry or import change the editor should react to (browser, log, dirty flags).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AssetChange {
     /// A new asset was registered.
@@ -85,6 +114,18 @@ pub enum AssetChange {
         path: String,
         /// Identity of the asset.
         guid: AssetGuid,
+    },
+    /// An import finished successfully.
+    Imported {
+        /// Path relative to the root.
+        path: String,
+    },
+    /// An import failed; the message explains why.
+    ImportFailed {
+        /// Path relative to the root.
+        path: String,
+        /// Explanation for the user.
+        message: String,
     },
 }
 
@@ -127,8 +168,8 @@ pub enum RefFix {
     Clear,
 }
 
-/// A move of an asset, as an undoable operation. The coordinator wires it to the undo stack
-/// (`UndoCommand::MoveAsset` in `redox_editor_core`): [`Self::revert`] is the undo action.
+/// A move of an asset as an undoable operation. The coordinator wires it to the undo stack
+/// (`UndoCommand::MoveAsset` in `redox_editor_core`); [`Self::revert`] is the undo action.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AssetMoveOp {
     /// Path before the move, relative to the root.
@@ -155,11 +196,23 @@ pub struct AssetService {
     watcher: Option<HotReloadWatcher>,
     references: ReferenceIndex,
     report: AssetReport,
+    importers: ImporterRegistry,
+    queue: ImportQueue,
+    auto_import: bool,
 }
 
 impl AssetService {
-    /// Opens the assets root: scans it, indexes scenes, starts watching it and builds the report.
+    /// Opens the assets root with default import settings.
     pub fn open(assets_root: impl Into<PathBuf>) -> Result<Self, AssetServiceError> {
+        Self::open_with(assets_root, ImportSettings::default())
+    }
+
+    /// Opens the assets root: scans it, indexes scenes, starts watching it, builds the report,
+    /// and queues imports for outdated assets.
+    pub fn open_with(
+        assets_root: impl Into<PathBuf>,
+        settings: ImportSettings,
+    ) -> Result<Self, AssetServiceError> {
         let root = assets_root.into();
         fs::create_dir_all(&root).map_err(|source| AssetServiceError::Io {
             path: root.clone(),
@@ -168,13 +221,19 @@ impl AssetService {
         let (mut registry, scan) = AssetRegistry::scan(root.clone())?;
         let mut references = ReferenceIndex::default();
         let unreadable = references.rebuild(&mut registry);
+        let importers = ImporterRegistry::with_builtins();
         let mut service = Self {
             registry,
             watcher: start_watcher(&root),
             references,
             report: AssetReport::default(),
+            queue: ImportQueue::new(importers.clone(), settings.workers),
+            importers,
+            auto_import: settings.auto_import,
         };
+        service.settle_statuses();
         service.report = service.build_report(scan, unreadable);
+        service.queue_outdated();
         Ok(service)
     }
 
@@ -186,11 +245,13 @@ impl AssetService {
         let unreadable = references.rebuild(&mut registry);
         self.registry = registry;
         self.references = references;
+        self.settle_statuses();
         self.report = self.build_report(scan, unreadable);
+        self.queue_outdated();
         Ok(self.report.clone())
     }
 
-    /// Applies pending file-system events to the registry; called by the main loop.
+    /// Applies pending file-system events and import results; called by the main loop.
     pub fn tick(&mut self) -> Vec<AssetChange> {
         let events = self
             .watcher
@@ -209,6 +270,15 @@ impl AssetService {
             for err in self.references.rebuild(&mut self.registry) {
                 log::warn!("scene not indexed: {err}");
             }
+            self.settle_statuses();
+        }
+        let import_events = self.queue.drain_events();
+        let imported_any = !import_events.is_empty();
+        for event in import_events {
+            self.apply_import_event(event, &mut changes);
+        }
+        if self.auto_import && (!events.is_empty() || imported_any || rebuild_all) {
+            self.queue_outdated();
         }
         changes
     }
@@ -251,6 +321,70 @@ impl AssetService {
     /// Resolves one reference (GUID text and path hint) against the registry.
     pub fn resolve_ref(&self, guid_text: Option<&str>, path_hint: Option<&str>) -> RefResolution {
         resolve_ref(&self.registry, guid_text, path_hint)
+    }
+
+    /// Import counts for the status bar.
+    pub fn import_counts(&self) -> ImportCounts {
+        let failed = self
+            .registry
+            .iter()
+            .filter(|(path, _)| matches!(self.registry.status(path), Some(AssetStatus::Failed(_))))
+            .count();
+        ImportCounts {
+            importing: self.queue.pending_count() + self.queue.active_count(),
+            failed,
+        }
+    }
+
+    /// Turns automatic import of outdated assets on or off.
+    pub fn set_auto_import(&mut self, enabled: bool) {
+        self.auto_import = enabled;
+    }
+
+    /// Sets the asset open in the editor (its queued imports run first); `None` clears it.
+    pub fn set_open_asset(&mut self, path: Option<&str>) {
+        let root = self.registry.root().to_path_buf();
+        self.queue.set_open(path.map(|p| root.join(p)));
+    }
+
+    /// Queues an import of a registered asset. Returns `false` when it is already queued, has no
+    /// importer, or is not registered.
+    pub fn import(&mut self, path: &str) -> bool {
+        match self.registry.guid_of(path) {
+            Some(guid) => self.queue.submit(self.registry.root().join(path), guid),
+            None => false,
+        }
+    }
+
+    /// Queues again an asset whose last import failed or was cancelled.
+    pub fn retry_import(&mut self, path: &str) -> bool {
+        let abs = self.registry.root().join(path);
+        self.queue.retry(&abs)
+    }
+
+    /// Cancels a queued or running import of an asset.
+    pub fn cancel_import(&mut self, path: &str) -> bool {
+        let abs = self.registry.root().join(path);
+        self.queue.cancel(&abs)
+    }
+
+    /// Queues an import for every outdated asset (never imported, or changed since). Returns the
+    /// number of jobs added.
+    pub fn queue_outdated(&mut self) -> usize {
+        if !self.auto_import {
+            return 0;
+        }
+        let root = self.registry.root().to_path_buf();
+        let outdated: Vec<(PathBuf, AssetGuid)> = self
+            .registry
+            .iter()
+            .filter(|(path, _)| self.registry.status(path) == Some(&AssetStatus::Outdated))
+            .map(|(path, guid)| (root.join(path), guid))
+            .collect();
+        outdated
+            .into_iter()
+            .filter(|(path, guid)| self.queue.submit(path.clone(), *guid))
+            .count()
     }
 
     /// Moves or renames an asset with its sidecar. The GUID is preserved, so references keep
@@ -391,6 +525,7 @@ impl AssetService {
             | RegistryChange::Unchanged { .. }
             | RegistryChange::Subtree { .. } => {}
             RegistryChange::Added { path, guid } => {
+                self.settle(&path);
                 self.reindex_if_scene(&path);
                 out.push(AssetChange::Added { path, guid });
             }
@@ -404,14 +539,109 @@ impl AssetService {
                 if is_scene_path(&from) {
                     self.references.remove_scene(&mut self.registry, &from);
                 }
+                self.settle(&to);
                 self.reindex_if_scene(&to);
                 out.push(AssetChange::Moved { from, to, guid });
             }
             RegistryChange::Outdated { path, guid } => {
+                self.settle(&path);
                 self.reindex_if_scene(&path);
                 out.push(AssetChange::Outdated { path, guid });
             }
         }
+    }
+
+    fn apply_import_event(&mut self, event: ImportEvent, out: &mut Vec<AssetChange>) {
+        match event {
+            ImportEvent::Started { path, .. } => {
+                if let Some(rel) = self.relative(&path) {
+                    self.registry.set_status(&rel, AssetStatus::Importing);
+                }
+            }
+            ImportEvent::Progress { .. } => {}
+            ImportEvent::Finished {
+                path,
+                importer_version,
+                report,
+                ..
+            } => {
+                let Some(rel) = self.relative(&path) else {
+                    return;
+                };
+                for info in &report.info {
+                    log::info!("import {rel}: {info}");
+                }
+                for warning in &report.warnings {
+                    log::warn!("import {rel}: {warning}");
+                }
+                match self.registry.mark_imported(&rel, importer_version) {
+                    Ok(()) => {
+                        self.registry.set_status(&rel, AssetStatus::Imported);
+                        out.push(AssetChange::Imported { path: rel });
+                    }
+                    Err(err) => {
+                        let message = err.to_string();
+                        self.registry
+                            .set_status(&rel, AssetStatus::Failed(message.clone()));
+                        out.push(AssetChange::ImportFailed {
+                            path: rel,
+                            message,
+                        });
+                    }
+                }
+            }
+            ImportEvent::Failed { path, message, .. } => {
+                if let Some(rel) = self.relative(&path) {
+                    self.registry
+                        .set_status(&rel, AssetStatus::Failed(message.clone()));
+                    out.push(AssetChange::ImportFailed {
+                        path: rel,
+                        message,
+                    });
+                }
+            }
+            ImportEvent::Cancelled { path, .. } => {
+                // Cancelled imports wait for an explicit retry, so that auto-import does not
+                // start them again.
+                if let Some(rel) = self.relative(&path) {
+                    self.registry.set_status(
+                        &rel,
+                        AssetStatus::Failed("import cancelled".to_owned()),
+                    );
+                }
+            }
+        }
+    }
+
+    /// Clears the status of a file that has no importer (it never needs an import).
+    /// A `Missing` status is kept, because references must see that the file is gone.
+    fn settle(&mut self, path: &str) {
+        if self.importers.for_path(Path::new(path)).is_none()
+            && self.registry.status(path) != Some(&AssetStatus::Missing)
+        {
+            self.registry.clear_status(path);
+        }
+    }
+
+    fn settle_statuses(&mut self) {
+        let paths: Vec<String> = self
+            .registry
+            .iter()
+            .map(|(path, _)| path.to_owned())
+            .collect();
+        for path in paths {
+            self.settle(&path);
+        }
+    }
+
+    fn relative(&self, abs: &Path) -> Option<String> {
+        let rel = abs.strip_prefix(self.registry.root()).ok()?;
+        Some(
+            rel.components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/"),
+        )
     }
 
     fn reindex_if_scene(&mut self, path: &str) {
