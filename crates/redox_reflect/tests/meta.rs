@@ -335,3 +335,22 @@ fn current_version_values_are_not_migrated() {
     assert_eq!(value, before);
     assert!(registry.migrate_value("Nope", 1, &mut value).is_err());
 }
+
+#[test]
+fn add_default_inserts_the_type_default_once() {
+    let mut registry = TypeRegistry::new();
+    registry.register::<Tuning>();
+    assert_eq!(
+        registry.default_value("Tuning"),
+        Some(Tuning::default().to_value())
+    );
+    assert!(registry.default_value("Nope").is_none());
+
+    let mut world = World::new();
+    let entity = world.spawn();
+    registry
+        .add_default(&mut world, entity, "Tuning")
+        .expect("first add");
+    assert_eq!(world.get_component::<Tuning>(entity), Some(&Tuning::default()));
+    assert!(registry.add_default(&mut world, entity, "Tuning").is_err());
+}

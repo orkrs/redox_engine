@@ -5,6 +5,7 @@
 //! methods. The methods return commands and do not apply them: the caller applies them and
 //! records them as one undo step.
 
+mod components;
 mod edit;
 mod search;
 
@@ -14,6 +15,7 @@ use redox_reflect::{ReflectSchema, ReflectValue, TypeRegistry};
 
 use crate::undo::UndoCommand;
 
+pub use components::{AddOutcome, AddableType, RemoveOutcome, addable_types};
 pub use edit::{copy_component, paste_component_values};
 
 /// The value a row shows: one value that all selected entities share, or a mixed state.

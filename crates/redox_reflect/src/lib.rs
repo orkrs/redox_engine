@@ -255,6 +255,7 @@ type ApplyFn = fn(&mut World, Entity, &ReflectValue) -> Result<(), ReflectError>
 type ReadFn = fn(&World, Entity) -> Option<ReflectValue>;
 type HasFn = fn(&World, Entity) -> bool;
 type MigrateFn = fn(u32, &mut ReflectValue);
+type DefaultFn = fn() -> ReflectValue;
 
 #[derive(Clone)]
 #[allow(dead_code)]
@@ -269,6 +270,8 @@ struct Registration {
     has: HasFn,
     migrate: MigrateFn,
     version: u32,
+    /// The type's `Default` value in reflected form.
+    default: DefaultFn,
     schema: ReflectSchema,
 }
 
@@ -296,6 +299,7 @@ impl TypeRegistry {
             has: has_typed::<T>,
             migrate: migrate_typed::<T>,
             version: T::version(),
+            default: default_typed::<T>,
             schema: T::reflect_schema(),
         };
         self.by_name.insert(T::type_name(), reg.clone());
@@ -310,6 +314,31 @@ impl TypeRegistry {
     /// Schema version of a registered type; scene files store it per component.
     pub fn version(&self, type_name: &str) -> Option<u32> {
         self.by_name.get(type_name).map(|r| r.version)
+    }
+
+    /// The `Default` value of a registered type in reflected form.
+    pub fn default_value(&self, type_name: &str) -> Option<ReflectValue> {
+        self.by_name.get(type_name).map(|r| (r.default)())
+    }
+
+    /// Adds a component with its `Default` value. Fails when the entity already has it.
+    pub fn add_default(
+        &self,
+        world: &mut World,
+        entity: Entity,
+        type_name: &str,
+    ) -> Result<(), ReflectError> {
+        let reg = self
+            .by_name
+            .get(type_name)
+            .ok_or_else(|| ReflectError::msg(format!("unregistered type {type_name}")))?;
+        if (reg.has)(&*world, entity) {
+            return Err(ReflectError::msg(format!(
+                "entity already has {type_name}"
+            )));
+        }
+        let value = (reg.default)();
+        (reg.insert)(world, entity, &value)
     }
 
     /// Upgrades a value saved with schema version `from` to the current version of `type_name`,
@@ -486,6 +515,10 @@ fn apply_existing_typed<T: Reflect>(
 
 fn migrate_typed<T: Reflect>(from: u32, value: &mut ReflectValue) {
     T::migrate(from, value);
+}
+
+fn default_typed<T: Reflect + Default>() -> ReflectValue {
+    T::default().to_value()
 }
 
 fn read_typed<T: Reflect>(world: &World, entity: Entity) -> Option<ReflectValue> {

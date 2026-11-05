@@ -2,7 +2,7 @@
 
 use redox_ecs::{Entity, World};
 use redox_editor_core::inspector_model::{
-    InspectorModel, Row, RowValue, copy_component, paste_component_values,
+    InspectorModel, Row, RowValue, addable_types, copy_component, paste_component_values,
 };
 use redox_editor_core::{UndoCommand, UndoStack};
 use redox_math::{Transform, Vec3};
@@ -35,11 +35,18 @@ struct Pose {
     count: u32,
 }
 
+#[derive(Reflect, Default, Clone, Debug, PartialEq)]
+#[reflect(editor_only)]
+struct EditorMarker {
+    flag: bool,
+}
+
 fn registry() -> TypeRegistry {
     let mut registry = TypeRegistry::new();
     register_engine_defaults(&mut registry);
     registry.register::<Gauge>();
     registry.register::<Pose>();
+    registry.register::<EditorMarker>();
     registry
 }
 
@@ -296,4 +303,88 @@ fn components_missing_on_some_entities_are_partial_and_not_shown() {
         model.partial_components,
         vec!["Gauge".to_string(), "Transform".to_string()]
     );
+}
+
+#[test]
+fn adding_a_component_also_adds_its_requirement_first() {
+    let registry = registry();
+    let mut world = World::new();
+    let entity = world.spawn();
+    let model = InspectorModel::build(&registry, &world, &[entity], "", false);
+
+    let outcome = model.add_component(&registry, &world, "Gauge").expect("add");
+
+    assert_eq!(outcome.commands.len(), 2);
+    match &outcome.commands[0] {
+        UndoCommand::SetComponent {
+            type_name,
+            before: None,
+            after: Some(_),
+            ..
+        } => assert_eq!(type_name, "Transform"),
+        other => panic!("requirement must come first, got {other:?}"),
+    }
+    assert_eq!(outcome.notes.len(), 1);
+    apply_all(&outcome.commands, &mut world, &registry);
+    assert!(world.get_component::<Transform>(entity).is_some());
+    assert!(world.get_component::<Gauge>(entity).is_some());
+
+    // Undo of an add is the inverse command, which clears the component. Actually removing it
+    // needs the RemoveComponent support of EDT-A3.
+    for command in outcome.commands.iter().map(UndoCommand::invert) {
+        match command {
+            UndoCommand::SetComponent { after, .. } => assert!(after.is_none()),
+            other => panic!("unexpected inverse {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn an_existing_requirement_is_not_added_again() {
+    let registry = registry();
+    let mut world = World::new();
+    let entity = spawn_transform(&mut world, Vec3::ZERO);
+    let model = InspectorModel::build(&registry, &world, &[entity], "", false);
+
+    let outcome = model.add_component(&registry, &world, "Gauge").expect("add");
+
+    assert_eq!(outcome.commands.len(), 1);
+    assert!(outcome.notes.is_empty());
+}
+
+#[test]
+fn removing_a_required_component_warns_but_is_allowed() {
+    let registry = registry();
+    let mut world = World::new();
+    let entity = spawn_transform(&mut world, Vec3::ZERO);
+    world.add_component(entity, Gauge::default());
+    let model = InspectorModel::build(&registry, &world, &[entity], "", false);
+
+    let outcome = model
+        .remove_component(&registry, &world, "Transform")
+        .expect("remove");
+
+    assert_eq!(outcome.commands.len(), 1);
+    assert_eq!(outcome.warnings.len(), 1);
+    assert!(outcome.warnings[0].contains("Gauge"));
+}
+
+#[test]
+fn add_menu_skips_present_types_and_editor_only_unless_asked() {
+    let registry = registry();
+    let mut world = World::new();
+    let entity = spawn_transform(&mut world, Vec3::ZERO);
+
+    let plain = addable_types(&registry, &world, &[entity], "", false);
+    let names: Vec<&str> = plain.iter().map(|t| t.type_name).collect();
+    assert!(!names.contains(&"Transform"));
+    assert!(names.contains(&"Gauge"));
+    assert!(!names.contains(&"EditorMarker"));
+
+    let with_editor = addable_types(&registry, &world, &[entity], "", true);
+    assert!(with_editor.iter().any(|t| t.type_name == "EditorMarker"));
+
+    let by_category = addable_types(&registry, &world, &[entity], "gameplay", false);
+    let names: Vec<&str> = by_category.iter().map(|t| t.type_name).collect();
+    assert_eq!(names, ["Gauge"]);
 }
