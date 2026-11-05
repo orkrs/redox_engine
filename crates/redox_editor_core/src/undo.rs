@@ -2,9 +2,11 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Instant;
 
+use redox_ecs::hierarchy::{Children, Parent, set_parent};
 use redox_ecs::{Entity, World};
+use redox_math::{Mat4, Transform};
 use redox_reflect::{EntitySnapshot, ReflectValue, TypeRegistry, WorldSnapshot};
-use redox_scene::components::EntityGuid;
+use redox_scene::components::{EntityGuid, Name};
 
 use crate::guid::GuidResolver;
 
@@ -39,6 +41,8 @@ pub enum UndoError {
     UnknownType(String),
     /// The reflected value could not be written to the world.
     Apply(String),
+    /// The new parent is the entity itself or one of its descendants.
+    Cycle,
 }
 
 impl fmt::Display for UndoError {
@@ -47,6 +51,7 @@ impl fmt::Display for UndoError {
             Self::EntityNotFound(guid) => write!(f, "entity {guid:?} not found"),
             Self::UnknownType(name) => write!(f, "unknown component type {name}"),
             Self::Apply(message) => write!(f, "could not apply value: {message}"),
+            Self::Cycle => write!(f, "an entity cannot become its own ancestor"),
         }
     }
 }
@@ -84,9 +89,110 @@ pub enum UndoCommand {
     },
     /// Several commands applied and undone as one step.
     Batch(Vec<UndoCommand>),
+    /// Changed the parent of an entity and its local transform.
+    Reparent {
+        /// The entity that was moved.
+        child: EntityGuid,
+        /// Parent before the move (`None`: the entity was a root).
+        old_parent: Option<EntityGuid>,
+        /// Parent after the move (`None`: the entity becomes a root).
+        new_parent: Option<EntityGuid>,
+        /// Whether the local transform was recomputed to keep the world position.
+        keep_world: bool,
+        /// Local transform before the move.
+        old_local: Transform,
+        /// Local transform after the move.
+        new_local: Transform,
+    },
+    /// Changed the [`Name`] of an entity (`None` removes the component).
+    Rename {
+        /// The renamed entity.
+        guid: EntityGuid,
+        /// Name before the change.
+        before: Option<String>,
+        /// Name after the change.
+        after: Option<String>,
+    },
 }
 
 impl UndoCommand {
+    /// Adds a component of a registered type (an undoable `SetComponent` from nothing).
+    pub fn add_component(
+        guid: EntityGuid,
+        type_name: impl Into<String>,
+        value: ReflectValue,
+    ) -> Self {
+        Self::SetComponent {
+            guid,
+            type_name: type_name.into(),
+            before: None,
+            after: Some(value),
+        }
+    }
+
+    /// Removes a component of a registered type; `before` is its value, restored by undo.
+    pub fn remove_component(
+        guid: EntityGuid,
+        type_name: impl Into<String>,
+        before: ReflectValue,
+    ) -> Self {
+        Self::SetComponent {
+            guid,
+            type_name: type_name.into(),
+            before: Some(before),
+            after: None,
+        }
+    }
+
+    /// Builds a move of `child` under `new_parent` (`None` makes it a root). With `keep_world` the
+    /// local transform is recomputed so the entity stays where it is in the world; otherwise its
+    /// local transform stays as it is. Fails when the entity is unknown or the move would make it
+    /// its own ancestor.
+    pub fn reparent(
+        world: &World,
+        child: EntityGuid,
+        new_parent: Option<EntityGuid>,
+        keep_world: bool,
+    ) -> Result<Self, UndoError> {
+        let child_entity = resolve(world, child)?;
+        let new_parent_entity = match new_parent {
+            Some(guid) => Some(resolve(world, guid)?),
+            None => None,
+        };
+        if let Some(parent) = new_parent_entity
+            && creates_cycle(world, child_entity, parent)
+        {
+            return Err(UndoError::Cycle);
+        }
+        let old_parent = world
+            .get_component::<Parent>(child_entity)
+            .and_then(|parent| GuidResolver::guid_of(world, parent.0));
+        let old_local = world
+            .get_component::<Transform>(child_entity)
+            .copied()
+            .unwrap_or_default();
+        let new_local = if keep_world {
+            let parent_world = new_parent_entity.map_or(Mat4::IDENTITY, |p| world_matrix(world, p));
+            let local_matrix = parent_world.inverse() * world_matrix(world, child_entity);
+            let (scale, rotation, translation) = local_matrix.to_scale_rotation_translation();
+            Transform {
+                translation,
+                rotation,
+                scale,
+            }
+        } else {
+            old_local
+        };
+        Ok(Self::Reparent {
+            child,
+            old_parent,
+            new_parent,
+            keep_world,
+            old_local,
+            new_local,
+        })
+    }
+
     /// Applies the command to `world`.
     pub fn apply(&self, world: &mut World, registry: &TypeRegistry) -> Result<(), UndoError> {
         match self {
@@ -98,6 +204,34 @@ impl UndoCommand {
             } => {
                 let entity = resolve(world, *guid)?;
                 set_component(world, registry, entity, type_name, after.as_ref())
+            }
+            Self::Reparent {
+                child,
+                new_parent,
+                new_local,
+                ..
+            } => {
+                let child_entity = resolve(world, *child)?;
+                let new_parent_entity = match new_parent {
+                    Some(guid) => Some(resolve(world, *guid)?),
+                    None => None,
+                };
+                if let Some(parent) = new_parent_entity
+                    && creates_cycle(world, child_entity, parent)
+                {
+                    return Err(UndoError::Cycle);
+                }
+                detach(world, child_entity);
+                if let Some(parent) = new_parent_entity {
+                    set_parent(world, child_entity, parent);
+                }
+                set_transform(world, child_entity, *new_local);
+                Ok(())
+            }
+            Self::Rename { guid, after, .. } => {
+                let entity = resolve(world, *guid)?;
+                set_name(world, entity, after.as_deref());
+                Ok(())
             }
             Self::Spawn { guid, snapshot } => {
                 let entity = world.spawn();
@@ -141,12 +275,85 @@ impl UndoCommand {
                 snapshot: snapshot.clone(),
             },
             Self::Batch(commands) => Self::Batch(commands.iter().map(Self::invert).collect()),
+            Self::Reparent {
+                child,
+                old_parent,
+                new_parent,
+                keep_world,
+                old_local,
+                new_local,
+            } => Self::Reparent {
+                child: *child,
+                old_parent: *new_parent,
+                new_parent: *old_parent,
+                keep_world: *keep_world,
+                old_local: *new_local,
+                new_local: *old_local,
+            },
+            Self::Rename { guid, before, after } => Self::Rename {
+                guid: *guid,
+                before: after.clone(),
+                after: before.clone(),
+            },
         }
     }
 }
 
 fn resolve(world: &World, guid: EntityGuid) -> Result<Entity, UndoError> {
     GuidResolver::resolve(world, guid).ok_or(UndoError::EntityNotFound(guid))
+}
+
+/// Whether making `new_parent` the parent of `child` would make `child` its own ancestor.
+fn creates_cycle(world: &World, child: Entity, new_parent: Entity) -> bool {
+    let mut current = Some(new_parent);
+    while let Some(entity) = current {
+        if entity == child {
+            return true;
+        }
+        current = world.get_component::<Parent>(entity).map(|parent| parent.0);
+    }
+    false
+}
+
+/// World matrix of `entity`: the product of the local matrices from the root down to it.
+fn world_matrix(world: &World, entity: Entity) -> Mat4 {
+    let local = world
+        .get_component::<Transform>(entity)
+        .map_or(Mat4::IDENTITY, |t| t.matrix());
+    match world.get_component::<Parent>(entity) {
+        Some(parent) => world_matrix(world, parent.0) * local,
+        None => local,
+    }
+}
+
+/// Removes the entity's parent link and drops it from the parent's children list.
+fn detach(world: &mut World, child: Entity) {
+    let Some(old_parent) = world.get_component::<Parent>(child).map(|parent| parent.0) else {
+        return;
+    };
+    if let Some(children) = world.get_component_mut::<Children>(old_parent) {
+        children.list.retain(|entity| *entity != child);
+    }
+    world.remove_component::<Parent>(child);
+}
+
+fn set_transform(world: &mut World, entity: Entity, value: Transform) {
+    match world.get_component_mut::<Transform>(entity) {
+        Some(transform) => *transform = value,
+        None => world.add_component(entity, value),
+    }
+}
+
+fn set_name(world: &mut World, entity: Entity, name: Option<&str>) {
+    match name {
+        Some(name) => match world.get_component_mut::<Name>(entity) {
+            Some(component) => component.0 = name.to_string(),
+            None => world.add_component(entity, Name(name.to_string())),
+        },
+        None => {
+            world.remove_component::<Name>(entity);
+        }
+    }
 }
 
 fn insert_value(
@@ -498,6 +705,8 @@ fn default_label(cmd: &UndoCommand) -> String {
         UndoCommand::Spawn { .. } => "Create Entity".into(),
         UndoCommand::Despawn { .. } => "Delete Entity".into(),
         UndoCommand::Batch(_) => "Edit".into(),
+        UndoCommand::Reparent { .. } => "Reparent Entity".into(),
+        UndoCommand::Rename { .. } => "Rename Entity".into(),
     }
 }
 

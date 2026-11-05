@@ -5,11 +5,12 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use redox_ecs::World;
+use redox_ecs::hierarchy::{Parent, set_parent};
 use redox_editor_core::GuidResolver;
 use redox_editor_core::undo::{Clock, UndoCommand, UndoError, UndoStack, capture_entity};
 use redox_math::{Transform, Vec3};
 use redox_reflect::{Reflect, TypeRegistry};
-use redox_scene::components::EntityGuid;
+use redox_scene::components::{EntityGuid, Name};
 
 /// Clock whose time moves only when a test advances it.
 struct ManualClock {
@@ -315,6 +316,106 @@ fn a_plain_edit_does_not_merge_into_a_transaction() {
     assert_eq!(translation_x(&world, guid), Some(1.0));
     assert!(undo.undo(&mut world, &registry));
     assert_eq!(translation_x(&world, guid), Some(0.0));
+}
+
+fn parent_of(world: &World, guid: EntityGuid) -> Option<EntityGuid> {
+    let entity = GuidResolver::resolve(world, guid)?;
+    let parent = world.get_component::<Parent>(entity)?;
+    GuidResolver::guid_of(world, parent.0)
+}
+
+/// X of the entity in world space; the tests use parents without a parent of their own.
+fn world_x(world: &World, guid: EntityGuid) -> Option<f32> {
+    let local = translation_x(world, guid)?;
+    match parent_of(world, guid) {
+        Some(parent) => Some(local + translation_x(world, parent)?),
+        None => Some(local),
+    }
+}
+
+fn approx(actual: Option<f32>, expected: f32) -> bool {
+    actual.is_some_and(|value| (value - expected).abs() < 1e-4)
+}
+
+fn name_of(world: &World, guid: EntityGuid) -> Option<String> {
+    let entity = GuidResolver::resolve(world, guid)?;
+    world.get_component::<Name>(entity).map(|name| name.0.clone())
+}
+
+#[test]
+fn reparent_keeping_the_world_position_is_undone_and_redone() {
+    let registry = registry();
+    let mut world = World::new();
+    let mut undo = UndoStack::default();
+    let parent = EntityGuid(20);
+    let child = EntityGuid(21);
+    spawn_with_transform(&mut world, parent, 10.0);
+    spawn_with_transform(&mut world, child, 1.0);
+
+    let cmd = UndoCommand::reparent(&world, child, Some(parent), true).expect("the move is valid");
+    cmd.apply(&mut world, &registry).expect("the move applies");
+    undo.push(cmd);
+
+    assert!(approx(translation_x(&world, child), -9.0));
+    assert!(approx(world_x(&world, child), 1.0));
+    assert_eq!(parent_of(&world, child), Some(parent));
+
+    assert!(undo.undo(&mut world, &registry));
+    assert!(approx(translation_x(&world, child), 1.0));
+    assert_eq!(parent_of(&world, child), None);
+
+    assert!(undo.redo(&mut world, &registry));
+    assert!(approx(world_x(&world, child), 1.0));
+    assert_eq!(parent_of(&world, child), Some(parent));
+}
+
+#[test]
+fn reparenting_under_a_descendant_is_rejected_and_changes_nothing() {
+    let mut world = World::new();
+    let a = EntityGuid(30);
+    let b = EntityGuid(31);
+    spawn_with_transform(&mut world, a, 0.0);
+    spawn_with_transform(&mut world, b, 0.0);
+    let a_entity = GuidResolver::resolve(&world, a).expect("a exists");
+    let b_entity = GuidResolver::resolve(&world, b).expect("b exists");
+    set_parent(&mut world, b_entity, a_entity);
+
+    assert_eq!(
+        UndoCommand::reparent(&world, a, Some(b), false).err(),
+        Some(UndoError::Cycle)
+    );
+    assert_eq!(
+        UndoCommand::reparent(&world, a, Some(a), false).err(),
+        Some(UndoError::Cycle)
+    );
+    assert_eq!(parent_of(&world, b), Some(a));
+    assert_eq!(parent_of(&world, a), None);
+}
+
+#[test]
+fn rename_is_undone_and_redone() {
+    let registry = registry();
+    let mut world = World::new();
+    let mut undo = UndoStack::default();
+    let guid = EntityGuid(40);
+    spawn_with_transform(&mut world, guid, 0.0);
+    let entity = GuidResolver::resolve(&world, guid).expect("the entity exists");
+    world.add_component(entity, Name("Old".into()));
+
+    let cmd = UndoCommand::Rename {
+        guid,
+        before: Some("Old".into()),
+        after: Some("New".into()),
+    };
+    cmd.apply(&mut world, &registry).expect("the rename applies");
+    undo.push(cmd);
+    assert_eq!(name_of(&world, guid).as_deref(), Some("New"));
+
+    assert!(undo.undo(&mut world, &registry));
+    assert_eq!(name_of(&world, guid).as_deref(), Some("Old"));
+
+    assert!(undo.redo(&mut world, &registry));
+    assert_eq!(name_of(&world, guid).as_deref(), Some("New"));
 }
 
 #[test]
