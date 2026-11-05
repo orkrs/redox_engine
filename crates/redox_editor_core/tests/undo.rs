@@ -6,7 +6,8 @@ use std::time::{Duration, Instant};
 
 use redox_ecs::World;
 use redox_ecs::hierarchy::{Parent, set_parent};
-use redox_editor_core::GuidResolver;
+use redox_editor_core::builtin_commands::record_spawn;
+use redox_editor_core::{EditorContext, GuidResolver};
 use redox_editor_core::undo::{Clock, UndoCommand, UndoError, UndoStack, capture_entity};
 use redox_math::{Transform, Vec3};
 use redox_reflect::{Reflect, TypeRegistry};
@@ -416,6 +417,95 @@ fn rename_is_undone_and_redone() {
 
     assert!(undo.redo(&mut world, &registry));
     assert_eq!(name_of(&world, guid).as_deref(), Some("New"));
+}
+
+fn undo_in(ctx: &EditorContext) -> bool {
+    let mut world = ctx.world.lock();
+    let registry = ctx.registry.lock();
+    ctx.undo.lock().undo(&mut world, &registry)
+}
+
+fn redo_in(ctx: &EditorContext) -> bool {
+    let mut world = ctx.world.lock();
+    let registry = ctx.registry.lock();
+    ctx.undo.lock().redo(&mut world, &registry)
+}
+
+fn entity_count(ctx: &EditorContext) -> usize {
+    ctx.world.lock().all_entities().count()
+}
+
+fn primary_guid(ctx: &EditorContext) -> EntityGuid {
+    let entity = ctx.selection.lock().primary.expect("an entity is selected");
+    GuidResolver::guid_of(&ctx.world.lock(), entity).expect("the entity has a guid")
+}
+
+#[test]
+fn create_entity_is_undone_and_redone_with_the_same_guid() {
+    let ctx = EditorContext::new(registry());
+    assert!(ctx.commands.run(&ctx, "create_entity"));
+    let guid = primary_guid(&ctx);
+    assert_eq!(ctx.undo.lock().entries()[0].label, "Create Entity");
+
+    assert!(undo_in(&ctx));
+    assert_eq!(entity_count(&ctx), 0);
+
+    assert!(redo_in(&ctx));
+    assert!(GuidResolver::resolve(&ctx.world.lock(), guid).is_some());
+}
+
+#[test]
+fn duplicate_is_one_step_and_undo_removes_the_copy() {
+    let ctx = EditorContext::new(registry());
+    assert!(ctx.commands.run(&ctx, "create_entity"));
+    assert!(ctx.commands.run(&ctx, "duplicate"));
+    assert_eq!(entity_count(&ctx), 2);
+    assert_eq!(ctx.undo.lock().len(), 2);
+    assert_eq!(ctx.undo.lock().entries()[1].label, "Duplicate Entity");
+
+    assert!(undo_in(&ctx));
+    assert_eq!(entity_count(&ctx), 1);
+}
+
+#[test]
+fn delete_is_undone_with_its_components_and_guid() {
+    let ctx = EditorContext::new(registry());
+    assert!(ctx.commands.run(&ctx, "create_entity"));
+    let guid = primary_guid(&ctx);
+    assert!(ctx.commands.run(&ctx, "delete"));
+    assert!(GuidResolver::resolve(&ctx.world.lock(), guid).is_none());
+
+    assert!(undo_in(&ctx));
+    let restored = GuidResolver::resolve(&ctx.world.lock(), guid).expect("the entity is back");
+    assert!(ctx.world.lock().get_component::<Transform>(restored).is_some());
+    assert_eq!(ctx.undo.lock().redo_entries()[0].label, "Delete Entity");
+}
+
+#[test]
+fn brush_stroke_of_several_objects_is_undone_by_one_step() {
+    let ctx = EditorContext::new(registry());
+    ctx.undo.lock().begin("Brush Stroke");
+    for offset in 0..5 {
+        let entity = {
+            let mut world = ctx.world.lock();
+            let entity = world.spawn();
+            world.add_component(
+                entity,
+                Transform::from_translation(Vec3::new(offset as f32, 0.0, 0.0)),
+            );
+            entity
+        };
+        record_spawn(&ctx, entity);
+    }
+    assert!(ctx.undo.lock().commit());
+    assert_eq!(ctx.undo.lock().len(), 1);
+    assert_eq!(ctx.undo.lock().entries()[0].label, "Brush Stroke");
+    assert_eq!(entity_count(&ctx), 5);
+
+    assert!(undo_in(&ctx));
+    assert_eq!(entity_count(&ctx), 0);
+    assert!(redo_in(&ctx));
+    assert_eq!(entity_count(&ctx), 5);
 }
 
 /// Records a step that changes nothing; used where only the history shape matters.

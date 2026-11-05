@@ -2,6 +2,7 @@
 
 use parking_lot::Mutex;
 use redox_editor_core::EditorContext;
+use redox_editor_core::builtin_commands::record_spawn;
 use redox_editor_debugger::{FrameProfiler, PieSession, TimeTravelBuffer};
 use redox_editor_scene::{WorldGitTracker, WorldSession};
 use redox_editor_viewport::{
@@ -141,15 +142,22 @@ impl EditorUiCtx {
     }
 
     /// Spawn a patrol/chase AI agent for the StateTree debugger.
+    /// The spawn is one undo step named "Spawn StateTree Agent".
     pub fn spawn_demo_agent(&self) {
-        let mut world = self.core.world.lock();
-        let e = world.spawn();
-        world.add_component(
-            e,
-            redox_math::Transform::from_translation(redox_math::Vec3::new(56.0, 1.0, 50.0)),
-        );
-        world.add_component(e, StateTreeComponent::patrol_chase());
-        world.add_component(e, AttributeSet::default_character());
+        self.core.undo.lock().begin("Spawn StateTree Agent");
+        let e = {
+            let mut world = self.core.world.lock();
+            let e = world.spawn(); // undo: tx
+            world.add_component( // undo: tx
+                e,
+                redox_math::Transform::from_translation(redox_math::Vec3::new(56.0, 1.0, 50.0)),
+            );
+            world.add_component(e, StateTreeComponent::patrol_chase()); // undo: tx
+            world.add_component(e, AttributeSet::default_character()); // undo: tx
+            e
+        };
+        record_spawn(&self.core, e);
+        self.core.undo.lock().commit();
         *self.demo_agent.lock() = Some(e);
         self.graph.lock().load_patrol_chase();
         self.log(format!("[INFO] Demo StateTree agent #{}", e.id()));

@@ -4,6 +4,7 @@
 use super::EditorApp;
 use crate::commands::{collect_transforms, resolve_entity};
 use crate::render_host::{RenderHost, SharedGpu};
+use redox_editor_core::builtin_commands::record_spawn;
 use redox_editor_scene::WorldSession;
 use redox_editor_ui::{AssetKind, EditorMeshProxy, OutlinerAction, egui_to_viewport_coords};
 use redox_editor_viewport::{
@@ -126,12 +127,13 @@ impl EditorApp {
                     .unwrap_or("asset")
                     .to_string()
             });
+            self.core.undo.lock().begin(format!("Place {label}"));
             let e = {
                 let mut w = self.core.world.lock();
-                let e = w.spawn();
-                w.add_component(e, Transform::default());
+                let e = w.spawn(); // undo: tx
+                w.add_component(e, Transform::default()); // undo: tx
                 if req.kind == AssetKind::Mesh {
-                    w.add_component(
+                    w.add_component( // undo: tx
                         e,
                         EditorMeshProxy {
                             path: req.path.clone(),
@@ -141,6 +143,8 @@ impl EditorApp {
                 }
                 e
             };
+            record_spawn(&self.core, e);
+            self.core.undo.lock().commit();
             self.core.selection.lock().set_primary(Some(e));
             self.ui_ctx.log(format!(
                 "[INFO] Spawned {} proxy for {}",
@@ -459,6 +463,7 @@ impl EditorApp {
                                 settings.density,
                                 (hit.x * 1000.0) as u64 ^ (hit.z * 1000.0) as u64,
                             );
+                            self.core.undo.lock().begin("Brush Stroke");
                             if let Some(session) = self.ui_ctx.world_session.lock().as_mut() {
                                 let n = session.paint_actors(
                                     &mut self.core.world.lock(),
@@ -474,19 +479,27 @@ impl EditorApp {
                                     .lock()
                                     .refresh_from_world(&self.core.world.lock());
                             } else {
-                                let mut w = self.core.world.lock();
-                                for (p, yaw) in poses {
-                                    let e = w.spawn();
-                                    w.add_component(
-                                        e,
-                                        Transform {
-                                            translation: p + Vec3::Y * 0.5,
-                                            rotation: redox_math::Quat::from_rotation_y(yaw),
-                                            scale: Vec3::ONE,
-                                        },
-                                    );
+                                let mut spawned = Vec::with_capacity(poses.len());
+                                {
+                                    let mut w = self.core.world.lock();
+                                    for (p, yaw) in poses {
+                                        let e = w.spawn(); // undo: tx
+                                        w.add_component( // undo: tx
+                                            e,
+                                            Transform {
+                                                translation: p + Vec3::Y * 0.5,
+                                                rotation: redox_math::Quat::from_rotation_y(yaw),
+                                                scale: Vec3::ONE,
+                                            },
+                                        );
+                                        spawned.push(e);
+                                    }
+                                }
+                                for e in spawned {
+                                    record_spawn(&self.core, e);
                                 }
                             }
+                            self.core.undo.lock().commit();
                         }
                     }
                 } else if let Some(id) = pick_unit_cubes(entities, origin, dir) {
