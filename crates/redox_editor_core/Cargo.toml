@@ -17,3 +17,6 @@ redox_math = { path = "../redox_math" }
 redox_reflect = { path = "../redox_reflect" }
 redox_scene = { path = "../redox_scene" }
 parking_lot = "0.12"
+serde = { workspace = true }
+ron = { workspace = true }
+thiserror = { workspace = true }

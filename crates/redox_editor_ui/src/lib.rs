@@ -13,6 +13,8 @@ pub mod context;
 pub mod dock;
 /// Version-control overlay.
 pub mod git_overlay;
+/// File menu, unsaved-changes prompt, path dialogs and load report.
+pub mod file_menu;
 /// egui adapters over the egui-free editor logic.
 pub mod input_adapters;
 /// Component inspector.

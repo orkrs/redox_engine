@@ -12,10 +12,18 @@ pub mod builtin_commands;
 pub mod command;
 /// Shared handles to the editor state.
 pub mod context;
+/// File and project commands; they queue requests for the editor host.
+pub mod file_commands;
+/// Pure rules of the file dialogs: prompts, Save target, menu availability, window title.
+pub mod file_state;
 /// Marker for entities that exist only inside the editor.
 pub mod editor_only;
 /// Console log ring buffer.
 pub mod log;
+/// Project manifest `project.ron`, project creation, opening and the recent-projects list.
+pub mod project;
+/// Starter templates for new projects.
+pub mod project_template;
 /// Selection set and primary selection.
 pub mod selection;
 /// Undo and redo commands.

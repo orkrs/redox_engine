@@ -12,6 +12,8 @@ pub mod format;
 pub mod document;
 /// Registration of the scene component types for reflection.
 pub mod register;
+/// The level open in the editor: a scene file or a world folder.
+pub mod level;
 /// The open world: partition streamer, manifest and root directory.
 pub mod world_session;
 
@@ -19,4 +21,5 @@ pub use document::{LoadReport, LoadWarning, SceneDocument, SceneError};
 pub use format::SCENE_FORMAT_VERSION;
 pub use git::{ActorGitStatus, WorldGitTracker};
 pub use register::register_scene_components;
+pub use level::{Level, LevelError, LevelKind};
 pub use world_session::WorldSession;
