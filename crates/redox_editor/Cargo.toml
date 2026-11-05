@@ -18,6 +18,7 @@ shader-hot-reload = ["redox_render/shader-hot-reload"]
 
 [dependencies]
 redox_editor_core = { path = "../redox_editor_core" }
+redox_editor_debugger = { path = "../redox_editor_debugger" }
 redox_editor_ui = { path = "../redox_editor_ui" }
 redox_core = { path = "../redox_core" }
 redox_ecs = { path = "../redox_ecs" }

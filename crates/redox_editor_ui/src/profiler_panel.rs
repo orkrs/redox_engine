@@ -1,4 +1,4 @@
-use redox_editor_core::FrameProfiler;
+use redox_editor_debugger::FrameProfiler;
 
 /// Panel that plots frame times.
 pub struct ProfilerPanel;

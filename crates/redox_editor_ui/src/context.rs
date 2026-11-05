@@ -3,9 +3,10 @@
 use parking_lot::Mutex;
 use redox_ecs::World;
 use redox_editor_core::{
-    EditorCamera, FrameProfiler, GizmoState, PieSession, Selection, TimeTravelBuffer, UndoStack,
-    ViewportDebugFlags, ViewportLayout, ViewportShading, WorldGitTracker, WorldSession,
+    EditorCamera, GizmoState, Selection, UndoStack, ViewportDebugFlags, ViewportLayout,
+    ViewportShading, WorldGitTracker, WorldSession,
 };
+use redox_editor_debugger::{FrameProfiler, PieSession, TimeTravelBuffer};
 use redox_reflect::TypeRegistry;
 use std::sync::Arc;
 
