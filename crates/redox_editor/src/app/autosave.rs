@@ -115,7 +115,8 @@ pub(crate) fn begin_session(
         scene_path: None,
     };
     if let Err(err) = service.begin_session(&source) {
-        core.log.error(format!("session lock could not be written: {err}"));
+        core.log
+            .error(format!("session lock could not be written: {err}"));
     }
 }
 
@@ -197,14 +198,11 @@ impl EditorApp {
                 offer.level,
                 bytes.len()
             )),
-            Ok(None) => self.core.log.info(format!(
-                "autosaves of {} moved to discarded/",
-                offer.level
-            )),
-            Err(err) => self
+            Ok(None) => self
                 .core
                 .log
-                .error(format!("recovery failed: {err}")),
+                .info(format!("autosaves of {} moved to discarded/", offer.level)),
+            Err(err) => self.core.log.error(format!("recovery failed: {err}")),
         }
         begin_session(&mut self.autosave, &self.core, &self.level_name);
     }

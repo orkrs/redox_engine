@@ -15,6 +15,7 @@ pub mod build;
 pub mod clock;
 pub mod temp;
 
+#[allow(unused_imports)]
 pub use build::{
     AssetRef, SceneEntitySpec, copy_dir, corrupt, make_glb, make_png, make_scene,
     write_asset_with_meta,
@@ -23,19 +24,25 @@ pub use clock::TestClock;
 pub use temp::{TempDir, list_files};
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
+use redox_asset::guid::AssetStatus;
 use redox_ecs::hierarchy::{Parent, set_parent};
 use redox_ecs::{Entity, World};
-use redox_editor_assets::{AssetService, AssetStatus, DeleteOutcome};
-use redox_editor_core::autosave::{AutosavePolicy, AutosaveService, RecoveryOffer, recovery};
+use redox_editor_assets::{AssetService, DeleteOutcome};
+use redox_editor_core::EditorContext;
+use redox_editor_core::EditorLog;
+use redox_editor_core::autosave::{AutosavePolicy, AutosaveService, AutosaveSource, WriteMode};
 use redox_editor_core::editor_only::{EditorOnly, editor_only_entities};
 use redox_editor_core::project::{ProjectContext, RecentProjects};
+use redox_editor_core::project_template::ProjectTemplate;
+use redox_editor_core::recovery::{
+    RecoveryCheck, RecoveryChoice, RecoveryOffer, RecoveryQuery, apply_recovery, check_recovery,
+};
 use redox_editor_core::settings::EditorSettings;
 use redox_editor_core::undo::{UndoCommand, UndoStack};
-use redox_editor_core::EditorContext;
 use redox_editor_debugger::PieSession;
-use redox_editor_scene::{GuidIndex, Level, LoadReport, register_scene_components};
+use redox_editor_scene::guid_index::GuidIndex;
+use redox_editor_scene::{Level, LoadReport, SceneDocument, register_scene_components};
 use redox_math::{Transform, Vec3};
 use redox_reflect::{Reflect, ReflectValue, TypeRegistry, WorldSnapshot};
 use redox_scene::Name;
@@ -43,6 +50,8 @@ use redox_scene::components::EntityGuid;
 
 /// Attempts made while waiting for the import queue to become idle.
 const IMPORT_WAIT_ROUNDS: usize = 200_000;
+/// Undo steps the harness keeps; large enough for the stress scenario.
+const HISTORY_LIMIT: usize = 100_000;
 /// Name of the folder inside a project where the editor keeps its service files.
 const SERVICE_DIR: &str = ".redox";
 
@@ -88,12 +97,14 @@ pub struct EditorHarness {
     pub project: Option<ProjectContext>,
     pub level: Option<Level>,
     pub assets: Option<AssetService>,
-    pub autosave: AutosaveService,
+    pub autosave: Option<AutosaveService>,
     pub clock: TestClock,
     pub root: TempDir,
     pub pie: PieSession,
     pub recovery: Option<RecoveryOffer>,
     pub load_report: Option<LoadReport>,
+    /// File chosen by [`Self::new_scene`] for the first save.
+    pub pending_path: Option<PathBuf>,
     pub asset_report: Option<redox_editor_assets::AssetReport>,
 }
 
@@ -106,19 +117,20 @@ impl EditorHarness {
     fn on_root(root: TempDir, clock: TestClock) -> Self {
         let mut registry = TypeRegistry::new();
         register_scene_components(&mut registry);
-        let autosave =
-            AutosaveService::new(AutosavePolicy::default(), Arc::new(clock.clone())).synchronous();
+        let ctx = EditorContext::new(registry);
+        *ctx.undo.lock() = UndoStack::new(HISTORY_LIMIT);
         Self {
-            ctx: EditorContext::new(registry),
+            ctx,
             project: None,
             level: None,
             assets: None,
-            autosave,
+            autosave: None,
             clock,
             root,
             pie: PieSession::new(),
             recovery: None,
             load_report: None,
+            pending_path: None,
             asset_report: None,
         }
     }
@@ -126,8 +138,9 @@ impl EditorHarness {
     /// Closes the editor the normal way and starts a new one on the same files: memory is
     /// reset, the disk is kept.
     pub fn restart(mut self) -> Self {
-        if let Some(project) = self.project.as_ref() {
-            self.autosave.close_session(project.root());
+        let dirty = self.level_is_dirty();
+        if let Some(service) = self.autosave.as_mut() {
+            let _ = service.finish_session(dirty);
         }
         let Self { root, clock, .. } = self;
         Self::on_root(root, clock)
@@ -138,6 +151,77 @@ impl EditorHarness {
     pub fn crash(self) -> Self {
         let Self { root, clock, .. } = self;
         Self::on_root(root, clock)
+    }
+
+    fn level_is_dirty(&self) -> bool {
+        let world = self.ctx.world.lock();
+        let registry = self.ctx.registry.lock();
+        self.level
+            .as_ref()
+            .is_some_and(|level| level.is_dirty(&registry, &world))
+    }
+
+    /// Creates the autosave service of the project and looks for a recovery offer for its start
+    /// scene. The session lock is taken later, when a level is open and no offer is pending.
+    fn start_autosave(&mut self, dir: &Path) {
+        let log = EditorLog::new();
+        let policy = self.autosave_policy();
+        self.autosave = Some(AutosaveService::new(
+            dir,
+            policy,
+            Box::new(self.clock.clone()),
+            log.clone(),
+            WriteMode::Synchronous,
+        ));
+        self.recovery = None;
+        let Some(start) = self
+            .project
+            .as_ref()
+            .and_then(ProjectContext::start_scene_path)
+        else {
+            return;
+        };
+        let mut scratch = World::new();
+        let title = {
+            let registry = self.ctx.registry.lock();
+            match Level::open(&start, &registry, &mut scratch) {
+                Ok((level, _)) => level.title(),
+                Err(_) => return,
+            }
+        };
+        let query = RecoveryQuery {
+            project_root: dir,
+            level: &title,
+            level_path: Some(&start),
+            now: self.clock.now_secs(),
+            interval_secs: policy.interval_secs,
+        };
+        let is_valid = |bytes: &[u8]| {
+            std::str::from_utf8(bytes)
+                .ok()
+                .is_some_and(|text| text.trim_start().starts_with('('))
+        };
+        if let RecoveryCheck::Offer(offer) = check_recovery(&query, &is_valid, &log) {
+            self.recovery = Some(offer);
+        }
+    }
+
+    /// Takes the session lock for the open level unless a recovery question is still open.
+    fn begin_autosave_session(&mut self) {
+        if self.recovery.is_some() {
+            return;
+        }
+        let (Some(level), Some(service)) = (self.level.as_ref(), self.autosave.as_mut()) else {
+            return;
+        };
+        if service.is_session_active() {
+            return;
+        }
+        let source = HarnessSource {
+            ctx: &self.ctx,
+            level,
+        };
+        let _ = service.begin_session(&source);
     }
 
     /// The temporary root of this editor.
@@ -162,6 +246,10 @@ impl EditorHarness {
     /// Creates a project from `template` under the root and opens it.
     pub fn new_project(&mut self, name: &str, template: &str) -> Result<PathBuf, String> {
         let dir = self.root().join("projects").join(name);
+        let template = match template {
+            "3d_starter" => ProjectTemplate::ThreeDStarter,
+            _ => ProjectTemplate::Empty,
+        };
         ProjectContext::create(&dir, name, template).map_err(|e| format!("{e:?}"))?;
         self.open_project(&dir)?;
         Ok(dir)
@@ -170,15 +258,18 @@ impl EditorHarness {
     /// Opens the project in `dir`. Adds it to the recent list and looks for a recovery offer.
     pub fn open_project(&mut self, dir: &Path) -> Result<(), String> {
         let project = ProjectContext::open(dir).map_err(|e| format!("{e:?}"))?;
-        let (assets, report) = AssetService::open(dir).map_err(|e| format!("{e:?}"))?;
-        RecentProjects::remember(&self.config_dir().join("editor_recent.ron"), dir)
-            .map_err(|e| format!("{e:?}"))?;
-        self.recovery = recovery::find_offer(dir, &self.clock, &self.autosave_policy());
+        let assets = AssetService::open(dir).map_err(|e| format!("{e:?}"))?;
+        let recent_file = self.config_dir().join("editor_recent.ron");
+        std::fs::create_dir_all(self.config_dir()).map_err(|e| e.to_string())?;
+        let mut recent = RecentProjects::load(&recent_file).unwrap_or_default();
+        recent.push(dir);
+        recent.save(&recent_file).map_err(|e| format!("{e:?}"))?;
+        self.asset_report = Some(assets.report().clone());
         self.project = Some(project);
         self.assets = Some(assets);
-        self.asset_report = Some(report);
         self.level = None;
         self.load_report = None;
+        self.start_autosave(dir);
         Ok(())
     }
 
@@ -204,11 +295,8 @@ impl EditorHarness {
         } else {
             std::fs::create_dir_all(dir.join("assets/textures"))
                 .expect("the asset directory is created");
-            std::fs::write(
-                dir.join("assets/textures/damaged.png"),
-                make_png(8, 8),
-            )
-            .expect("the asset is written");
+            std::fs::write(dir.join("assets/textures/damaged.png"), make_png(8, 8))
+                .expect("the asset is written");
         }
         dir
     }
@@ -217,7 +305,7 @@ impl EditorHarness {
     pub fn start_scene(&self) -> Option<String> {
         self.project
             .as_ref()
-            .map(|project| project.manifest.start_scene.clone())
+            .map(|project| project.manifest().start_scene.clone())
     }
 
     /// Opens the start scene of the open project.
@@ -231,15 +319,18 @@ impl EditorHarness {
     pub fn open_scene(&mut self, relative: &str) -> Result<(), String> {
         let path = self.project_dir().join(relative);
         *self.ctx.world.lock() = World::new();
-        *self.ctx.undo.lock() = UndoStack::default();
+        *self.ctx.undo.lock() = UndoStack::new(HISTORY_LIMIT);
         self.ctx.selection.lock().clear();
         let (level, report) = {
             let mut world = self.ctx.world.lock();
             let registry = self.ctx.registry.lock();
-            Level::open(&path, &registry, &mut world).map_err(|e| format!("{e:?}"))?
+            let assets_root = self.project_dir();
+            Level::open_with_assets(&path, &registry, &mut world, Some(&assets_root))
+                .map_err(|e| format!("{e:?}"))?
         };
         self.load_report = Some(report);
         self.level = Some(level);
+        self.begin_autosave_session();
         Ok(())
     }
 
@@ -252,34 +343,52 @@ impl EditorHarness {
             .unwrap_or("scene")
             .to_owned();
         *self.ctx.world.lock() = World::new();
-        *self.ctx.undo.lock() = UndoStack::default();
-        let level = Level::new_scene(&path, &name).map_err(|e| format!("{e:?}"))?;
+        *self.ctx.undo.lock() = UndoStack::new(HISTORY_LIMIT);
+        let level = {
+            let registry = self.ctx.registry.lock();
+            let world = self.ctx.world.lock();
+            Level::new_scene(&name, &registry, &world)
+        };
+        self.pending_path = Some(path);
         self.load_report = None;
         self.level = Some(level);
+        self.begin_autosave_session();
         Ok(())
     }
 
     /// Saves the open level to its file. Errors are returned, not only logged.
     pub fn save(&mut self) -> Result<(), String> {
         let level = self.level.as_mut().ok_or("no level is open")?;
-        level.save(&self.ctx).map_err(|e| format!("{e:?}"))
+        let mut world = self.ctx.world.lock();
+        let registry = self.ctx.registry.lock();
+        if level.path().is_none() {
+            let path = self.pending_path.clone().ok_or("the scene has no file")?;
+            return level
+                .save_as(&path, &registry, &mut world)
+                .map_err(|e| format!("{e:?}"));
+        }
+        level
+            .save(&registry, &mut world)
+            .map_err(|e| format!("{e:?}"))
     }
 
     /// Whether the open level has unsaved changes.
     pub fn is_dirty(&self) -> bool {
-        self.level.as_ref().is_some_and(Level::is_dirty)
+        self.level_is_dirty()
     }
 
     /// Recent project directories, most recent first.
     pub fn recent_projects(&self) -> Vec<PathBuf> {
-        RecentProjects::load(&self.config_dir().join("editor_recent.ron")).paths()
+        RecentProjects::load(self.config_dir().join("editor_recent.ron"))
+            .map(|recent| recent.entries().iter().map(PathBuf::from).collect())
+            .unwrap_or_default()
     }
 
     /// Warnings of the last project open, as variant names (for example `MissingPlugin`).
     pub fn project_warning_tags(&self) -> Vec<String> {
         self.project
             .as_ref()
-            .map(|project| project.warnings.iter().map(variant_name).collect())
+            .map(|project| project.warnings().iter().map(variant_name).collect())
             .unwrap_or_default()
     }
 
@@ -313,7 +422,12 @@ impl EditorHarness {
     pub fn snapshot(&self) -> WorldSnapshot {
         let world = self.ctx.world.lock();
         let registry = self.ctx.registry.lock();
-        registry.snapshot_world(&world)
+        let mut snapshot = registry.snapshot_world(&world);
+        // The order of entities depends on archetype layout; compare as a set.
+        snapshot
+            .entities
+            .sort_by_key(|entity| format!("{entity:?}"));
+        snapshot
     }
 
     /// Number of entities in the world.
@@ -464,17 +578,16 @@ impl EditorHarness {
     }
 
     /// Sets the parent of `child` (or removes it) as one undoable step, keeping the world pose.
-    pub fn reparent(&self, child: EntityGuid, new_parent: Option<EntityGuid>) -> Result<(), String> {
-        let old_parent = self.parent_of(child);
-        self.commit_edit(
-            "Reparent",
-            UndoCommand::Reparent {
-                child,
-                old_parent,
-                new_parent,
-                keep_world: true,
-            },
-        )
+    pub fn reparent(
+        &self,
+        child: EntityGuid,
+        new_parent: Option<EntityGuid>,
+    ) -> Result<(), String> {
+        let command = {
+            let world = self.ctx.world.lock();
+            UndoCommand::reparent(&world, child, new_parent, true).map_err(|e| format!("{e:?}"))?
+        };
+        self.commit_edit("Reparent", command)
     }
 
     /// Adds a component with the given fields to an entity as one undoable step.
@@ -527,7 +640,7 @@ impl EditorHarness {
 
     /// Forgets the undo history without touching the world.
     pub fn clear_history(&self) {
-        *self.ctx.undo.lock() = UndoStack::default();
+        *self.ctx.undo.lock() = UndoStack::new(HISTORY_LIMIT);
     }
 
     /// Starts Play in the editor.
@@ -593,8 +706,16 @@ impl EditorHarness {
     /// One turn of the main loop: autosave (not during Play) and the asset service.
     pub fn tick(&mut self) {
         let playing = self.pie.is_running();
-        if let Some(level) = self.level.as_ref() {
-            self.autosave.tick(&self.ctx, level, playing);
+        if !playing
+            && let (Some(level), Some(service)) = (self.level.as_ref(), self.autosave.as_mut())
+            && service.is_session_active()
+        {
+            let source = HarnessSource {
+                ctx: &self.ctx,
+                level,
+            };
+            let transactions = self.ctx.undo.lock().len() as u64;
+            service.tick(&source, transactions);
         }
         if let Some(assets) = self.assets.as_mut() {
             let _changes = assets.tick();
@@ -603,10 +724,13 @@ impl EditorHarness {
 
     /// Files of the autosave folder of the open project (`*.scene.ron`).
     pub fn autosave_files(&self) -> Vec<PathBuf> {
-        list_files(&self.project_dir().join(SERVICE_DIR).join("autosave"), false)
-            .into_iter()
-            .filter(|p| p.to_string_lossy().ends_with(".scene.ron"))
-            .collect()
+        list_files(
+            &self.project_dir().join(SERVICE_DIR).join("autosave"),
+            false,
+        )
+        .into_iter()
+        .filter(|p| p.to_string_lossy().ends_with(".scene.ron"))
+        .collect()
     }
 
     /// Files under `.redox/autosave/discarded/`, all times.
@@ -623,7 +747,10 @@ impl EditorHarness {
 
     /// Whether `.redox/session.lock` exists.
     pub fn session_lock_exists(&self) -> bool {
-        self.project_dir().join(SERVICE_DIR).join("session.lock").exists()
+        self.project_dir()
+            .join(SERVICE_DIR)
+            .join("session.lock")
+            .exists()
     }
 
     /// The recovery offer of the last project open, if any.
@@ -634,15 +761,47 @@ impl EditorHarness {
     /// Accepts the recovery offer: the autosaved state becomes the open level, marked dirty.
     pub fn accept_recovery(&mut self) -> Result<(), String> {
         let offer = self.recovery.take().ok_or("no recovery offer")?;
-        let level = recovery::accept(&self.ctx, offer).map_err(|e| format!("{e:?}"))?;
+        let dir = self.project_dir();
+        let now = self.clock.now_secs();
+        let bytes = apply_recovery(&dir, &offer, RecoveryChoice::Recover, now)
+            .map_err(|e| format!("{e:?}"))?
+            .ok_or("the autosave has no bytes")?;
+        let mut scratch = World::new();
+        let level = {
+            let registry = self.ctx.registry.lock();
+            match offer.level_path.as_deref() {
+                Some(path) => {
+                    Level::open(path, &registry, &mut scratch)
+                        .map_err(|e| format!("{e:?}"))?
+                        .0
+                }
+                None => Level::new_scene(&offer.level, &registry, &scratch),
+            }
+        };
+        let tmp = self.root().join("recovered.scene.ron");
+        std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
+        *self.ctx.world.lock() = World::new();
+        *self.ctx.undo.lock() = UndoStack::new(HISTORY_LIMIT);
+        self.ctx.selection.lock().clear();
+        {
+            let registry = self.ctx.registry.lock();
+            let mut world = self.ctx.world.lock();
+            SceneDocument::open(&tmp, &registry, &mut world).map_err(|e| format!("{e:?}"))?;
+        }
+        let _ = std::fs::remove_file(&tmp);
         self.level = Some(level);
+        self.begin_autosave_session();
         Ok(())
     }
 
     /// Declines the recovery offer: the autosaves move to `discarded/`.
     pub fn discard_recovery(&mut self) -> Result<(), String> {
         let offer = self.recovery.take().ok_or("no recovery offer")?;
-        recovery::discard(offer, &self.clock).map_err(|e| format!("{e:?}"))
+        let dir = self.project_dir();
+        let now = self.clock.now_secs();
+        apply_recovery(&dir, &offer, RecoveryChoice::Discard, now).map_err(|e| format!("{e:?}"))?;
+        self.begin_autosave_session();
+        Ok(())
     }
 
     /// Writes a file under the project root, creating folders.
@@ -675,14 +834,14 @@ impl EditorHarness {
     /// Queues an asset for import.
     pub fn request_import(&mut self, relative: &str) {
         if let Some(assets) = self.assets.as_mut() {
-            assets.request_import(relative);
+            assets.import(relative);
         }
     }
 
     /// Queues a failed asset for import again.
     pub fn retry_import(&mut self, relative: &str) {
         if let Some(assets) = self.assets.as_mut() {
-            assets.retry(relative);
+            assets.retry_import(relative);
         }
     }
 
@@ -690,7 +849,14 @@ impl EditorHarness {
     pub fn wait_imports_idle(&mut self) {
         for _ in 0..IMPORT_WAIT_ROUNDS {
             self.tick();
-            if self.assets.as_ref().is_some_and(|a| a.is_idle()) {
+            if self
+                .assets
+                .as_ref()
+                .is_some_and(|a| a.import_counts().importing == 0)
+            {
+                for _ in 0..3 {
+                    self.tick();
+                }
                 return;
             }
             std::thread::yield_now();
@@ -703,17 +869,20 @@ impl EditorHarness {
         self.assets
             .as_ref()?
             .status(relative)
-            .map(|status: AssetStatus| format!("{status:?}"))
+            .map(|status: &AssetStatus| format!("{status:?}"))
     }
 
     /// Moves or renames an asset through the asset service. `confirm` accepts rewriting the
     /// references in closed scenes.
     pub fn move_asset(&mut self, from: &str, to: &str, confirm: bool) -> Result<(), String> {
         let assets = self.assets.as_mut().ok_or("no project is open")?;
-        assets
-            .move_asset(from, to, confirm)
-            .map(|_| ())
-            .map_err(|e| format!("{e:?}"))
+        let report = assets.move_asset(from, to).map_err(|e| format!("{e:?}"))?;
+        if confirm {
+            assets
+                .update_path_hints(report.guid)
+                .map_err(|e| format!("{e:?}"))?;
+        }
+        Ok(())
     }
 
     /// Deletes an asset. Without `force` a referenced asset is not removed.
@@ -723,7 +892,7 @@ impl EditorHarness {
             .delete_asset(relative, force)
             .map_err(|e| format!("{e:?}"))?
         {
-            DeleteOutcome::Deleted => Ok(Deletion::Deleted),
+            DeleteOutcome::Deleted { .. } => Ok(Deletion::Deleted),
             DeleteOutcome::Blocked { dependents } => Ok(Deletion::Blocked(
                 dependents.into_iter().map(|d| d.scene).collect(),
             )),
@@ -746,7 +915,11 @@ impl EditorHarness {
     }
 
     /// The asset reference of a component: `(guid text, path text)`.
-    pub fn asset_ref(&self, guid: EntityGuid, type_name: &str) -> Option<(Option<String>, Option<String>)> {
+    pub fn asset_ref(
+        &self,
+        guid: EntityGuid,
+        type_name: &str,
+    ) -> Option<(Option<String>, Option<String>)> {
         let entity = self.entity_of(guid)?;
         let value = self.component_value(entity, type_name)?;
         let text = |field: &str| {
@@ -760,6 +933,7 @@ impl EditorHarness {
 
     /// Writes autosave settings into `editor_settings.ron`.
     pub fn save_autosave_policy(&self, policy: AutosavePolicy) -> Result<(), String> {
+        std::fs::create_dir_all(self.config_dir()).map_err(|e| e.to_string())?;
         EditorSettings { autosave: policy }
             .save(&self.config_dir().join("editor_settings.ron"))
             .map_err(|e| format!("{e:?}"))
@@ -767,7 +941,9 @@ impl EditorHarness {
 
     /// The autosave policy read from `editor_settings.ron` (default when the file is missing).
     pub fn autosave_policy(&self) -> AutosavePolicy {
-        EditorSettings::load(&self.config_dir().join("editor_settings.ron")).autosave
+        EditorSettings::load(&self.config_dir().join("editor_settings.ron"))
+            .map(|settings| settings.autosave)
+            .unwrap_or_default()
     }
 
     /// Writes raw bytes into the config folder.
@@ -779,11 +955,12 @@ impl EditorHarness {
 
     /// Loads `editor_layout.ron` the way the app does at start.
     pub fn load_layout(&self) -> LayoutOutcome {
-        let outcome =
-            redox_editor_ui::dock::load_layout_file(&self.config_dir().join("editor_layout.ron"));
+        let path = self.config_dir().join("editor_layout.ron");
+        let broken = self.config_dir().join("editor_layout.ron.broken");
+        let _dock = redox_editor_ui::EditorDock::load_or_default(&path, &EditorLog::new());
         LayoutOutcome {
-            used_default: outcome.used_default,
-            broken_renamed: outcome.renamed_broken,
+            used_default: !path.exists(),
+            broken_renamed: broken.exists(),
         }
     }
 
@@ -818,3 +995,40 @@ fn variant_name<T: std::fmt::Debug>(value: &T) -> String {
         .collect()
 }
 
+/// Autosave source of the harness: the open level and the edited world.
+struct HarnessSource<'a> {
+    ctx: &'a EditorContext,
+    level: &'a Level,
+}
+
+impl AutosaveSource for HarnessSource<'_> {
+    fn is_dirty(&self) -> bool {
+        let world = self.ctx.world.lock();
+        let registry = self.ctx.registry.lock();
+        self.level.is_dirty(&registry, &world)
+    }
+
+    fn level_name(&self) -> String {
+        self.level.title()
+    }
+
+    fn level_path(&self) -> Option<PathBuf> {
+        self.level.path().map(Path::to_path_buf)
+    }
+
+    fn snapshot_bytes(&self) -> Result<Vec<u8>, String> {
+        let registry = self.ctx.registry.lock();
+        let mut world = self.ctx.world.lock();
+        let tmp = std::env::temp_dir().join(format!(
+            "redox_autosave_{}_{:p}.scene.ron",
+            std::process::id(),
+            self
+        ));
+        SceneDocument::new(self.level.title())
+            .save_as(&tmp, &registry, &mut world)
+            .map_err(|e| e.to_string())?;
+        let bytes = std::fs::read(&tmp).map_err(|e| e.to_string());
+        let _ = std::fs::remove_file(&tmp);
+        bytes
+    }
+}

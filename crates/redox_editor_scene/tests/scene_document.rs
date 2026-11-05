@@ -121,8 +121,7 @@ fn a_saved_scene_loads_back_with_the_same_components_guids_and_hierarchy() {
     let saved = describe(&world, &registry);
 
     let mut loaded_world = World::new();
-    let (loaded, report) =
-        SceneDocument::open(&path, &registry, &mut loaded_world).expect("open");
+    let (loaded, report) = SceneDocument::open(&path, &registry, &mut loaded_world).expect("open");
 
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     assert_eq!(loaded.name, "main");
@@ -167,8 +166,7 @@ fn opening_and_saving_again_writes_the_same_bytes() {
         .expect("save");
 
     let mut reopened = World::new();
-    let (mut document, _) =
-        SceneDocument::open(&first, &registry, &mut reopened).expect("open");
+    let (mut document, _) = SceneDocument::open(&first, &registry, &mut reopened).expect("open");
     document
         .save_as(&second, &registry, &mut reopened)
         .expect("save again");
@@ -206,8 +204,7 @@ fn a_damaged_file_fails_with_a_line_number_and_is_left_unchanged() {
     let mut world = World::new();
 
     let error = SceneDocument::open(&path, &registry(), &mut world)
-        .err()
-        .expect("a damaged file must not open");
+        .expect_err("a damaged file must not open");
 
     match error {
         SceneError::Parse { line, .. } => assert!(line >= 1, "line starts at 1"),
@@ -232,8 +229,7 @@ fn a_file_from_a_newer_editor_is_refused() {
     let mut world = World::new();
 
     let error = SceneDocument::open(&path, &registry(), &mut world)
-        .err()
-        .expect("a newer file must not open");
+        .expect_err("a newer file must not open");
 
     assert!(matches!(
         error,
@@ -265,8 +261,7 @@ fn an_unknown_component_is_reported_and_written_back_on_save() {
         }]),
     );
     let mut world = World::new();
-    let (mut document, report) =
-        SceneDocument::open(&path, &registry(), &mut world).expect("open");
+    let (mut document, report) = SceneDocument::open(&path, &registry(), &mut world).expect("open");
 
     assert_eq!(
         report.warnings,
@@ -328,13 +323,9 @@ fn a_handle_to_a_missing_asset_is_reported() {
     );
     let mut world = World::new();
 
-    let (_, report) = SceneDocument::open_with_assets(
-        &path,
-        &registry(),
-        &mut world,
-        Some(assets.as_path()),
-    )
-    .expect("open");
+    let (_, report) =
+        SceneDocument::open_with_assets(&path, &registry(), &mut world, Some(assets.as_path()))
+            .expect("open");
 
     assert_eq!(
         report.warnings,
@@ -400,7 +391,10 @@ fn an_entity_without_a_guid_gets_one_and_is_reported() {
 
     let (_, report) = SceneDocument::open(&path, &registry(), &mut world).expect("open");
 
-    assert_eq!(report.warnings, vec![LoadWarning::MissingGuid { entity: 0 }]);
+    assert_eq!(
+        report.warnings,
+        vec![LoadWarning::MissingGuid { entity: 0 }]
+    );
     let loaded = world.all_entities().next().expect("the entity is loaded");
     assert!(world.get_component::<EntityGuid>(loaded).is_some());
     let _ = fs::remove_dir_all(&dir);
@@ -429,8 +423,7 @@ fn two_entities_with_the_same_guid_are_refused() {
     let mut world = World::new();
 
     let error = SceneDocument::open(&path, &registry(), &mut world)
-        .err()
-        .expect("duplicate guids must not open");
+        .expect_err("duplicate guids must not open");
 
     assert!(matches!(error, SceneError::Invalid { .. }));
     let _ = fs::remove_dir_all(&dir);
@@ -456,7 +449,10 @@ fn a_version_zero_file_is_migrated_and_its_old_copy_is_kept() {
     document.save(&registry, &mut world).expect("save");
 
     let backup = dir.join("main.scene.ron.bak-v0");
-    assert_eq!(fs::read_to_string(&backup).expect("backup exists"), original);
+    assert_eq!(
+        fs::read_to_string(&backup).expect("backup exists"),
+        original
+    );
     let written: SceneFile =
         ron::from_str(&fs::read_to_string(&path).expect("read")).expect("parse");
     assert_eq!(written.format_version, SCENE_FORMAT_VERSION);

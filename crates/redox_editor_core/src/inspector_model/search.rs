@@ -8,7 +8,7 @@ pub(super) fn field_matches(field: &ReflectField, needle: &str) -> bool {
     let hit = |text: &str| text.to_lowercase().contains(needle);
     let meta = &field.meta;
     hit(field.name)
-        || meta.label.is_some_and(|text| hit(text))
-        || meta.category.is_some_and(|text| hit(text))
-        || meta.tooltip.is_some_and(|text| hit(text))
+        || meta.label.is_some_and(&hit)
+        || meta.category.is_some_and(&hit)
+        || meta.tooltip.is_some_and(hit)
 }

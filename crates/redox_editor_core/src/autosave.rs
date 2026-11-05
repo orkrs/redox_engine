@@ -62,7 +62,9 @@ impl AutosavePolicy {
     /// Copy with every numeric field brought into its allowed range.
     pub fn clamped(self) -> Self {
         Self {
-            interval_secs: self.interval_secs.clamp(MIN_INTERVAL_SECS, MAX_INTERVAL_SECS),
+            interval_secs: self
+                .interval_secs
+                .clamp(MIN_INTERVAL_SECS, MAX_INTERVAL_SECS),
             every_n_transactions: self.every_n_transactions.clamp(1, 10_000),
             keep: self.keep.clamp(1, 20),
             enabled: self.enabled,
@@ -228,7 +230,10 @@ fn perform_write(log: &EditorLog, path: &Path, bytes: &[u8], prune: &[PathBuf]) 
         if let Err(err) = fs::remove_file(old)
             && err.kind() != io::ErrorKind::NotFound
         {
-            log.warn(format!("could not remove old autosave {}: {err}", old.display()));
+            log.warn(format!(
+                "could not remove old autosave {}: {err}",
+                old.display()
+            ));
         }
     }
     true
@@ -261,13 +266,10 @@ fn spawn_writer(log: &EditorLog) -> Writer {
     let spawned = thread::Builder::new()
         .name("redox-autosave".to_string())
         .spawn(move || {
+            // undo: n/a
             for job in receiver.iter() {
                 match job {
-                    Job::Write {
-                        path,
-                        bytes,
-                        prune,
-                    } => {
+                    Job::Write { path, bytes, prune } => {
                         perform_write(&thread_log, &path, &bytes, &prune);
                     }
                     Job::Flush(ack) => {
@@ -404,7 +406,8 @@ impl AutosaveService {
         let dir = autosave_dir(&self.project_root);
         for (_, path) in list_autosaves(&dir, &file_stem_for(&lock.level)) {
             if let Err(err) = fs::remove_file(&path) {
-                self.log.warn(format!("could not remove {}: {err}", path.display()));
+                self.log
+                    .warn(format!("could not remove {}: {err}", path.display()));
             }
         }
         Ok(())
@@ -420,7 +423,8 @@ impl AutosaveService {
         }
         lock.heartbeat = now;
         if let Err(err) = write_lock(&self.project_root, lock) {
-            self.log.warn(format!("session heartbeat was not written: {err}"));
+            self.log
+                .warn(format!("session heartbeat was not written: {err}"));
         }
     }
 
@@ -447,15 +451,20 @@ impl AutosaveService {
 
     /// Whether the interval or the transaction count says a snapshot is due.
     fn trigger_due(&self, now: u64, transactions: u64) -> bool {
-        let by_time = now.saturating_sub(self.interval_anchor_secs)
-            >= u64::from(self.policy.interval_secs);
+        let by_time =
+            now.saturating_sub(self.interval_anchor_secs) >= u64::from(self.policy.interval_secs);
         let by_count = transactions.saturating_sub(self.transactions_anchor)
             >= u64::from(self.policy.every_n_transactions);
         by_time || by_count
     }
 
     /// Takes the snapshot, picks the next file number and hands the write to the writer.
-    fn snapshot(&mut self, source: &dyn AutosaveSource, now: u64, transactions: u64) -> TickOutcome {
+    fn snapshot(
+        &mut self,
+        source: &dyn AutosaveSource,
+        now: u64,
+        transactions: u64,
+    ) -> TickOutcome {
         // Whatever happens below, the next attempt waits for the next trigger.
         self.interval_anchor_secs = now;
         self.transactions_anchor = transactions;

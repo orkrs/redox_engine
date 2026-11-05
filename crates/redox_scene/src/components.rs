@@ -115,7 +115,7 @@ impl<'de> Deserialize<'de> for EntityGuid {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
         text.parse::<Self>()
-            .map_err(|err| <D::Error as serde::de::Error>::custom(err))
+            .map_err(<D::Error as serde::de::Error>::custom)
     }
 }
 

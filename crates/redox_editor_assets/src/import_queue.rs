@@ -25,7 +25,7 @@ pub fn default_worker_count() -> usize {
 }
 
 /// Events reported by the queue; the service drains them in its tick.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ImportEvent {
     /// A worker started the job.
     Started {
@@ -117,7 +117,7 @@ impl ImportQueue {
             let worker_events = events_tx.clone();
             let spawned = std::thread::Builder::new()
                 .name(format!("import-worker-{index}"))
-                .spawn(move || worker_loop(&worker_shared, &worker_events));
+                .spawn(move || worker_loop(&worker_shared, &worker_events)); // undo: n/a
             if let Err(err) = spawned {
                 log::error!("import worker {index} was not started: {err}");
             }
@@ -259,7 +259,12 @@ fn pick(state: &State) -> Option<usize> {
         .map(|(index, _)| index)
 }
 
-fn run_job(shared: &Shared, events: &flume::Sender<ImportEvent>, job: Pending, token: &CancelToken) {
+fn run_job(
+    shared: &Shared,
+    events: &flume::Sender<ImportEvent>,
+    job: Pending,
+    token: &CancelToken,
+) {
     let Pending {
         path,
         guid,

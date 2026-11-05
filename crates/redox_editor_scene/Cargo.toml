@@ -20,10 +20,8 @@ redox_math = { path = "../redox_math" }
 redox_reflect = { path = "../redox_reflect" }
 redox_render = { path = "../redox_render" }
 redox_scene = { path = "../redox_scene" }
-redox_reflect = { path = "../redox_reflect" }
 thiserror = { workspace = true }
 log = { workspace = true }
-git2 = { workspace = true, optional = true }
 serde = { workspace = true }
 ron = { workspace = true }
-thiserror = { workspace = true }
+git2 = { workspace = true, optional = true }

@@ -135,7 +135,8 @@ impl EditorApp {
                 let e = w.spawn(); // undo: tx
                 w.add_component(e, Transform::default()); // undo: tx
                 if req.kind == AssetKind::Mesh {
-                    w.add_component( // undo: tx
+                    w.add_component(
+                        // undo: tx
                         e,
                         EditorMeshProxy {
                             path: req.path.clone(),
@@ -486,7 +487,8 @@ impl EditorApp {
                                     let mut w = self.core.world.lock();
                                     for (p, yaw) in poses {
                                         let e = w.spawn(); // undo: tx
-                                        w.add_component( // undo: tx
+                                        w.add_component(
+                                            // undo: tx
                                             e,
                                             Transform {
                                                 translation: p + Vec3::Y * 0.5,

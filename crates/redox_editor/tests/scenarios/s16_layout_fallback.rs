@@ -33,7 +33,7 @@ fn autosave_settings_survive_a_restart() {
         keep: 5,
         enabled: true,
     };
-    h.save_autosave_policy(policy.clone())
+    h.save_autosave_policy(policy)
         .expect("the settings are saved");
 
     let h = h.restart();

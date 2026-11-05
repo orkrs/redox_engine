@@ -41,6 +41,13 @@ struct EditorMarker {
     flag: bool,
 }
 
+/// Spawns an entity with a guid: undo commands address entities by guid.
+fn spawn(world: &mut World) -> Entity {
+    let entity = world.spawn();
+    world.add_component(entity, redox_scene::EntityGuid::new_random());
+    entity
+}
+
 fn registry() -> TypeRegistry {
     let mut registry = TypeRegistry::new();
     register_engine_defaults(&mut registry);
@@ -51,14 +58,20 @@ fn registry() -> TypeRegistry {
 }
 
 fn spawn_transform(world: &mut World, translation: Vec3) -> Entity {
-    let entity = world.spawn();
+    let entity = spawn(world);
     world.add_component(entity, Transform::from_translation(translation));
     entity
 }
 
 fn spawn_gauge(world: &mut World) -> Entity {
-    let entity = world.spawn();
-    world.add_component(entity, Gauge::default());
+    let entity = spawn(world);
+    world.add_component(
+        entity,
+        Gauge {
+            level: 0.5,
+            ..Gauge::default()
+        },
+    );
     entity
 }
 
@@ -82,7 +95,7 @@ fn field_names(model: &InspectorModel, component: &str) -> Vec<&'static str> {
 
 fn apply_all(commands: &[UndoCommand], world: &mut World, registry: &TypeRegistry) {
     for command in commands {
-        command.apply(world, registry);
+        command.apply(world, registry).expect("apply command");
     }
 }
 
@@ -215,7 +228,10 @@ fn reset_restores_the_metadata_default_and_the_type_default() {
         .reset_field(&registry, &world, "Transform", "translation")
         .expect("reset translation");
     apply_all(&reset, &mut world, &registry);
-    assert_eq!(translation_of(&world, moved), Transform::default().translation);
+    assert_eq!(
+        translation_of(&world, moved),
+        Transform::default().translation
+    );
 }
 
 #[test]
@@ -269,7 +285,7 @@ fn paste_copies_only_fields_with_matching_name_and_type() {
     let registry = registry();
     let mut world = World::new();
     let source_entity = spawn_transform(&mut world, Vec3::new(7.0, 8.0, 9.0));
-    let target = world.spawn();
+    let target = spawn(&mut world);
     world.add_component(
         target,
         Pose {
@@ -309,10 +325,12 @@ fn components_missing_on_some_entities_are_partial_and_not_shown() {
 fn adding_a_component_also_adds_its_requirement_first() {
     let registry = registry();
     let mut world = World::new();
-    let entity = world.spawn();
+    let entity = spawn(&mut world);
     let model = InspectorModel::build(&registry, &world, &[entity], "", false);
 
-    let outcome = model.add_component(&registry, &world, "Gauge").expect("add");
+    let outcome = model
+        .add_component(&registry, &world, "Gauge")
+        .expect("add");
 
     assert_eq!(outcome.commands.len(), 2);
     match &outcome.commands[0] {
@@ -346,7 +364,9 @@ fn an_existing_requirement_is_not_added_again() {
     let entity = spawn_transform(&mut world, Vec3::ZERO);
     let model = InspectorModel::build(&registry, &world, &[entity], "", false);
 
-    let outcome = model.add_component(&registry, &world, "Gauge").expect("add");
+    let outcome = model
+        .add_component(&registry, &world, "Gauge")
+        .expect("add");
 
     assert_eq!(outcome.commands.len(), 1);
     assert!(outcome.notes.is_empty());
@@ -419,7 +439,7 @@ fn asset_path_with_an_accepted_extension_is_assigned() {
     let mut registry = registry();
     registry.register::<Prop>();
     let mut world = World::new();
-    let entity = world.spawn();
+    let entity = spawn(&mut world);
     world.add_component(entity, Prop::default());
     let model = InspectorModel::build(&registry, &world, &[entity], "", false);
     assert_eq!(row(&model, "Prop", "mesh").accepts, ["glb", "gltf"]);
@@ -440,7 +460,7 @@ fn asset_path_with_another_extension_is_a_type_mismatch() {
     let mut registry = registry();
     registry.register::<Prop>();
     let mut world = World::new();
-    let entity = world.spawn();
+    let entity = spawn(&mut world);
     world.add_component(entity, Prop::default());
     let model = InspectorModel::build(&registry, &world, &[entity], "", false);
 

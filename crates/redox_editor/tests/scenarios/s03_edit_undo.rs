@@ -41,9 +41,9 @@ fn every_edit_is_undone_and_redone_with_identity_and_dirty_state_intact() {
     );
     assert!(h.entity_of(alpha).is_some(), "Alpha is back with its GUID");
 
-    for step in 1..=operations {
+    for (step, expected) in history.iter().enumerate().skip(1) {
         assert!(h.redo(), "redo step {step} is available");
-        assert_eq!(h.snapshot(), history[step], "redo to state {step}");
+        assert_eq!(&h.snapshot(), expected, "redo to state {step}");
     }
     assert!(h.is_dirty(), "after redo the scene is dirty again");
     assert!(
@@ -68,6 +68,10 @@ fn a_deleted_entity_comes_back_with_its_guid_and_components() {
     assert!(h.entity_of(crate_guid).is_none());
 
     assert!(h.undo(), "the delete is undoable");
-    assert_eq!(h.snapshot(), before, "Crate is back with the same components");
+    assert_eq!(
+        h.snapshot(),
+        before,
+        "Crate is back with the same components"
+    );
     assert_eq!(h.name_of(crate_guid).as_deref(), Some("Crate"));
 }

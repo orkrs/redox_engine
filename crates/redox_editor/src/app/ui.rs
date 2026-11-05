@@ -6,8 +6,8 @@ use redox_editor_core::EditorContext;
 use redox_editor_core::autosave::AutosavePolicy;
 use redox_editor_core::file_commands::FileRequest;
 use redox_editor_scene::WorldSession;
-use redox_editor_ui::{RecoveryAnswer, format_hhmm};
 use redox_editor_ui::asset_report::ReportAction;
+use redox_editor_ui::{RecoveryAnswer, format_hhmm};
 use redox_math::Transform;
 
 /// Text of an Edit menu entry: the verb, the step label when there is one, and the shortcut.
@@ -53,7 +53,10 @@ impl EditorApp {
             // Ctrl+S saves the level; Ctrl+Shift+S saves the layout.
             let (save_level_hotkey, save_layout_hotkey) = ctx.input(|i| {
                 let s_pressed = i.modifiers.command && i.key_pressed(egui::Key::S);
-                (s_pressed && !i.modifiers.shift, s_pressed && i.modifiers.shift)
+                (
+                    s_pressed && !i.modifiers.shift,
+                    s_pressed && i.modifiers.shift,
+                )
             });
             if save_level_hotkey {
                 self.files.push_request(FileRequest::Save);

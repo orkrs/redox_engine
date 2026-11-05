@@ -68,15 +68,15 @@ pub enum StatusFilter {
 impl StatusFilter {
     /// Whether an asset with `status` passes this filter.
     pub fn matches(self, status: Option<&AssetStatus>) -> bool {
-        match (self, status) {
-            (Self::Any, _) => true,
-            (Self::Imported, Some(AssetStatus::Imported)) => true,
-            (Self::Outdated, Some(AssetStatus::Outdated)) => true,
-            (Self::Importing, Some(AssetStatus::Importing)) => true,
-            (Self::Failed, Some(AssetStatus::Failed(_))) => true,
-            (Self::Missing, Some(AssetStatus::Missing)) => true,
-            _ => false,
-        }
+        matches!(
+            (self, status),
+            (Self::Any, _)
+                | (Self::Imported, Some(AssetStatus::Imported))
+                | (Self::Outdated, Some(AssetStatus::Outdated))
+                | (Self::Importing, Some(AssetStatus::Importing))
+                | (Self::Failed, Some(AssetStatus::Failed(_)))
+                | (Self::Missing, Some(AssetStatus::Missing))
+        )
     }
 }
 

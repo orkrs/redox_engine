@@ -3,7 +3,7 @@
 
 use crate::common::EditorHarness;
 
-const SEED: u64 = 0x5EED_A7_0001;
+const SEED: u64 = 0x005E_EDA7_0001;
 const OPERATIONS: usize = 1_000;
 const BASE_ENTITIES: usize = 12;
 

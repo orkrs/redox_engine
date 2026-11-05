@@ -40,14 +40,14 @@ const EMPTY_SCENE: &str = r#"(
     name: "main",
     entities: [
         (
-            guid: "00000000000000000000000000000001",
+            guid: Some("00000000000000000000000000000001"),
             components: [
                 Struct(type_name: "Transform", fields: [("translation", List([F64(0.0), F64(2.0), F64(-6.0)])), ("rotation", List([F64(0.0), F64(0.0), F64(0.0), F64(1.0)])), ("scale", List([F64(1.0), F64(1.0), F64(1.0)]))]),
                 Struct(type_name: "Camera", fields: []),
             ],
         ),
         (
-            guid: "00000000000000000000000000000002",
+            guid: Some("00000000000000000000000000000002"),
             components: [
                 Struct(type_name: "DirectionalLight", fields: []),
             ],
@@ -62,28 +62,28 @@ const THREE_D_STARTER_SCENE: &str = r#"(
     name: "main",
     entities: [
         (
-            guid: "00000000000000000000000000000001",
+            guid: Some("00000000000000000000000000000001"),
             components: [
                 Struct(type_name: "Name", fields: [("name", String("Ground"))]),
                 Struct(type_name: "Transform", fields: [("translation", List([F64(0.0), F64(-0.5), F64(0.0)])), ("rotation", List([F64(0.0), F64(0.0), F64(0.0), F64(1.0)])), ("scale", List([F64(20.0), F64(1.0), F64(20.0)]))]),
             ],
         ),
         (
-            guid: "00000000000000000000000000000002",
+            guid: Some("00000000000000000000000000000002"),
             components: [
                 Struct(type_name: "Name", fields: [("name", String("Cube"))]),
                 Struct(type_name: "Transform", fields: [("translation", List([F64(0.0), F64(0.5), F64(0.0)])), ("rotation", List([F64(0.0), F64(0.0), F64(0.0), F64(1.0)])), ("scale", List([F64(1.0), F64(1.0), F64(1.0)]))]),
             ],
         ),
         (
-            guid: "00000000000000000000000000000003",
+            guid: Some("00000000000000000000000000000003"),
             components: [
                 Struct(type_name: "Transform", fields: [("translation", List([F64(4.0), F64(4.0), F64(-8.0)])), ("rotation", List([F64(0.0), F64(0.0), F64(0.0), F64(1.0)])), ("scale", List([F64(1.0), F64(1.0), F64(1.0)]))]),
                 Struct(type_name: "Camera", fields: []),
             ],
         ),
         (
-            guid: "00000000000000000000000000000004",
+            guid: Some("00000000000000000000000000000004"),
             components: [
                 Struct(type_name: "DirectionalLight", fields: []),
             ],

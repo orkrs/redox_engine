@@ -2,7 +2,7 @@
 
 use redox_asset::AssetGuid;
 use redox_editor_assets::{
-    AssetChange, AssetMoveOp, AssetService, DeleteOutcome, RefResolution, RefFix,
+    AssetChange, AssetMoveOp, AssetService, DeleteOutcome, RefFix, RefResolution,
 };
 use redox_reflect::ReflectValue;
 use serde::Serialize;
@@ -18,10 +18,8 @@ struct TempRoot(PathBuf);
 
 impl TempRoot {
     fn new(name: &str) -> Self {
-        let dir = std::env::temp_dir().join(format!(
-            "redox_editor_assets_{name}_{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("redox_editor_assets_{name}_{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("create temp root");
         Self(dir)
@@ -110,12 +108,19 @@ fn closed_scene_keeps_resolving_after_a_move() {
 fn path_only_reference_restores_the_guid() {
     let root = TempRoot::new("legacy_ref");
     write(root.path(), "a.png", b"x");
-    write(root.path(), SCENE, scene_with_ref(None, Some("a.png")).as_bytes());
-    let mut service = AssetService::open(root.path()).expect("open");
+    write(
+        root.path(),
+        SCENE,
+        scene_with_ref(None, Some("a.png")).as_bytes(),
+    );
+    let service = AssetService::open(root.path()).expect("open");
     let guid = service.guid_of("a.png").expect("guid");
 
     match service.resolve_ref(None, Some("a.png")) {
-        RefResolution::Restored { guid: restored, path } => {
+        RefResolution::Restored {
+            guid: restored,
+            path,
+        } => {
             assert_eq!(restored, guid);
             assert_eq!(path, "a.png");
         }
@@ -137,7 +142,9 @@ fn delete_without_force_lists_dependents_and_keeps_the_file() {
     );
     service.rescan().expect("rescan");
 
-    let outcome = service.delete_asset("a.png", false).expect("delete request");
+    let outcome = service
+        .delete_asset("a.png", false)
+        .expect("delete request");
 
     match outcome {
         DeleteOutcome::Blocked { dependents } => {
@@ -171,7 +178,10 @@ fn delete_with_force_leaves_references_missing_not_removed() {
     assert_eq!(missing.len(), 1);
     assert_eq!(missing[0].guid.as_deref(), Some(guid.to_string().as_str()));
     let text = fs::read_to_string(root.path().join(SCENE)).expect("read scene");
-    assert!(text.contains(&guid.to_string()), "reference must stay in the scene");
+    assert!(
+        text.contains(&guid.to_string()),
+        "reference must stay in the scene"
+    );
 }
 
 #[test]
@@ -247,7 +257,11 @@ fn copy_with_sidecar_gets_a_new_guid_and_references_stay_on_the_original() {
         let service = AssetService::open(root.path()).expect("first open");
         service.guid_of("a.png").expect("guid")
     };
-    write(root.path(), SCENE, scene_with_ref(Some(&original.to_string()), Some("a.png")).as_bytes());
+    write(
+        root.path(),
+        SCENE,
+        scene_with_ref(Some(&original.to_string()), Some("a.png")).as_bytes(),
+    );
     fs::copy(root.path().join("a.png"), root.path().join("copy.png")).expect("copy asset");
     fs::copy(
         root.path().join("a.png.meta"),
@@ -257,7 +271,12 @@ fn copy_with_sidecar_gets_a_new_guid_and_references_stay_on_the_original() {
 
     let service = AssetService::open(root.path()).expect("reopen");
 
-    assert!(service.report().regenerated.contains(&PathBuf::from("copy.png")));
+    assert!(
+        service
+            .report()
+            .regenerated
+            .contains(&PathBuf::from("copy.png"))
+    );
     let copy_guid = service.guid_of("copy.png").expect("copy guid");
     assert_ne!(copy_guid, original);
     assert_eq!(service.resolve(original), Some("a.png"));
@@ -266,7 +285,11 @@ fn copy_with_sidecar_gets_a_new_guid_and_references_stay_on_the_original() {
 #[test]
 fn reference_to_an_absent_asset_is_reported_on_open() {
     let root = TempRoot::new("missing_on_open");
-    write(root.path(), SCENE, scene_with_ref(Some(MISSING_GUID), Some("gone.png")).as_bytes());
+    write(
+        root.path(),
+        SCENE,
+        scene_with_ref(Some(MISSING_GUID), Some("gone.png")).as_bytes(),
+    );
 
     let service = AssetService::open(root.path()).expect("open must not fail");
 
@@ -281,7 +304,11 @@ fn reference_to_an_absent_asset_is_reported_on_open() {
 fn fix_reassigns_a_missing_reference_to_an_existing_asset() {
     let root = TempRoot::new("fix_reassign");
     write(root.path(), "real.png", b"x");
-    write(root.path(), SCENE, scene_with_ref(Some(MISSING_GUID), Some("gone.png")).as_bytes());
+    write(
+        root.path(),
+        SCENE,
+        scene_with_ref(Some(MISSING_GUID), Some("gone.png")).as_bytes(),
+    );
     let mut service = AssetService::open(root.path()).expect("open");
     let target = service.missing_refs().remove(0);
     let real: AssetGuid = service.guid_of("real.png").expect("guid");

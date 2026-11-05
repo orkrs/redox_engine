@@ -274,6 +274,7 @@ pub struct AssetRegistry {
     by_path: BTreeMap<String, AssetGuid>,
     statuses: BTreeMap<String, AssetStatus>,
     scene_refs: BTreeMap<String, Vec<DependentRef>>,
+    folder_changes: Vec<RegistryChange>,
 }
 
 impl AssetRegistry {
@@ -290,6 +291,7 @@ impl AssetRegistry {
             by_path: BTreeMap::new(),
             statuses: BTreeMap::new(),
             scene_refs: BTreeMap::new(),
+            folder_changes: Vec::new(),
         };
         let mut report = ScanReport::default();
         for file in files {
@@ -314,7 +316,9 @@ impl AssetRegistry {
                 write_meta(&file, &meta)?;
                 report.regenerated.push(PathBuf::from(&rel));
             }
-            registry.statuses.insert(rel.clone(), status_from_meta(&meta));
+            registry
+                .statuses
+                .insert(rel.clone(), status_from_meta(&meta));
             registry.by_guid.insert(meta.guid, rel.clone());
             registry.by_path.insert(rel, meta.guid);
         }
@@ -486,8 +490,23 @@ impl AssetRegistry {
         }
     }
 
+    /// Takes the changes found by folder re-reads triggered from [`AssetRegistry::apply_event`]
+    /// (a [`RegistryChange::Subtree`] result), so a moved folder still reports its moved files.
+    pub fn take_folder_changes(&mut self) -> Vec<RegistryChange> {
+        std::mem::take(&mut self.folder_changes)
+    }
+
     /// Re-reads a folder: registers unknown files and marks registered files that vanished.
     pub fn resync_dir(&mut self, dir: &Path) -> Vec<RegistryChange> {
+        self.scan_dir(dir)
+    }
+
+    fn resync_pending(&mut self, dir: &Path) {
+        let changes = self.scan_dir(dir);
+        self.folder_changes.extend(changes);
+    }
+
+    fn scan_dir(&mut self, dir: &Path) -> Vec<RegistryChange> {
         let mut changes = Vec::new();
         let Some(rel_dir) = self.rel_of(dir) else {
             return changes;
@@ -641,7 +660,7 @@ impl AssetRegistry {
         }
         let prefix = format!("{rel}/");
         if self.by_path.keys().any(|p| p.starts_with(&prefix)) {
-            self.resync_dir(abs);
+            self.resync_pending(abs);
             return RegistryChange::Subtree { path: rel };
         }
         RegistryChange::Ignored
@@ -651,8 +670,8 @@ impl AssetRegistry {
         match (self.rel_of(from), self.rel_of(to)) {
             (Some(_), Some(to_rel)) if to.is_dir() => {
                 // Folder: the destination first, so moved sidecars pair with their old entries.
-                self.resync_dir(to);
-                self.resync_dir(from);
+                self.resync_pending(to);
+                self.resync_pending(from);
                 RegistryChange::Subtree { path: to_rel }
             }
             (Some(_), Some(_)) => {
@@ -669,7 +688,7 @@ impl AssetRegistry {
         let Some(rel) = self.rel_of(dir) else {
             return RegistryChange::Ignored;
         };
-        self.resync_dir(dir);
+        self.resync_pending(dir);
         RegistryChange::Subtree { path: rel }
     }
 

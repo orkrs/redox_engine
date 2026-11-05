@@ -6,9 +6,7 @@ use std::collections::HashSet;
 
 use egui::{Color32, Id, Ui};
 use redox_ecs::{Entity, World};
-use redox_editor_core::inspector_model::{
-    InspectorModel, Row, RowValue, addable_types,
-};
+use redox_editor_core::inspector_model::{InspectorModel, Row, RowValue, addable_types};
 use redox_editor_core::{EditorLog, UndoCommand, UndoStack};
 use redox_gameplay::AttributeSet;
 use redox_reflect::meta::FieldError;
@@ -161,6 +159,7 @@ fn draw(
     });
     if let Some(component) = add_request {
         match model.add_component(registry, world_ref, component) {
+            // undo: n/a
             Ok(outcome) => {
                 for note in &outcome.notes {
                     log.info(note);
@@ -226,9 +225,7 @@ fn draw_row(ui: &mut Ui, row: &Row, first: Option<ReflectValue>) -> RowAction {
         match &row.value {
             RowValue::Single(value) if value.as_handle_path().is_some() => {
                 let path = ui
-                    .add_enabled_ui(!row.read_only, |ui| {
-                        widgets::asset_widget(ui, row, value)
-                    })
+                    .add_enabled_ui(!row.read_only, |ui| widgets::asset_widget(ui, row, value))
                     .inner;
                 if let Some(path) = path {
                     action = RowAction::AssignPath(path);
@@ -236,9 +233,7 @@ fn draw_row(ui: &mut Ui, row: &Row, first: Option<ReflectValue>) -> RowAction {
             }
             RowValue::Single(value) => {
                 let edited = ui
-                    .add_enabled_ui(!row.read_only, |ui| {
-                        widgets::value_widget(ui, row, value)
-                    })
+                    .add_enabled_ui(!row.read_only, |ui| widgets::value_widget(ui, row, value))
                     .inner;
                 if let Some(value) = edited {
                     action = RowAction::Set(value);
@@ -288,7 +283,7 @@ fn commit(
         return;
     }
     for command in &commands {
-        command.apply(world, registry);
+        let _ = command.apply(world, registry);
     }
     let entry = match <[UndoCommand; 1]>::try_from(commands) {
         Ok([single]) => single,

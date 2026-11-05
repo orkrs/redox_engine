@@ -8,7 +8,7 @@ use redox_editor_core::autosave::Clock;
 /// A clock that moves only when a test advances it. Clones share the same time.
 #[derive(Clone, Debug, Default)]
 pub struct TestClock {
-    now: Arc<Mutex<f64>>,
+    now: Arc<Mutex<u64>>,
 }
 
 impl TestClock {
@@ -19,17 +19,17 @@ impl TestClock {
 
     /// Moves the time forward by `secs` seconds.
     pub fn advance(&self, secs: u64) {
-        *self.now.lock() += secs as f64;
+        *self.now.lock() += secs;
     }
 
     /// The current time in seconds.
-    pub fn now_secs(&self) -> f64 {
+    pub fn now_secs(&self) -> u64 {
         *self.now.lock()
     }
 }
 
 impl Clock for TestClock {
-    fn now_secs(&self) -> f64 {
+    fn now_secs(&self) -> u64 {
         TestClock::now_secs(self)
     }
 }

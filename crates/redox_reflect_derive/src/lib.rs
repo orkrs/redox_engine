@@ -231,10 +231,7 @@ fn number_of(expr: &Expr) -> syn::Result<f64> {
             expr: inner,
             ..
         }) => Ok(-number_of(inner)?),
-        _ => Err(syn::Error::new_spanned(
-            expr,
-            "expected a number literal",
-        )),
+        _ => Err(syn::Error::new_spanned(expr, "expected a number literal")),
     }
 }
 
@@ -317,7 +314,11 @@ fn meta_struct(path: TokenStream2, fields: &BTreeMap<String, TokenStream2>) -> T
             quote!(#key: #value)
         })
         .collect();
-    quote!(#path { #(#assigns,)* ..::core::default::Default::default() })
+    quote!({
+        #[allow(clippy::needless_update)]
+        let meta = #path { #(#assigns,)* ..::core::default::Default::default() };
+        meta
+    })
 }
 
 fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
@@ -338,10 +339,7 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     let type_attrs = parse_type_attrs(&input.attrs)?;
     let type_name = type_attrs.name.unwrap_or_else(|| ident.to_string());
-    let type_meta = meta_struct(
-        quote!(::redox_reflect::meta::TypeMeta),
-        &type_attrs.meta,
-    );
+    let type_meta = meta_struct(quote!(::redox_reflect::meta::TypeMeta), &type_attrs.meta);
 
     let mut to_fields = Vec::new();
     let mut apply_fields = Vec::new();

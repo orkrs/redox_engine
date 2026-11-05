@@ -10,8 +10,8 @@ use redox_editor_core::EditorContext;
 use redox_editor_core::autosave::AutosaveService;
 use redox_editor_core::file_commands::{FileRequestQueue, register_file_commands};
 use redox_editor_core::settings::{EditorSettings, SETTINGS_FILE};
-use redox_editor_ui::asset_report::AssetReportPanel;
 use redox_editor_scene::WorldSession;
+use redox_editor_ui::asset_report::AssetReportPanel;
 use redox_editor_ui::file_menu::FileMenu;
 use redox_editor_ui::{
     EditorDock, EditorUiCtx, PreferencesWindow, RecoveryDialog, egui_to_viewport_coords,
@@ -26,8 +26,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
-mod autosave;
 mod assets;
+mod autosave;
 mod redraw;
 mod ui;
 
@@ -85,8 +85,7 @@ impl EditorApp {
         let mut core = EditorContext::new({
             let mut r = TypeRegistry::new();
             register_engine_defaults(&mut r);
-            r.register::<redox_render::light::DirectionalLight>();
-            r.register::<redox_render::light::PointLight>();
+            redox_editor_scene::register_scene_components(&mut r);
             r
         });
         let file_queue = FileRequestQueue::new();

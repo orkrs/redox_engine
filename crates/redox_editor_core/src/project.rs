@@ -442,9 +442,7 @@ fn to_ron<T: Serialize>(value: &T) -> Result<String, ProjectError> {
 
 /// Writes `text` to a temporary file next to `path` and renames it over `path`.
 fn write_text(path: &Path, text: &str) -> Result<(), ProjectError> {
-    let temp = PathBuf::from(format!("{}.tmp", path.display()));
-    fs::write(&temp, text).map_err(|source| io_error(&temp, source))?;
-    fs::rename(&temp, path).map_err(|source| io_error(path, source))
+    redox_scene::write_atomic(path, text.as_bytes()).map_err(|source| io_error(path, source))
 }
 
 fn io_error(path: &Path, source: std::io::Error) -> ProjectError {

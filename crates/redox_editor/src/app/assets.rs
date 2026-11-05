@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 use super::EditorApp;
 use redox_editor_assets::{AssetChange, AssetService, DeleteOutcome};
 use redox_editor_ui::EditorUiCtx;
-use redox_editor_ui::asset_report::{AssetReportPanel, ReportAction, has_problems};
 use redox_editor_ui::asset_browser::AssetRequest;
+use redox_editor_ui::asset_report::{AssetReportPanel, ReportAction, has_problems};
 
 /// Assets root opened at startup, relative to the working directory.
 pub(super) const ASSETS_ROOT: &str = "assets";
@@ -148,14 +148,15 @@ impl EditorApp {
             }
             AssetRequest::CancelImport { path } => {
                 if service.cancel_import(&path) {
-                    self.ui_ctx.log(format!("[INFO] Cancelled import of {path}"));
+                    self.ui_ctx
+                        .log(format!("[INFO] Cancelled import of {path}"));
                 }
             }
             AssetRequest::Reveal { path } => {
                 let abs = service.registry().root().join(&path);
                 let spawned = std::process::Command::new("explorer")
                     .arg(format!("/select,{}", abs.display()))
-                    .spawn();
+                    .spawn(); // undo: n/a
                 if let Err(err) = spawned {
                     self.ui_ctx
                         .log(format!("[ERROR] Cannot open Explorer: {err}"));

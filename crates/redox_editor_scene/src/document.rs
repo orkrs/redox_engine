@@ -1,7 +1,7 @@
 //! The scene document: opening and saving `*.scene.ron` files with stable entity identity.
 //!
-//! Save writes entities in world iteration order, so saving an unchanged world twice gives the
-//! same bytes. Load spawns entities in file order and links parents in a second pass. Unknown
+//! Save writes entities sorted by guid, so saving an unchanged world gives the same bytes however
+//! the world orders its archetypes (small diffs in version control). Load spawns entities in file order and links parents in a second pass. Unknown
 //! components are kept and written back, and every problem found while loading is reported
 //! instead of being dropped silently.
 
@@ -235,10 +235,11 @@ impl SceneDocument {
     fn build_file(&self, registry: &TypeRegistry, world: &World) -> SceneFile {
         let mut index = GuidIndex::new();
         index.rebuild(world);
-        let entities = world
+        let mut entities: Vec<SceneEntity> = world
             .all_entities()
             .filter_map(|entity| self.scene_entity(registry, world, &index, entity))
             .collect();
+        entities.sort_by_key(|entity| entity.guid);
         SceneFile {
             format_version: SCENE_FORMAT_VERSION,
             name: self.name.clone(),
@@ -316,8 +317,8 @@ impl Loader<'_> {
                 reason: format!("two entities share the guid {guid}"),
             });
         }
-        let entity = world.spawn();
-        world.add_component(entity, guid);
+        let entity = world.spawn(); // undo: init
+        world.add_component(entity, guid); // undo: init
         self.index.insert(guid, entity);
 
         let mut parent = None;
@@ -360,7 +361,7 @@ impl Loader<'_> {
         }
         self.check_asset(type_name, value, guid);
         self.registry
-            .insert_component(world, entity, value)
+            .insert_component(world, entity, value) // undo: init
             .map_err(|err| SceneError::Invalid {
                 reason: err.to_string(),
             })?;

@@ -14,9 +14,7 @@ pub fn value_widget(ui: &mut Ui, row: &Row, value: &ReflectValue) -> Option<Refl
         (WidgetHint::Color, ReflectValue::List(items)) if items.len() == 3 => {
             color_widget(ui, items)
         }
-        (WidgetHint::Angle, ReflectValue::F64(_) | ReflectValue::I64(_)) => {
-            angle_widget(ui, value)
-        }
+        (WidgetHint::Angle, ReflectValue::F64(_) | ReflectValue::I64(_)) => angle_widget(ui, value),
         (WidgetHint::Slider, ReflectValue::F64(_) | ReflectValue::I64(_)) => {
             slider_widget(ui, row, value)
         }
@@ -137,21 +135,13 @@ fn multiline_widget(ui: &mut Ui, text: &str) -> Option<ReflectValue> {
 }
 
 /// Drop-down list of fixed options.
-fn enum_widget(
-    ui: &mut Ui,
-    row: &Row,
-    options: &[&str],
-    current: &str,
-) -> Option<ReflectValue> {
+fn enum_widget(ui: &mut Ui, row: &Row, options: &[&str], current: &str) -> Option<ReflectValue> {
     let mut picked: Option<&str> = None;
     egui::ComboBox::from_id_salt((row.component.as_str(), row.field))
         .selected_text(current)
         .show_ui(ui, |ui| {
             for option in options {
-                if ui
-                    .selectable_label(*option == current, *option)
-                    .clicked()
-                {
+                if ui.selectable_label(*option == current, *option).clicked() {
                     picked = Some(*option);
                 }
             }

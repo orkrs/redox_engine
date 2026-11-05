@@ -5,7 +5,9 @@ use redox_ecs::{Entity, World};
 use redox_reflect::meta::FieldError;
 use redox_reflect::{ReflectSchema, ReflectValue, TypeRegistry};
 
+use crate::guid::GuidResolver;
 use crate::undo::UndoCommand;
+use redox_scene::EntityGuid;
 
 /// Commands that set `field` of `component` to `value` on every entity. The value is checked
 /// against the field metadata first.
@@ -24,14 +26,16 @@ pub(super) fn field_commands(
         .find(|f| f.name == field)
         .ok_or_else(|| FieldError::UnknownField(field.to_string()))?;
     let checked = definition.validate(value)?;
-    entities
-        .iter()
-        .map(|&entity| -> Result<UndoCommand, FieldError> {
-            let before = read_required(registry, world, entity, component)?;
-            let after = with_field(&before, field, checked.clone())?;
-            Ok(set_command(entity, component, before, after))
-        })
-        .collect()
+    // Entities without the component are skipped: a mixed selection edits those that have it.
+    let mut commands = Vec::new();
+    for &entity in entities {
+        let Some(before) = registry.read_component(world, entity, component) else {
+            continue;
+        };
+        let after = with_field(&before, field, checked.clone())?;
+        commands.push(set_command(world, entity, component, before, after)?);
+    }
+    Ok(commands)
 }
 
 /// Commands that point the asset reference `field` at `path`, after checking the extension
@@ -70,9 +74,11 @@ fn extension_accepted(path: &str, accepts: &[&str]) -> bool {
         .and_then(|ext| ext.to_str())
         .map(str::to_ascii_lowercase);
     match extension {
-        Some(extension) => accepts
-            .iter()
-            .any(|accepted| accepted.trim_start_matches('.').eq_ignore_ascii_case(&extension)),
+        Some(extension) => accepts.iter().any(|accepted| {
+            accepted
+                .trim_start_matches('.')
+                .eq_ignore_ascii_case(&extension)
+        }),
         None => false,
     }
 }
@@ -111,14 +117,15 @@ pub(super) fn reset_component_commands(
     let base = registry
         .default_value(component)
         .ok_or_else(|| FieldError::UnknownType(component.to_string()))?;
-    entities
-        .iter()
-        .map(|&entity| -> Result<UndoCommand, FieldError> {
-            let before = read_required(registry, world, entity, component)?;
-            let after = reset_value(&base, &before, schema)?;
-            Ok(set_command(entity, component, before, after))
-        })
-        .collect()
+    let mut commands = Vec::new();
+    for &entity in entities {
+        let Some(before) = registry.read_component(world, entity, component) else {
+            continue;
+        };
+        let after = reset_value(&base, &before, schema)?;
+        commands.push(set_command(world, entity, component, before, after)?);
+    }
+    Ok(commands)
 }
 
 /// Copies the current value of `component` on `entity`, for pasting onto other entities.
@@ -179,7 +186,7 @@ pub fn paste_component_values(
             after = with_field(&after, name, value.clone())?;
         }
         if after != before {
-            commands.push(set_command(entity, target, before, after));
+            commands.push(set_command(world, entity, target, before, after)?);
         }
     }
     Ok(commands)
@@ -194,32 +201,33 @@ fn schema_of<'a>(
         .ok_or_else(|| FieldError::UnknownType(component.to_string()))
 }
 
-fn read_required(
-    registry: &TypeRegistry,
-    world: &World,
-    entity: Entity,
-    component: &str,
-) -> Result<ReflectValue, FieldError> {
-    registry
-        .read_component(world, entity, component)
-        .ok_or_else(|| FieldError::MissingComponent(component.to_string()))
+/// The guid of `entity`: commands address entities by guid, so an entity without one cannot be
+/// edited until the caller gives it one (`GuidResolver::ensure`).
+pub(super) fn guid_for(world: &World, entity: Entity) -> Result<EntityGuid, FieldError> {
+    GuidResolver::guid_of(world, entity)
+        .ok_or_else(|| FieldError::MissingComponent("EntityGuid".to_string()))
 }
 
 fn set_command(
+    world: &World,
     entity: Entity,
     component: &str,
     before: ReflectValue,
     after: ReflectValue,
-) -> UndoCommand {
-    UndoCommand::SetComponent {
-        entity,
+) -> Result<UndoCommand, FieldError> {
+    Ok(UndoCommand::SetComponent {
+        guid: guid_for(world, entity)?,
         type_name: component.to_string(),
         before: Some(before),
         after: Some(after),
-    }
+    })
 }
 
-fn type_default_field(registry: &TypeRegistry, component: &str, field: &str) -> Option<ReflectValue> {
+fn type_default_field(
+    registry: &TypeRegistry,
+    component: &str,
+    field: &str,
+) -> Option<ReflectValue> {
     registry.default_value(component)?.field(field).cloned()
 }
 

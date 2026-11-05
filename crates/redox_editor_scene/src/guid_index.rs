@@ -79,7 +79,7 @@ pub fn assign_missing_guids(world: &mut World) -> usize {
         .filter(|entity| world.get_component::<EntityGuid>(*entity).is_none())
         .collect();
     for entity in &missing {
-        world.add_component(*entity, EntityGuid::new_random());
+        world.add_component(*entity, EntityGuid::new_random()); // undo: init
     }
     missing.len()
 }

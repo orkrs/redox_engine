@@ -6,9 +6,10 @@
 //!
 //! - the files in [`ALLOWED_FILES`]: the undo engine itself and the play-in-editor and time-travel
 //!   code, which restore world snapshots and keep their own state;
-//! - a line that carries one of the markers in [`MARKERS`]: `// undo: tx` for a change that is
-//!   recorded in a transaction or as a step, `// undo: init` for the startup scene before any
-//!   history exists;
+//! - a line (or the line after it, where rustfmt moves a comment) that carries one of the markers
+//!   in [`MARKERS`]: `// undo: tx` for a change that is recorded in a transaction or as a step,
+//!   `// undo: init` for loading a level before any history exists, `// undo: n/a` for a call that
+//!   only looks like a world change (a thread or process `spawn`, a command-producing model);
 //! - the `#[cfg(test)]` module at the end of a file (test code is not editor code).
 //!
 //! Comment lines are ignored. Adding a new direct call therefore fails this test until the call
@@ -27,7 +28,7 @@ const FORBIDDEN: [&str; 5] = [
 ];
 
 /// Markers that allow a line to make a direct change.
-const MARKERS: [&str; 2] = ["// undo: tx", "// undo: init"];
+const MARKERS: [&str; 3] = ["// undo: tx", "// undo: init", "// undo: n/a"];
 
 /// Files that may change the world directly, as paths relative to the `crates` directory.
 const ALLOWED_FILES: [&str; 4] = [
@@ -88,7 +89,8 @@ fn find_violations(relative: &str, source: &str) -> Vec<usize> {
         return Vec::new();
     }
     let mut found = Vec::new();
-    for (index, line) in source.lines().enumerate() {
+    let lines: Vec<&str> = source.lines().collect();
+    for (index, line) in lines.iter().copied().enumerate() {
         let trimmed = line.trim_start();
         if trimmed.starts_with("#[cfg(test)]") {
             break;
@@ -97,7 +99,10 @@ fn find_violations(relative: &str, source: &str) -> Vec<usize> {
             continue;
         }
         let direct = FORBIDDEN.iter().any(|pattern| line.contains(pattern));
-        let marked = MARKERS.iter().any(|marker| line.contains(marker));
+        let next = lines.get(index + 1).copied().unwrap_or_default();
+        let marked = MARKERS
+            .iter()
+            .any(|marker| line.contains(marker) || next.contains(marker));
         if direct && !marked {
             found.push(index + 1);
         }

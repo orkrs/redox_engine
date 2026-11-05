@@ -262,7 +262,12 @@ impl AssetService {
         let mut rebuild_all = false;
         for event in &events {
             match self.registry.apply_event(event) {
-                RegistryChange::Subtree { .. } => rebuild_all = true,
+                RegistryChange::Subtree { .. } => {
+                    rebuild_all = true;
+                    for change in self.registry.take_folder_changes() {
+                        self.absorb(change, &mut changes);
+                    }
+                }
                 change => self.absorb(change, &mut changes),
             }
         }
@@ -583,10 +588,7 @@ impl AssetService {
                         let message = err.to_string();
                         self.registry
                             .set_status(&rel, AssetStatus::Failed(message.clone()));
-                        out.push(AssetChange::ImportFailed {
-                            path: rel,
-                            message,
-                        });
+                        out.push(AssetChange::ImportFailed { path: rel, message });
                     }
                 }
             }
@@ -594,20 +596,15 @@ impl AssetService {
                 if let Some(rel) = self.relative(&path) {
                     self.registry
                         .set_status(&rel, AssetStatus::Failed(message.clone()));
-                    out.push(AssetChange::ImportFailed {
-                        path: rel,
-                        message,
-                    });
+                    out.push(AssetChange::ImportFailed { path: rel, message });
                 }
             }
             ImportEvent::Cancelled { path, .. } => {
                 // Cancelled imports wait for an explicit retry, so that auto-import does not
                 // start them again.
                 if let Some(rel) = self.relative(&path) {
-                    self.registry.set_status(
-                        &rel,
-                        AssetStatus::Failed("import cancelled".to_owned()),
-                    );
+                    self.registry
+                        .set_status(&rel, AssetStatus::Failed("import cancelled".to_owned()));
                 }
             }
         }

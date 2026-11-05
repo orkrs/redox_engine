@@ -7,7 +7,8 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
-use redox_asset::{AssetGuid, AssetMeta, META_EXTENSION, content_hash};
+use redox_asset::guid::{META_EXTENSION, content_hash};
+use redox_asset::{AssetGuid, AssetMeta};
 
 /// Side length of one checker cell in the generated PNG, in pixels.
 const CHECKER_CELL: u32 = 4;
@@ -46,7 +47,7 @@ pub fn make_png(width: u32, height: u32) -> Vec<u8> {
     for y in 0..height {
         raw.push(0); // filter type: none
         for x in 0..width {
-            let dark = (x / CHECKER_CELL + y / CHECKER_CELL) % 2 == 0;
+            let dark = (x / CHECKER_CELL + y / CHECKER_CELL).is_multiple_of(2);
             let value = if dark { 32u8 } else { 224u8 };
             raw.extend_from_slice(&[value, value, value]);
         }
@@ -83,7 +84,7 @@ pub fn make_glb(triangle: [[f32; 3]; 3]) -> Vec<u8> {
         .replace("MIN", &list3(min))
         .replace("MAX", &list3(max))
         .into_bytes();
-    while json.len() % 4 != 0 {
+    while !json.len().is_multiple_of(4) {
         json.push(b' ');
     }
     let total = 12 + 8 + json.len() + 8 + bin.len();

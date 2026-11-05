@@ -17,6 +17,8 @@ const SCENE_SUFFIX: &str = ".scene.ron";
 const WORLD_MANIFEST: &str = "world.ron";
 
 /// What the level is made of.
+// One value per open level, so the size difference of the variants costs nothing.
+#[allow(clippy::large_enum_variant)]
 pub enum LevelKind {
     /// One `*.scene.ron` file.
     Scene(SceneDocument),
@@ -65,9 +67,21 @@ impl Level {
         registry: &TypeRegistry,
         world: &mut World,
     ) -> Result<(Self, LoadReport), LevelError> {
+        Self::open_with_assets(path, registry, world, None)
+    }
+
+    /// Like [`Self::open`]; a scene also checks its asset handles against `assets_root` and
+    /// reports missing files as warnings.
+    pub fn open_with_assets(
+        path: impl AsRef<Path>,
+        registry: &TypeRegistry,
+        world: &mut World,
+        assets_root: Option<&Path>,
+    ) -> Result<(Self, LoadReport), LevelError> {
         let path = path.as_ref();
         if is_scene_file(path) {
-            let (document, report) = SceneDocument::open(path, registry, world)?;
+            let (document, report) =
+                SceneDocument::open_with_assets(path, registry, world, assets_root)?;
             let level = Self::with_kind(LevelKind::Scene(document), registry, world);
             Ok((level, report))
         } else if path.is_dir() && path.join(WORLD_MANIFEST).is_file() {
@@ -109,7 +123,7 @@ impl Level {
 
     /// Whether the world differs from the baseline taken at the last open or save.
     pub fn is_dirty(&self, registry: &TypeRegistry, world: &World) -> bool {
-        self.saved != registry.snapshot_world(world)
+        self.saved != canonical_snapshot(registry, world)
     }
 
     /// Saves to the level's own path. A world level rewrites its manifest; its actors are
@@ -121,7 +135,7 @@ impl Level {
                 ofpa::save_manifest(&session.root, &session.manifest)?;
             }
         }
-        self.saved = registry.snapshot_world(world);
+        self.saved = canonical_snapshot(registry, world);
         Ok(())
     }
 
@@ -137,18 +151,28 @@ impl Level {
             LevelKind::Scene(document) => document.save_as(path, registry, world)?,
             LevelKind::World(_) => return Err(LevelError::SaveAsUnsupported),
         }
-        self.saved = registry.snapshot_world(world);
+        self.saved = canonical_snapshot(registry, world);
         Ok(())
     }
 
     fn with_kind(kind: LevelKind, registry: &TypeRegistry, world: &World) -> Self {
         Self {
             kind,
-            saved: registry.snapshot_world(world),
+            saved: canonical_snapshot(registry, world),
         }
     }
 }
 
 fn is_scene_file(path: &Path) -> bool {
     path.is_file() && path.to_string_lossy().ends_with(SCENE_SUFFIX)
+}
+
+/// The reflected state of the world with entities in a fixed order, so that two worlds with the
+/// same content compare equal however their archetypes are laid out.
+fn canonical_snapshot(registry: &TypeRegistry, world: &World) -> WorldSnapshot {
+    let mut snapshot = registry.snapshot_world(world);
+    snapshot
+        .entities
+        .sort_by_cached_key(|entity| format!("{entity:?}"));
+    snapshot
 }

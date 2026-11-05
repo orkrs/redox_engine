@@ -8,6 +8,7 @@ use redox_ecs::{Entity, World};
 use redox_reflect::TypeRegistry;
 use redox_reflect::meta::FieldError;
 
+use super::edit::guid_for;
 use crate::undo::UndoCommand;
 
 /// Commands that add a component, with the notes to show for automatically added requirements.
@@ -80,7 +81,7 @@ impl super::InspectorModel {
                 continue;
             };
             outcome.commands.push(UndoCommand::SetComponent {
-                entity,
+                guid: guid_for(world, entity)?,
                 type_name: component.to_string(),
                 before: Some(before),
                 after: None,
@@ -89,13 +90,9 @@ impl super::InspectorModel {
                 if other == component || registry.read_component(world, entity, other).is_none() {
                     continue;
                 }
-                let requires = registry.schema(other).is_some_and(|schema| {
-                    schema
-                        .meta
-                        .requires
-                        .iter()
-                        .any(|required| *required == component)
-                });
+                let requires = registry
+                    .schema(other)
+                    .is_some_and(|schema| schema.meta.requires.contains(&component));
                 if requires {
                     outcome.warnings.push(format!(
                         "{other} on #{} requires {component}; removing it may break {other}",
@@ -164,8 +161,7 @@ fn plan_component(
     planned: &mut Vec<String>,
     outcome: &mut AddOutcome,
 ) -> Result<(), FieldError> {
-    if planned.iter().any(|p| p == name) || registry.read_component(world, entity, name).is_some()
-    {
+    if planned.iter().any(|p| p == name) || registry.read_component(world, entity, name).is_some() {
         return Ok(());
     }
     let schema = registry
@@ -193,7 +189,7 @@ fn plan_component(
         ));
     }
     outcome.commands.push(UndoCommand::SetComponent {
-        entity,
+        guid: guid_for(world, entity)?,
         type_name: name.to_string(),
         before: None,
         after: Some(value),
