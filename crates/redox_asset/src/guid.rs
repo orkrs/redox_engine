@@ -471,6 +471,11 @@ impl AssetRegistry {
             .collect()
     }
 
+    /// Every reference of every indexed scene, in scene path order.
+    pub fn scene_references(&self) -> Vec<DependentRef> {
+        self.scene_refs.values().flatten().cloned().collect()
+    }
+
     /// Applies one file-system event incrementally and reports what changed.
     pub fn apply_event(&mut self, event: &AssetEvent) -> RegistryChange {
         match event {

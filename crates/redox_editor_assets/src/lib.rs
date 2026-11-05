@@ -5,10 +5,15 @@
 
 #![warn(missing_docs)]
 
+pub mod browser_model;
 pub mod import;
 pub mod import_queue;
 pub mod reference_index;
 pub mod service;
+
+pub use browser_model::{
+    AssetAction, AssetKind, BrowserEntry, BrowserFilter, BrowserModel, StatusFilter, actions_for,
+};
 
 pub use import::{
     AssetImporter, CancelToken, GltfValidateImporter, ImportError, ImportJob, ImportOutput,
