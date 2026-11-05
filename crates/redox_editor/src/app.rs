@@ -5,7 +5,9 @@ use crate::commands::{focus_selection, run_command};
 use crate::render_host::{RenderHost, SharedGpu};
 use parking_lot::Mutex;
 use rapier3d::prelude::{ColliderBuilder, RigidBodyBuilder};
+use redox_editor_assets::AssetService;
 use redox_editor_core::EditorContext;
+use redox_editor_ui::asset_report::AssetReportPanel;
 use redox_editor_scene::WorldSession;
 use redox_editor_ui::{EditorDock, EditorUiCtx, egui_to_viewport_coords};
 use redox_editor_viewport::{
@@ -17,6 +19,7 @@ use redox_reflect::{TypeRegistry, register_engine_defaults};
 use std::sync::Arc;
 use std::time::Instant;
 
+mod assets;
 mod redraw;
 mod ui;
 
@@ -46,6 +49,10 @@ pub(crate) struct EditorApp {
     fps_accum: f32,
     fps_frames: u32,
     stream_accum: f32,
+    /// Asset registry, import queue and watcher; `None` when the assets root cannot be opened.
+    assets: Option<AssetService>,
+    asset_report: AssetReportPanel,
+    last_asset_refresh: Instant,
 }
 
 impl EditorApp {
@@ -165,6 +172,7 @@ impl EditorApp {
         let fps_accum = 0.0f32;
         let fps_frames = 0u32;
         let stream_accum = 0.0f32;
+        let (asset_service, asset_report) = assets::open_assets(&ui_ctx);
 
         Self {
             window,
@@ -191,6 +199,9 @@ impl EditorApp {
             fps_accum,
             fps_frames,
             stream_accum,
+            assets: asset_service,
+            asset_report,
+            last_asset_refresh: Instant::now(),
         }
     }
 

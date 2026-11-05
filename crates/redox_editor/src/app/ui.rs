@@ -3,13 +3,15 @@
 use super::EditorApp;
 use crate::commands::{focus_selection, run_command};
 use redox_editor_scene::WorldSession;
+use redox_editor_ui::asset_report::ReportAction;
 use redox_math::Transform;
 
 impl EditorApp {
     pub(super) fn build_ui(&mut self) -> egui::FullOutput {
         let raw_input = self.egui_winit.take_egui_input(&self.window);
         let ui_ctx_ref = self.ui_ctx.clone();
-        self.egui_ctx.run_ui(raw_input, |ui| {
+        let mut report_actions: Vec<ReportAction> = Vec::new();
+        let output = self.egui_ctx.run_ui(raw_input, |ui| {
             let ctx = ui.ctx().clone();
             let ctx = &ctx;
             // Ctrl+P palette
@@ -37,6 +39,9 @@ impl EditorApp {
                             let _ = self
                                 .dock
                                 .save_to_file(std::path::Path::new("editor_layout.ron"));
+                        }
+                        if ui.button("Asset Diagnostics").clicked() {
+                            self.asset_report.open = true;
                         }
                     });
                     ui.menu_button("Edit", |ui| {
@@ -179,6 +184,14 @@ impl EditorApp {
                     };
                     ui.label(git);
                     ui.separator();
+                    if let Some(service) = &self.assets {
+                        let counts = service.import_counts();
+                        ui.label(format!(
+                            "Importing {} / Failed {}",
+                            counts.importing, counts.failed
+                        ));
+                        ui.separator();
+                    }
                     let fps = *ui_ctx_ref.fps.lock();
                     let ms = *ui_ctx_ref.frame_ms.lock();
                     let low1 = ui_ctx_ref.profiler.lock().one_percent_low_fps();
@@ -228,9 +241,22 @@ impl EditorApp {
                 Some(self.viewport_rect.clone()),
             );
 
+            if self.asset_report.open
+                && let Some(service) = self.assets.as_ref()
+            {
+                let mut report = service.report().clone();
+                report.missing_refs = service.missing_refs();
+                let selected = ui_ctx_ref.assets.lock().model.selected().map(|e| e.guid);
+                report_actions.extend(self.asset_report.show(ctx, &report, selected));
+            }
+
             if let Some(cmd) = ui_ctx_ref.palette.lock().show(ctx) {
                 run_command(&ui_ctx_ref, &mut self.dock, &cmd);
             }
-        })
+        });
+        for action in report_actions {
+            self.apply_report_action(action);
+        }
+        output
     }
 }

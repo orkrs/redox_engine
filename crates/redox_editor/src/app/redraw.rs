@@ -18,6 +18,7 @@ impl EditorApp {
     pub(super) fn on_redraw(&mut self) {
         self.tick_camera_and_background();
         self.drain_asset_spawn_requests();
+        self.sync_assets();
         self.handle_timetravel_status();
         self.ensure_gpu();
         self.handle_world_status_requests();
