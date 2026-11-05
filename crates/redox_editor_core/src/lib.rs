@@ -18,6 +18,8 @@ pub mod file_commands;
 pub mod file_state;
 /// Marker for entities that exist only inside the editor.
 pub mod editor_only;
+/// Lookup of entities by their stable GUID.
+pub mod guid;
 /// Console log ring buffer.
 pub mod log;
 /// Project manifest `project.ron`, project creation, opening and the recent-projects list.
@@ -32,6 +34,7 @@ pub mod undo;
 pub use command::{CommandRegistry, EditorCommand};
 pub use context::EditorContext;
 pub use editor_only::{EditorOnly, editor_only_entities};
+pub use guid::GuidResolver;
 pub use log::EditorLog;
 pub use selection::{Selection, Visibility};
-pub use undo::{UndoCommand, UndoHotkey, UndoStack};
+pub use undo::{Clock, SystemClock, UndoCommand, UndoEntry, UndoError, UndoHotkey, UndoStack};

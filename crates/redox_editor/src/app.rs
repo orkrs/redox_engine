@@ -123,8 +123,8 @@ impl EditorApp {
             ];
             let mut first = None;
             for p in positions {
-                let e = w.spawn();
-                w.add_component(e, Transform::from_translation(p));
+                let e = w.spawn(); // undo: init
+                w.add_component(e, Transform::from_translation(p)); // undo: init
                 if first.is_none() {
                     first = Some(e);
                 }
@@ -137,6 +137,8 @@ impl EditorApp {
         }
 
         ui_ctx.spawn_demo_agent();
+        // The startup agent is part of the opened state, not an edit to save.
+        ui_ctx.core.undo.lock().mark_saved();
 
         let egui_renderer: Option<egui_wgpu::Renderer> = None;
         let shared_gpu: Option<SharedGpu> = None;
@@ -151,8 +153,8 @@ impl EditorApp {
             let mut phys = PhysicsContext::new(Vec3::new(0.0, -9.81, 0.0));
             let ground_e = {
                 let mut w = world.lock();
-                let e = w.spawn();
-                w.add_component(e, Transform::from_translation(Vec3::new(0.0, -0.5, 0.0)));
+                let e = w.spawn(); // undo: init
+                w.add_component(e, Transform::from_translation(Vec3::new(0.0, -0.5, 0.0))); // undo: init
                 e
             };
             let _ = phys.add_rigid_body(
@@ -375,6 +377,12 @@ impl EditorApp {
                                 let forward = cam.forward();
                                 let mut gizmo_guard = self.gizmo.lock();
                                 if gizmo_guard.start_drag(origin, dir, t.translation, t, forward) {
+                                    let label = match gizmo_guard.mode {
+                                        GizmoMode::Translate => "Move Entity",
+                                        GizmoMode::Rotate => "Rotate Entity",
+                                        GizmoMode::Scale => "Scale Entity",
+                                    };
+                                    self.core.undo.lock().begin(label);
                                     self.ui_ctx
                                         .log(format!("[INFO] Gizmo drag {:?}", gizmo_guard.axis));
                                 }
@@ -383,6 +391,7 @@ impl EditorApp {
                     }
                 } else if !pressed && self.gizmo.lock().axis.is_some() {
                     self.gizmo.lock().end_drag();
+                    self.core.undo.lock().commit();
                     if *self.ui_ctx.surface_snap.lock()
                         && let Some(e) = self.core.selection.lock().primary
                     {

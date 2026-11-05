@@ -7,6 +7,7 @@ use crate::context::EditorUiCtx;
 use crate::git_overlay::GitOverlay;
 use crate::inspector::InspectorPanel;
 use crate::profiler_panel::ProfilerPanel;
+use crate::undo_history::UndoHistoryPanel;
 use redox_editor_viewport::{GizmoMode, ViewportLayout, ViewportShading};
 
 /// Tabs of the editor dock.
@@ -30,6 +31,8 @@ pub enum Tab {
     Profiler,
     /// Project packager.
     Packager,
+    /// Undo history: the steps, the current position and jumps to any step.
+    UndoHistory,
 }
 
 impl std::fmt::Display for Tab {
@@ -44,6 +47,7 @@ impl std::fmt::Display for Tab {
             Tab::TimeTravel => write!(f, "Time-Travel"),
             Tab::Profiler => write!(f, "Profiler"),
             Tab::Packager => write!(f, "Packager"),
+            Tab::UndoHistory => write!(f, "Undo History"),
         }
     }
 }
@@ -72,6 +76,7 @@ impl EditorDock {
         Tab::TimeTravel,
         Tab::Profiler,
         Tab::Packager,
+        Tab::UndoHistory,
     ];
 
     /// Creates the dock with the default layout.
@@ -112,6 +117,7 @@ impl EditorDock {
                 Tab::TimeTravel,
                 Tab::Profiler,
                 Tab::Packager,
+                Tab::UndoHistory,
             ],
         );
         tree
@@ -326,6 +332,7 @@ impl TabViewer for TabViewerImpl<'_> {
                 let mut undo = self.ui_ctx.core.undo.lock();
                 InspectorPanel::show(ui, &registry, selection.primary, &mut world, &mut undo);
             }
+            Tab::UndoHistory => UndoHistoryPanel::show(ui, &self.ui_ctx.core),
             Tab::AssetBrowser => {
                 let mut assets = self.ui_ctx.assets.lock();
                 if let Some(req) = assets.show(ui) {

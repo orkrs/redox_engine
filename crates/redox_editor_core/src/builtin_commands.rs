@@ -1,11 +1,37 @@
-//! Commands that only touch the domain state (world, selection, log).
+//! Commands that work on the domain state (world, selection, log).
 //!
-//! They do not record Undo steps yet; that is the job of a later slice.
+//! Each command that changes the world runs as one named transaction of the undo history.
 
 use crate::command::EditorCommand;
 use crate::context::EditorContext;
+use crate::guid::GuidResolver;
+use crate::undo::{UndoCommand, capture_entity};
+use redox_ecs::Entity;
 use redox_math::Transform;
-use redox_scene::EntityGuid;
+use redox_reflect::EntitySnapshot;
+
+/// Records the creation of `entity` in the open transaction. The entity and its components must
+/// already be in the world; the caller opens and commits the transaction.
+pub fn record_spawn(ctx: &EditorContext, entity: Entity) {
+    let guid = GuidResolver::ensure(&mut ctx.world.lock(), entity);
+    let snapshot = snapshot_of(ctx, entity);
+    ctx.undo.lock().push(UndoCommand::Spawn { guid, snapshot });
+}
+
+/// Captures the registered components of `entity`.
+fn snapshot_of(ctx: &EditorContext, entity: Entity) -> EntitySnapshot {
+    let world = ctx.world.lock();
+    let registry = ctx.registry.lock();
+    capture_entity(&world, entity, &registry)
+}
+
+/// Spawns an entity with `transform`; the caller records it.
+fn spawn_with_transform(ctx: &EditorContext, transform: Transform) -> Entity {
+    let mut world = ctx.world.lock();
+    let entity = world.spawn(); // undo: tx
+    world.add_component(entity, transform); // undo: tx
+    entity
+}
 
 /// Spawns an entity with a default transform and a new guid, and selects it.
 pub struct CreateEntity;
@@ -20,13 +46,10 @@ impl EditorCommand for CreateEntity {
     }
 
     fn execute(&self, ctx: &EditorContext) {
-        let entity = {
-            let mut world = ctx.world.lock();
-            let entity = world.spawn();
-            world.add_component(entity, Transform::default());
-            world.add_component(entity, EntityGuid::new_random());
-            entity
-        };
+        ctx.undo.lock().begin("Create Entity");
+        let entity = spawn_with_transform(ctx, Transform::default());
+        record_spawn(ctx, entity);
+        ctx.undo.lock().commit();
         ctx.selection.lock().set_primary(Some(entity));
         ctx.log.info(format!("Created entity #{}", entity.id()));
     }
@@ -58,13 +81,10 @@ impl EditorCommand for DuplicateEntity {
             .unwrap_or_default();
         let mut copy_transform = source_transform;
         copy_transform.translation.x += 1.0;
-        let copy = {
-            let mut world = ctx.world.lock();
-            let copy = world.spawn();
-            world.add_component(copy, copy_transform);
-            world.add_component(copy, EntityGuid::new_random());
-            copy
-        };
+        ctx.undo.lock().begin("Duplicate Entity");
+        let copy = spawn_with_transform(ctx, copy_transform);
+        record_spawn(ctx, copy);
+        ctx.undo.lock().commit();
         ctx.selection.lock().set_primary(Some(copy));
         ctx.log
             .info(format!("Duplicated #{} → #{}", source.id(), copy.id()));
@@ -88,7 +108,12 @@ impl EditorCommand for DeleteEntity {
         let Some(entity) = primary else {
             return;
         };
-        ctx.world.lock().despawn(entity);
+        ctx.undo.lock().begin("Delete Entity");
+        let guid = GuidResolver::ensure(&mut ctx.world.lock(), entity);
+        let snapshot = snapshot_of(ctx, entity);
+        ctx.undo.lock().push(UndoCommand::Despawn { guid, snapshot });
+        ctx.world.lock().despawn(entity); // undo: tx
+        ctx.undo.lock().commit();
         ctx.selection.lock().clear();
         ctx.log.info(format!("Deleted entity #{}", entity.id()));
     }
