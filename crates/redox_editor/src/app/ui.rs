@@ -209,7 +209,7 @@ impl EditorApp {
                         .unwrap_or_else(|| "Cell: (0,0)".into());
                     ui.label(cell);
                     ui.separator();
-                    ui.label(format!("Undo: {}", self.core.undo.lock().undo.len()));
+                    ui.label(format!("Undo: {}", self.core.undo.lock().len()));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let snap = *ui_ctx_ref.surface_snap.lock();
                         ui.label(if snap {

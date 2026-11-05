@@ -1,10 +1,34 @@
 use std::fmt;
+use std::sync::Arc;
+use std::time::Instant;
 
 use redox_ecs::{Entity, World};
 use redox_reflect::{EntitySnapshot, ReflectValue, TypeRegistry, WorldSnapshot};
 use redox_scene::components::EntityGuid;
 
 use crate::guid::GuidResolver;
+
+/// Default number of undo steps kept.
+const DEFAULT_LIMIT: usize = 100;
+/// Default window in seconds in which edits of one value merge into one step.
+const DEFAULT_MERGE_WINDOW_SECS: f32 = 0.5;
+
+/// Source of the time used for merging edits. The editor uses [`SystemClock`]; tests use a
+/// manual clock so that the merge window does not depend on real time.
+pub trait Clock: Send + Sync {
+    /// The current instant.
+    fn now(&self) -> Instant;
+}
+
+/// Clock that reads the operating system time.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SystemClock;
+
+impl Clock for SystemClock {
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
+}
 
 /// Why an undo command could not be applied.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -160,61 +184,183 @@ fn set_component(
     }
 }
 
-/// Undo and redo history with merging of rapid edits.
+/// One step of the history: a command with its label and the time it was recorded.
 #[derive(Clone, Debug)]
+pub struct UndoEntry {
+    /// Name shown in the Edit menu and in the Undo History panel, such as "Move" or "Delete Entity".
+    pub label: String,
+    /// The command as it was applied (undo applies its inverse).
+    pub command: UndoCommand,
+    /// When the step was recorded (or last merged into).
+    pub time: Instant,
+}
+
+/// A transaction in progress: nested `begin` calls only raise `depth`.
+#[derive(Clone, Debug)]
+struct Transaction {
+    depth: usize,
+    label: String,
+    commands: Vec<UndoCommand>,
+}
+
+/// Undo and redo history with named steps, transactions and merging of rapid edits.
+#[derive(Clone)]
 pub struct UndoStack {
-    /// Commands that can be undone, newest last.
-    pub undo: Vec<UndoCommand>,
-    /// Commands that can be redone, newest last.
-    pub redo: Vec<UndoCommand>,
-    /// Maximum number of undo steps kept.
-    pub limit: usize,
-    /// When the last command was pushed.
-    pub last_push_time: std::time::Instant,
+    /// Applied steps, oldest first.
+    done: Vec<UndoEntry>,
+    /// Undone steps, the next one to redo is last.
+    undone: Vec<UndoEntry>,
+    /// Maximum number of steps kept.
+    limit: usize,
     /// Edits of the same value closer than this many seconds merge into one step.
-    pub merge_window_secs: f32,
+    merge_window_secs: f32,
+    /// Source of the time for merging.
+    clock: Arc<dyn Clock>,
+    /// When the last step was recorded.
+    last_push: Option<Instant>,
+    /// The transaction in progress, if any.
+    transaction: Option<Transaction>,
     /// Error of the last undo or redo that could not be applied.
     pub last_error: Option<UndoError>,
 }
 
 impl Default for UndoStack {
     fn default() -> Self {
-        Self::new(100)
+        Self::new(DEFAULT_LIMIT)
     }
 }
 
 impl UndoStack {
-    /// Creates a stack that keeps up to `limit` steps.
+    /// Creates a stack that keeps up to `limit` steps and reads the system clock.
     pub fn new(limit: usize) -> Self {
+        Self::with_clock(limit, Arc::new(SystemClock))
+    }
+
+    /// Creates a stack that keeps up to `limit` steps and takes its time from `clock`.
+    pub fn with_clock(limit: usize, clock: Arc<dyn Clock>) -> Self {
         Self {
-            undo: Vec::new(),
-            redo: Vec::new(),
+            done: Vec::new(),
+            undone: Vec::new(),
             limit,
-            last_push_time: std::time::Instant::now(),
-            merge_window_secs: 0.5,
+            merge_window_secs: DEFAULT_MERGE_WINDOW_SECS,
+            clock,
+            last_push: None,
+            transaction: None,
             last_error: None,
         }
     }
 
-    /// Records a command that was already applied; it may merge with the previous one, and clears
-    /// the redo history.
+    /// Records a command that was already applied to the world. Inside a transaction the command
+    /// joins the transaction; outside it becomes a step of its own (merged with the previous step
+    /// when both edit the same value within the merge window).
     pub fn push(&mut self, cmd: UndoCommand) {
-        if self.merge_into_last(&cmd) {
-            self.redo.clear();
-            self.last_push_time = std::time::Instant::now();
+        if let Some(transaction) = self.transaction.as_mut() {
+            add_to_transaction(transaction, cmd);
             return;
         }
-        self.undo.push(cmd);
-        self.redo.clear();
-        self.last_push_time = std::time::Instant::now();
-        if self.undo.len() > self.limit {
-            self.undo.remove(0);
+        let label = default_label(&cmd);
+        self.record(label, cmd, true);
+    }
+
+    /// Starts a transaction named `label`. Calls nest: only the outermost `commit` records the
+    /// step. The label of the outermost call is used.
+    pub fn begin(&mut self, label: impl Into<String>) {
+        match self.transaction.as_mut() {
+            Some(transaction) => transaction.depth += 1,
+            None => {
+                self.transaction = Some(Transaction {
+                    depth: 1,
+                    label: label.into(),
+                    commands: Vec::new(),
+                });
+            }
         }
     }
 
-    /// Replaces the last command with a merged one when both edit the same value of the same
-    /// entity within the merge window. The merged command keeps the original `before`.
-    fn merge_into_last(&mut self, cmd: &UndoCommand) -> bool {
+    /// Ends the innermost transaction. The outermost one becomes one step with its label (no step
+    /// when it recorded nothing). Returns `false` when no transaction is open.
+    pub fn commit(&mut self) -> bool {
+        let Some(transaction) = self.transaction.as_mut() else {
+            return false;
+        };
+        transaction.depth = transaction.depth.saturating_sub(1);
+        if transaction.depth > 0 {
+            return true;
+        }
+        if let Some(finished) = self.transaction.take()
+            && !finished.commands.is_empty()
+        {
+            // Stored as a batch even with one command, so that a later edit never merges into it.
+            let command = UndoCommand::Batch(finished.commands);
+            self.record(finished.label, command, false);
+        }
+        true
+    }
+
+    /// Ends the transaction and reverts the commands it recorded, newest first, leaving no step.
+    /// Returns `false` when no transaction is open.
+    pub fn cancel(&mut self, world: &mut World, registry: &TypeRegistry) -> bool {
+        let Some(transaction) = self.transaction.take() else {
+            return false;
+        };
+        for command in transaction.commands.iter().rev() {
+            if let Err(error) = command.invert().apply(world, registry) {
+                self.last_error = Some(error);
+            }
+        }
+        true
+    }
+
+    /// Whether a transaction is open.
+    pub fn in_transaction(&self) -> bool {
+        self.transaction.is_some()
+    }
+
+    /// Number of steps that can be undone.
+    pub fn len(&self) -> usize {
+        self.done.len()
+    }
+
+    /// Whether there are no steps to undo.
+    pub fn is_empty(&self) -> bool {
+        self.done.is_empty()
+    }
+
+    /// The steps that can be undone, oldest first.
+    pub fn entries(&self) -> &[UndoEntry] {
+        &self.done
+    }
+
+    /// The steps that can be redone, the next one to redo last.
+    pub fn redo_entries(&self) -> &[UndoEntry] {
+        &self.undone
+    }
+
+    /// Maximum number of steps kept.
+    pub fn limit(&self) -> usize {
+        self.limit
+    }
+
+    /// Stores a step, merging it into the previous one when allowed. Clears the redo history.
+    fn record(&mut self, label: String, command: UndoCommand, may_merge: bool) {
+        let now = self.clock.now();
+        self.undone.clear();
+        if may_merge && self.merge_into_last(&command, now) {
+            self.last_push = Some(now);
+            return;
+        }
+        self.done.push(UndoEntry {
+            label,
+            command,
+            time: now,
+        });
+        self.last_push = Some(now);
+        self.trim();
+    }
+
+    /// Replaces the value of the last step with `cmd`'s value when both edit the same component of
+    /// the same entity within the merge window. The merged step keeps the original `before`.
+    fn merge_into_last(&mut self, cmd: &UndoCommand, now: Instant) -> bool {
         let UndoCommand::SetComponent {
             guid,
             type_name,
@@ -224,67 +370,81 @@ impl UndoStack {
         else {
             return false;
         };
-        if self.last_push_time.elapsed().as_secs_f32() >= self.merge_window_secs {
+        if !self.within_merge_window(now) {
             return false;
         }
-        let merged = match self.undo.last() {
-            Some(UndoCommand::SetComponent {
-                guid: last_guid,
-                type_name: last_type,
-                before: last_before,
-                ..
-            }) if last_guid == guid && last_type == type_name => UndoCommand::SetComponent {
-                guid: *guid,
-                type_name: type_name.clone(),
-                before: last_before.clone(),
-                after: after.clone(),
-            },
-            _ => return false,
+        let Some(entry) = self.done.last_mut() else {
+            return false;
         };
-        if let Some(slot) = self.undo.last_mut() {
-            *slot = merged;
+        let UndoCommand::SetComponent {
+            guid: last_guid,
+            type_name: last_type,
+            after: last_after,
+            ..
+        } = &mut entry.command
+        else {
+            return false;
+        };
+        if *last_guid != *guid || *last_type != *type_name {
+            return false;
         }
+        *last_after = after.clone();
+        entry.time = now;
         true
+    }
+
+    /// Whether the last recorded step happened less than the merge window before `now`.
+    fn within_merge_window(&self, now: Instant) -> bool {
+        self.last_push.is_some_and(|last| {
+            now.saturating_duration_since(last).as_secs_f32() < self.merge_window_secs
+        })
+    }
+
+    /// Drops the oldest steps beyond the limit.
+    fn trim(&mut self) {
+        while self.done.len() > self.limit {
+            self.done.remove(0);
+        }
     }
 
     /// Whether there is something to undo.
     pub fn can_undo(&self) -> bool {
-        !self.undo.is_empty()
+        !self.done.is_empty()
     }
 
     /// Whether there is something to redo.
     pub fn can_redo(&self) -> bool {
-        !self.redo.is_empty()
+        !self.undone.is_empty()
     }
 
-    /// Undoes the last command; returns whether anything was undone. A command that cannot be
-    /// applied stays in the history and its error is stored in [`UndoStack::last_error`].
+    /// Undoes the last step; returns whether anything was undone. A step that cannot be applied
+    /// stays in the history and its error is stored in [`UndoStack::last_error`].
     pub fn undo(&mut self, world: &mut World, registry: &TypeRegistry) -> bool {
-        let Some(inverse) = self.undo.last().map(UndoCommand::invert) else {
+        let Some(inverse) = self.done.last().map(|entry| entry.command.invert()) else {
             return false;
         };
         if let Err(error) = inverse.apply(world, registry) {
             self.last_error = Some(error);
             return false;
         }
-        if let Some(cmd) = self.undo.pop() {
-            self.redo.push(cmd);
+        if let Some(entry) = self.done.pop() {
+            self.undone.push(entry);
         }
         true
     }
 
-    /// Redoes the last undone command; returns whether anything was redone. A command that cannot
-    /// be applied stays in the redo history and its error is stored in [`UndoStack::last_error`].
+    /// Redoes the last undone step; returns whether anything was redone. A step that cannot be
+    /// applied stays in the redo history and its error is stored in [`UndoStack::last_error`].
     pub fn redo(&mut self, world: &mut World, registry: &TypeRegistry) -> bool {
-        let Some(cmd) = self.redo.last() else {
+        let Some(entry) = self.undone.last() else {
             return false;
         };
-        if let Err(error) = cmd.apply(world, registry) {
+        if let Err(error) = entry.command.apply(world, registry) {
             self.last_error = Some(error);
             return false;
         }
-        if let Some(cmd) = self.redo.pop() {
-            self.undo.push(cmd);
+        if let Some(entry) = self.undone.pop() {
+            self.done.push(entry);
         }
         true
     }
@@ -300,6 +460,44 @@ impl UndoStack {
             UndoHotkey::Undo => self.undo(world, registry),
             UndoHotkey::Redo => self.redo(world, registry),
         }
+    }
+}
+
+/// Adds a command to an open transaction. A command that edits the same component of the same
+/// entity as the previous one replaces its value, so a drag keeps one command per property.
+fn add_to_transaction(transaction: &mut Transaction, cmd: UndoCommand) {
+    let coalesced = match (transaction.commands.last_mut(), &cmd) {
+        (
+            Some(UndoCommand::SetComponent {
+                guid: last_guid,
+                type_name: last_type,
+                after: last_after,
+                ..
+            }),
+            UndoCommand::SetComponent {
+                guid,
+                type_name,
+                after,
+                ..
+            },
+        ) if *last_guid == *guid && *last_type == *type_name => {
+            *last_after = after.clone();
+            true
+        }
+        _ => false,
+    };
+    if !coalesced {
+        transaction.commands.push(cmd);
+    }
+}
+
+/// Label of a step pushed without an explicit transaction.
+fn default_label(cmd: &UndoCommand) -> String {
+    match cmd {
+        UndoCommand::SetComponent { type_name, .. } => format!("Edit {type_name}"),
+        UndoCommand::Spawn { .. } => "Create Entity".into(),
+        UndoCommand::Despawn { .. } => "Delete Entity".into(),
+        UndoCommand::Batch(_) => "Edit".into(),
     }
 }
 

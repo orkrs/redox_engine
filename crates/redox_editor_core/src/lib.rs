@@ -29,4 +29,4 @@ pub use editor_only::{EditorOnly, editor_only_entities};
 pub use guid::GuidResolver;
 pub use log::EditorLog;
 pub use selection::{Selection, Visibility};
-pub use undo::{UndoCommand, UndoError, UndoHotkey, UndoStack};
+pub use undo::{Clock, SystemClock, UndoCommand, UndoEntry, UndoError, UndoHotkey, UndoStack};
