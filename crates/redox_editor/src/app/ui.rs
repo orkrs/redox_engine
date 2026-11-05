@@ -2,9 +2,11 @@
 
 use super::EditorApp;
 use crate::commands::{focus_selection, run_command};
-use redox_editor_core::file_commands::FileRequest;
 use redox_editor_core::EditorContext;
+use redox_editor_core::autosave::AutosavePolicy;
+use redox_editor_core::file_commands::FileRequest;
 use redox_editor_scene::WorldSession;
+use redox_editor_ui::{RecoveryAnswer, format_hhmm};
 use redox_math::Transform;
 
 /// Text of an Edit menu entry: the verb, the step label when there is one, and the shortcut.
@@ -37,7 +39,9 @@ impl EditorApp {
     pub(super) fn build_ui(&mut self) -> egui::FullOutput {
         let raw_input = self.egui_winit.take_egui_input(&self.window);
         let ui_ctx_ref = self.ui_ctx.clone();
-        self.egui_ctx.run_ui(raw_input, |ui| {
+        let mut recovery_answer: Option<RecoveryAnswer> = None;
+        let mut preferences_answer: Option<AutosavePolicy> = None;
+        let output = self.egui_ctx.run_ui(raw_input, |ui| {
             let ctx = ui.ctx().clone();
             let ctx = &ctx;
             // Ctrl+P palette
@@ -110,6 +114,9 @@ impl EditorApp {
                         }
                         if ui.button("Command Palette Ctrl+P").clicked() {
                             ui_ctx_ref.palette.lock().toggle();
+                        }
+                        if ui.button("Preferences").clicked() {
+                            self.preferences.open_with(self.settings.autosave);
                         }
                     });
                     ui.menu_button("Entity", |ui| {
@@ -267,6 +274,14 @@ impl EditorApp {
                         .unwrap_or_else(|| "Cell: (0,0)".into());
                     ui.label(cell);
                     ui.separator();
+                    if let Some(secs) = self.autosave.as_ref().and_then(|s| s.last_saved_secs()) {
+                        ui.label(format!("Autosaved {}", format_hhmm(secs)));
+                        ui.separator();
+                    }
+                    if let Some(note) = self.recovery_note.as_deref() {
+                        ui.label(note);
+                        ui.separator();
+                    }
                     ui.label(format!("Undo: {}", self.core.undo.lock().len()));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let snap = *ui_ctx_ref.surface_snap.lock();
@@ -295,6 +310,15 @@ impl EditorApp {
             if let Some(cmd) = ui_ctx_ref.palette.lock().show(ctx) {
                 run_command(&ui_ctx_ref, &mut self.dock, &cmd);
             }
-        })
+            recovery_answer = self.recovery.show(ctx);
+            preferences_answer = self.preferences.show(ctx);
+        });
+        if let Some(answer) = recovery_answer {
+            self.apply_recovery_answer(answer);
+        }
+        if let Some(policy) = preferences_answer {
+            self.apply_preferences(policy);
+        }
+        output
     }
 }

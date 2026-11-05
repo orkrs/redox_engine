@@ -20,3 +20,4 @@ parking_lot = "0.12"
 serde = { workspace = true }
 ron = { workspace = true }
 thiserror = { workspace = true }
+flume = { workspace = true }

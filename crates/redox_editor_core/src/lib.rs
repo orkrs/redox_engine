@@ -6,6 +6,8 @@
 
 #![warn(missing_docs)]
 
+/// Autosave of a dirty level into `<project>/.redox/autosave`, on a background writer.
+pub mod autosave;
 /// Built-in commands that work on the domain state (create, duplicate, delete).
 pub mod builtin_commands;
 /// Editor commands addressed by identifier and the registry that runs them.
@@ -28,8 +30,12 @@ pub mod log;
 pub mod project;
 /// Starter templates for new projects.
 pub mod project_template;
+/// Session lock and crash recovery of an autosaved level.
+pub mod recovery;
 /// Selection set and primary selection.
 pub mod selection;
+/// Editor preferences in `editor_settings.ron`.
+pub mod settings;
 /// Undo and redo commands.
 pub mod undo;
 

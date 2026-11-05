@@ -1,6 +1,8 @@
 use egui_dock::{DockArea, DockState, Style, TabViewer};
 use parking_lot::Mutex;
+use redox_editor_core::EditorLog;
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::context::EditorUiCtx;
@@ -79,18 +81,49 @@ impl EditorDock {
         Tab::UndoHistory,
     ];
 
-    /// Creates the dock with the default layout.
+    /// Creates the dock with the layout from `editor_layout.ron` in the working directory.
     pub fn new() -> Self {
-        let layout_path = std::path::Path::new("editor_layout.ron");
-        if let Ok(s) = std::fs::read_to_string(layout_path)
-            && let Ok(tree) = ron::from_str::<DockState<Tab>>(&s)
-        {
-            let mut dock = Self { tree };
-            dock.ensure_tabs();
-            return dock;
-        }
-        Self {
-            tree: Self::default_tree(),
+        Self::load_or_default(Path::new("editor_layout.ron"), &EditorLog::new())
+    }
+
+    /// Loads the layout at `path`. A missing file gives the default layout. A file that does not
+    /// parse is logged, renamed to `<name>.broken` and replaced by the default layout (the editor
+    /// always opens).
+    pub fn load_or_default(path: &Path, log: &EditorLog) -> Self {
+        let text = match std::fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(err) => {
+                if err.kind() != std::io::ErrorKind::NotFound {
+                    log.error(format!("cannot read {}: {err}", path.display()));
+                }
+                return Self {
+                    tree: Self::default_tree(),
+                };
+            }
+        };
+        match ron::from_str::<DockState<Tab>>(&text) {
+            Ok(tree) => {
+                let mut dock = Self { tree };
+                dock.ensure_tabs();
+                dock
+            }
+            Err(err) => {
+                log.error(format!(
+                    "{} does not parse ({err}); the default layout is used",
+                    path.display()
+                ));
+                let broken = broken_path(path);
+                match std::fs::rename(path, &broken) {
+                    Ok(()) => log.info(format!("damaged layout moved to {}", broken.display())),
+                    Err(rename_err) => log.error(format!(
+                        "cannot move the damaged layout to {}: {rename_err}",
+                        broken.display()
+                    )),
+                }
+                Self {
+                    tree: Self::default_tree(),
+                }
+            }
         }
     }
 
@@ -166,10 +199,10 @@ impl EditorDock {
             .show_inside(ui, &mut viewer);
     }
 
-    /// Saves the layout as RON.
+    /// Saves the layout as RON, atomically.
     pub fn save_to_file(&self, path: &std::path::Path) -> anyhow::Result<()> {
         let s = ron::ser::to_string_pretty(&self.tree, ron::ser::PrettyConfig::default())?;
-        std::fs::write(path, s)?;
+        redox_scene::ofpa::write_atomic(path, s.as_bytes())?;
         Ok(())
     }
 
@@ -208,6 +241,13 @@ impl EditorDock {
     ) {
         let _ = ctx;
     }
+}
+
+/// Where a damaged layout is moved: the same path with `.broken` appended.
+fn broken_path(path: &Path) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(".broken");
+    PathBuf::from(name)
 }
 
 struct TabViewerImpl<'a> {
@@ -456,6 +496,28 @@ impl TabViewer for TabViewerImpl<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_damaged_layout_gives_the_default_layout_and_is_renamed_to_broken() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos());
+        let dir = std::env::temp_dir().join(format!("redox_dock_{}_{nanos}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temporary folder is created");
+        let path = dir.join("editor_layout.ron");
+        std::fs::write(&path, "this is not a layout").expect("damaged layout is written");
+        let log = EditorLog::new();
+
+        let dock = EditorDock::load_or_default(&path, &log);
+
+        for tab in EditorDock::REQUIRED_TABS {
+            assert!(dock.tree.find_tab(tab).is_some(), "missing tab {tab}");
+        }
+        assert!(!path.exists());
+        assert!(broken_path(&path).exists());
+        assert!(log.lines().iter().any(|line| line.contains("[ERROR]")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn dock_save_load_roundtrip() {
