@@ -1,0 +1,63 @@
+(
+    format_version: 1,
+    name: "Main",
+    entities: [
+        (
+            guid: "00000000000000000000000000000001",
+            components: [
+                Struct(type_name: "Name", fields: [("name", String("Camera"))]),
+                Struct(type_name: "Transform", fields: [("translation", List([F64(0.0), F64(2.0), F64(-8.0)])), ("rotation", List([F64(0.0), F64(0.0), F64(0.0), F64(1.0)])), ("scale", List([F64(1.0), F64(1.0), F64(1.0)]))]),
+                Struct(type_name: "Camera", fields: [("fov_y_degrees", F64(60.0)), ("near", F64(0.1)), ("far", F64(500.0))]),
+            ],
+        ),
+        (
+            guid: "00000000000000000000000000000002",
+            components: [
+                Struct(type_name: "Name", fields: [("name", String("Sun"))]),
+                Struct(type_name: "Transform", fields: [("translation", List([F64(0.0), F64(10.0), F64(0.0))]), ("rotation", List([F64(-0.3826834), F64(0.0), F64(0.0), F64(0.9238795)])), ("scale", List([F64(1.0), F64(1.0), F64(1.0)]))]),
+                Struct(type_name: "DirectionalLight", fields: [("color", List([F64(1.0), F64(0.95), F64(0.9)])), ("intensity", F64(3.0))]),
+            ],
+        ),
+        (
+            guid: "00000000000000000000000000000003",
+            components: [
+                Struct(type_name: "Name", fields: [("name", String("Ground"))]),
+                Struct(type_name: "Transform", fields: [("translation", List([F64(0.0), F64(0.0), F64(0.0))]), ("rotation", List([F64(0.0), F64(0.0), F64(0.0), F64(1.0)])), ("scale", List([F64(20.0), F64(1.0), F64(20.0)]))]),
+                Struct(type_name: "MaterialHandle", fields: [("guid", String("00000000000000000000000000001001")), ("path", String("assets/textures/checker.png"))]),
+            ],
+        ),
+        (
+            guid: "00000000000000000000000000000004",
+            components: [
+                Struct(type_name: "Name", fields: [("name", String("Props"))]),
+                Struct(type_name: "Transform", fields: [("translation", List([F64(3.0), F64(0.0), F64(0.0))]), ("rotation", List([F64(0.0), F64(0.0), F64(0.0), F64(1.0)])), ("scale", List([F64(1.0), F64(1.0), F64(1.0)]))]),
+            ],
+        ),
+        (
+            guid: "00000000000000000000000000000005",
+            components: [
+                Struct(type_name: "Name", fields: [("name", String("Crate"))]),
+                Struct(type_name: "Transform", fields: [("translation", List([F64(0.0), F64(0.5), F64(0.0))]), ("rotation", List([F64(0.0), F64(0.0), F64(0.0), F64(1.0)])), ("scale", List([F64(1.0), F64(1.0), F64(1.0)]))]),
+                Struct(type_name: "Parent", fields: [("guid", String("00000000000000000000000000000004"))]),
+                Struct(type_name: "MeshHandle", fields: [("guid", String("00000000000000000000000000001002")), ("path", String("assets/models/triangle.glb"))]),
+            ],
+        ),
+        (
+            guid: "00000000000000000000000000000006",
+            components: [
+                Struct(type_name: "Name", fields: [("name", String("Crate Top"))]),
+                Struct(type_name: "Transform", fields: [("translation", List([F64(0.0), F64(1.0), F64(0.0))]), ("rotation", List([F64(0.0), F64(0.0), F64(0.0), F64(1.0)])), ("scale", List([F64(0.5), F64(0.5), F64(0.5)]))]),
+                Struct(type_name: "Parent", fields: [("guid", String("00000000000000000000000000000005"))]),
+            ],
+        ),
+        (
+            guid: "00000000000000000000000000000007",
+            components: [
+                Struct(type_name: "Name", fields: [("name", String("Lamp"))]),
+                Struct(type_name: "Transform", fields: [("translation", List([F64(1.0), F64(2.0), F64(1.0))]), ("rotation", List([F64(0.0), F64(0.0), F64(0.0), F64(1.0)])), ("scale", List([F64(1.0), F64(1.0), F64(1.0)]))]),
+                Struct(type_name: "Parent", fields: [("guid", String("00000000000000000000000000000004"))]),
+                Struct(type_name: "PointLight", fields: [("color", List([F64(1.0), F64(0.8), F64(0.6)])), ("intensity", F64(800.0)), ("range", F64(10.0))]),
+            ],
+        ),
+    ],
+)

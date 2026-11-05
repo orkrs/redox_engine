@@ -6,4 +6,5 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod s00_fixtures;
 mod s00_harness;
