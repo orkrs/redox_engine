@@ -22,6 +22,8 @@ pub mod log;
 pub mod recovery;
 /// Selection set and primary selection.
 pub mod selection;
+/// Editor preferences in `editor_settings.ron`.
+pub mod settings;
 /// Undo and redo commands.
 pub mod undo;
 

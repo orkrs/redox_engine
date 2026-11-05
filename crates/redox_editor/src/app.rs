@@ -6,17 +6,23 @@ use crate::render_host::{RenderHost, SharedGpu};
 use parking_lot::Mutex;
 use rapier3d::prelude::{ColliderBuilder, RigidBodyBuilder};
 use redox_editor_core::EditorContext;
+use redox_editor_core::autosave::AutosaveService;
+use redox_editor_core::settings::{EditorSettings, SETTINGS_FILE};
 use redox_editor_scene::WorldSession;
-use redox_editor_ui::{EditorDock, EditorUiCtx, egui_to_viewport_coords};
+use redox_editor_ui::{
+    EditorDock, EditorUiCtx, PreferencesWindow, RecoveryDialog, egui_to_viewport_coords,
+};
 use redox_editor_viewport::{
     EditorCamera, GizmoMode, GizmoState, ViewportLinesPass, ViewportShading,
 };
 use redox_math::{Transform, Vec3};
 use redox_physics::PhysicsContext;
 use redox_reflect::{TypeRegistry, register_engine_defaults};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
+mod autosave;
 mod redraw;
 mod ui;
 
@@ -46,11 +52,16 @@ pub(crate) struct EditorApp {
     fps_accum: f32,
     fps_frames: u32,
     stream_accum: f32,
+    autosave: Option<AutosaveService>,
+    settings: EditorSettings,
+    recovery: RecoveryDialog,
+    preferences: PreferencesWindow,
+    level_name: String,
+    recovery_note: Option<String>,
 }
 
 impl EditorApp {
     pub(crate) fn new(window: Arc<winit::window::Window>, cli: &CliArgs) -> Self {
-        let dock = EditorDock::new();
         let egui_ctx = egui::Context::default();
         let egui_winit = egui_winit::State::new(
             egui_ctx.clone(),
@@ -68,6 +79,15 @@ impl EditorApp {
             r.register::<redox_render::light::PointLight>();
             r
         });
+        let dock = EditorDock::load_or_default(Path::new("editor_layout.ron"), &core.log);
+        let settings = EditorSettings::load_or_default(Path::new(SETTINGS_FILE), &core.log);
+        let level_name = autosave::level_name_of(&cli.world_root);
+        let mut autosave = autosave::create_service(&cli.world_root, &settings, &core.log);
+        let prompt = autosave::startup_prompt(autosave.as_ref(), &level_name, &core.log);
+        let recovery = RecoveryDialog::new(prompt.clone());
+        if prompt.is_none() {
+            autosave::begin_session(&mut autosave, &core, &level_name);
+        }
         let world = core.world.clone();
         let selection = core.selection.clone();
         let gizmo = Arc::new(Mutex::new(GizmoState::new()));
@@ -191,6 +211,12 @@ impl EditorApp {
             fps_accum,
             fps_frames,
             stream_accum,
+            autosave,
+            settings,
+            recovery,
+            preferences: PreferencesWindow::default(),
+            level_name,
+            recovery_note: None,
         }
     }
 
@@ -207,6 +233,7 @@ impl EditorApp {
                         let _ = self
                             .dock
                             .save_to_file(std::path::Path::new("editor_layout.ron"));
+                        self.finish_autosave();
                         elwt.exit();
                     }
                     winit::event::WindowEvent::Resized(size) => self.on_resized(size),
