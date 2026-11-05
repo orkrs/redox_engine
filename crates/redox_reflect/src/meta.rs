@@ -54,6 +54,9 @@ pub struct FieldMeta {
     pub editor_only: bool,
     /// Widget to draw the field with.
     pub widget: WidgetHint,
+    /// File extensions an asset reference in this field may point to (without the dot). Empty
+    /// means any file.
+    pub accepts: &'static [&'static str],
 }
 
 /// Editor metadata of a whole type.

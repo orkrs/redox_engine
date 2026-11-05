@@ -27,6 +27,8 @@ enum RowAction {
     None,
     /// Set the field to this value.
     Set(ReflectValue),
+    /// Point an asset reference at this path.
+    AssignPath(String),
     /// Restore the field's default.
     Reset,
 }
@@ -126,6 +128,13 @@ fn draw(
                         RowAction::Set(value) => {
                             model.edit(registry, world_ref, &row.component, row.field, value)
                         }
+                        RowAction::AssignPath(path) => model.assign_asset_path(
+                            registry,
+                            world_ref,
+                            &row.component,
+                            row.field,
+                            &path,
+                        ),
                         RowAction::Reset => {
                             model.reset_field(registry, world_ref, &row.component, row.field)
                         }
@@ -215,6 +224,16 @@ fn draw_row(ui: &mut Ui, row: &Row, first: Option<ReflectValue>) -> RowAction {
             None => ui.label(title),
         };
         match &row.value {
+            RowValue::Single(value) if value.as_handle_path().is_some() => {
+                let path = ui
+                    .add_enabled_ui(!row.read_only, |ui| {
+                        widgets::asset_widget(ui, row, value)
+                    })
+                    .inner;
+                if let Some(path) = path {
+                    action = RowAction::AssignPath(path);
+                }
+            }
             RowValue::Single(value) => {
                 let edited = ui
                     .add_enabled_ui(!row.read_only, |ui| {

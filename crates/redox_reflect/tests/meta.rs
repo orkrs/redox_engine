@@ -73,6 +73,7 @@ fn attributes_fill_field_metadata() {
             advanced: false,
             editor_only: false,
             widget: WidgetHint::Slider,
+            accepts: &[],
         }
     );
 }

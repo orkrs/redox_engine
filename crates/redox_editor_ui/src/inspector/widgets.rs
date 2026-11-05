@@ -158,3 +158,31 @@ fn enum_widget(
         });
     picked.map(|option| ReflectValue::String(option.to_string()))
 }
+
+/// Asset reference: the current file name, and a text box with an Assign button. Returns the
+/// typed path when Assign is pressed; the model checks the extension. Drag and drop from the asset
+/// browser is not wired yet (the browser has no drag source).
+pub fn asset_widget(ui: &mut Ui, row: &Row, value: &ReflectValue) -> Option<String> {
+    let current = value.as_handle_path().flatten();
+    let shown = current.as_deref().map(file_name_of).unwrap_or("(none)");
+    ui.label(shown)
+        .on_hover_text(current.clone().unwrap_or_default());
+    let id = egui::Id::new(("asset_path_input", row.component.as_str(), row.field));
+    let mut input: String = ui.data(|d| d.get_temp(id)).unwrap_or_default();
+    ui.add(
+        egui::TextEdit::singleline(&mut input)
+            .hint_text("assets/path/file.ext")
+            .desired_width(160.0),
+    );
+    let assign = ui.small_button("Assign").clicked();
+    ui.data_mut(|d| d.insert_temp(id, input.clone()));
+    let path = input.trim();
+    (assign && !path.is_empty()).then(|| path.to_string())
+}
+
+fn file_name_of(path: &str) -> &str {
+    std::path::Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(path)
+}

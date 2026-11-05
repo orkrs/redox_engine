@@ -34,6 +34,49 @@ pub(super) fn field_commands(
         .collect()
 }
 
+/// Commands that point the asset reference `field` at `path`, after checking the extension
+/// against the field's `accepts`.
+pub(super) fn asset_path_commands(
+    registry: &TypeRegistry,
+    world: &World,
+    entities: &[Entity],
+    component: &str,
+    field: &str,
+    path: &str,
+) -> Result<Vec<UndoCommand>, FieldError> {
+    let schema = schema_of(registry, component)?;
+    let definition = schema
+        .fields
+        .iter()
+        .find(|f| f.name == field)
+        .ok_or_else(|| FieldError::UnknownField(field.to_string()))?;
+    if !extension_accepted(path, definition.meta.accepts) {
+        return Err(FieldError::TypeMismatch {
+            expected: definition.meta.accepts.join(", "),
+        });
+    }
+    let value = ReflectValue::handle(definition.type_name, Some(path.to_string()));
+    field_commands(registry, world, entities, component, field, &value)
+}
+
+/// Whether the extension of `path` is in `accepts` (case-insensitive, leading dot optional).
+/// An empty list accepts every path.
+fn extension_accepted(path: &str, accepts: &[&str]) -> bool {
+    if accepts.is_empty() {
+        return true;
+    }
+    let extension = std::path::Path::new(path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(str::to_ascii_lowercase);
+    match extension {
+        Some(extension) => accepts
+            .iter()
+            .any(|accepted| accepted.trim_start_matches('.').eq_ignore_ascii_case(&extension)),
+        None => false,
+    }
+}
+
 /// Commands that put `field` back to its default value on every entity.
 pub(super) fn reset_field_commands(
     registry: &TypeRegistry,

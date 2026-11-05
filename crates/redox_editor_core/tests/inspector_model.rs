@@ -7,7 +7,7 @@ use redox_editor_core::inspector_model::{
 use redox_editor_core::{UndoCommand, UndoStack};
 use redox_math::{Transform, Vec3};
 use redox_reflect::meta::FieldError;
-use redox_reflect::{Reflect, ReflectValue, TypeRegistry, register_engine_defaults};
+use redox_reflect::{FieldValue, Reflect, ReflectValue, TypeRegistry, register_engine_defaults};
 
 #[derive(Reflect, Default, Clone, Debug, PartialEq)]
 #[reflect(category = "Gameplay", requires("Transform"))]
@@ -387,4 +387,75 @@ fn add_menu_skips_present_types_and_editor_only_unless_asked() {
     let by_category = addable_types(&registry, &world, &[entity], "gameplay", false);
     let names: Vec<&str> = by_category.iter().map(|t| t.type_name).collect();
     assert_eq!(names, ["Gauge"]);
+}
+
+/// An asset reference stored as a handle value with a path.
+#[derive(Default, Clone, Debug, PartialEq)]
+struct AssetRef(Option<String>);
+
+impl FieldValue for AssetRef {
+    const TYPE_NAME: &'static str = "AssetRef";
+
+    fn to_field_value(&self) -> ReflectValue {
+        ReflectValue::handle("AssetRef", self.0.clone())
+    }
+
+    fn apply_field_value(&mut self, value: &ReflectValue) {
+        if let Some(path) = value.as_handle_path() {
+            self.0 = path;
+        }
+    }
+}
+
+#[derive(Reflect, Default, Clone, Debug, PartialEq)]
+#[reflect(category = "Assets")]
+struct Prop {
+    #[reflect(accepts("glb", "gltf"))]
+    mesh: AssetRef,
+}
+
+#[test]
+fn asset_path_with_an_accepted_extension_is_assigned() {
+    let mut registry = registry();
+    registry.register::<Prop>();
+    let mut world = World::new();
+    let entity = world.spawn();
+    world.add_component(entity, Prop::default());
+    let model = InspectorModel::build(&registry, &world, &[entity], "", false);
+    assert_eq!(row(&model, "Prop", "mesh").accepts, ["glb", "gltf"]);
+
+    let commands = model
+        .assign_asset_path(&registry, &world, "Prop", "mesh", "models/rock.glb")
+        .expect("accepted extension");
+    apply_all(&commands, &mut world, &registry);
+
+    assert_eq!(
+        world.get_component::<Prop>(entity).expect("prop").mesh,
+        AssetRef(Some("models/rock.glb".to_string()))
+    );
+}
+
+#[test]
+fn asset_path_with_another_extension_is_a_type_mismatch() {
+    let mut registry = registry();
+    registry.register::<Prop>();
+    let mut world = World::new();
+    let entity = world.spawn();
+    world.add_component(entity, Prop::default());
+    let model = InspectorModel::build(&registry, &world, &[entity], "", false);
+
+    let result = model.assign_asset_path(&registry, &world, "Prop", "mesh", "textures/rock.png");
+    assert_eq!(
+        result.unwrap_err(),
+        FieldError::TypeMismatch {
+            expected: "glb, gltf".to_string()
+        }
+    );
+    let upper = model.assign_asset_path(&registry, &world, "Prop", "mesh", "MODEL.GLB");
+    assert!(upper.is_ok(), "extension check ignores case");
+    assert!(
+        model
+            .assign_asset_path(&registry, &world, "Prop", "mesh", "no_extension")
+            .is_err()
+    );
 }

@@ -56,6 +56,8 @@ pub struct Row {
     pub read_only: bool,
     /// The value differs from the field default (metadata default, or the type's `Default`).
     pub modified_from_default: bool,
+    /// File extensions an asset reference may point to; empty means any file.
+    pub accepts: &'static [&'static str],
 }
 
 /// The rows of one component on the selected entities.
@@ -166,6 +168,20 @@ impl InspectorModel {
         edit::reset_field_commands(registry, world, &self.entities, component, field)
     }
 
+    /// Commands that point the asset reference `field` of `component` at `path`. The file extension
+    /// must be one of the field's `accepts`; otherwise the result is [`FieldError::TypeMismatch`]
+    /// and nothing changes. The path is stored as the reference value.
+    pub fn assign_asset_path(
+        &self,
+        registry: &TypeRegistry,
+        world: &World,
+        component: &str,
+        field: &str,
+        path: &str,
+    ) -> Result<Vec<UndoCommand>, FieldError> {
+        edit::asset_path_commands(registry, world, &self.entities, component, field, path)
+    }
+
     /// Commands that restore every editable field of `component` to its default. Read-only fields
     /// keep their current value.
     pub fn reset_component(
@@ -233,6 +249,7 @@ fn rows_for(
                 widget: meta.widget,
                 read_only: meta.read_only,
                 modified_from_default,
+                accepts: meta.accepts,
             })
         })
         .collect()

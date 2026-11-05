@@ -65,6 +65,7 @@ const FIELD_KEYS: &[&str] = &[
     "advanced",
     "editor_only",
     "widget",
+    "accepts",
 ];
 
 /// Derives `redox_reflect::Reflect` for a struct with named fields.
@@ -121,7 +122,7 @@ fn parse_type_attrs(attrs: &[Attribute]) -> syn::Result<TypeAttrs> {
                     out.name = Some(lit.value());
                     return Ok(());
                 }
-                "requires" => requires_tokens(&meta)?,
+                "requires" => string_list_tokens(&meta)?,
                 "version" => {
                     let lit: LitInt = meta.value()?.parse()?;
                     let _: u32 = lit.base10_parse()?;
@@ -171,6 +172,7 @@ fn parse_field_attrs(attrs: &[Attribute]) -> syn::Result<FieldAttrs> {
                     let widget = widget_tokens(&lit)?;
                     quote!(#widget)
                 }
+                "accepts" => string_list_tokens(&meta)?,
                 // label, category, tooltip, unit
                 _ => {
                     let lit: LitStr = meta.value()?.parse()?;
@@ -184,8 +186,8 @@ fn parse_field_attrs(attrs: &[Attribute]) -> syn::Result<FieldAttrs> {
     Ok(out)
 }
 
-/// `requires("A", "B")` on a type.
-fn requires_tokens(meta: &ParseNestedMeta<'_>) -> syn::Result<TokenStream2> {
+/// A parenthesised list of strings, such as `requires("A", "B")` or `accepts("glb", "gltf")`.
+fn string_list_tokens(meta: &ParseNestedMeta<'_>) -> syn::Result<TokenStream2> {
     let content;
     parenthesized!(content in meta.input);
     let names = Punctuated::<LitStr, Token![,]>::parse_terminated(&content)?;
