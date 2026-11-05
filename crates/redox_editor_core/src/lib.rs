@@ -6,6 +6,8 @@
 
 #![warn(missing_docs)]
 
+/// Autosave of a dirty level into `<project>/.redox/autosave`, on a background writer.
+pub mod autosave;
 /// Built-in commands that work on the domain state (create, duplicate, delete).
 pub mod builtin_commands;
 /// Editor commands addressed by identifier and the registry that runs them.
