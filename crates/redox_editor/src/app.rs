@@ -5,8 +5,7 @@ use crate::commands::{focus_selection, run_command};
 use crate::render_host::{RenderHost, SharedGpu};
 use parking_lot::Mutex;
 use rapier3d::prelude::{ColliderBuilder, RigidBodyBuilder};
-use redox_ecs::World;
-use redox_editor_core::{Selection, UndoStack};
+use redox_editor_core::EditorContext;
 use redox_editor_scene::WorldSession;
 use redox_editor_ui::{EditorDock, EditorUiCtx, egui_to_viewport_coords};
 use redox_editor_viewport::{
@@ -27,11 +26,8 @@ pub(crate) struct EditorApp {
     dock: EditorDock,
     egui_ctx: egui::Context,
     egui_winit: egui_winit::State,
-    selection: Arc<Mutex<Selection>>,
-    world: Arc<Mutex<World>>,
-    registry: Arc<Mutex<TypeRegistry>>,
+    core: EditorContext,
     gizmo: Arc<Mutex<GizmoState>>,
-    undo_stack: Arc<Mutex<UndoStack>>,
     camera: Arc<Mutex<EditorCamera>>,
     ui_ctx: Arc<EditorUiCtx>,
     egui_renderer: Option<egui_wgpu::Renderer>,
@@ -65,25 +61,21 @@ impl EditorApp {
             None,
         );
 
-        let selection = Arc::new(Mutex::new(Selection::default()));
-        let world = Arc::new(Mutex::new(World::new()));
-        let registry = Arc::new(Mutex::new({
+        let core = EditorContext::new({
             let mut r = TypeRegistry::new();
             register_engine_defaults(&mut r);
             r.register::<redox_render::light::DirectionalLight>();
             r.register::<redox_render::light::PointLight>();
             r
-        }));
+        });
+        let world = core.world.clone();
+        let selection = core.selection.clone();
         let gizmo = Arc::new(Mutex::new(GizmoState::new()));
-        let undo_stack = Arc::new(Mutex::new(UndoStack::default()));
         let camera = Arc::new(Mutex::new(EditorCamera::default()));
 
         let ui_ctx = Arc::new(EditorUiCtx::new(
-            world.clone(),
-            selection.clone(),
-            registry.clone(),
+            core.clone(),
             gizmo.clone(),
-            undo_stack.clone(),
             camera.clone(),
         ));
 
@@ -179,11 +171,8 @@ impl EditorApp {
             dock,
             egui_ctx,
             egui_winit,
-            selection,
-            world,
-            registry,
+            core,
             gizmo,
-            undo_stack,
             camera,
             ui_ctx,
             egui_renderer,
@@ -275,7 +264,7 @@ impl EditorApp {
         // Gizmo drag
         if self.gizmo.lock().axis.is_some()
             && let (Some(sel), Some(host), Some(rect), Some(pos)) = (
-                self.selection.lock().primary,
+                self.core.selection.lock().primary,
                 self.render_host.as_ref(),
                 *self.viewport_rect.lock(),
                 *self.last_mouse_pos.lock(),
@@ -294,6 +283,7 @@ impl EditorApp {
                     vp.size,
                 );
                 let entity_pos = self
+                    .core
                     .world
                     .lock()
                     .get_component::<Transform>(sel)
@@ -306,9 +296,9 @@ impl EditorApp {
                         .update_drag(origin, dir, entity_pos, cam_forward)
                 {
                     let gizmo_guard = self.gizmo.lock();
-                    let mut world_guard = self.world.lock();
-                    let registry_guard = self.registry.lock();
-                    let mut undo_guard = self.undo_stack.lock();
+                    let mut world_guard = self.core.world.lock();
+                    let registry_guard = self.core.registry.lock();
+                    let mut undo_guard = self.core.undo.lock();
                     gizmo_guard.apply_drag(
                         &mut world_guard,
                         sel,
@@ -338,7 +328,7 @@ impl EditorApp {
                 }
                 if !self.egui_ctx.egui_wants_pointer_input() && pressed && !alt {
                     if let (Some(sel), Some(host), Some(rect), Some(pos)) = (
-                        self.selection.lock().primary,
+                        self.core.selection.lock().primary,
                         self.render_host.as_ref(),
                         *self.viewport_rect.lock(),
                         *self.last_mouse_pos.lock(),
@@ -358,7 +348,7 @@ impl EditorApp {
                                 vp.size,
                             );
                             if let Some(t) =
-                                self.world.lock().get_component::<Transform>(sel).copied()
+                                self.core.world.lock().get_component::<Transform>(sel).copied()
                             {
                                 let forward = cam.forward();
                                 let mut gizmo_guard = self.gizmo.lock();
@@ -372,14 +362,14 @@ impl EditorApp {
                 } else if !pressed && self.gizmo.lock().axis.is_some() {
                     self.gizmo.lock().end_drag();
                     if *self.ui_ctx.surface_snap.lock()
-                        && let Some(e) = self.selection.lock().primary
+                        && let Some(e) = self.core.selection.lock().primary
                     {
-                        *self.ui_ctx.status.lock() = format!("snap:{}", e.id());
+                        *self.ui_ctx.core.status.lock() = format!("snap:{}", e.id());
                     }
                     self.ui_ctx
                         .git
                         .lock()
-                        .refresh_from_world(&self.world.lock());
+                        .refresh_from_world(&self.core.world.lock());
                 }
             }
             _ => {}

@@ -89,6 +89,23 @@ impl Default for CommandPalette {
 }
 
 impl CommandPalette {
+    /// Adds `(id, label)` entries from the command registry. An id already in the palette keeps
+    /// its existing entry and label.
+    pub fn add_registry_commands<'a>(
+        &mut self,
+        entries: impl IntoIterator<Item = (&'a str, &'a str)>,
+    ) {
+        for (id, label) in entries {
+            if self.commands.iter().any(|cmd| cmd.id == id) {
+                continue;
+            }
+            self.commands.push(Command {
+                id: id.to_string(),
+                label: label.to_string(),
+            });
+        }
+    }
+
     /// Opens or closes the palette; opening clears the query.
     pub fn toggle(&mut self) {
         self.open = !self.open;

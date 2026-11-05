@@ -41,14 +41,14 @@ impl EditorApp {
                     });
                     ui.menu_button("Edit", |ui| {
                         if ui.button("Undo Ctrl+Z").clicked() {
-                            let mut w = self.world.lock();
-                            let r = self.registry.lock();
-                            self.undo_stack.lock().undo(&mut w, &r);
+                            let mut w = self.core.world.lock();
+                            let r = self.core.registry.lock();
+                            self.core.undo.lock().undo(&mut w, &r);
                         }
                         if ui.button("Redo Ctrl+Y").clicked() {
-                            let mut w = self.world.lock();
-                            let r = self.registry.lock();
-                            self.undo_stack.lock().redo(&mut w, &r);
+                            let mut w = self.core.world.lock();
+                            let r = self.core.registry.lock();
+                            self.core.undo.lock().redo(&mut w, &r);
                         }
                         if ui.button("Command Palette Ctrl+P").clicked() {
                             ui_ctx_ref.palette.lock().toggle();
@@ -74,7 +74,7 @@ impl EditorApp {
                             for root in roots {
                                 let label = format!("Open {}", root.display());
                                 if ui.button(label).clicked() {
-                                    *ui_ctx_ref.status.lock() =
+                                    *ui_ctx_ref.core.status.lock() =
                                         format!("open_world:{}", root.display());
                                     ui.close();
                                 }
@@ -85,7 +85,7 @@ impl EditorApp {
                             && let Some(session) = ui_ctx_ref.world_session.lock().as_mut()
                         {
                             let eye = self.camera.lock().eye;
-                            session.tick(&mut self.world.lock(), eye);
+                            session.tick(&mut self.core.world.lock(), eye);
                             ui_ctx_ref.log("[INFO] World partition tick");
                         }
                     });
@@ -100,7 +100,7 @@ impl EditorApp {
                         });
                         drop(git);
                         if ui.button("Refresh status").clicked() {
-                            *ui_ctx_ref.status.lock() = "git_refresh".into();
+                            *ui_ctx_ref.core.status.lock() = "git_refresh".into();
                             ui.close();
                         }
                     });
@@ -163,7 +163,7 @@ impl EditorApp {
                             run_command(&ui_ctx_ref, &mut self.dock, "pie_play");
                         }
                         ui.separator();
-                        let sel = self.selection.lock().primary.map(|e| e.id());
+                        let sel = self.core.selection.lock().primary.map(|e| e.id());
                         ui.label(format!("Sel:{:?}", sel));
                         ui.label(format!("Gizmo:{:?}", self.gizmo.lock().mode));
                     });
@@ -189,11 +189,12 @@ impl EditorApp {
                     ui.label(ui_ctx_ref.vram_label.lock().clone());
                     ui.separator();
                     let cell = self
+                        .core
                         .selection
                         .lock()
                         .primary
                         .and_then(|e| {
-                            self.world.lock().get_component::<Transform>(e).map(|t| {
+                            self.core.world.lock().get_component::<Transform>(e).map(|t| {
                                 format!(
                                     "Cell: ({:.0},{:.0})",
                                     (t.translation.x / 16.0).floor(),
@@ -204,7 +205,7 @@ impl EditorApp {
                         .unwrap_or_else(|| "Cell: (0,0)".into());
                     ui.label(cell);
                     ui.separator();
-                    ui.label(format!("Undo: {}", self.undo_stack.lock().undo.len()));
+                    ui.label(format!("Undo: {}", self.core.undo.lock().undo.len()));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let snap = *ui_ctx_ref.surface_snap.lock();
                         ui.label(if snap {

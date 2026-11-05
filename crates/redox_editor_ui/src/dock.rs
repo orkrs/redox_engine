@@ -304,8 +304,8 @@ impl TabViewer for TabViewerImpl<'_> {
             }
             Tab::Outliner => {
                 let mut outliner = self.ui_ctx.outliner.lock();
-                let world = self.ui_ctx.world.lock();
-                let mut selection = self.ui_ctx.selection.lock();
+                let world = self.ui_ctx.core.world.lock();
+                let mut selection = self.ui_ctx.core.selection.lock();
                 let session = self.ui_ctx.world_session.lock();
                 let git = self.ui_ctx.git.lock();
                 let actions =
@@ -320,10 +320,10 @@ impl TabViewer for TabViewerImpl<'_> {
                 }
             }
             Tab::Inspector => {
-                let mut world = self.ui_ctx.world.lock();
-                let registry = self.ui_ctx.registry.lock();
-                let selection = self.ui_ctx.selection.lock();
-                let mut undo = self.ui_ctx.undo.lock();
+                let mut world = self.ui_ctx.core.world.lock();
+                let registry = self.ui_ctx.core.registry.lock();
+                let selection = self.ui_ctx.core.selection.lock();
+                let mut undo = self.ui_ctx.core.undo.lock();
                 InspectorPanel::show(ui, &registry, selection.primary, &mut world, &mut undo);
             }
             Tab::AssetBrowser => {
@@ -334,21 +334,21 @@ impl TabViewer for TabViewerImpl<'_> {
             }
             Tab::Console => {
                 if GitOverlay::show(ui, &self.ui_ctx.git.lock()) {
-                    *self.ui_ctx.status.lock() = "git_refresh".into();
+                    *self.ui_ctx.core.status.lock() = "git_refresh".into();
                 }
                 ui.separator();
                 egui::ScrollArea::vertical()
                     .stick_to_bottom(true)
                     .show(ui, |ui| {
-                        for line in self.ui_ctx.console.lock().iter() {
-                            ui.monospace(line);
+                        for line in self.ui_ctx.core.log.lines() {
+                            ui.monospace(line.as_str());
                         }
                     });
             }
             Tab::Graph => {
                 let agent_e = self.ui_ctx.resolve_graph_agent_entity();
-                let primary = self.ui_ctx.selection.lock().primary;
-                let mut world = self.ui_ctx.world.lock();
+                let primary = self.ui_ctx.core.selection.lock().primary;
+                let mut world = self.ui_ctx.core.world.lock();
                 let attrs = agent_e.and_then(|e| {
                     world
                         .get_component::<redox_gameplay::AttributeSet>(e)
@@ -421,7 +421,7 @@ impl TabViewer for TabViewerImpl<'_> {
                                 || i.key_pressed(egui::Key::ArrowRight)
                         })
                     {
-                        *self.ui_ctx.status.lock() = format!("tt_scrub:{idx}");
+                        *self.ui_ctx.core.status.lock() = format!("tt_scrub:{idx}");
                     }
                     *self.ui_ctx.tt_scrub_idx.lock() = idx;
                     let t_sec = idx as f32 / 60.0;

@@ -1,14 +1,12 @@
 //! Shared editor UI state passed into dock panels.
 
 use parking_lot::Mutex;
-use redox_ecs::World;
-use redox_editor_core::{Selection, UndoStack};
+use redox_editor_core::EditorContext;
 use redox_editor_debugger::{FrameProfiler, PieSession, TimeTravelBuffer};
 use redox_editor_scene::{WorldGitTracker, WorldSession};
 use redox_editor_viewport::{
     EditorCamera, GizmoState, ViewportDebugFlags, ViewportLayout, ViewportShading,
 };
-use redox_reflect::TypeRegistry;
 use std::sync::Arc;
 
 use crate::asset_browser::{AssetBrowserPanel, AssetSpawnRequest};
@@ -23,16 +21,10 @@ use std::path::PathBuf;
 
 /// Everything the dock / menus need without cloning the whole editor.
 pub struct EditorUiCtx {
-    /// The ECS world being edited.
-    pub world: Arc<Mutex<World>>,
-    /// Selected entities.
-    pub selection: Arc<Mutex<Selection>>,
-    /// Registered component types for the inspector and snapshots.
-    pub registry: Arc<Mutex<TypeRegistry>>,
+    /// Headless editor state: world, registry, selection, undo, log, status and commands.
+    pub core: EditorContext,
     /// Gizmo state.
     pub gizmo: Arc<Mutex<GizmoState>>,
-    /// Undo and redo history.
-    pub undo: Arc<Mutex<UndoStack>>,
     /// Editor camera.
     pub camera: Arc<Mutex<EditorCamera>>,
     /// Play-in-editor session.
@@ -81,10 +73,6 @@ pub struct EditorUiCtx {
     pub fps: Mutex<f32>,
     /// Frame time in milliseconds shown in the UI.
     pub frame_ms: Mutex<f32>,
-    /// Console lines (the newest 200 are kept).
-    pub console: Mutex<Vec<String>>,
-    /// Text of the status bar.
-    pub status: Mutex<String>,
     /// Integrator may overwrite with real GPU memory stats; shown in Viewport toolbar.
     pub vram_label: Mutex<String>,
 }
@@ -92,19 +80,16 @@ pub struct EditorUiCtx {
 impl EditorUiCtx {
     /// Creates the shared context from the editor's core state.
     pub fn new(
-        world: Arc<Mutex<World>>,
-        selection: Arc<Mutex<Selection>>,
-        registry: Arc<Mutex<TypeRegistry>>,
+        core: EditorContext,
         gizmo: Arc<Mutex<GizmoState>>,
-        undo: Arc<Mutex<UndoStack>>,
         camera: Arc<Mutex<EditorCamera>>,
     ) -> Self {
+        core.log.info("RedOx Studio ready");
+        let mut palette = CommandPalette::default();
+        palette.add_registry_commands(core.commands.entries());
         Self {
-            world,
-            selection,
-            registry,
+            core,
             gizmo,
-            undo,
             camera,
             pie: Arc::new(Mutex::new(PieSession::new())),
             time_travel: Arc::new(Mutex::new(TimeTravelBuffer::default())),
@@ -112,7 +97,7 @@ impl EditorUiCtx {
             git: Arc::new(Mutex::new(WorldGitTracker::new("worlds/arena"))),
             outliner: Mutex::new(OutlinerPanel::default()),
             assets: Mutex::new(AssetBrowserPanel::default()),
-            palette: Mutex::new(CommandPalette::default()),
+            palette: Mutex::new(palette),
             brush: Mutex::new(BrushPanel::default()),
             graph: Mutex::new(NodeCanvas::default()),
             packager: Mutex::new(PackagerPanel::new("worlds/arena")),
@@ -129,19 +114,13 @@ impl EditorUiCtx {
             tt_scrub_idx: Mutex::new(0),
             fps: Mutex::new(0.0),
             frame_ms: Mutex::new(0.0),
-            console: Mutex::new(vec!["[INFO] RedOx Studio ready".into()]),
-            status: Mutex::new(String::new()),
             vram_label: Mutex::new("VRAM: n/a".into()),
         }
     }
 
     /// Appends a line to the console.
     pub fn log(&self, line: impl Into<String>) {
-        let mut c = self.console.lock();
-        c.push(line.into());
-        if c.len() > 200 {
-            c.remove(0);
-        }
+        self.core.log.push(line);
     }
 
     /// Queue an asset spawn request (no world mutation).
@@ -163,7 +142,7 @@ impl EditorUiCtx {
 
     /// Spawn a patrol/chase AI agent for the StateTree debugger.
     pub fn spawn_demo_agent(&self) {
-        let mut world = self.world.lock();
+        let mut world = self.core.world.lock();
         let e = world.spawn();
         world.add_component(
             e,
@@ -178,9 +157,9 @@ impl EditorUiCtx {
 
     /// Graph StateTree/GAS source: primary selection if it has `StateTreeComponent`, else `demo_agent`.
     pub fn resolve_graph_agent_entity(&self) -> Option<Entity> {
-        let primary = self.selection.lock().primary;
+        let primary = self.core.selection.lock().primary;
         {
-            let world = self.world.lock();
+            let world = self.core.world.lock();
             if let Some(e) = primary
                 && world.get_component::<StateTreeComponent>(e).is_some()
             {

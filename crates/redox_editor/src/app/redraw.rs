@@ -23,8 +23,8 @@ impl EditorApp {
         self.handle_world_status_requests();
         self.handle_outliner_actions();
 
-        let entities = collect_transforms(&self.world.lock());
-        let selected_id = self.selection.lock().primary.map(|e| e.id());
+        let entities = collect_transforms(&self.core.world.lock());
+        let selected_id = self.core.selection.lock().primary.map(|e| e.id());
         let shading = *self.ui_ctx.shading.lock();
         let layout = *self.ui_ctx.layout.lock();
 
@@ -33,9 +33,9 @@ impl EditorApp {
         let full_output = self.build_ui();
         self.pick_on_click(&entities);
         {
-            let mut world_guard = self.world.lock();
-            let registry_guard = self.registry.lock();
-            let mut undo_guard = self.undo_stack.lock();
+            let mut world_guard = self.core.world.lock();
+            let registry_guard = self.core.registry.lock();
+            let mut undo_guard = self.core.undo.lock();
             if let Some(hotkey) = redox_editor_ui::undo_hotkey(&self.egui_ctx) {
                 undo_guard.apply_hotkey(hotkey, &mut world_guard, &registry_guard);
             }
@@ -88,11 +88,11 @@ impl EditorApp {
                 (pie.running, pie.is_running())
             };
             if record {
-                let snap = self.registry.lock().snapshot_world(&self.world.lock());
+                let snap = self.core.registry.lock().snapshot_world(&self.core.world.lock());
                 self.ui_ctx.time_travel.lock().push(snap);
             }
             if tick_ai && let Some(e) = *self.ui_ctx.demo_agent.lock() {
-                let mut w = self.world.lock();
+                let mut w = self.core.world.lock();
                 if let Some(agent) = w.get_component_mut::<redox_gameplay::StateTreeComponent>(e) {
                     let dist = self.ui_ctx.graph.lock().distance_preview;
                     agent.tick_with_distance(dist, dt);
@@ -107,7 +107,7 @@ impl EditorApp {
             self.stream_accum = 0.0;
             if let Some(session) = self.ui_ctx.world_session.lock().as_mut() {
                 let eye = self.camera.lock().eye;
-                session.tick(&mut self.world.lock(), eye);
+                session.tick(&mut self.core.world.lock(), eye);
             }
         }
     }
@@ -123,7 +123,7 @@ impl EditorApp {
                     .to_string()
             });
             let e = {
-                let mut w = self.world.lock();
+                let mut w = self.core.world.lock();
                 let e = w.spawn();
                 w.add_component(e, Transform::default());
                 if req.kind == AssetKind::Mesh {
@@ -137,7 +137,7 @@ impl EditorApp {
                 }
                 e
             };
-            self.selection.lock().set_primary(Some(e));
+            self.core.selection.lock().set_primary(Some(e));
             self.ui_ctx.log(format!(
                 "[INFO] Spawned {} proxy for {}",
                 label,
@@ -148,23 +148,23 @@ impl EditorApp {
 
     fn handle_timetravel_status(&mut self) {
         {
-            let status = self.ui_ctx.status.lock().clone();
+            let status = self.ui_ctx.core.status.lock().clone();
             if let Some(rest) = status.strip_prefix("tt_scrub:") {
                 if let Ok(idx) = rest.parse::<usize>() {
-                    let mut world_g = self.world.lock();
-                    let registry_g = self.registry.lock();
+                    let mut world_g = self.core.world.lock();
+                    let registry_g = self.core.registry.lock();
                     self.ui_ctx
                         .time_travel
                         .lock()
                         .restore(&mut world_g, &registry_g, idx);
                 }
-                self.ui_ctx.status.lock().clear();
+                self.ui_ctx.core.status.lock().clear();
             } else if status == "bake_report" {
                 match self.ui_ctx.packager.lock().write_bake_report() {
                     Ok(msg) => self.ui_ctx.log(format!("[INFO] {msg}")),
                     Err(e) => self.ui_ctx.log(format!("[ERR] {e}")),
                 }
-                self.ui_ctx.status.lock().clear();
+                self.ui_ctx.core.status.lock().clear();
             }
         }
     }
@@ -198,17 +198,17 @@ impl EditorApp {
 
     fn handle_world_status_requests(&mut self) {
         {
-            let status = self.ui_ctx.status.lock().clone();
+            let status = self.ui_ctx.core.status.lock().clone();
             if status == "git_refresh" {
-                self.ui_ctx.git.lock().refresh(&self.world.lock());
+                self.ui_ctx.git.lock().refresh(&self.core.world.lock());
                 self.ui_ctx.log("[INFO] Git/OFPA status refreshed");
-                self.ui_ctx.status.lock().clear();
+                self.ui_ctx.core.status.lock().clear();
             } else if let Some(path) = status.strip_prefix("open_world:") {
                 // Agent E: World menu / suggest_world_roots → open_world:<path>
                 match WorldSession::open_path(path) {
                     Ok(session) => {
                         self.ui_ctx.git.lock().set_world_root(&session.root);
-                        self.ui_ctx.git.lock().refresh(&self.world.lock());
+                        self.ui_ctx.git.lock().refresh(&self.core.world.lock());
                         self.ui_ctx
                             .log(format!("[INFO] Opened world {}", session.root.display()));
                         *self.ui_ctx.world_session.lock() = Some(session);
@@ -217,12 +217,13 @@ impl EditorApp {
                         self.ui_ctx.log(format!("[WARN] Open world failed: {e}"));
                     }
                 }
-                self.ui_ctx.status.lock().clear();
+                self.ui_ctx.core.status.lock().clear();
             } else if let Some(rest) = status.strip_prefix("snap:") {
                 if let Ok(id) = rest.parse::<u32>()
-                    && let Some(e) = resolve_entity(&self.world.lock(), id)
+                    && let Some(e) = resolve_entity(&self.core.world.lock(), id)
                 {
                     let pos = self
+                        .core
                         .world
                         .lock()
                         .get_component::<Transform>(e)
@@ -230,7 +231,7 @@ impl EditorApp {
                         .unwrap_or(Vec3::ZERO);
                     let (new_pos, new_rot) =
                         place_on_surface(pos, 0.5, Some(&mut self.physics.lock()), &[e]);
-                    if let Some(t) = self.world.lock().get_component_mut::<Transform>(e) {
+                    if let Some(t) = self.core.world.lock().get_component_mut::<Transform>(e) {
                         t.translation = new_pos;
                         t.rotation = new_rot;
                     }
@@ -241,9 +242,9 @@ impl EditorApp {
                     self.ui_ctx
                         .git
                         .lock()
-                        .refresh_from_world(&self.world.lock());
+                        .refresh_from_world(&self.core.world.lock());
                 }
-                self.ui_ctx.status.lock().clear();
+                self.ui_ctx.core.status.lock().clear();
             }
         }
     }
@@ -255,7 +256,7 @@ impl EditorApp {
                 match action {
                     OutlinerAction::LoadCell(cell) => {
                         if let Some(session) = self.ui_ctx.world_session.lock().as_mut() {
-                            match session.force_load(&mut self.world.lock(), cell) {
+                            match session.force_load(&mut self.core.world.lock(), cell) {
                                 Ok(()) => self
                                     .ui_ctx
                                     .log(format!("[INFO] Loaded cell ({},{})", cell.x, cell.y)),
@@ -265,21 +266,22 @@ impl EditorApp {
                     }
                     OutlinerAction::UnloadCell(cell) => {
                         if let Some(session) = self.ui_ctx.world_session.lock().as_mut() {
-                            session.force_unload(&mut self.world.lock(), cell);
+                            session.force_unload(&mut self.core.world.lock(), cell);
                             self.ui_ctx
                                 .log(format!("[INFO] Unloaded cell ({},{})", cell.x, cell.y));
                         }
                     }
                     OutlinerAction::FocusActor { id, .. } => {
-                        for e in self.world.lock().all_entities() {
+                        for e in self.core.world.lock().all_entities() {
                             if self
+                                .core
                                 .world
                                 .lock()
                                 .get_component::<redox_scene::StreamedActor>(e)
                                 .is_some_and(|a| a.id == id)
                             {
                                 if let Some(t) =
-                                    self.world.lock().get_component::<Transform>(e).copied()
+                                    self.core.world.lock().get_component::<Transform>(e).copied()
                                 {
                                     self.camera.lock().focus_on(
                                         redox_math::Aabb::from_center_size(
@@ -295,8 +297,8 @@ impl EditorApp {
                     OutlinerAction::RevertActor { cell, id } => {
                         let reverted = self.ui_ctx.git.lock().revert_actor(cell.x, cell.y, &id);
                         if let Some(session) = self.ui_ctx.world_session.lock().as_mut() {
-                            session.force_unload(&mut self.world.lock(), cell);
-                            let _ = session.force_load(&mut self.world.lock(), cell);
+                            session.force_unload(&mut self.core.world.lock(), cell);
+                            let _ = session.force_load(&mut self.core.world.lock(), cell);
                         }
                         self.ui_ctx.log(format!(
                             "[INFO] Revert {id} cell ({},{}) git={}",
@@ -305,7 +307,7 @@ impl EditorApp {
                         self.ui_ctx
                             .git
                             .lock()
-                            .refresh_from_world(&self.world.lock());
+                            .refresh_from_world(&self.core.world.lock());
                     }
                 }
             }
@@ -378,7 +380,7 @@ impl EditorApp {
                 let mut overlay = build_editor_overlay_lines(gizmo_origin, cell_size);
                 if *self.ui_ctx.show_git_ghosts.lock() {
                     let ghosts = self.ui_ctx.git.lock().ghosts.clone();
-                    let w = self.world.lock();
+                    let w = self.core.world.lock();
                     for (id, old) in &ghosts {
                         overlay.extend(ghost_cube_lines(old.translation, [1.0, 0.85, 0.2, 0.7]));
                         for e in w.all_entities() {
@@ -450,7 +452,7 @@ impl EditorApp {
                                 (hit.x * 1000.0) as u64 ^ (hit.z * 1000.0) as u64,
                             );
                             if let Some(session) = self.ui_ctx.world_session.lock().as_mut() {
-                                let n = session.paint_actors(&mut self.world.lock(), &poses, &kind);
+                                let n = session.paint_actors(&mut self.core.world.lock(), &poses, &kind);
                                 self.ui_ctx.log(format!(
                                     "[INFO] Brush painted {n} × {kind} at ({:.1},{:.1})",
                                     hit.x, hit.z
@@ -458,9 +460,9 @@ impl EditorApp {
                                 self.ui_ctx
                                     .git
                                     .lock()
-                                    .refresh_from_world(&self.world.lock());
+                                    .refresh_from_world(&self.core.world.lock());
                             } else {
-                                let mut w = self.world.lock();
+                                let mut w = self.core.world.lock();
                                 for (p, yaw) in poses {
                                     let e = w.spawn();
                                     w.add_component(
@@ -476,15 +478,15 @@ impl EditorApp {
                         }
                     }
                 } else if let Some(id) = pick_unit_cubes(entities, origin, dir) {
-                    if let Some(entity) = resolve_entity(&self.world.lock(), id) {
-                        self.selection.lock().set_primary(Some(entity));
+                    if let Some(entity) = resolve_entity(&self.core.world.lock(), id) {
+                        self.core.selection.lock().set_primary(Some(entity));
                         self.ui_ctx.log(format!(
                             "[INFO] Picked entity #{} at ({x},{y})",
                             entity.id()
                         ));
                     }
                 } else {
-                    self.selection.lock().clear();
+                    self.core.selection.lock().clear();
                 }
             }
         }

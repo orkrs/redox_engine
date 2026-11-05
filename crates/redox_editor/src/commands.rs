@@ -24,9 +24,14 @@ pub(crate) fn collect_transforms(world: &World) -> Vec<(u32, Transform)> {
 }
 
 pub(crate) fn focus_selection(ui_ctx: &EditorUiCtx) {
-    let sel = ui_ctx.selection.lock().primary;
+    let sel = ui_ctx.core.selection.lock().primary;
     if let Some(e) = sel
-        && let Some(t) = ui_ctx.world.lock().get_component::<Transform>(e).copied()
+        && let Some(t) = ui_ctx
+            .core
+            .world
+            .lock()
+            .get_component::<Transform>(e)
+            .copied()
     {
         ui_ctx
             .camera
@@ -38,56 +43,23 @@ pub(crate) fn focus_selection(ui_ctx: &EditorUiCtx) {
     }
 }
 
+/// Runs the command `id`. Commands registered in `EditorContext` run first; the remaining
+/// identifiers need viewport, debugger or dock state and are handled here.
 pub(crate) fn run_command(ui_ctx: &EditorUiCtx, dock: &mut EditorDock, id: &str) {
+    if ui_ctx.core.commands.contains(id) {
+        ui_ctx.core.commands.run(&ui_ctx.core, id);
+        return;
+    }
     match id {
         "focus" => focus_selection(ui_ctx),
-        "create_entity" => {
-            let e = {
-                let mut w = ui_ctx.world.lock();
-                let e = w.spawn();
-                w.add_component(e, Transform::default());
-                e
-            };
-            ui_ctx.selection.lock().set_primary(Some(e));
-            ui_ctx.log(format!("[INFO] Created entity #{}", e.id()));
-        }
-        "duplicate" => {
-            let sel = ui_ctx.selection.lock().primary;
-            if let Some(src) = sel {
-                let t = ui_ctx
-                    .world
-                    .lock()
-                    .get_component::<Transform>(src)
-                    .copied()
-                    .unwrap_or_default();
-                let mut nt = t;
-                nt.translation.x += 1.0;
-                let e = {
-                    let mut w = ui_ctx.world.lock();
-                    let e = w.spawn();
-                    w.add_component(e, nt);
-                    e
-                };
-                ui_ctx.selection.lock().set_primary(Some(e));
-                ui_ctx.log(format!("[INFO] Duplicated #{} → #{}", src.id(), e.id()));
-            }
-        }
-        "delete" => {
-            let sel = ui_ctx.selection.lock().primary.take();
-            if let Some(e) = sel {
-                ui_ctx.world.lock().despawn(e);
-                ui_ctx.selection.lock().clear();
-                ui_ctx.log(format!("[INFO] Deleted entity #{}", e.id()));
-            }
-        }
         "reset_layout" => {
             dock.reset_layout();
             ui_ctx.log("[INFO] Layout reset");
         }
         "pie_play" => {
             let mut pie = ui_ctx.pie.lock();
-            let world = ui_ctx.world.lock();
-            let registry = ui_ctx.registry.lock();
+            let world = ui_ctx.core.world.lock();
+            let registry = ui_ctx.core.registry.lock();
             if pie.running && pie.paused {
                 pie.resume();
             } else if !pie.running {
@@ -97,8 +69,8 @@ pub(crate) fn run_command(ui_ctx: &EditorUiCtx, dock: &mut EditorDock, id: &str)
         }
         "pie_stop" => {
             let mut pie = ui_ctx.pie.lock();
-            let mut world = ui_ctx.world.lock();
-            let registry = ui_ctx.registry.lock();
+            let mut world = ui_ctx.core.world.lock();
+            let registry = ui_ctx.core.registry.lock();
             pie.stop(&mut world, &registry);
             ui_ctx.time_travel.lock().frames.clear();
             ui_ctx.log("[INFO] PIE stopped — world restored");
@@ -106,7 +78,7 @@ pub(crate) fn run_command(ui_ctx: &EditorUiCtx, dock: &mut EditorDock, id: &str)
         "bake_meshlets" => {
             ui_ctx.log("[WARN] Bake Meshlets not wired yet — use Packager for OFPA report")
         }
-        "bake_report" => *ui_ctx.status.lock() = "bake_report".into(),
+        "bake_report" => *ui_ctx.core.status.lock() = "bake_report".into(),
         "spawn_agent" => ui_ctx.spawn_demo_agent(),
         "shading_lit" => {
             *ui_ctx.shading.lock() = ViewportShading::Lit;
@@ -125,8 +97,8 @@ pub(crate) fn run_command(ui_ctx: &EditorUiCtx, dock: &mut EditorDock, id: &str)
             ui_ctx.log("[INFO] Shading: Wireframe");
         }
         "align_surface" => {
-            if let Some(e) = ui_ctx.selection.lock().primary {
-                *ui_ctx.status.lock() = format!("snap:{}", e.id());
+            if let Some(e) = ui_ctx.core.selection.lock().primary {
+                *ui_ctx.core.status.lock() = format!("snap:{}", e.id());
             }
         }
         other => ui_ctx.log(format!("[WARN] Unknown command: {other}")),
