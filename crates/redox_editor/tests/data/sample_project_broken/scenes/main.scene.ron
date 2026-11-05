@@ -1,0 +1,30 @@
+(
+    format_version: 1,
+    name: "Broken",
+    entities: [
+        (
+            guid: "00000000000000000000000000000001",
+            components: [
+                Struct(type_name: "Name", fields: [("name", String("Ground"))]),
+                Struct(type_name: "Transform", fields: [("translation", List([F64(0.0), F64(0.0), F64(0.0))]), ("rotation", List([F64(0.0), F64(0.0), F64(0.0), F64(1.0)])), ("scale", List([F64(1.0), F64(1.0), F64(1.0)]))]),
+                Struct(type_name: "MaterialHandle", fields: [("guid", String("00000000000000000000000000009999")), ("path", String("assets/textures/missing.png"))]),
+            ],
+        ),
+        (
+            guid: "00000000000000000000000000000002",
+            components: [
+                Struct(type_name: "Name", fields: [("name", String("Gizmo"))]),
+                Struct(type_name: "Transform", fields: [("translation", List([F64(1.0), F64(0.0), F64(0.0))]), ("rotation", List([F64(0.0), F64(0.0), F64(0.0), F64(1.0)])), ("scale", List([F64(1.0), F64(1.0), F64(1.0)]))]),
+                Struct(type_name: "Gizmo3000", fields: [("speed", F64(2.0))]),
+            ],
+        ),
+        (
+            guid: "00000000000000000000000000000003",
+            components: [
+                Struct(type_name: "Name", fields: [("name", String("Damaged Prop"))]),
+                Struct(type_name: "Transform", fields: [("translation", List([F64(2.0), F64(0.0), F64(0.0))]), ("rotation", List([F64(0.0), F64(0.0), F64(0.0), F64(1.0)])), ("scale", List([F64(1.0), F64(1.0), F64(1.0)]))]),
+                Struct(type_name: "MaterialHandle", fields: [("guid", String("00000000000000000000000000001003")), ("path", String("assets/textures/damaged.png"))]),
+            ],
+        ),
+    ],
+)

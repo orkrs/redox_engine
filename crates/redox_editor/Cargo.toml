@@ -47,3 +47,8 @@ serde = { workspace = true }
 ron = { workspace = true }
 parking_lot = "0.12"
 bytemuck = { workspace = true }
+
+[dev-dependencies]
+# Scenario tests (EDT-A7). Other editor crates are already normal dependencies above.
+redox_asset = { path = "../redox_asset" }
+redox_editor_assets = { path = "../redox_editor_assets" }
