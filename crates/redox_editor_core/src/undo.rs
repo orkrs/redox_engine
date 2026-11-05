@@ -680,6 +680,34 @@ impl UndoStack {
         true
     }
 
+    /// Moves the world to the state after `position` applied steps (0 is the initial state) by
+    /// undoing or redoing one step at a time. Returns `false` when `position` is out of range or
+    /// a step could not be applied; the error is then in [`UndoStack::last_error`].
+    pub fn goto(&mut self, position: usize, world: &mut World, registry: &TypeRegistry) -> bool {
+        if position > self.done.len() + self.undone.len() {
+            return false;
+        }
+        while self.done.len() > position {
+            if !self.undo(world, registry) {
+                return false;
+            }
+        }
+        while self.done.len() < position {
+            if !self.redo(world, registry) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Forgets all steps and keeps the world as it is. The document stays dirty if it was dirty.
+    pub fn clear(&mut self) {
+        let dirty = self.is_dirty();
+        self.done.clear();
+        self.undone.clear();
+        self.saved_at = if dirty { None } else { Some(0) };
+    }
+
     /// Applies an undo or redo requested by a keyboard shortcut; returns whether anything changed.
     pub fn apply_hotkey(
         &mut self,

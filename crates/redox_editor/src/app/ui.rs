@@ -2,8 +2,35 @@
 
 use super::EditorApp;
 use crate::commands::{focus_selection, run_command};
+use redox_editor_core::EditorContext;
 use redox_editor_scene::WorldSession;
 use redox_math::Transform;
+
+/// Text of an Edit menu entry: the verb, the step label when there is one, and the shortcut.
+fn step_text(verb: &str, label: Option<&str>, shortcut: &str) -> String {
+    match label {
+        Some(label) => format!("{verb} {label}  {shortcut}"),
+        None => format!("{verb}  {shortcut}"),
+    }
+}
+
+/// Applies one undo (or redo) step; a failure is written to the console.
+fn history_step(core: &EditorContext, redo: bool) {
+    let error = {
+        let mut world = core.world.lock();
+        let registry = core.registry.lock();
+        let mut undo = core.undo.lock();
+        if redo {
+            undo.redo(&mut world, &registry);
+        } else {
+            undo.undo(&mut world, &registry);
+        }
+        undo.last_error.take()
+    };
+    if let Some(error) = error {
+        core.log.error(format!("[ERROR] {error}"));
+    }
+}
 
 impl EditorApp {
     pub(super) fn build_ui(&mut self) -> egui::FullOutput {
@@ -40,15 +67,26 @@ impl EditorApp {
                         }
                     });
                     ui.menu_button("Edit", |ui| {
-                        if ui.button("Undo Ctrl+Z").clicked() {
-                            let mut w = self.core.world.lock();
-                            let r = self.core.registry.lock();
-                            self.core.undo.lock().undo(&mut w, &r);
+                        let (undo_label, redo_label) = {
+                            let undo = self.core.undo.lock();
+                            (
+                                undo.entries().last().map(|e| e.label.clone()),
+                                undo.redo_entries().last().map(|e| e.label.clone()),
+                            )
+                        };
+                        let undo_text = step_text("Undo", undo_label.as_deref(), "Ctrl+Z");
+                        if ui
+                            .add_enabled(undo_label.is_some(), egui::Button::new(undo_text))
+                            .clicked()
+                        {
+                            history_step(&self.core, false);
                         }
-                        if ui.button("Redo Ctrl+Y").clicked() {
-                            let mut w = self.core.world.lock();
-                            let r = self.core.registry.lock();
-                            self.core.undo.lock().redo(&mut w, &r);
+                        let redo_text = step_text("Redo", redo_label.as_deref(), "Ctrl+Y");
+                        if ui
+                            .add_enabled(redo_label.is_some(), egui::Button::new(redo_text))
+                            .clicked()
+                        {
+                            history_step(&self.core, true);
                         }
                         if ui.button("Command Palette Ctrl+P").clicked() {
                             ui_ctx_ref.palette.lock().toggle();

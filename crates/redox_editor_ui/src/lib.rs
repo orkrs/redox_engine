@@ -23,6 +23,8 @@ pub mod outliner;
 pub mod packager;
 /// Frame profiler panel.
 pub mod profiler_panel;
+/// Undo history panel.
+pub mod undo_history;
 
 pub use asset_browser::{AssetKind, AssetSpawnRequest, EditorMeshProxy};
 pub use brush_panel::BrushPanel;

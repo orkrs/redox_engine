@@ -8,7 +8,9 @@ use redox_ecs::World;
 use redox_ecs::hierarchy::{Parent, set_parent};
 use redox_editor_core::builtin_commands::record_spawn;
 use redox_editor_core::{EditorContext, GuidResolver};
-use redox_editor_core::undo::{Clock, UndoCommand, UndoError, UndoStack, capture_entity};
+use redox_editor_core::undo::{
+    Clock, UndoCommand, UndoError, UndoStack, capture_entity, capture_world,
+};
 use redox_math::{Transform, Vec3};
 use redox_reflect::{Reflect, TypeRegistry};
 use redox_scene::components::{EntityGuid, Name};
@@ -506,6 +508,39 @@ fn brush_stroke_of_several_objects_is_undone_by_one_step() {
     assert_eq!(entity_count(&ctx), 0);
     assert!(redo_in(&ctx));
     assert_eq!(entity_count(&ctx), 5);
+}
+
+#[test]
+fn goto_moves_to_any_step_like_sequential_undo_and_redo() {
+    let registry = registry();
+    let mut world = World::new();
+    let clock = Arc::new(ManualClock::new());
+    let mut undo = UndoStack::with_clock(100, clock.clone());
+    let guid = EntityGuid(50);
+    spawn_with_transform(&mut world, guid, 0.0);
+    let mut snapshots = vec![capture_world(&world, &registry)];
+    for x in [1.0, 2.0, 3.0] {
+        clock.advance(Duration::from_secs(1));
+        edit_x(&registry, &mut world, &mut undo, guid, x);
+        snapshots.push(capture_world(&world, &registry));
+    }
+
+    assert!(undo.goto(1, &mut world, &registry));
+    assert_eq!(capture_world(&world, &registry), snapshots[1]);
+    assert!(undo.goto(0, &mut world, &registry));
+    assert_eq!(capture_world(&world, &registry), snapshots[0]);
+    assert!(undo.goto(3, &mut world, &registry));
+    assert_eq!(capture_world(&world, &registry), snapshots[3]);
+    assert!(undo.goto(2, &mut world, &registry));
+    assert_eq!(capture_world(&world, &registry), snapshots[2]);
+
+    // Same result as two sequential undos from the end.
+    assert!(undo.goto(3, &mut world, &registry));
+    assert!(undo.undo(&mut world, &registry));
+    assert!(undo.undo(&mut world, &registry));
+    assert_eq!(capture_world(&world, &registry), snapshots[1]);
+
+    assert!(!undo.goto(4, &mut world, &registry));
 }
 
 /// Records a step that changes nothing; used where only the history shape matters.
