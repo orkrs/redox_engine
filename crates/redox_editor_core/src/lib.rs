@@ -16,6 +16,10 @@ pub mod context;
 pub mod editor_only;
 /// Console log ring buffer.
 pub mod log;
+/// Project manifest `project.ron`, project creation, opening and the recent-projects list.
+pub mod project;
+/// Starter templates for new projects.
+pub mod project_template;
 /// Selection set and primary selection.
 pub mod selection;
 /// Undo and redo commands.
