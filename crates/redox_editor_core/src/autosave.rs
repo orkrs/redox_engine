@@ -7,6 +7,7 @@
 //! [`AutosaveSource`] and the time through [`Clock`].
 
 use crate::log::EditorLog;
+use crate::recovery::{SessionLock, remove_lock, write_lock};
 use redox_scene::ofpa::write_atomic;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -29,6 +30,8 @@ pub const FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
 pub const WRITE_ATTEMPTS: u32 = 3;
 /// Pause between two attempts of a failed write.
 pub const WRITE_RETRY_PAUSE: Duration = Duration::from_millis(50);
+/// Seconds between heartbeat updates of `session.lock`.
+pub const HEARTBEAT_SECS: u64 = 5;
 
 /// When autosave runs and how many snapshots of a level are kept.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -291,6 +294,7 @@ pub struct AutosaveService {
     clock: Box<dyn Clock>,
     log: EditorLog,
     writer: Writer,
+    session: Option<SessionLock>,
     interval_anchor_secs: u64,
     transactions_anchor: u64,
     last_saved_secs: Option<u64>,
@@ -317,6 +321,7 @@ impl AutosaveService {
             clock,
             log,
             writer,
+            session: None,
             interval_anchor_secs: now,
             transactions_anchor: 0,
             last_saved_secs: None,
@@ -347,14 +352,76 @@ impl AutosaveService {
     /// the service compares it with the value at its last snapshot. A snapshot is taken when the
     /// level is dirty and either the interval has passed or enough transactions were committed.
     pub fn tick(&mut self, source: &dyn AutosaveSource, transactions: u64) -> TickOutcome {
+        let now = self.clock.now_secs();
+        self.refresh_heartbeat(now);
         if !self.policy.enabled || !source.is_dirty() {
             return TickOutcome::Idle;
         }
-        let now = self.clock.now_secs();
         if !self.trigger_due(now, transactions) {
             return TickOutcome::Idle;
         }
         self.snapshot(source, now, transactions)
+    }
+
+    /// Whether this service holds the session lock of its project.
+    pub fn is_session_active(&self) -> bool {
+        self.session.is_some()
+    }
+
+    /// Takes the session lock of the project for `source`. Call once the recovery question is
+    /// settled, so that a stale lock is never overwritten before the user answered.
+    pub fn begin_session(&mut self, source: &dyn AutosaveSource) -> io::Result<()> {
+        let now = self.clock.now_secs();
+        let lock = SessionLock {
+            pid: std::process::id(),
+            started: now,
+            project: self.project_root.display().to_string(),
+            level: source.level_name(),
+            heartbeat: now,
+        };
+        write_lock(&self.project_root, &lock)?;
+        self.session = Some(lock);
+        self.interval_anchor_secs = now;
+        Ok(())
+    }
+
+    /// Ends the session at a normal close. Flushes the writer first. When the level is clean
+    /// (`dirty == false`), the lock and the autosaves of the level are removed. When it has
+    /// unsaved changes, both stay so that the next start can offer recovery.
+    pub fn finish_session(&mut self, dirty: bool) -> io::Result<()> {
+        self.flush();
+        let Some(lock) = self.session.take() else {
+            return Ok(());
+        };
+        if dirty {
+            self.log.info(format!(
+                "{} closed with unsaved changes; autosaves are kept for recovery",
+                lock.level
+            ));
+            return Ok(());
+        }
+        remove_lock(&self.project_root)?;
+        let dir = autosave_dir(&self.project_root);
+        for (_, path) in list_autosaves(&dir, &file_stem_for(&lock.level)) {
+            if let Err(err) = fs::remove_file(&path) {
+                self.log.warn(format!("could not remove {}: {err}", path.display()));
+            }
+        }
+        Ok(())
+    }
+
+    /// Moves the heartbeat of the session lock forward every [`HEARTBEAT_SECS`] seconds.
+    fn refresh_heartbeat(&mut self, now: u64) {
+        let Some(lock) = self.session.as_mut() else {
+            return;
+        };
+        if now.saturating_sub(lock.heartbeat) < HEARTBEAT_SECS {
+            return;
+        }
+        lock.heartbeat = now;
+        if let Err(err) = write_lock(&self.project_root, lock) {
+            self.log.warn(format!("session heartbeat was not written: {err}"));
+        }
     }
 
     /// Waits until the background writer has written everything queued so far. Returns `false`

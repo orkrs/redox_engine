@@ -18,6 +18,8 @@ pub mod context;
 pub mod editor_only;
 /// Console log ring buffer.
 pub mod log;
+/// Session lock and crash recovery of an autosaved level.
+pub mod recovery;
 /// Selection set and primary selection.
 pub mod selection;
 /// Undo and redo commands.
