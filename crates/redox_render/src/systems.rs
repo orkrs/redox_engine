@@ -4,9 +4,10 @@
 //! sync assets to the render context (e.g. [`sync_assets_to_render`]) before
 //! calling [`extract_render_objects`].
 
-use redox_asset::Handle;
+use redox_asset::{AssetId, Handle};
 use redox_ecs::World;
 use redox_math::{GlobalTransform, Mat4};
+use redox_reflect::{Reflect, ReflectError, ReflectValue};
 
 use crate::asset_types::{MaterialData, MeshData};
 use crate::context::RenderContext;
@@ -18,8 +19,33 @@ pub use redox_math::Transform;
 // ---------------------------------------------------------------------------
 
 /// Handle to a mesh asset. Resolved to a GPU mesh index by [`RenderContext`].
+///
+/// The reflected form carries no asset path yet: a [`Handle`] knows only its id, and the path
+/// lives in the asset manager. Until asset references by path or GUID exist, a saved handle
+/// is written with an empty path and restored as an unchanged handle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MeshHandle(pub Handle<MeshData>);
+
+impl Default for MeshHandle {
+    /// The unset handle: asset id 0 is never handed out by `AssetId::next`.
+    fn default() -> Self {
+        Self(Handle::new(AssetId(0)))
+    }
+}
+
+impl Reflect for MeshHandle {
+    fn type_name() -> &'static str {
+        "MeshHandle"
+    }
+
+    fn to_value(&self) -> ReflectValue {
+        ReflectValue::handle(Self::type_name(), None)
+    }
+
+    fn apply(&mut self, _value: &ReflectValue) -> Result<(), ReflectError> {
+        Ok(())
+    }
+}
 
 /// Stores the **previous frame's model matrix** for TAA velocity generation.
 ///
@@ -49,8 +75,31 @@ impl PreviousTransform {
 }
 
 /// Handle to a material asset. Resolved to a GPU material index by [`RenderContext`].
+///
+/// Reflected like [`MeshHandle`]: no asset path is written yet.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MaterialHandle(pub Handle<MaterialData>);
+
+impl Default for MaterialHandle {
+    /// The unset handle: asset id 0 is never handed out by `AssetId::next`.
+    fn default() -> Self {
+        Self(Handle::new(AssetId(0)))
+    }
+}
+
+impl Reflect for MaterialHandle {
+    fn type_name() -> &'static str {
+        "MaterialHandle"
+    }
+
+    fn to_value(&self) -> ReflectValue {
+        ReflectValue::handle(Self::type_name(), None)
+    }
+
+    fn apply(&mut self, _value: &ReflectValue) -> Result<(), ReflectError> {
+        Ok(())
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Per-frame render data

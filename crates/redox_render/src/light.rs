@@ -256,7 +256,7 @@ impl redox_reflect::Reflect for PointLight {
 }
 
 /// ECS component for a spot light source.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, redox_reflect::Reflect)]
 pub struct SpotLight {
     /// World position.
     pub position: Vec3,
@@ -299,6 +299,13 @@ impl SpotLight {
             cast_shadows: false,
             source_radius: 0.05,
         }
+    }
+}
+
+impl Default for SpotLight {
+    /// Default: a white spot light pointing down from the origin.
+    fn default() -> Self {
+        Self::new(Vec3::ZERO, Vec3::new(0.0, -1.0, 0.0), Vec3::ONE, 1.0, 10.0, 0.5)
     }
 }
 

@@ -17,6 +17,11 @@ editor-git = ["dep:git2"]
 [dependencies]
 redox_ecs = { path = "../redox_ecs" }
 redox_math = { path = "../redox_math" }
+redox_reflect = { path = "../redox_reflect" }
+redox_render = { path = "../redox_render" }
 redox_scene = { path = "../redox_scene" }
 log = { workspace = true }
 git2 = { workspace = true, optional = true }
+serde = { workspace = true }
+ron = { workspace = true }
+thiserror = { workspace = true }

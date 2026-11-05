@@ -17,7 +17,7 @@ use redox_ecs::Entity;
 use redox_math::{Mat4, Quat, Vec3, look_at, perspective};
 
 /// ECS component describing a perspective camera.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, redox_reflect::Reflect)]
 pub struct Camera {
     /// Vertical field-of-view in **radians**.
     pub fov_y: f32,
@@ -27,6 +27,13 @@ pub struct Camera {
     pub far: f32,
     /// Aspect ratio (width / height). Updated on window resize.
     pub aspect_ratio: f32,
+}
+
+impl Default for Camera {
+    /// Default: 60 degree vertical field of view, 16:9 aspect, near 0.1, far 1000.
+    fn default() -> Self {
+        Self::new(std::f32::consts::FRAC_PI_3, 16.0 / 9.0, 0.1, 1000.0)
+    }
 }
 
 impl Camera {
