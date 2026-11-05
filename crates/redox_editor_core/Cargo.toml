@@ -15,3 +15,4 @@ path = "src/lib.rs"
 redox_ecs = { path = "../redox_ecs" }
 redox_math = { path = "../redox_math" }
 redox_reflect = { path = "../redox_reflect" }
+parking_lot = "0.12"
