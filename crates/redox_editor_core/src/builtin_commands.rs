@@ -62,11 +62,8 @@ impl EditorCommand for DuplicateEntity {
             copy
         };
         ctx.selection.lock().set_primary(Some(copy));
-        ctx.log.info(format!(
-            "Duplicated #{} → #{}",
-            source.id(),
-            copy.id()
-        ));
+        ctx.log
+            .info(format!("Duplicated #{} → #{}", source.id(), copy.id()));
     }
 }
 

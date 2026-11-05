@@ -347,8 +347,12 @@ impl EditorApp {
                                 cam.proj_matrix(),
                                 vp.size,
                             );
-                            if let Some(t) =
-                                self.core.world.lock().get_component::<Transform>(sel).copied()
+                            if let Some(t) = self
+                                .core
+                                .world
+                                .lock()
+                                .get_component::<Transform>(sel)
+                                .copied()
                             {
                                 let forward = cam.forward();
                                 let mut gizmo_guard = self.gizmo.lock();

@@ -88,7 +88,11 @@ impl EditorApp {
                 (pie.running, pie.is_running())
             };
             if record {
-                let snap = self.core.registry.lock().snapshot_world(&self.core.world.lock());
+                let snap = self
+                    .core
+                    .registry
+                    .lock()
+                    .snapshot_world(&self.core.world.lock());
                 self.ui_ctx.time_travel.lock().push(snap);
             }
             if tick_ai && let Some(e) = *self.ui_ctx.demo_agent.lock() {
@@ -280,8 +284,12 @@ impl EditorApp {
                                 .get_component::<redox_scene::StreamedActor>(e)
                                 .is_some_and(|a| a.id == id)
                             {
-                                if let Some(t) =
-                                    self.core.world.lock().get_component::<Transform>(e).copied()
+                                if let Some(t) = self
+                                    .core
+                                    .world
+                                    .lock()
+                                    .get_component::<Transform>(e)
+                                    .copied()
                                 {
                                     self.camera.lock().focus_on(
                                         redox_math::Aabb::from_center_size(
@@ -452,7 +460,11 @@ impl EditorApp {
                                 (hit.x * 1000.0) as u64 ^ (hit.z * 1000.0) as u64,
                             );
                             if let Some(session) = self.ui_ctx.world_session.lock().as_mut() {
-                                let n = session.paint_actors(&mut self.core.world.lock(), &poses, &kind);
+                                let n = session.paint_actors(
+                                    &mut self.core.world.lock(),
+                                    &poses,
+                                    &kind,
+                                );
                                 self.ui_ctx.log(format!(
                                     "[INFO] Brush painted {n} × {kind} at ({:.1},{:.1})",
                                     hit.x, hit.z

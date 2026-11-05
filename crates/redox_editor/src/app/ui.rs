@@ -194,13 +194,17 @@ impl EditorApp {
                         .lock()
                         .primary
                         .and_then(|e| {
-                            self.core.world.lock().get_component::<Transform>(e).map(|t| {
-                                format!(
-                                    "Cell: ({:.0},{:.0})",
-                                    (t.translation.x / 16.0).floor(),
-                                    (t.translation.z / 16.0).floor()
-                                )
-                            })
+                            self.core
+                                .world
+                                .lock()
+                                .get_component::<Transform>(e)
+                                .map(|t| {
+                                    format!(
+                                        "Cell: ({:.0},{:.0})",
+                                        (t.translation.x / 16.0).floor(),
+                                        (t.translation.z / 16.0).floor()
+                                    )
+                                })
                         })
                         .unwrap_or_else(|| "Cell: (0,0)".into());
                     ui.label(cell);

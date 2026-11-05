@@ -98,7 +98,10 @@ fn the_viewport_crate_does_not_depend_on_egui() {
         .into_iter()
         .filter(|name| is_egui(name))
         .collect();
-    assert!(egui_deps.is_empty(), "viewport depends on egui: {egui_deps:?}");
+    assert!(
+        egui_deps.is_empty(),
+        "viewport depends on egui: {egui_deps:?}"
+    );
 }
 
 #[test]
@@ -110,10 +113,8 @@ fn core_does_not_depend_on_any_other_editor_crate() {
 #[test]
 fn logic_crates_do_not_depend_on_the_ui_or_the_viewport() {
     for crate_name in NO_UI_NO_VIEWPORT {
-        let found = forbidden_dependencies(
-            crate_name,
-            &["redox_editor_ui", "redox_editor_viewport"],
-        );
+        let found =
+            forbidden_dependencies(crate_name, &["redox_editor_ui", "redox_editor_viewport"]);
         assert!(
             found.is_empty(),
             "{crate_name} depends on the ui or viewport crate: {found:?}"

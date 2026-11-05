@@ -29,7 +29,11 @@ fn create_entity_adds_an_entity_with_a_transform_and_selects_it() {
 
     assert!(ctx.commands.run(&ctx, "create_entity"));
 
-    let entity = ctx.selection.lock().primary.expect("the new entity is selected");
+    let entity = ctx
+        .selection
+        .lock()
+        .primary
+        .expect("the new entity is selected");
     {
         let world = ctx.world.lock();
         assert_eq!(world.all_entities().count(), 1);
@@ -45,7 +49,10 @@ fn duplicate_copies_the_transform_one_unit_along_x() {
     let source = {
         let mut world = ctx.world.lock();
         let entity = world.spawn();
-        world.add_component(entity, Transform::from_translation(Vec3::new(2.0, 3.0, 4.0)));
+        world.add_component(
+            entity,
+            Transform::from_translation(Vec3::new(2.0, 3.0, 4.0)),
+        );
         entity
     };
     ctx.selection.lock().set_primary(Some(source));
@@ -66,12 +73,21 @@ fn duplicate_copies_the_transform_one_unit_along_x() {
 fn delete_removes_the_selected_entity_and_clears_the_selection() {
     let ctx = context();
     assert!(ctx.commands.run(&ctx, "create_entity"));
-    let entity = ctx.selection.lock().primary.expect("the new entity is selected");
+    let entity = ctx
+        .selection
+        .lock()
+        .primary
+        .expect("the new entity is selected");
 
     assert!(ctx.commands.run(&ctx, "delete"));
 
     assert_eq!(ctx.world.lock().all_entities().count(), 0);
-    assert!(ctx.world.lock().get_component::<Transform>(entity).is_none());
+    assert!(
+        ctx.world
+            .lock()
+            .get_component::<Transform>(entity)
+            .is_none()
+    );
     let selection = ctx.selection.lock();
     assert!(selection.primary.is_none());
     assert!(selection.set.is_empty());
