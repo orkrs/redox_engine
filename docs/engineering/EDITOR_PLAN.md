@@ -341,3 +341,7 @@ Step one frame, выбор стартовой сцены и аргументов
 - §1.1 (раскладка крейтов) принят (D2); бинарь `redox_editor` остаётся приложением и не переименовывается.
 - Пометить как вне ближайшего охвата: multi-user, Visual Scripting, Sequencer, remote debugging, онлайн Asset Library.
 - Проверить внешние ссылки и номер версии Unreal в §26: в ходе аудита они не проверялись.
+
+## Открытая проблема после среза A (записано, не решено)
+
+**EDT-A-07: ссылки сцены на ассеты теряются.** `MeshHandle` и `MaterialHandle` в мире хранят индекс слота, а не GUID и путь. Загрузчик сцены только проверяет путь на `MissingAsset`, а сохранение пишет пустую ссылку. Пересохранение сцены стирает ссылки на ассеты. Три сценария A7 помечены `#[ignore]` и ждут исправления: `the_sample_asset_reference_keeps_its_guid`, `a_forced_delete_leaves_missing_references_that_are_still_in_the_data`, `renaming_and_moving_an_asset_keeps_references_in_open_and_closed_scenes`. Нужно решение владельца о месте хранения ссылок (например, компонент `AssetRefs { guid, path }` в `redox_scene`). Строка в `KNOWN_LIMITS.md`: EDT-A-07.
