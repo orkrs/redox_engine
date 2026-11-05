@@ -1,5 +1,5 @@
 use redox_ecs::{Entity, World};
-use redox_editor_core::{UndoCommand, UndoStack};
+use redox_editor_core::{GuidResolver, UndoCommand, UndoStack};
 use redox_gameplay::AttributeSet;
 use redox_reflect::{ReflectValue, TypeRegistry};
 
@@ -39,9 +39,10 @@ impl InspectorPanel {
                 changed = Self::edit_value(ui, &mut val);
             });
             if changed {
-                let _ = registry.insert_component(world, e, &val);
+                let _ = registry.insert_component(world, e, &val); // undo: tx
+                let guid = GuidResolver::ensure(world, e);
                 undo.push(UndoCommand::SetComponent {
-                    entity: e,
+                    guid,
                     type_name: name.to_string(),
                     before: Some(before),
                     after: Some(val),

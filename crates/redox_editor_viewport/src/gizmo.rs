@@ -152,13 +152,14 @@ impl GizmoState {
         if let Some(start) = self.entity_start {
             let new_transform = self.dragged_transform(start, offset);
             // Record undo
-            if let Some(old_val) = world
+            let old_val = world
                 .get_component::<Transform>(entity)
-                .map(|t| t.to_value())
-            {
+                .map(|t| t.to_value());
+            if let Some(old_val) = old_val {
+                let guid = redox_editor_core::GuidResolver::ensure(world, entity);
                 let new_val = new_transform.to_value();
                 undo.push(redox_editor_core::undo::UndoCommand::SetComponent {
-                    entity,
+                    guid,
                     type_name: "Transform".into(),
                     before: Some(old_val),
                     after: Some(new_val),

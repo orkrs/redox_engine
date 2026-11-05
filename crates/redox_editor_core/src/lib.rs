@@ -14,6 +14,8 @@ pub mod command;
 pub mod context;
 /// Marker for entities that exist only inside the editor.
 pub mod editor_only;
+/// Lookup of entities by their stable GUID.
+pub mod guid;
 /// Console log ring buffer.
 pub mod log;
 /// Selection set and primary selection.
@@ -24,6 +26,7 @@ pub mod undo;
 pub use command::{CommandRegistry, EditorCommand};
 pub use context::EditorContext;
 pub use editor_only::{EditorOnly, editor_only_entities};
+pub use guid::GuidResolver;
 pub use log::EditorLog;
 pub use selection::{Selection, Visibility};
-pub use undo::{UndoCommand, UndoHotkey, UndoStack};
+pub use undo::{UndoCommand, UndoError, UndoHotkey, UndoStack};

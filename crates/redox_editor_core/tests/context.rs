@@ -5,6 +5,7 @@ use redox_editor_core::undo::{UndoCommand, capture_world};
 use redox_editor_core::{EditorContext, EditorOnly, editor_only_entities};
 use redox_math::{Transform, Vec3};
 use redox_reflect::{Reflect, TypeRegistry, register_engine_defaults};
+use redox_scene::components::EntityGuid;
 
 fn context() -> EditorContext {
     let mut registry = TypeRegistry::new();
@@ -110,9 +111,11 @@ fn an_unknown_command_is_logged_and_reported() {
 #[test]
 fn undo_and_redo_restore_the_world_through_the_context() {
     let ctx = context();
+    let guid = EntityGuid(7);
     let entity = {
         let mut world = ctx.world.lock();
         let entity = world.spawn();
+        world.add_component(entity, guid);
         world.add_component(entity, Transform::from_translation(Vec3::ZERO));
         entity
     };
@@ -130,7 +133,7 @@ fn undo_and_redo_restore_the_world_through_the_context() {
             .insert_component(&mut world, entity, &new_value)
             .expect("the edit applies");
         ctx.undo.lock().push(UndoCommand::SetComponent {
-            entity,
+            guid,
             type_name: "Transform".into(),
             before: Some(old_value),
             after: Some(new_value.clone()),

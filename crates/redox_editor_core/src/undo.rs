@@ -1,31 +1,60 @@
+use std::fmt;
+
 use redox_ecs::{Entity, World};
 use redox_reflect::{EntitySnapshot, ReflectValue, TypeRegistry, WorldSnapshot};
+use redox_scene::components::EntityGuid;
 
-/// A reversible editor action.
+use crate::guid::GuidResolver;
+
+/// Why an undo command could not be applied.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum UndoError {
+    /// No entity with this GUID exists in the world.
+    EntityNotFound(EntityGuid),
+    /// The component type is not registered.
+    UnknownType(String),
+    /// The reflected value could not be written to the world.
+    Apply(String),
+}
+
+impl fmt::Display for UndoError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EntityNotFound(guid) => write!(f, "entity {guid:?} not found"),
+            Self::UnknownType(name) => write!(f, "unknown component type {name}"),
+            Self::Apply(message) => write!(f, "could not apply value: {message}"),
+        }
+    }
+}
+
+impl std::error::Error for UndoError {}
+
+/// A reversible editor action. Entities are addressed by [`EntityGuid`], so a command stays valid
+/// after its entity was deleted and restored (the handle changes, the GUID does not).
 #[derive(Clone, Debug)]
 pub enum UndoCommand {
     /// Changed one component of an entity.
     SetComponent {
         /// The entity that was edited.
-        entity: Entity,
+        guid: EntityGuid,
         /// Registered name of the component type.
         type_name: String,
         /// Value before the edit (`None`: the component did not exist).
         before: Option<ReflectValue>,
-        /// Value after the edit (`None`: the component was removed).
+        /// Value after the edit (`None`: the component is removed).
         after: Option<ReflectValue>,
     },
     /// Created an entity.
     Spawn {
-        /// The entity that was created.
-        entity: Entity,
+        /// GUID given to the recreated entity.
+        guid: EntityGuid,
         /// Components of the entity, used to recreate it on redo.
         snapshot: EntitySnapshot,
     },
     /// Deleted an entity.
     Despawn {
         /// The entity that was deleted.
-        entity: Entity,
+        guid: EntityGuid,
         /// Components of the entity, used to bring it back on undo.
         snapshot: EntitySnapshot,
     },
@@ -35,64 +64,98 @@ pub enum UndoCommand {
 
 impl UndoCommand {
     /// Applies the command to `world`.
-    pub fn apply(&self, world: &mut World, registry: &TypeRegistry) {
+    pub fn apply(&self, world: &mut World, registry: &TypeRegistry) -> Result<(), UndoError> {
         match self {
-            UndoCommand::SetComponent {
-                entity,
+            Self::SetComponent {
+                guid,
                 type_name,
                 after,
                 ..
             } => {
-                if let Some(val) = after {
-                    let _ = registry.insert_component(world, *entity, val);
-                } else {
-                    let _ = type_name;
+                let entity = resolve(world, *guid)?;
+                set_component(world, registry, entity, type_name, after.as_ref())
+            }
+            Self::Spawn { guid, snapshot } => {
+                let entity = world.spawn();
+                for component in &snapshot.components {
+                    insert_value(world, registry, entity, component)?;
                 }
+                world.add_component(entity, *guid);
+                Ok(())
             }
-            UndoCommand::Spawn {
-                entity: _,
-                snapshot,
-            } => {
-                let e = world.spawn();
-                for comp in &snapshot.components {
-                    let _ = registry.insert_component(world, e, comp);
-                }
+            Self::Despawn { guid, .. } => {
+                let entity = resolve(world, *guid)?;
+                world.despawn(entity);
+                Ok(())
             }
-            UndoCommand::Despawn { entity, .. } => {
-                world.despawn(*entity);
-            }
-            UndoCommand::Batch(cmds) => {
-                for c in cmds {
-                    c.apply(world, registry);
-                }
-            }
+            Self::Batch(commands) => commands
+                .iter()
+                .try_for_each(|command| command.apply(world, registry)),
         }
     }
+
     /// The command that reverses this one.
     pub fn invert(&self) -> Self {
         match self {
-            UndoCommand::SetComponent {
-                entity,
+            Self::SetComponent {
+                guid,
                 type_name,
                 before,
                 after,
-            } => UndoCommand::SetComponent {
-                entity: *entity,
+            } => Self::SetComponent {
+                guid: *guid,
                 type_name: type_name.clone(),
                 before: after.clone(),
                 after: before.clone(),
             },
-            UndoCommand::Spawn { entity, snapshot } => UndoCommand::Despawn {
-                entity: *entity,
+            Self::Spawn { guid, snapshot } => Self::Despawn {
+                guid: *guid,
                 snapshot: snapshot.clone(),
             },
-            UndoCommand::Despawn { entity, snapshot } => UndoCommand::Spawn {
-                entity: *entity,
+            Self::Despawn { guid, snapshot } => Self::Spawn {
+                guid: *guid,
                 snapshot: snapshot.clone(),
             },
-            UndoCommand::Batch(cmds) => {
-                UndoCommand::Batch(cmds.iter().map(|c| c.invert()).collect())
-            }
+            Self::Batch(commands) => Self::Batch(commands.iter().map(Self::invert).collect()),
+        }
+    }
+}
+
+fn resolve(world: &World, guid: EntityGuid) -> Result<Entity, UndoError> {
+    GuidResolver::resolve(world, guid).ok_or(UndoError::EntityNotFound(guid))
+}
+
+fn insert_value(
+    world: &mut World,
+    registry: &TypeRegistry,
+    entity: Entity,
+    value: &ReflectValue,
+) -> Result<(), UndoError> {
+    if let ReflectValue::Struct { type_name, .. } = value
+        && registry.schema(type_name).is_none()
+    {
+        return Err(UndoError::UnknownType(type_name.clone()));
+    }
+    registry
+        .insert_component(world, entity, value)
+        .map_err(|error| UndoError::Apply(error.to_string()))
+}
+
+fn set_component(
+    world: &mut World,
+    registry: &TypeRegistry,
+    entity: Entity,
+    type_name: &str,
+    after: Option<&ReflectValue>,
+) -> Result<(), UndoError> {
+    if registry.schema(type_name).is_none() {
+        return Err(UndoError::UnknownType(type_name.to_string()));
+    }
+    match after {
+        Some(value) => insert_value(world, registry, entity, value),
+        None => {
+            registry.remove_component(world, entity, type_name);
+            Ok(())
         }
     }
 }
@@ -110,17 +173,13 @@ pub struct UndoStack {
     pub last_push_time: std::time::Instant,
     /// Edits of the same value closer than this many seconds merge into one step.
     pub merge_window_secs: f32,
+    /// Error of the last undo or redo that could not be applied.
+    pub last_error: Option<UndoError>,
 }
 
 impl Default for UndoStack {
     fn default() -> Self {
-        Self {
-            undo: Vec::new(),
-            redo: Vec::new(),
-            limit: 100,
-            last_push_time: std::time::Instant::now(),
-            merge_window_secs: 0.5,
-        }
+        Self::new(100)
     }
 }
 
@@ -133,38 +192,16 @@ impl UndoStack {
             limit,
             last_push_time: std::time::Instant::now(),
             merge_window_secs: 0.5,
+            last_error: None,
         }
     }
-    /// Records a command; it may merge with the previous one, and clears the redo history.
+
+    /// Records a command that was already applied; it may merge with the previous one, and clears
+    /// the redo history.
     pub fn push(&mut self, cmd: UndoCommand) {
-        // Merge sequential SetComponent on same entity/type within window
-        if let UndoCommand::SetComponent {
-            entity,
-            type_name,
-            before: _,
-            after,
-        } = &cmd
-            && let Some(UndoCommand::SetComponent {
-                entity: e2,
-                type_name: t2,
-                before: b2,
-                after: _,
-            }) = self.undo.last()
-            && e2 == entity
-            && t2 == type_name
-            && self.last_push_time.elapsed().as_secs_f32() < self.merge_window_secs
-        {
-            // Merge: keep original before, update after
-            let merged = UndoCommand::SetComponent {
-                entity: *entity,
-                type_name: type_name.clone(),
-                before: b2.clone(),
-                after: after.clone(),
-            };
-            self.undo.pop();
-            self.undo.push(merged);
-            self.last_push_time = std::time::Instant::now();
+        if self.merge_into_last(&cmd) {
             self.redo.clear();
+            self.last_push_time = std::time::Instant::now();
             return;
         }
         self.undo.push(cmd);
@@ -174,39 +211,82 @@ impl UndoStack {
             self.undo.remove(0);
         }
     }
+
+    /// Replaces the last command with a merged one when both edit the same value of the same
+    /// entity within the merge window. The merged command keeps the original `before`.
+    fn merge_into_last(&mut self, cmd: &UndoCommand) -> bool {
+        let UndoCommand::SetComponent {
+            guid,
+            type_name,
+            after,
+            ..
+        } = cmd
+        else {
+            return false;
+        };
+        if self.last_push_time.elapsed().as_secs_f32() >= self.merge_window_secs {
+            return false;
+        }
+        let merged = match self.undo.last() {
+            Some(UndoCommand::SetComponent {
+                guid: last_guid,
+                type_name: last_type,
+                before: last_before,
+                ..
+            }) if last_guid == guid && last_type == type_name => UndoCommand::SetComponent {
+                guid: *guid,
+                type_name: type_name.clone(),
+                before: last_before.clone(),
+                after: after.clone(),
+            },
+            _ => return false,
+        };
+        if let Some(slot) = self.undo.last_mut() {
+            *slot = merged;
+        }
+        true
+    }
+
     /// Whether there is something to undo.
     pub fn can_undo(&self) -> bool {
         !self.undo.is_empty()
     }
+
     /// Whether there is something to redo.
     pub fn can_redo(&self) -> bool {
         !self.redo.is_empty()
     }
-    /// Undoes the last command; returns whether anything was undone.
+
+    /// Undoes the last command; returns whether anything was undone. A command that cannot be
+    /// applied stays in the history and its error is stored in [`UndoStack::last_error`].
     pub fn undo(&mut self, world: &mut World, registry: &TypeRegistry) -> bool {
+        let Some(inverse) = self.undo.last().map(UndoCommand::invert) else {
+            return false;
+        };
+        if let Err(error) = inverse.apply(world, registry) {
+            self.last_error = Some(error);
+            return false;
+        }
         if let Some(cmd) = self.undo.pop() {
-            let inv = cmd.invert();
-            inv.apply(world, registry);
             self.redo.push(cmd);
-            true
-        } else {
-            false
         }
+        true
     }
-    /// Redoes the last undone command; returns whether anything was redone.
+
+    /// Redoes the last undone command; returns whether anything was redone. A command that cannot
+    /// be applied stays in the redo history and its error is stored in [`UndoStack::last_error`].
     pub fn redo(&mut self, world: &mut World, registry: &TypeRegistry) -> bool {
-        if let Some(cmd) = self.redo.pop() {
-            // cmd is original, need to apply it (not invert)
-            // To redo, we apply the original command again
-            // But we stored original in redo, so we need to re-apply original
-            // We have cmd = original that was undone, so apply it
-            let redo_cmd = cmd.clone();
-            redo_cmd.apply(world, registry);
-            self.undo.push(redo_cmd);
-            true
-        } else {
-            false
+        let Some(cmd) = self.redo.last() else {
+            return false;
+        };
+        if let Err(error) = cmd.apply(world, registry) {
+            self.last_error = Some(error);
+            return false;
         }
+        if let Some(cmd) = self.redo.pop() {
+            self.undo.push(cmd);
+        }
+        true
     }
 
     /// Applies an undo or redo requested by a keyboard shortcut; returns whether anything changed.
@@ -262,18 +342,21 @@ mod tests {
     use redox_ecs::World;
     use redox_math::{Transform, Vec3};
     use redox_reflect::{Reflect, TypeRegistry};
+
     #[test]
     fn undo_redo_transform() {
         let mut world = World::new();
         let mut registry = TypeRegistry::new();
         registry.register::<Transform>();
         let e = world.spawn();
+        let guid = EntityGuid(1);
+        world.add_component(e, guid);
         world.add_component(e, Transform::from_translation(Vec3::ZERO));
         let mut undo = UndoStack::default();
         let before = Transform::from_translation(Vec3::ZERO).to_value();
         let after = Transform::from_translation(Vec3::new(2.0, 0.0, 0.0)).to_value();
         undo.push(UndoCommand::SetComponent {
-            entity: e,
+            guid,
             type_name: "Transform".into(),
             before: Some(before.clone()),
             after: Some(after.clone()),
@@ -295,6 +378,7 @@ mod tests {
             2.0
         );
     }
+
     #[test]
     fn capture_restore_world() {
         let mut world = World::new();

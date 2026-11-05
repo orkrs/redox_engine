@@ -230,6 +230,7 @@ pub trait Reflect: Send + Sync + 'static {
 type InsertFn = fn(&mut World, Entity, &ReflectValue) -> Result<(), ReflectError>;
 type ReadFn = fn(&World, Entity) -> Option<ReflectValue>;
 type HasFn = fn(&World, Entity) -> bool;
+type RemoveFn = fn(&mut World, Entity) -> bool;
 
 #[derive(Clone)]
 #[allow(dead_code)]
@@ -240,6 +241,7 @@ struct Registration {
     insert: InsertFn,
     read: ReadFn,
     has: HasFn,
+    remove: RemoveFn,
     schema: ReflectSchema,
 }
 
@@ -264,6 +266,7 @@ impl TypeRegistry {
             insert: insert_typed::<T>,
             read: read_typed::<T>,
             has: has_typed::<T>,
+            remove: remove_typed::<T>,
             schema: T::reflect_schema(),
         };
         self.by_name.insert(T::type_name(), reg.clone());
@@ -296,6 +299,15 @@ impl TypeRegistry {
             .get(type_name)
             .ok_or_else(|| ReflectError::msg(format!("unregistered type {type_name}")))?;
         (reg.insert)(world, entity, value)
+    }
+
+    /// Removes the entity's component of the given registered type; returns whether one was removed.
+    /// An unregistered type name removes nothing and returns `false`.
+    pub fn remove_component(&self, world: &mut World, entity: Entity, type_name: &str) -> bool {
+        match self.by_name.get(type_name) {
+            Some(reg) => (reg.remove)(world, entity),
+            None => false,
+        }
     }
 
     /// Reads the entity's component of the given registered type, if it has one.
@@ -389,6 +401,10 @@ fn read_typed<T: Reflect>(world: &World, entity: Entity) -> Option<ReflectValue>
 
 fn has_typed<T: Reflect>(world: &World, entity: Entity) -> bool {
     world.get_component::<T>(entity).is_some()
+}
+
+fn remove_typed<T: Reflect>(world: &mut World, entity: Entity) -> bool {
+    world.remove_component::<T>(entity)
 }
 
 /// Reflected components of one entity.
