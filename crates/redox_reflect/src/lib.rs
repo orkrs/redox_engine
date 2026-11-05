@@ -13,9 +13,11 @@ extern crate self as redox_reflect;
 
 mod field;
 mod impls;
+pub mod meta;
 
 pub use field::FieldValue;
 pub use impls::register_engine_defaults;
+pub use meta::{FieldError, FieldMeta, TypeMeta, WidgetHint};
 pub use redox_reflect_derive::Reflect;
 
 /// Serializable, type-erased value used by the inspector and scene save.
@@ -170,15 +172,19 @@ pub struct ReflectSchema {
     pub type_name: &'static str,
     /// Fields in declaration order.
     pub fields: Vec<ReflectField>,
+    /// Editor metadata of the type (category, required components, version).
+    pub meta: TypeMeta,
 }
 
 /// Description of one field of a [`ReflectSchema`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct ReflectField {
     /// Field name.
     pub name: &'static str,
     /// Name of the field's type.
     pub type_name: &'static str,
+    /// Editor metadata of the field (range, label, flags, default).
+    pub meta: FieldMeta,
 }
 
 /// Error from reading or writing reflected values.
@@ -215,7 +221,7 @@ pub trait Reflect: Send + Sync + 'static {
     fn to_value(&self) -> ReflectValue;
     /// Overwrites the value from a reflected form.
     fn apply(&mut self, value: &ReflectValue) -> Result<(), ReflectError>;
-    /// Describes the type's fields for inspectors.
+    /// Describes the type's fields and editor metadata for inspectors.
     fn reflect_schema() -> ReflectSchema
     where
         Self: Sized,
@@ -223,6 +229,7 @@ pub trait Reflect: Send + Sync + 'static {
         ReflectSchema {
             type_name: Self::type_name(),
             fields: Vec::new(),
+            meta: TypeMeta::default(),
         }
     }
 }

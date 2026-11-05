@@ -130,16 +130,20 @@ impl redox_reflect::Reflect for DirectionalLight {
                 redox_reflect::ReflectField {
                     name: "direction",
                     type_name: "Vec3",
+                    ..Default::default()
                 },
                 redox_reflect::ReflectField {
                     name: "color",
                     type_name: "Vec3",
+                    ..Default::default()
                 },
                 redox_reflect::ReflectField {
                     name: "intensity",
                     type_name: "f32",
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         }
     }
 }
