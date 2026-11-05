@@ -19,7 +19,7 @@
 //! - ViewportShading Unlit / Normals / Wireframe: Lit PBR only (selection tint).
 //! - Streaming GpuRegistry assets beyond procedural cubes.
 
-use redox_editor_core::{EditorCamera, EditorViewport, ViewportShading, quad_pane_cameras};
+use redox_editor_viewport::{EditorCamera, EditorViewport, ViewportShading, quad_pane_cameras};
 use redox_math::{Mat4, Transform, Vec3};
 use redox_render::context::ShaderDebugVizMode;
 use redox_render::{Material, RenderObject, Renderer, mesh::primitive::create_cube};

@@ -209,28 +209,27 @@ impl UndoStack {
         }
     }
 
-    /// Handle Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z via egui input
-    pub fn handle_hotkeys(
+    /// Applies an undo or redo requested by a keyboard shortcut; returns whether anything changed.
+    pub fn apply_hotkey(
         &mut self,
-        ctx: &egui::Context,
+        hotkey: UndoHotkey,
         world: &mut World,
         registry: &TypeRegistry,
     ) -> bool {
-        let ctrl_z =
-            ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Z) && !i.modifiers.shift);
-        let ctrl_y = ctx.input(|i| {
-            i.modifiers.ctrl
-                && (i.key_pressed(egui::Key::Y)
-                    || (i.key_pressed(egui::Key::Z) && i.modifiers.shift))
-        });
-        if ctrl_z {
-            return self.undo(world, registry);
+        match hotkey {
+            UndoHotkey::Undo => self.undo(world, registry),
+            UndoHotkey::Redo => self.redo(world, registry),
         }
-        if ctrl_y {
-            return self.redo(world, registry);
-        }
-        false
     }
+}
+
+/// An undo shortcut recognised by the UI (Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UndoHotkey {
+    /// Undo the last step.
+    Undo,
+    /// Redo the last undone step.
+    Redo,
 }
 
 /// Captures all registered components of an entity.

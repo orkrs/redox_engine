@@ -1,8 +1,8 @@
 //! Editor commands (palette / menu / hotkeys) and small world helpers.
 
 use redox_ecs::{Entity, World};
-use redox_editor_core::ViewportShading;
 use redox_editor_ui::{EditorDock, EditorUiCtx};
+use redox_editor_viewport::ViewportShading;
 use redox_math::{Transform, Vec3};
 
 pub(crate) fn resolve_entity(world: &World, id: u32) -> Option<Entity> {

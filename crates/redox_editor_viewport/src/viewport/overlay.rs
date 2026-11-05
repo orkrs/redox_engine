@@ -84,24 +84,29 @@ pub fn ghost_move_line(old: Vec3, new: Vec3) -> (Vec3, Vec3, [f32; 4]) {
     (old, new, [1.0, 0.85, 0.2, 0.9])
 }
 
-/// Maps an egui point inside `viewport_rect` to a pixel of the viewport texture; `None` outside the
-/// rect.
-pub fn egui_to_viewport_coords(
-    egui_pos: egui::Pos2,
-    viewport_rect: egui::Rect,
-    _pixels_per_point: f32,
+/// Maps a window point inside the rectangle (`rect_min`, `rect_size`) to a pixel of the viewport
+/// texture; `None` outside the rectangle (edges included).
+///
+/// Positions and sizes are in UI *points*; the texture is stretched to fill the rectangle. Do NOT
+/// scale by pixels-per-point: that breaks picking under Windows DPI scaling.
+pub fn window_to_viewport_coords(
+    pos: [f32; 2],
+    rect_min: [f32; 2],
+    rect_size: [f32; 2],
     tex_size: (u32, u32),
 ) -> Option<(u32, u32)> {
-    // egui positions + rects are in *points*; the texture is stretched to fill the rect.
-    // Do NOT multiply by pixels_per_point — that breaks picking on Windows DPI scaling.
-    if !viewport_rect.contains(egui_pos) {
+    let inside = pos[0] >= rect_min[0]
+        && pos[0] <= rect_min[0] + rect_size[0]
+        && pos[1] >= rect_min[1]
+        && pos[1] <= rect_min[1] + rect_size[1];
+    if !inside {
         return None;
     }
-    let rel = egui_pos - viewport_rect.min;
-    let w = viewport_rect.width().max(1e-3);
-    let h = viewport_rect.height().max(1e-3);
-    let uv_x = (rel.x / w).clamp(0.0, 1.0);
-    let uv_y = (rel.y / h).clamp(0.0, 1.0);
+    let rel = [pos[0] - rect_min[0], pos[1] - rect_min[1]];
+    let w = rect_size[0].max(1e-3);
+    let h = rect_size[1].max(1e-3);
+    let uv_x = (rel[0] / w).clamp(0.0, 1.0);
+    let uv_y = (rel[1] / h).clamp(0.0, 1.0);
     let x = (uv_x * tex_size.0 as f32).floor() as u32;
     let y = (uv_y * tex_size.1 as f32).floor() as u32;
     if x >= tex_size.0 || y >= tex_size.1 {

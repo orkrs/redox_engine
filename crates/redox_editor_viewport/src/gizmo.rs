@@ -147,7 +147,7 @@ impl GizmoState {
         entity: Entity,
         offset: Vec3,
         _registry: &TypeRegistry,
-        undo: &mut crate::undo::UndoStack,
+        undo: &mut redox_editor_core::undo::UndoStack,
     ) {
         if let Some(start) = self.entity_start {
             let new_transform = self.dragged_transform(start, offset);
@@ -157,7 +157,7 @@ impl GizmoState {
                 .map(|t| t.to_value())
             {
                 let new_val = new_transform.to_value();
-                undo.push(crate::undo::UndoCommand::SetComponent {
+                undo.push(redox_editor_core::undo::UndoCommand::SetComponent {
                     entity,
                     type_name: "Transform".into(),
                     before: Some(old_val),
@@ -320,8 +320,8 @@ pub fn focus_camera_on_aabb(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::undo::UndoStack;
     use redox_ecs::World;
+    use redox_editor_core::undo::UndoStack;
     use redox_math::{Transform, Vec3};
     use redox_reflect::TypeRegistry;
     #[test]

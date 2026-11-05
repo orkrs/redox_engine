@@ -4,13 +4,13 @@
 use super::EditorApp;
 use crate::commands::{collect_transforms, resolve_entity};
 use crate::render_host::{RenderHost, SharedGpu};
-use redox_editor_core::{
-    ViewportLayout, ViewportLinesPass, ViewportShading, build_editor_overlay_lines,
-    egui_to_viewport_coords, ghost_cube_lines, ghost_move_line, pick_in_quad_pane, pick_unit_cubes,
-    place_on_surface, scatter_poses,
-};
 use redox_editor_scene::WorldSession;
-use redox_editor_ui::{AssetKind, EditorMeshProxy, OutlinerAction};
+use redox_editor_ui::{AssetKind, EditorMeshProxy, OutlinerAction, egui_to_viewport_coords};
+use redox_editor_viewport::{
+    ViewportLayout, ViewportLinesPass, ViewportShading, build_editor_overlay_lines,
+    ghost_cube_lines, ghost_move_line, pick_in_quad_pane, pick_unit_cubes, place_on_surface,
+    scatter_poses,
+};
 use redox_math::{Transform, Vec3};
 use std::time::Instant;
 
@@ -36,7 +36,9 @@ impl EditorApp {
             let mut world_guard = self.world.lock();
             let registry_guard = self.registry.lock();
             let mut undo_guard = self.undo_stack.lock();
-            undo_guard.handle_hotkeys(&self.egui_ctx, &mut world_guard, &registry_guard);
+            if let Some(hotkey) = redox_editor_ui::undo_hotkey(&self.egui_ctx) {
+                undo_guard.apply_hotkey(hotkey, &mut world_guard, &registry_guard);
+            }
         }
         self.present(full_output);
     }
@@ -424,7 +426,7 @@ impl EditorApp {
                     let q = pick_in_quad_pane(uv, &cam, vp.size);
                     (q.origin, q.dir)
                 } else {
-                    redox_editor_core::gizmo::screen_ray(
+                    redox_editor_viewport::gizmo::screen_ray(
                         uv,
                         cam.view_matrix(),
                         cam.proj_matrix(),

@@ -12,6 +12,6 @@ mod tests {
 
     #[test]
     fn the_stub_is_constructible() {
-        assert_eq!(BuildServiceStub, BuildServiceStub::default());
+        assert_eq!(format!("{:?}", BuildServiceStub), "BuildServiceStub");
     }
 }

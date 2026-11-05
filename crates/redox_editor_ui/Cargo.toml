@@ -13,6 +13,7 @@ path = "src/lib.rs"
 
 [dependencies]
 redox_editor_core = { path = "../redox_editor_core" }
+redox_editor_viewport = { path = "../redox_editor_viewport" }
 redox_editor_scene = { path = "../redox_editor_scene" }
 redox_editor_debugger = { path = "../redox_editor_debugger" }
 redox_ecs = { path = "../redox_ecs" }

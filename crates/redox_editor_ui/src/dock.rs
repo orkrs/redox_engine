@@ -7,7 +7,7 @@ use crate::context::EditorUiCtx;
 use crate::git_overlay::GitOverlay;
 use crate::inspector::InspectorPanel;
 use crate::profiler_panel::ProfilerPanel;
-use redox_editor_core::{GizmoMode, ViewportLayout, ViewportShading};
+use redox_editor_viewport::{GizmoMode, ViewportLayout, ViewportShading};
 
 /// Tabs of the editor dock.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

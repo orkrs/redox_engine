@@ -2,12 +2,12 @@
 
 use parking_lot::Mutex;
 use redox_ecs::World;
-use redox_editor_core::{
-    EditorCamera, GizmoState, Selection, UndoStack, ViewportDebugFlags, ViewportLayout,
-    ViewportShading,
-};
-use redox_editor_scene::{WorldGitTracker, WorldSession};
+use redox_editor_core::{Selection, UndoStack};
 use redox_editor_debugger::{FrameProfiler, PieSession, TimeTravelBuffer};
+use redox_editor_scene::{WorldGitTracker, WorldSession};
+use redox_editor_viewport::{
+    EditorCamera, GizmoState, ViewportDebugFlags, ViewportLayout, ViewportShading,
+};
 use redox_reflect::TypeRegistry;
 use std::sync::Arc;
 

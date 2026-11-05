@@ -1,4 +1,4 @@
-use redox_editor_core::BrushSettings;
+use redox_editor_viewport::BrushSettings;
 
 /// Paint-brush UI + settings (B to toggle).
 pub struct BrushPanel {

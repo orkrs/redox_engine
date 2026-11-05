@@ -6,12 +6,12 @@ use crate::render_host::{RenderHost, SharedGpu};
 use parking_lot::Mutex;
 use rapier3d::prelude::{ColliderBuilder, RigidBodyBuilder};
 use redox_ecs::World;
-use redox_editor_core::{
-    EditorCamera, GizmoMode, GizmoState, Selection, UndoStack, ViewportLinesPass, ViewportShading,
-    egui_to_viewport_coords,
-};
+use redox_editor_core::{Selection, UndoStack};
 use redox_editor_scene::WorldSession;
-use redox_editor_ui::{EditorDock, EditorUiCtx};
+use redox_editor_ui::{EditorDock, EditorUiCtx, egui_to_viewport_coords};
+use redox_editor_viewport::{
+    EditorCamera, GizmoMode, GizmoState, ViewportLinesPass, ViewportShading,
+};
 use redox_math::{Transform, Vec3};
 use redox_physics::PhysicsContext;
 use redox_reflect::{TypeRegistry, register_engine_defaults};
@@ -287,7 +287,7 @@ impl EditorApp {
                 let uv =
                     redox_math::Vec2::new(x as f32 / vp.size.0 as f32, y as f32 / vp.size.1 as f32);
                 let cam = self.camera.lock().clone();
-                let (origin, dir) = redox_editor_core::gizmo::screen_ray(
+                let (origin, dir) = redox_editor_viewport::gizmo::screen_ray(
                     uv,
                     cam.view_matrix(),
                     cam.proj_matrix(),
@@ -351,7 +351,7 @@ impl EditorApp {
                                 y as f32 / vp.size.1 as f32,
                             );
                             let cam = self.camera.lock().clone();
-                            let (origin, dir) = redox_editor_core::gizmo::screen_ray(
+                            let (origin, dir) = redox_editor_viewport::gizmo::screen_ray(
                                 uv,
                                 cam.view_matrix(),
                                 cam.proj_matrix(),

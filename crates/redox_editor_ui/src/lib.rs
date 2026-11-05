@@ -13,6 +13,8 @@ pub mod context;
 pub mod dock;
 /// Version-control overlay.
 pub mod git_overlay;
+/// egui adapters over the egui-free editor logic.
+pub mod input_adapters;
 /// Component inspector.
 pub mod inspector;
 pub mod node_canvas;
@@ -26,5 +28,6 @@ pub use asset_browser::{AssetKind, AssetSpawnRequest, EditorMeshProxy};
 pub use brush_panel::BrushPanel;
 pub use context::EditorUiCtx;
 pub use dock::{EditorDock, Tab};
+pub use input_adapters::{egui_to_viewport_coords, undo_hotkey};
 pub use outliner::OutlinerAction;
 pub use packager::{BakeReport, BakeStatus, PackagerPanel};
