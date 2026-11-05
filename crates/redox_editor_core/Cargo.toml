@@ -11,9 +11,6 @@ workspace = true
 [lib]
 path = "src/lib.rs"
 
-[features]
-editor-git = ["dep:git2"]
-
 [dependencies]
 redox_ecs = { path = "../redox_ecs" }
 redox_math = { path = "../redox_math" }
@@ -33,4 +30,3 @@ log = { workspace = true }
 smallvec = { workspace = true }
 egui = { workspace = true }
 bytemuck = { workspace = true }
-git2 = { workspace = true, optional = true }

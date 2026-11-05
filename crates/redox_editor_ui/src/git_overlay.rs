@@ -1,4 +1,4 @@
-use redox_editor_core::WorldGitTracker;
+use redox_editor_scene::WorldGitTracker;
 
 /// Panel showing the version-control state of the world.
 pub struct GitOverlay;

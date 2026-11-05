@@ -2,7 +2,7 @@
 
 use super::EditorApp;
 use crate::commands::{focus_selection, run_command};
-use redox_editor_core::WorldSession;
+use redox_editor_scene::WorldSession;
 use redox_math::Transform;
 
 impl EditorApp {

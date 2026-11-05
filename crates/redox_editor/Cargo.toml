@@ -13,11 +13,13 @@ name = "redox_editor"
 path = "src/main.rs"
 
 [features]
+editor-git = ["redox_editor_scene/editor-git"]
 # Read WGSL from disk at startup and report shader compile errors on save.
 shader-hot-reload = ["redox_render/shader-hot-reload"]
 
 [dependencies]
 redox_editor_core = { path = "../redox_editor_core" }
+redox_editor_scene = { path = "../redox_editor_scene" }
 redox_editor_debugger = { path = "../redox_editor_debugger" }
 redox_editor_ui = { path = "../redox_editor_ui" }
 redox_core = { path = "../redox_core" }

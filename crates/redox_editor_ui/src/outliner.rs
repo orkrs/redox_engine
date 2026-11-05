@@ -1,5 +1,6 @@
 use redox_ecs::{Entity, World};
-use redox_editor_core::{Selection, WorldGitTracker, WorldSession};
+use redox_editor_core::Selection;
+use redox_editor_scene::{WorldGitTracker, WorldSession};
 use redox_math::Transform;
 use redox_scene::{PartitionCell, StreamedActor};
 
@@ -105,7 +106,7 @@ impl OutlinerPanel {
                                         .map(|g| {
                                             matches!(
                                                 g.status_for(&actor.id),
-                                                redox_editor_core::ActorGitStatus::Modified { .. }
+                                                redox_editor_scene::ActorGitStatus::Modified { .. }
                                             )
                                         })
                                         .unwrap_or(false)

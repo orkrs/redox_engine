@@ -5,10 +5,11 @@ use super::EditorApp;
 use crate::commands::{collect_transforms, resolve_entity};
 use crate::render_host::{RenderHost, SharedGpu};
 use redox_editor_core::{
-    ViewportLayout, ViewportLinesPass, ViewportShading, WorldSession, build_editor_overlay_lines,
+    ViewportLayout, ViewportLinesPass, ViewportShading, build_editor_overlay_lines,
     egui_to_viewport_coords, ghost_cube_lines, ghost_move_line, pick_in_quad_pane, pick_unit_cubes,
     place_on_surface, scatter_poses,
 };
+use redox_editor_scene::WorldSession;
 use redox_editor_ui::{AssetKind, EditorMeshProxy, OutlinerAction};
 use redox_math::{Transform, Vec3};
 use std::time::Instant;

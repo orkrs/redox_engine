@@ -8,8 +8,9 @@ use rapier3d::prelude::{ColliderBuilder, RigidBodyBuilder};
 use redox_ecs::World;
 use redox_editor_core::{
     EditorCamera, GizmoMode, GizmoState, Selection, UndoStack, ViewportLinesPass, ViewportShading,
-    WorldSession, egui_to_viewport_coords,
+    egui_to_viewport_coords,
 };
+use redox_editor_scene::WorldSession;
 use redox_editor_ui::{EditorDock, EditorUiCtx};
 use redox_math::{Transform, Vec3};
 use redox_physics::PhysicsContext;

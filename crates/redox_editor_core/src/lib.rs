@@ -6,8 +6,6 @@
 pub mod brush;
 /// Free-fly and orbit editor camera.
 pub mod camera;
-/// Version-control status of actor files.
-pub mod git;
 /// Transform gizmo logic.
 pub mod gizmo;
 pub mod picker;
@@ -17,12 +15,9 @@ pub mod selection;
 pub mod undo;
 pub mod viewport;
 pub mod viewport_mode;
-/// The open world: partition streamer, manifest and root directory.
-pub mod world_session;
 
 pub use brush::{BrushSettings, BrushStroke, place_on_surface, scatter_poses, scatter_positions};
 pub use camera::EditorCamera;
-pub use git::{ActorGitStatus, WorldGitTracker};
 pub use gizmo::{GizmoAxis, GizmoMode, GizmoState, GridSettings};
 pub use picker::{
     EntityPicker, QuadPickRay, pick_entity_in_quad_pane, pick_in_quad_pane, pick_unit_cubes,
@@ -37,4 +32,3 @@ pub use viewport::{
 pub use viewport_mode::{
     QUAD_ORTHO_HALF, QuadPane, ViewportDebugFlags, ViewportLayout, ViewportShading,
 };
-pub use world_session::WorldSession;
