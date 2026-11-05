@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::context::EditorUiCtx;
 use crate::git_overlay::GitOverlay;
-use crate::inspector::InspectorPanel;
+use crate::inspector::{InspectorPanel, selection_entities};
 use crate::profiler_panel::ProfilerPanel;
 use redox_editor_viewport::{GizmoMode, ViewportLayout, ViewportShading};
 
@@ -324,7 +324,15 @@ impl TabViewer for TabViewerImpl<'_> {
                 let registry = self.ui_ctx.core.registry.lock();
                 let selection = self.ui_ctx.core.selection.lock();
                 let mut undo = self.ui_ctx.core.undo.lock();
-                InspectorPanel::show(ui, &registry, selection.primary, &mut world, &mut undo);
+                let entities = selection_entities(selection.primary, &selection.set);
+                InspectorPanel::show(
+                    ui,
+                    &registry,
+                    &entities,
+                    &mut world,
+                    &mut undo,
+                    &self.ui_ctx.core.log,
+                );
             }
             Tab::AssetBrowser => {
                 let mut assets = self.ui_ctx.assets.lock();
