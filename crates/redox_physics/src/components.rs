@@ -17,11 +17,14 @@ pub struct Collider {
 }
 
 /// Component to control or read the linear and angular velocity of a rigid body.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, redox_reflect::Reflect)]
+#[reflect(category = "Physics", tooltip = "Linear and angular velocity of a rigid body")]
 pub struct Velocity {
     /// Linear velocity in world units per second.
+    #[reflect(unit = "m/s", category = "Motion")]
     pub linvel: Vec3,
     /// Angular velocity in radians per second.
+    #[reflect(unit = "rad/s", category = "Motion")]
     pub angvel: Vec3,
 }
 

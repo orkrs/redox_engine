@@ -13,9 +13,11 @@ extern crate self as redox_reflect;
 
 mod field;
 mod impls;
+pub mod meta;
 
 pub use field::FieldValue;
 pub use impls::register_engine_defaults;
+pub use meta::{FieldError, FieldMeta, TypeMeta, WidgetHint};
 pub use redox_reflect_derive::Reflect;
 
 /// Serializable, type-erased value used by the inspector and scene save.
@@ -170,15 +172,19 @@ pub struct ReflectSchema {
     pub type_name: &'static str,
     /// Fields in declaration order.
     pub fields: Vec<ReflectField>,
+    /// Editor metadata of the type (category, required components, version).
+    pub meta: TypeMeta,
 }
 
 /// Description of one field of a [`ReflectSchema`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct ReflectField {
     /// Field name.
     pub name: &'static str,
     /// Name of the field's type.
     pub type_name: &'static str,
+    /// Editor metadata of the field (range, label, flags, default).
+    pub meta: FieldMeta,
 }
 
 /// Error from reading or writing reflected values.
@@ -215,7 +221,7 @@ pub trait Reflect: Send + Sync + 'static {
     fn to_value(&self) -> ReflectValue;
     /// Overwrites the value from a reflected form.
     fn apply(&mut self, value: &ReflectValue) -> Result<(), ReflectError>;
-    /// Describes the type's fields for inspectors.
+    /// Describes the type's fields and editor metadata for inspectors.
     fn reflect_schema() -> ReflectSchema
     where
         Self: Sized,
@@ -223,14 +229,34 @@ pub trait Reflect: Send + Sync + 'static {
         ReflectSchema {
             type_name: Self::type_name(),
             fields: Vec::new(),
+            meta: TypeMeta::default(),
         }
+    }
+    /// Schema version of the type, taken from its [`TypeMeta`].
+    fn version() -> u32
+    where
+        Self: Sized,
+    {
+        Self::reflect_schema().meta.version
+    }
+    /// Upgrades a value written with schema version `from` to `from + 1`.
+    ///
+    /// [`TypeRegistry::migrate_value`] calls this once for every version step, so an
+    /// implementation only handles its own `from`. The default changes nothing.
+    fn migrate(_from: u32, _value: &mut ReflectValue)
+    where
+        Self: Sized,
+    {
     }
 }
 
 type InsertFn = fn(&mut World, Entity, &ReflectValue) -> Result<(), ReflectError>;
+type ApplyFn = fn(&mut World, Entity, &ReflectValue) -> Result<(), ReflectError>;
 type ReadFn = fn(&World, Entity) -> Option<ReflectValue>;
 type HasFn = fn(&World, Entity) -> bool;
 type RemoveFn = fn(&mut World, Entity) -> bool;
+type MigrateFn = fn(u32, &mut ReflectValue);
+type DefaultFn = fn() -> ReflectValue;
 
 #[derive(Clone)]
 #[allow(dead_code)]
@@ -239,9 +265,15 @@ struct Registration {
     #[allow(dead_code)]
     type_id: TypeId,
     insert: InsertFn,
+    /// Writes the fields present in a partial value into an existing component.
+    apply_existing: ApplyFn,
     read: ReadFn,
     has: HasFn,
     remove: RemoveFn,
+    migrate: MigrateFn,
+    version: u32,
+    /// The type's `Default` value in reflected form.
+    default: DefaultFn,
     schema: ReflectSchema,
 }
 
@@ -264,9 +296,13 @@ impl TypeRegistry {
             type_name: T::type_name(),
             type_id: TypeId::of::<T>(),
             insert: insert_typed::<T>,
+            apply_existing: apply_existing_typed::<T>,
             read: read_typed::<T>,
             has: has_typed::<T>,
             remove: remove_typed::<T>,
+            migrate: migrate_typed::<T>,
+            version: T::version(),
+            default: default_typed::<T>,
             schema: T::reflect_schema(),
         };
         self.by_name.insert(T::type_name(), reg.clone());
@@ -276,6 +312,86 @@ impl TypeRegistry {
     /// Returns the schema of a registered type.
     pub fn schema(&self, type_name: &str) -> Option<&ReflectSchema> {
         self.by_name.get(type_name).map(|r| &r.schema)
+    }
+
+    /// Schema version of a registered type; scene files store it per component.
+    pub fn version(&self, type_name: &str) -> Option<u32> {
+        self.by_name.get(type_name).map(|r| r.version)
+    }
+
+    /// The `Default` value of a registered type in reflected form.
+    pub fn default_value(&self, type_name: &str) -> Option<ReflectValue> {
+        self.by_name.get(type_name).map(|r| (r.default)())
+    }
+
+    /// Adds a component with its `Default` value. Fails when the entity already has it.
+    pub fn add_default(
+        &self,
+        world: &mut World,
+        entity: Entity,
+        type_name: &str,
+    ) -> Result<(), ReflectError> {
+        let reg = self
+            .by_name
+            .get(type_name)
+            .ok_or_else(|| ReflectError::msg(format!("unregistered type {type_name}")))?;
+        if (reg.has)(&*world, entity) {
+            return Err(ReflectError::msg(format!(
+                "entity already has {type_name}"
+            )));
+        }
+        let value = (reg.default)();
+        (reg.insert)(world, entity, &value)
+    }
+
+    /// Upgrades a value saved with schema version `from` to the current version of `type_name`,
+    /// one [`Reflect::migrate`] step at a time. A value already at the current version is unchanged.
+    pub fn migrate_value(
+        &self,
+        type_name: &str,
+        from: u32,
+        value: &mut ReflectValue,
+    ) -> Result<(), ReflectError> {
+        let reg = self
+            .by_name
+            .get(type_name)
+            .ok_or_else(|| ReflectError::msg(format!("unregistered type {type_name}")))?;
+        for step in from..reg.version {
+            (reg.migrate)(step, value);
+        }
+        Ok(())
+    }
+
+    /// Writes one field of an existing component. The value goes through the field's metadata
+    /// (read-only flag, type shape, range and step) before it is applied.
+    pub fn set_field(
+        &self,
+        world: &mut World,
+        entity: Entity,
+        type_name: &str,
+        field: &str,
+        value: &ReflectValue,
+    ) -> Result<(), FieldError> {
+        let reg = self
+            .by_name
+            .get(type_name)
+            .ok_or_else(|| FieldError::UnknownType(type_name.to_string()))?;
+        let definition = reg
+            .schema
+            .fields
+            .iter()
+            .find(|f| f.name == field)
+            .ok_or_else(|| FieldError::UnknownField(field.to_string()))?;
+        let checked = definition.validate(value)?;
+        if !(reg.has)(&*world, entity) {
+            return Err(FieldError::MissingComponent(type_name.to_string()));
+        }
+        let partial = ReflectValue::Struct {
+            type_name: type_name.to_string(),
+            fields: vec![(field.to_string(), checked)],
+        };
+        (reg.apply_existing)(world, entity, &partial)
+            .map_err(|e| FieldError::Reflect(e.to_string()))
     }
 
     /// Names of all registered types.
@@ -393,6 +509,28 @@ fn insert_typed<T: Reflect + Default>(
     c.apply(value)?;
     world.add_component(entity, c);
     Ok(())
+}
+
+fn apply_existing_typed<T: Reflect>(
+    world: &mut World,
+    entity: Entity,
+    value: &ReflectValue,
+) -> Result<(), ReflectError> {
+    match world.get_component_mut::<T>(entity) {
+        Some(component) => component.apply(value),
+        None => Err(ReflectError::msg(format!(
+            "entity has no {} component",
+            T::type_name()
+        ))),
+    }
+}
+
+fn migrate_typed<T: Reflect>(from: u32, value: &mut ReflectValue) {
+    T::migrate(from, value);
+}
+
+fn default_typed<T: Reflect + Default>() -> ReflectValue {
+    T::default().to_value()
 }
 
 fn read_typed<T: Reflect>(world: &World, entity: Entity) -> Option<ReflectValue> {

@@ -124,22 +124,75 @@ impl redox_reflect::Reflect for DirectionalLight {
         Ok(())
     }
     fn reflect_schema() -> redox_reflect::ReflectSchema {
-        redox_reflect::ReflectSchema {
+        use redox_reflect::meta::{FieldMeta, TypeMeta, WidgetHint};
+        use redox_reflect::{ReflectField, ReflectSchema};
+        ReflectSchema {
             type_name: Self::type_name(),
             fields: vec![
-                redox_reflect::ReflectField {
+                ReflectField {
                     name: "direction",
                     type_name: "Vec3",
+                    meta: FieldMeta {
+                        category: Some("Light"),
+                        tooltip: Some("Direction towards the light source"),
+                        ..Default::default()
+                    },
                 },
-                redox_reflect::ReflectField {
+                ReflectField {
                     name: "color",
                     type_name: "Vec3",
+                    meta: FieldMeta {
+                        category: Some("Light"),
+                        widget: WidgetHint::Color,
+                        ..Default::default()
+                    },
                 },
-                redox_reflect::ReflectField {
+                ReflectField {
                     name: "intensity",
                     type_name: "f32",
+                    meta: FieldMeta {
+                        category: Some("Light"),
+                        label: Some("Intensity"),
+                        unit: Some("lx"),
+                        range: Some((0.0, 150_000.0)),
+                        step: Some(1.0),
+                        ..Default::default()
+                    },
+                },
+                ReflectField {
+                    name: "source_angle",
+                    type_name: "f32",
+                    meta: FieldMeta {
+                        category: Some("Shadows"),
+                        tooltip: Some("Angular radius of the light disc; the sun is about 0.53 degrees"),
+                        widget: WidgetHint::Angle,
+                        range: Some((0.0, 0.1)),
+                        advanced: true,
+                        ..Default::default()
+                    },
+                },
+                ReflectField {
+                    name: "soft_shadows",
+                    type_name: "bool",
+                    meta: FieldMeta {
+                        category: Some("Shadows"),
+                        ..Default::default()
+                    },
+                },
+                ReflectField {
+                    name: "vsm",
+                    type_name: "bool",
+                    meta: FieldMeta {
+                        category: Some("Shadows"),
+                        advanced: true,
+                        ..Default::default()
+                    },
                 },
             ],
+            meta: TypeMeta {
+                category: Some("Light"),
+                ..Default::default()
+            },
         }
     }
 }
@@ -252,6 +305,80 @@ impl redox_reflect::Reflect for PointLight {
             self.source_radius = v;
         }
         Ok(())
+    }
+
+    fn reflect_schema() -> redox_reflect::ReflectSchema {
+        use redox_reflect::meta::{FieldMeta, TypeMeta, WidgetHint};
+        use redox_reflect::{ReflectField, ReflectSchema};
+        ReflectSchema {
+            type_name: Self::type_name(),
+            fields: vec![
+                ReflectField {
+                    name: "position",
+                    type_name: "Vec3",
+                    meta: FieldMeta {
+                        category: Some("Transform"),
+                        unit: Some("m"),
+                        ..Default::default()
+                    },
+                },
+                ReflectField {
+                    name: "color",
+                    type_name: "Vec3",
+                    meta: FieldMeta {
+                        category: Some("Light"),
+                        widget: WidgetHint::Color,
+                        ..Default::default()
+                    },
+                },
+                ReflectField {
+                    name: "intensity",
+                    type_name: "f32",
+                    meta: FieldMeta {
+                        category: Some("Light"),
+                        label: Some("Intensity"),
+                        unit: Some("lm"),
+                        range: Some((0.0, 1_000_000.0)),
+                        step: Some(1.0),
+                        ..Default::default()
+                    },
+                },
+                ReflectField {
+                    name: "radius",
+                    type_name: "f32",
+                    meta: FieldMeta {
+                        category: Some("Light"),
+                        tooltip: Some("Distance where the light fades to zero"),
+                        unit: Some("m"),
+                        range: Some((0.0, 1000.0)),
+                        ..Default::default()
+                    },
+                },
+                ReflectField {
+                    name: "cast_shadows",
+                    type_name: "bool",
+                    meta: FieldMeta {
+                        category: Some("Shadows"),
+                        ..Default::default()
+                    },
+                },
+                ReflectField {
+                    name: "source_radius",
+                    type_name: "f32",
+                    meta: FieldMeta {
+                        category: Some("Shadows"),
+                        unit: Some("m"),
+                        range: Some((0.0, 10.0)),
+                        advanced: true,
+                        ..Default::default()
+                    },
+                },
+            ],
+            meta: TypeMeta {
+                category: Some("Light"),
+                ..Default::default()
+            },
+        }
     }
 }
 

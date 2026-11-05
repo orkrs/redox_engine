@@ -20,6 +20,8 @@ pub mod file_state;
 pub mod editor_only;
 /// Lookup of entities by their stable GUID.
 pub mod guid;
+/// Inspector state without egui: rows, sections, filtering and the edit commands they produce.
+pub mod inspector_model;
 /// Console log ring buffer.
 pub mod log;
 /// Project manifest `project.ron`, project creation, opening and the recent-projects list.
