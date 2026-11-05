@@ -23,3 +23,4 @@ serde = { workspace = true }
 ron = { workspace = true }
 postcard = { version = "1", default-features = false, features = ["use-std"] }
 log = { workspace = true }
+uuid = { version = "1", features = ["v4"] }

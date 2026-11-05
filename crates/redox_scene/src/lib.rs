@@ -37,7 +37,7 @@ pub use save::{LoadedSave, SaveManager, SlotInfo};
 /// (`find_by_name`, `find_by_tag`).
 pub mod components;
 
-pub use components::{Name, Tag};
+pub use components::{EntityGuid, Name, ParentRef, Tag};
 
 /// Result type of the scene crate.
 pub type SceneResult<T> = Result<T, SceneError>;

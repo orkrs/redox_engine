@@ -1,4 +1,8 @@
-//! Components that name and tag scene entities, with their reflected forms.
+//! Components that name and tag scene entities, the stable entity identity and the parent link
+//! in its saved form, with their reflected values.
+
+use std::fmt;
+use std::str::FromStr;
 
 use redox_reflect::{Reflect, ReflectError, ReflectValue};
 use serde::{Deserialize, Serialize};
@@ -47,6 +51,132 @@ impl Reflect for Tag {
     fn apply(&mut self, value: &ReflectValue) -> Result<(), ReflectError> {
         if let Some(text) = value.field("tag").and_then(ReflectValue::as_string) {
             self.0 = text.to_owned();
+        }
+        Ok(())
+    }
+}
+
+/// Stable identity of a scene entity: 128 random bits, written as 32 lowercase hex digits.
+///
+/// The id is kept by save and load, so references between entities (the hierarchy) survive a
+/// restart. An entity duplicated by the editor gets a new id.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct EntityGuid(pub u128);
+
+impl EntityGuid {
+    /// Generates a random (version 4) id.
+    pub fn new_random() -> Self {
+        Self(uuid::Uuid::new_v4().as_u128())
+    }
+}
+
+impl fmt::Display for EntityGuid {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:032x}", self.0)
+    }
+}
+
+/// Text that is not 32 hexadecimal digits cannot be an [`EntityGuid`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseEntityGuidError(String);
+
+impl fmt::Display for ParseEntityGuidError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "invalid entity guid {:?}: expected 32 hexadecimal digits",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for ParseEntityGuidError {}
+
+impl FromStr for EntityGuid {
+    type Err = ParseEntityGuidError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.len() != 32 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(ParseEntityGuidError(s.to_owned()));
+        }
+        u128::from_str_radix(s, 16)
+            .map(Self)
+            .map_err(|_| ParseEntityGuidError(s.to_owned()))
+    }
+}
+
+impl Serialize for EntityGuid {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for EntityGuid {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        text.parse::<Self>()
+            .map_err(|err| <D::Error as serde::de::Error>::custom(err))
+    }
+}
+
+impl Reflect for EntityGuid {
+    fn type_name() -> &'static str {
+        "EntityGuid"
+    }
+
+    fn to_value(&self) -> ReflectValue {
+        ReflectValue::Struct {
+            type_name: Self::type_name().into(),
+            fields: vec![("value".into(), ReflectValue::String(self.to_string()))],
+        }
+    }
+
+    fn apply(&mut self, value: &ReflectValue) -> Result<(), ReflectError> {
+        if let Some(parsed) = value
+            .field("value")
+            .and_then(ReflectValue::as_string)
+            .and_then(|text| text.parse::<EntityGuid>().ok())
+        {
+            *self = parsed;
+        }
+        Ok(())
+    }
+}
+
+/// The saved form of a parent link: the parent's [`EntityGuid`].
+///
+/// `Parent` (in `redox_ecs`) holds an entity handle, which means nothing in a file. The scene
+/// writer stores a `ParentRef` instead, and the loader turns it back into `set_parent` after
+/// every entity exists.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ParentRef(pub EntityGuid);
+
+impl ParentRef {
+    /// Reads a parent link from a reflected value; `None` when the value has no valid `parent`.
+    pub fn from_value(value: &ReflectValue) -> Option<Self> {
+        value
+            .field("parent")
+            .and_then(ReflectValue::as_string)
+            .and_then(|text| text.parse::<EntityGuid>().ok())
+            .map(Self)
+    }
+}
+
+impl Reflect for ParentRef {
+    fn type_name() -> &'static str {
+        "ParentRef"
+    }
+
+    fn to_value(&self) -> ReflectValue {
+        ReflectValue::Struct {
+            type_name: Self::type_name().into(),
+            fields: vec![("parent".into(), ReflectValue::String(self.0.to_string()))],
+        }
+    }
+
+    fn apply(&mut self, value: &ReflectValue) -> Result<(), ReflectError> {
+        if let Some(parent) = Self::from_value(value) {
+            *self = parent;
         }
         Ok(())
     }

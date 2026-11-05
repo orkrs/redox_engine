@@ -5,8 +5,9 @@
 use crate::command::EditorCommand;
 use crate::context::EditorContext;
 use redox_math::Transform;
+use redox_scene::EntityGuid;
 
-/// Spawns an entity with a default transform and selects it.
+/// Spawns an entity with a default transform and a new guid, and selects it.
 pub struct CreateEntity;
 
 impl EditorCommand for CreateEntity {
@@ -23,6 +24,7 @@ impl EditorCommand for CreateEntity {
             let mut world = ctx.world.lock();
             let entity = world.spawn();
             world.add_component(entity, Transform::default());
+            world.add_component(entity, EntityGuid::new_random());
             entity
         };
         ctx.selection.lock().set_primary(Some(entity));
@@ -30,7 +32,8 @@ impl EditorCommand for CreateEntity {
     }
 }
 
-/// Copies the selected entity's transform one unit along X into a new entity and selects it.
+/// Copies the selected entity's transform one unit along X into a new entity with a new guid
+/// (the copy never shares the source's identity) and selects it.
 pub struct DuplicateEntity;
 
 impl EditorCommand for DuplicateEntity {
@@ -59,6 +62,7 @@ impl EditorCommand for DuplicateEntity {
             let mut world = ctx.world.lock();
             let copy = world.spawn();
             world.add_component(copy, copy_transform);
+            world.add_component(copy, EntityGuid::new_random());
             copy
         };
         ctx.selection.lock().set_primary(Some(copy));

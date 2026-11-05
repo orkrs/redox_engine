@@ -4,6 +4,8 @@
 
 /// Version-control status of actor files.
 pub mod git;
+/// Two-way index between scene entities and their stable guids.
+pub mod guid_index;
 /// Registration of the scene component types for reflection.
 pub mod register;
 /// The open world: partition streamer, manifest and root directory.
