@@ -17,7 +17,7 @@ pub mod level;
 /// The open world: partition streamer, manifest and root directory.
 pub mod world_session;
 
-pub use document::{LoadReport, LoadWarning, SceneDocument, SceneError};
+pub use document::{LoadReport, LoadWarning, SceneDocument, SceneError, refresh_ref_paths};
 pub use format::SCENE_FORMAT_VERSION;
 pub use git::{ActorGitStatus, WorldGitTracker};
 pub use register::register_scene_components;

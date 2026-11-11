@@ -8,9 +8,9 @@ use crate::common::EditorHarness;
 
 const MAIN: &str = "scenes/main.scene.ron";
 
-/// Number of entities written to a scene file (one `guid:` line per entity).
+/// Number of entities written to a scene file (one `guid: Some(` line per entity).
 fn saved_entity_count(text: &str) -> usize {
-    text.matches("guid: \"").count()
+    text.matches("guid: Some(\"").count()
 }
 
 #[test]
@@ -23,6 +23,7 @@ fn editor_only_entities_are_not_written_to_the_scene_file() {
         &String::from_utf8(h.read_file(MAIN)).expect("the scene file is text"),
     );
 
+    assert!(before > 0, "the scene file lists its entities");
     h.spawn_editor_only();
     h.spawn_editor_only();
     assert_eq!(h.editor_only_count(), 2, "two editor-only entities exist in the editor");

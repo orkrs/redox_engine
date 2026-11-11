@@ -13,6 +13,7 @@ use redox_editor_core::file_state::{
 };
 use redox_editor_core::project::{ProjectContext, RECENT_FILE, RecentProjects};
 use redox_editor_core::project_template::ProjectTemplate;
+use redox_editor_core::autosave::AutosaveSource;
 use redox_editor_scene::{Level, LoadReport};
 
 /// Window title when no level is open.
@@ -91,6 +92,13 @@ impl FileMenu {
     /// Queues `request` for the next [`Self::handle_requests`].
     pub fn push_request(&self, request: FileRequest) {
         self.queue.push(request);
+    }
+
+    /// The open scene level as an autosave source. `None` when no scene level is open (a world
+    /// level writes its actors as they change and needs no autosave).
+    pub fn autosave_source<'a>(&'a self, ctx: &'a EditorContext) -> Option<LevelAutosave<'a>> {
+        let level = self.level.as_ref().filter(|level| !level.is_world())?;
+        Some(LevelAutosave { ctx, level })
     }
 
     /// The project that is open, if any.
@@ -552,5 +560,35 @@ fn action_label(action: PendingAction) -> &'static str {
         PendingAction::OpenProject => "opening another project",
         PendingAction::NewProject => "creating a new project",
         PendingAction::Quit => "closing the editor",
+    }
+}
+
+/// Autosave source of the open scene level: its path, dirty state and scene bytes.
+pub struct LevelAutosave<'a> {
+    ctx: &'a EditorContext,
+    level: &'a Level,
+}
+
+impl AutosaveSource for LevelAutosave<'_> {
+    fn is_dirty(&self) -> bool {
+        let world = self.ctx.world.lock();
+        let registry = self.ctx.registry.lock();
+        self.level.is_dirty(&registry, &world)
+    }
+
+    fn level_name(&self) -> String {
+        self.level.title()
+    }
+
+    fn level_path(&self) -> Option<std::path::PathBuf> {
+        self.level.path().map(std::path::Path::to_path_buf)
+    }
+
+    fn snapshot_bytes(&self) -> Result<Vec<u8>, String> {
+        let registry = self.ctx.registry.lock();
+        let mut world = self.ctx.world.lock();
+        self.level
+            .snapshot_bytes(&registry, &mut world)
+            .map_err(|err| err.to_string())
     }
 }

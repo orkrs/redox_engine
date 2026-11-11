@@ -47,3 +47,18 @@ report.json]
 
 # Agent worktrees
 .claude/worktrees/
+
+# pre-linux migration: heavy assets to D, not git
+assets/forest/
+*.blend.zip
+*.hdr
+*.glb
+*.gguf
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.onnx
+*.tmp.*
+editor_recent.ron

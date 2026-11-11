@@ -881,6 +881,8 @@ impl EditorHarness {
             assets
                 .update_path_hints(report.guid)
                 .map_err(|e| format!("{e:?}"))?;
+            let mut world = self.ctx.world.lock();
+            redox_editor_scene::refresh_ref_paths(&mut world, |guid| assets.path_of_text(guid));
         }
         Ok(())
     }
@@ -921,14 +923,12 @@ impl EditorHarness {
         type_name: &str,
     ) -> Option<(Option<String>, Option<String>)> {
         let entity = self.entity_of(guid)?;
-        let value = self.component_value(entity, type_name)?;
-        let text = |field: &str| {
-            value
-                .field(field)
-                .and_then(ReflectValue::as_string)
-                .map(str::to_owned)
-        };
-        Some((text("guid"), text("path")))
+        let world = self.ctx.world.lock();
+        let saved = world
+            .get_component::<redox_scene::AssetRefs>(entity)?
+            .get(type_name)?
+            .clone();
+        Some((saved.guid, saved.path))
     }
 
     /// Writes autosave settings into `editor_settings.ron`.

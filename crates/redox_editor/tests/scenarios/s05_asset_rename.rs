@@ -8,7 +8,7 @@ const MOVED: &str = "assets/textures/nested/checker_moved.png";
 const CHECKER: &str = "assets/textures/checker.png";
 
 /// A second scene that references the checker texture and stays closed.
-fn write_side_scene(h: &EditorHarness) {
+fn write_side_scene_in(project: &std::path::Path) {
     let text = make_scene(
         "Side",
         &[SceneEntitySpec {
@@ -23,16 +23,17 @@ fn write_side_scene(h: &EditorHarness) {
             }),
         }],
     );
-    h.write_file("scenes/side.scene.ron", text.as_bytes());
+    let path = project.join("scenes/side.scene.ron");
+    std::fs::create_dir_all(path.parent().expect("a parent folder")).expect("the folder");
+    std::fs::write(path, text.as_bytes()).expect("the side scene is written");
 }
 
 #[test]
-#[ignore = "known gap: MaterialHandle/MeshHandle keep no guid/path in the world, so a scene reference is lost on load (see docs/engineering/KNOWN_LIMITS.md, scene asset references)"]
 fn renaming_and_moving_an_asset_keeps_references_in_open_and_closed_scenes() {
     let mut h = EditorHarness::new();
     let dir = h.install_sample("sample_project");
+    write_side_scene_in(&dir);
     h.open_project(&dir).expect("the sample project opens");
-    write_side_scene(&h);
     h.open_start_scene().expect("the main scene opens");
 
     h.move_asset(CHECKER, RENAMED, true)

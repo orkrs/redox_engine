@@ -163,9 +163,15 @@ impl EditorApp {
                 }
             }
             AssetRequest::UpdateHints { guid } => match service.update_path_hints(guid) {
-                Ok(count) => self
-                    .ui_ctx
-                    .log(format!("[INFO] Updated {count} path hint(s)")),
+                Ok(count) => {
+                    let mut world = self.core.world.lock();
+                    let open = redox_editor_scene::refresh_ref_paths(&mut world, |text| {
+                        service.path_of_text(text)
+                    });
+                    self.ui_ctx.log(format!(
+                        "[INFO] Updated {count} path hint(s) in files, {open} in the open scene"
+                    ));
+                }
                 Err(err) => self
                     .ui_ctx
                     .log(format!("[ERROR] Path hints not updated: {err}")),

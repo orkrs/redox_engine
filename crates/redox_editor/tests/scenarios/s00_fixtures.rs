@@ -27,7 +27,6 @@ fn the_sample_project_opens_without_warnings() {
 }
 
 #[test]
-#[ignore = "known gap: MaterialHandle/MeshHandle keep no guid/path in the world, so a scene reference is lost on load (see docs/engineering/KNOWN_LIMITS.md, scene asset references)"]
 fn the_sample_asset_reference_keeps_its_guid() {
     let mut h = EditorHarness::new();
     let dir = h.install_sample("sample_project");

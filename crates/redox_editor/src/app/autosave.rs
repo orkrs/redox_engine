@@ -16,9 +16,9 @@ use std::path::{Path, PathBuf};
 
 /// Autosave source of the level open in the editor.
 ///
-/// OFPA worlds are not autosaved in EDT-A4 (📌 in the report): `scene_path` is `None`, so the
-/// level never counts as dirty for autosave and nothing is written. A scene level from EDT-A2
-/// sets `scene_path` and supplies its own bytes.
+/// Stand-in for the time before a scene level is open: OFPA worlds write their actors as they
+/// change, so this source is never dirty and writes nothing. An open scene level is autosaved
+/// through `FileMenu::autosave_source` instead.
 pub(crate) struct OpenLevel<'a> {
     core: &'a EditorContext,
     name: &'a str,
@@ -129,12 +129,16 @@ impl EditorApp {
         if !service.is_session_active() {
             return;
         }
+        let transactions = self.core.undo.lock().len() as u64;
+        if let Some(source) = self.files.autosave_source(&self.core) {
+            service.tick(&source, transactions);
+            return;
+        }
         let source = OpenLevel {
             core: &self.core,
             name: &self.level_name,
             scene_path: None,
         };
-        let transactions = self.core.undo.lock().len() as u64;
         service.tick(&source, transactions);
     }
 
@@ -143,12 +147,10 @@ impl EditorApp {
         let Some(service) = self.autosave.as_mut() else {
             return;
         };
-        let source = OpenLevel {
-            core: &self.core,
-            name: &self.level_name,
-            scene_path: None,
+        let dirty = match self.files.autosave_source(&self.core) {
+            Some(source) => source.is_dirty(),
+            None => false,
         };
-        let dirty = source.is_dirty();
         if let Err(err) = service.finish_session(dirty) {
             self.core
                 .log

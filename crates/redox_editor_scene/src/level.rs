@@ -126,6 +126,19 @@ impl Level {
         self.saved != canonical_snapshot(registry, world)
     }
 
+    /// The bytes of the level as a scene file, for autosave. A world level has none: its actors
+    /// are written as they change.
+    pub fn snapshot_bytes(
+        &self,
+        registry: &TypeRegistry,
+        world: &mut World,
+    ) -> Result<Vec<u8>, LevelError> {
+        match &self.kind {
+            LevelKind::Scene(document) => Ok(document.render_bytes(registry, world)?),
+            LevelKind::World(_) => Err(LevelError::SaveAsUnsupported),
+        }
+    }
+
     /// Saves to the level's own path. A world level rewrites its manifest; its actors are
     /// written by the paint and actor operations as they happen.
     pub fn save(&mut self, registry: &TypeRegistry, world: &mut World) -> Result<(), LevelError> {

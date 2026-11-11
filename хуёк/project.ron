@@ -1,0 +1,11 @@
+(
+    format_version: 1,
+    name: "хуёк",
+    engine_version: "0.1.0",
+    start_scene: "scenes/main.scene.ron",
+    assets_root: "assets",
+    plugins: [],
+    build_profiles: [],
+    created: "2026-11-05T16:32:24Z",
+    last_opened: "2026-11-05T16:32:24Z",
+)

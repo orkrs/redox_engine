@@ -124,7 +124,7 @@ pub fn make_scene(name: &str, entities: &[SceneEntitySpec]) -> String {
 
 fn write_entity(out: &mut String, entity: &SceneEntitySpec) {
     writeln!(out, "        (").expect("write to string");
-    writeln!(out, "            guid: \"{:032x}\",", entity.guid).expect("write to string");
+    writeln!(out, "            guid: Some(\"{:032x}\"),", entity.guid).expect("write to string");
     writeln!(out, "            components: [").expect("write to string");
     writeln!(
         out,
@@ -141,7 +141,7 @@ fn write_entity(out: &mut String, entity: &SceneEntitySpec) {
     if let Some(parent) = entity.parent {
         writeln!(
             out,
-            "                Struct(type_name: \"Parent\", fields: [(\"guid\", String(\"{parent:032x}\"))]),"
+            "                Struct(type_name: \"ParentRef\", fields: [(\"parent\", String(\"{parent:032x}\"))]),"
         )
         .expect("write to string");
     }

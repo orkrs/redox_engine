@@ -29,7 +29,6 @@ fn dependent_scenes_are_found_and_a_referenced_asset_is_not_deleted_without_forc
 }
 
 #[test]
-#[ignore = "known gap: MaterialHandle/MeshHandle keep no guid/path in the world, so a scene reference is lost on load (see docs/engineering/KNOWN_LIMITS.md, scene asset references)"]
 fn a_forced_delete_leaves_missing_references_that_are_still_in_the_data() {
     let mut h = EditorHarness::new();
     let dir = h.install_sample("sample_project");

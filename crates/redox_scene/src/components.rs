@@ -181,3 +181,82 @@ impl Reflect for ParentRef {
         Ok(())
     }
 }
+
+/// One saved asset reference of a component: the GUID is the source of truth, the path a hint.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AssetRef {
+    /// Reflected type name of the handle component (`MeshHandle`, `MaterialHandle`).
+    pub component: String,
+    /// Asset GUID as 32 hex digits. `None` when the reference is unset.
+    pub guid: Option<String>,
+    /// Path hint relative to the assets root. `None` when unset.
+    pub path: Option<String>,
+}
+
+/// The asset references of an entity, kept in the world next to the render handles.
+///
+/// A render handle knows only a runtime slot, so the GUID and path read from a scene file would
+/// be lost. This component keeps them; the scene writer puts them back into the handle values.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AssetRefs(pub Vec<AssetRef>);
+
+impl AssetRefs {
+    /// The reference stored for `component`.
+    pub fn get(&self, component: &str) -> Option<&AssetRef> {
+        self.0.iter().find(|r| r.component == component)
+    }
+
+    /// Stores a reference for `component`, replacing an earlier one.
+    pub fn set(&mut self, component: &str, guid: Option<String>, path: Option<String>) {
+        let entry = AssetRef {
+            component: component.to_owned(),
+            guid,
+            path,
+        };
+        match self.0.iter_mut().find(|r| r.component == component) {
+            Some(existing) => *existing = entry,
+            None => self.0.push(entry),
+        }
+    }
+}
+
+impl Reflect for AssetRefs {
+    fn type_name() -> &'static str {
+        "AssetRefs"
+    }
+
+    fn to_value(&self) -> ReflectValue {
+        let list = self
+            .0
+            .iter()
+            .map(|r| ReflectValue::asset_ref(r.component.clone(), r.guid.clone(), r.path.clone()))
+            .collect();
+        ReflectValue::Struct {
+            type_name: Self::type_name().into(),
+            fields: vec![("refs".into(), ReflectValue::List(list))],
+        }
+    }
+
+    fn apply(&mut self, value: &ReflectValue) -> Result<(), ReflectError> {
+        let Some(ReflectValue::List(items)) = value.field("refs") else {
+            return Ok(());
+        };
+        self.0 = items
+            .iter()
+            .filter_map(|item| {
+                let ReflectValue::Struct { type_name, .. } = item else {
+                    return None;
+                };
+                Some(AssetRef {
+                    component: type_name.clone(),
+                    guid: item
+                        .field("guid")
+                        .and_then(ReflectValue::as_string)
+                        .map(str::to_owned),
+                    path: item.as_handle_path().flatten(),
+                })
+            })
+            .collect();
+        Ok(())
+    }
+}

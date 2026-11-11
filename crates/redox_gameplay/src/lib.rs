@@ -46,6 +46,41 @@ pub struct AttributeSet {
     pub stamina: Attribute,
 }
 
+impl redox_reflect::Reflect for AttributeSet {
+    fn type_name() -> &'static str {
+        "AttributeSet"
+    }
+
+    fn to_value(&self) -> redox_reflect::ReflectValue {
+        use redox_reflect::ReflectValue;
+        ReflectValue::Struct {
+            type_name: Self::type_name().into(),
+            fields: vec![
+                ("health".into(), ReflectValue::f32(self.health.current)),
+                ("health_max".into(), ReflectValue::f32(self.health.max)),
+                ("stamina".into(), ReflectValue::f32(self.stamina.current)),
+                ("stamina_max".into(), ReflectValue::f32(self.stamina.max)),
+            ],
+        }
+    }
+
+    fn apply(
+        &mut self,
+        value: &redox_reflect::ReflectValue,
+    ) -> Result<(), redox_reflect::ReflectError> {
+        let read = |name: &str, target: &mut f32| {
+            if let Some(v) = value.field(name).and_then(redox_reflect::ReflectValue::as_f32) {
+                *target = v;
+            }
+        };
+        read("health", &mut self.health.current);
+        read("health_max", &mut self.health.max);
+        read("stamina", &mut self.stamina.current);
+        read("stamina_max", &mut self.stamina.max);
+        Ok(())
+    }
+}
+
 impl AttributeSet {
     /// Health and stamina of 100 each.
     pub fn default_character() -> Self {

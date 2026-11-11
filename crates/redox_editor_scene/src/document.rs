@@ -10,8 +10,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use redox_ecs::{Entity, Parent, World, set_parent};
+use redox_editor_core::editor_only::EditorOnly;
 use redox_reflect::{Reflect, ReflectValue, TypeRegistry};
-use redox_scene::{EntityGuid, ParentRef, write_atomic};
+use redox_scene::{AssetRefs, EntityGuid, ParentRef, write_atomic};
 
 use crate::format::{SCENE_FORMAT_VERSION, SceneEntity, SceneFile, migrate};
 use crate::guid_index::{GuidIndex, assign_missing_guids};
@@ -204,6 +205,20 @@ impl SceneDocument {
         Ok(())
     }
 
+    /// The bytes a save would write, without touching any file. Entities without a guid get one
+    /// first, so the world changes exactly as it does on save.
+    pub fn render_bytes(
+        &self,
+        registry: &TypeRegistry,
+        world: &mut World,
+    ) -> Result<Vec<u8>, SceneError> {
+        assign_missing_guids(world);
+        let file = self.build_file(registry, world);
+        ron::ser::to_string_pretty(&file, ron::ser::PrettyConfig::default())
+            .map(String::into_bytes)
+            .map_err(|err| SceneError::Serialize(err.to_string()))
+    }
+
     fn write_to(
         &mut self,
         path: &Path,
@@ -254,8 +269,12 @@ impl SceneDocument {
         index: &GuidIndex,
         entity: Entity,
     ) -> Option<SceneEntity> {
+        if world.get_component::<EditorOnly>(entity).is_some() {
+            return None;
+        }
         let guid = world.get_component::<EntityGuid>(entity).copied()?;
         let mut components = registry.snapshot_entity(world, entity);
+        apply_saved_refs(&mut components, world.get_component::<AssetRefs>(entity));
         if let Some(Parent(parent)) = world.get_component::<Parent>(entity).copied()
             && let Some(parent_guid) = index.guid_of(parent)
         {
@@ -365,6 +384,9 @@ impl Loader<'_> {
             .map_err(|err| SceneError::Invalid {
                 reason: err.to_string(),
             })?;
+        if HANDLE_TYPES.contains(&type_name) {
+            store_ref(world, entity, type_name, value);
+        }
         Ok(None)
     }
 
@@ -405,6 +427,65 @@ impl Loader<'_> {
                 entity: link.guid,
                 parent_guid: link.parent,
             }),
+        }
+    }
+}
+
+/// Rewrites the path hint of every stored reference whose guid `resolve` knows.
+///
+/// Call it after an asset is renamed or moved so the open scene saves the new path. Returns the
+/// number of hints that changed.
+pub fn refresh_ref_paths(world: &mut World, resolve: impl Fn(&str) -> Option<String>) -> usize {
+    let mut changed = 0;
+    let entities: Vec<Entity> = world.all_entities().collect();
+    for entity in entities {
+        let Some(refs) = world.get_component_mut::<AssetRefs>(entity) else {
+            continue;
+        };
+        for item in &mut refs.0 {
+            let Some(path) = item.guid.as_deref().and_then(&resolve) else {
+                continue;
+            };
+            if item.path.as_deref() != Some(path.as_str()) {
+                item.path = Some(path);
+                changed += 1;
+            }
+        }
+    }
+    changed
+}
+
+/// Keeps the guid and path of a handle value in the entity's [`AssetRefs`].
+fn store_ref(world: &mut World, entity: Entity, type_name: &str, value: &ReflectValue) {
+    let guid = value
+        .field("guid")
+        .and_then(ReflectValue::as_string)
+        .map(str::to_owned);
+    let path = value.as_handle_path().flatten();
+    if world.get_component::<AssetRefs>(entity).is_none() {
+        world.add_component(entity, AssetRefs::default()); // undo: init
+    }
+    if let Some(refs) = world.get_component_mut::<AssetRefs>(entity) {
+        refs.set(type_name, guid, path);
+    }
+}
+
+/// Puts the stored guid and path back into the handle values and drops the `AssetRefs` value
+/// itself, which is never written to a scene file.
+fn apply_saved_refs(components: &mut Vec<ReflectValue>, refs: Option<&AssetRefs>) {
+    components.retain(|value| struct_type_name(value).is_ok_and(|name| name != "AssetRefs"));
+    let Some(refs) = refs else {
+        return;
+    };
+    for value in components.iter_mut() {
+        let Ok(name) = struct_type_name(value).map(str::to_owned) else {
+            continue;
+        };
+        if !HANDLE_TYPES.contains(&name.as_str()) {
+            continue;
+        }
+        if let Some(saved) = refs.get(&name) {
+            *value = ReflectValue::asset_ref(name, saved.guid.clone(), saved.path.clone());
         }
     }
 }
