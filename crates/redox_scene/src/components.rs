@@ -4,7 +4,8 @@
 use std::fmt;
 use std::str::FromStr;
 
-use redox_reflect::{Reflect, ReflectError, ReflectValue};
+use redox_reflect::meta::{FieldMeta, TypeMeta};
+use redox_reflect::{Reflect, ReflectError, ReflectField, ReflectSchema, ReflectValue};
 use serde::{Deserialize, Serialize};
 
 /// Unique lookup name of an entity (scripts call it with `find_by_name`).
@@ -19,6 +20,22 @@ pub struct Tag(pub String);
 impl Reflect for Name {
     fn type_name() -> &'static str {
         "Name"
+    }
+
+    fn reflect_schema() -> ReflectSchema {
+        ReflectSchema {
+            type_name: Self::type_name(),
+            fields: vec![ReflectField {
+                name: "name",
+                type_name: "String",
+                meta: FieldMeta::default(),
+            }],
+            meta: TypeMeta {
+                category: Some("Scene"),
+                tooltip: Some("Unique entity name for scripts"),
+                ..Default::default()
+            },
+        }
     }
 
     fn to_value(&self) -> ReflectValue {
@@ -39,6 +56,22 @@ impl Reflect for Name {
 impl Reflect for Tag {
     fn type_name() -> &'static str {
         "Tag"
+    }
+
+    fn reflect_schema() -> ReflectSchema {
+        ReflectSchema {
+            type_name: Self::type_name(),
+            fields: vec![ReflectField {
+                name: "tag",
+                type_name: "String",
+                meta: FieldMeta::default(),
+            }],
+            meta: TypeMeta {
+                category: Some("Scene"),
+                tooltip: Some("Tag for script queries"),
+                ..Default::default()
+            },
+        }
     }
 
     fn to_value(&self) -> ReflectValue {
