@@ -57,6 +57,12 @@ pub(crate) fn run_command(ui_ctx: &EditorUiCtx, dock: &mut EditorDock, id: &str)
             ui_ctx.log("[INFO] Layout reset");
         }
         "pie_play" => {
+            let settings = ui_ctx.validation.lock().settings;
+            let report = ui_ctx.validation.lock().report.clone();
+            if redox_editor_ui::file_menu::FileMenu::pie_blocked(&report, &settings) {
+                ui_ctx.log("[WARN] PIE blocked: fix validation errors first");
+                return;
+            }
             let mut pie = ui_ctx.pie.lock();
             let world = ui_ctx.core.world.lock();
             let registry = ui_ctx.core.registry.lock();

@@ -16,6 +16,8 @@ pub mod asset_resolve;
 pub mod register;
 /// The level open in the editor: a scene file or a world folder.
 pub mod level;
+/// Scene validation rules, fixes and project-wide validation (EDT-B7).
+pub mod validate;
 /// The open world: partition streamer, manifest and root directory.
 pub mod world_session;
 /// Scene hierarchy for the outliner (no UI).
@@ -31,6 +33,11 @@ pub use format::SCENE_FORMAT_VERSION;
 pub use git::{ActorGitStatus, WorldGitTracker};
 pub use register::register_scene_components;
 pub use level::{Level, LevelError, LevelKind};
+pub use validate::{
+    apply_fix, apply_issue_action, validate_level, validate_project, IssueUserAction,
+    Severity, ValidateLevelOptions, ValidateProjectError, ValidationFix, ValidationIssue,
+    ValidationReport, ValidationRule, ValidationSettings,
+};
 pub use world_session::WorldSession;
 pub use outliner_model::{
     FlatRow, OutlinerFilter, OutlinerModel, OutlinerNode, OutlinerWarning, OUTLINER_ROW_HEIGHT,
