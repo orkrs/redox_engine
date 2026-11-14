@@ -6,14 +6,12 @@
 
 ## Commits
 
-| Step | Message (intended) |
-|------|-------------------|
-| 1 | `feat: scene git status for scene.ron — EDT-C5 step 1` |
-| 2 | `feat: GUID-level scene diff — EDT-C5 step 2` |
-| 3 | `feat: scene commit and ff-only pull — EDT-C5 step 3` |
-| 4 | `feat: git overlay and scene status bar — EDT-C5 step 4` |
-
-(Exact SHAs — see `git log` on `edt/c5` after coordinator commit review.)
+| Step | SHA | Message |
+|------|-----|---------|
+| 1 | `e6e5d50` | `feat: scene git status for scene.ron — EDT-C5 step 1` |
+| 2 | `5afd2c6` | `feat: GUID-level scene diff — EDT-C5 step 2` |
+| 3 | `8247f04` | `feat: scene commit and ff-only pull — EDT-C5 step 3` |
+| 4 | `b5d40d1` | `feat: git overlay and scene status bar — EDT-C5 step 4` |
 
 ## Files touched
 
