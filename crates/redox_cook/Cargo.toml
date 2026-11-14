@@ -13,7 +13,12 @@ workspace = true
 bake = ["dep:wgpu", "dep:pollster"]
 
 [dependencies]
+redox_editor_assets = { path = "../redox_editor_assets" }
+redox_editor_build = { path = "../redox_editor_build" }
+redox_editor_core = { path = "../redox_editor_core" }
 redox_asset = { path = "../redox_asset", features = ["encode"] }
+serde = { workspace = true }
+serde_json = "1"
 redox_audio = { path = "../redox_audio" }
 redox_math = { path = "../redox_math" }
 redox_nav = { path = "../redox_nav" }
@@ -28,3 +33,4 @@ pollster = { version = "1", optional = true }
 
 [dev-dependencies]
 redox_asset = { path = "../redox_asset", features = ["testing"] }
+redox_editor_core = { path = "../redox_editor_core" }

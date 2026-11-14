@@ -20,6 +20,9 @@
 //! redox_cook audio-check <assets-dir> [--cues cues.ron] [--target-lufs -16] [--target-lufs-sfx -18]
 //!                                          [--tolerance 3] [--json]
 //!                                          measure sound files (peak, LUFS, loop seam), check a cue library
+//! redox_cook validate <project-root> [--json <out>]
+//! redox_cook import <project-root> [--path <file>]
+//! redox_cook cook <project-root> [--profile <name>] [--json]
 //! ```
 //!
 //! `.meta` sidecars are not packed (they are editor data); everything else is.
@@ -32,6 +35,9 @@ mod audio_check;
 mod bake;
 mod hlod_bake;
 mod nav;
+mod project_cook;
+mod project_import;
+mod project_validate;
 mod texture;
 
 use std::path::{Path, PathBuf};
@@ -39,7 +45,7 @@ use std::process::ExitCode;
 
 use redox_asset::{AssetRegistry, PakReader, PakWriter};
 
-const USAGE: &str = "usage:\n  redox_cook scan <assets-dir>\n  redox_cook pack <assets-dir> <out.pak> [--compress] [--incremental] [--textures]\n  redox_cook texture <out.ktx2> <images...> [--etc1s] [--linear] [--no-mips] [--no-zstd] [--array|--cube]\n  redox_cook list <file.pak>\n  redox_cook verify <file.pak>\n  redox_cook texture-info <file.ktx2>\n  redox_cook bake-ibl <sky.hdr> <out-dir>\n  redox_cook bake-hlod <world.bin> <out-dir> [--triangles 2000] [--kinds actor_kinds.ron]
+const USAGE: &str = "usage:\n  redox_cook scan <assets-dir>\n  redox_cook pack <assets-dir> <out.pak> [--compress] [--incremental] [--textures]\n  redox_cook validate <project-root> [--json <out>]\n  redox_cook import <project-root> [--path <file>]\n  redox_cook cook <project-root> [--profile <name>] [--json]\n  redox_cook texture <out.ktx2> <images...> [--etc1s] [--linear] [--no-mips] [--no-zstd] [--array|--cube]\n  redox_cook list <file.pak>\n  redox_cook verify <file.pak>\n  redox_cook texture-info <file.ktx2>\n  redox_cook bake-ibl <sky.hdr> <out-dir>\n  redox_cook bake-hlod <world.bin> <out-dir> [--triangles 2000] [--kinds actor_kinds.ron]
   redox_cook bake-navmesh <in.glb> <out.nav> [--tile 16] [--radius 0.4] [--height 1.8] [--step 0.4] [--slope 45]\n  redox_cook audio-check <assets-dir> [--cues cues.ron] [--target-lufs -16] [--target-lufs-sfx -18] [--tolerance 3] [--json]";
 
 /// A parsed command line.
@@ -73,6 +79,9 @@ enum Command {
         out: PathBuf,
         options: hlod_bake::SdfOptions,
     },
+    Validate(project_validate::ValidateJob),
+    Import(project_import::ImportJob),
+    Cook(project_cook::CookJob),
 }
 
 fn parse(args: &[String]) -> Result<Command, String> {
@@ -126,6 +135,11 @@ fn parse(args: &[String]) -> Result<Command, String> {
         }),
         ["bake-navmesh", args @ ..] => nav::parse_bake_navmesh(args).map(Command::BakeNavmesh),
         ["audio-check", args @ ..] => audio_check::parse_audio_check(args).map(Command::AudioCheck),
+        ["validate", args @ ..] => {
+            project_validate::parse_validate(args).map(Command::Validate)
+        }
+        ["import", args @ ..] => project_import::parse_import(args).map(Command::Import),
+        ["cook", args @ ..] => project_cook::parse_cook(args).map(Command::Cook),
         [] => Err("missing command".into()),
         [cmd, ..]
             if ![
@@ -140,6 +154,9 @@ fn parse(args: &[String]) -> Result<Command, String> {
                 "bake-sdf",
                 "bake-navmesh",
                 "audio-check",
+                "validate",
+                "import",
+                "cook",
             ]
             .contains(cmd) =>
         {
@@ -149,8 +166,17 @@ fn parse(args: &[String]) -> Result<Command, String> {
     }
 }
 
-fn run(command: Command) -> Result<(), String> {
+fn run(command: Command) -> Result<u8, String> {
     match command {
+        Command::Validate(job) => Ok(project_validate::run(&job)),
+        Command::Import(job) => {
+            let report = project_import::run(&job)?;
+            Ok(project_import::exit_code(&report))
+        }
+        Command::Cook(job) => {
+            project_cook::run(&job)?;
+            Ok(0)
+        }
         Command::Scan(dir) => {
             let (registry, report) = AssetRegistry::scan(&dir).map_err(|e| e.to_string())?;
             println!(
@@ -164,7 +190,7 @@ fn run(command: Command) -> Result<(), String> {
                 eprintln!("damaged .meta: {}", path.display());
             }
             if report.damaged.is_empty() {
-                Ok(())
+                Ok(0)
             } else {
                 Err("some sidecars are damaged".into())
             }
@@ -187,7 +213,7 @@ fn run(command: Command) -> Result<(), String> {
                 && std::fs::read_to_string(&stamp_path).is_ok_and(|old| old == *stamp)
             {
                 println!("{} is up to date", out.display());
-                return Ok(());
+                return Ok(0);
             }
             let mut writer = PakWriter::new();
             writer.set_compression(compress);
@@ -197,42 +223,55 @@ fn run(command: Command) -> Result<(), String> {
                 std::fs::write(&stamp_path, stamp).map_err(|e| e.to_string())?;
             }
             println!("packed {} files into {}", writer.len(), out.display());
-            Ok(())
+            Ok(0)
         }
         Command::List(pak) => {
             let reader = PakReader::open(&pak).map_err(|e| e.to_string())?;
             for name in reader.names() {
                 println!("{name}");
             }
-            Ok(())
+            Ok(0)
         }
         Command::Texture(job) => {
             let size = texture::run_texture(&job)?;
             println!("wrote {} ({size} bytes)", job.out.display());
-            Ok(())
+            Ok(0)
         }
         Command::TextureInfo(file) => {
             let bytes = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
             println!("{}", texture_info(&bytes)?);
-            Ok(())
+            Ok(0)
         }
-        Command::BakeIbl { input, out } => run_bake_ibl(&input, &out),
+        Command::BakeIbl { input, out } => {
+            run_bake_ibl(&input, &out)?;
+            Ok(0)
+        }
         Command::BakeHlod {
             world,
             out,
             options,
-        } => hlod_bake::bake_hlod(&world, &out, &options).map(|written| {
+        } => {
+            let written = hlod_bake::bake_hlod(&world, &out, &options)?;
             println!("wrote {written} HLOD proxies to {}", out.display());
-        }),
+            Ok(0)
+        }
         Command::BakeSdf {
             world,
             out,
             options,
-        } => hlod_bake::bake_sdf(&world, &out, &options).map(|written| {
+        } => {
+            let written = hlod_bake::bake_sdf(&world, &out, &options)?;
             println!("wrote {written} SDF cell files to {}", out.display());
-        }),
-        Command::BakeNavmesh(job) => nav::run(&job),
-        Command::AudioCheck(job) => audio_check::run(&job),
+            Ok(0)
+        }
+        Command::BakeNavmesh(job) => {
+            nav::run(&job)?;
+            Ok(0)
+        }
+        Command::AudioCheck(job) => {
+            audio_check::run(&job)?;
+            Ok(0)
+        }
         Command::Verify(pak) => {
             let reader = PakReader::open(&pak).map_err(|e| e.to_string())?;
             let mut bad = 0usize;
@@ -246,7 +285,7 @@ fn run(command: Command) -> Result<(), String> {
             }
             if bad == 0 {
                 println!("{total} entries ok");
-                Ok(())
+                Ok(0)
             } else {
                 Err(format!("{bad} of {total} entries are damaged"))
             }
@@ -380,7 +419,7 @@ fn main() -> ExitCode {
         }
     };
     match run(command) {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => ExitCode::from(code),
         Err(e) => {
             eprintln!("error: {e}");
             ExitCode::FAILURE
@@ -478,6 +517,9 @@ mod tests {
             parse(&args(&["texture-info", "a.ktx2"])),
             Ok(Command::TextureInfo("a.ktx2".into()))
         );
+        assert!(parse(&args(&["validate", "proj"])).is_ok());
+        assert!(parse(&args(&["import", "proj"])).is_ok());
+        assert!(parse(&args(&["cook", "proj", "--profile", "release"])).is_ok());
     }
 
     #[test]
