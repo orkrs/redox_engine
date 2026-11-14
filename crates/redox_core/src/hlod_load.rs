@@ -36,6 +36,28 @@ pub fn proxy_file_name(cell: PartitionCell) -> String {
     format!("{}_{}.hlod", cell.x, cell.y)
 }
 
+/// Builds an [`HlodPlugin`] when the folder of `world_bin` has `actor_kinds.ron` and a `.hlod`.
+pub fn hlod_plugin_for(world_bin: &Path) -> Option<HlodPlugin> {
+    let dir = world_bin.parent().unwrap_or_else(|| Path::new("."));
+    if !dir.join(KINDS_FILE_NAME).is_file() {
+        return None;
+    }
+    let has_proxy = fs::read_dir(dir).ok()?.flatten().any(|entry| {
+        entry
+            .path()
+            .extension()
+            .is_some_and(|ext| ext == "hlod")
+    });
+    if !has_proxy {
+        return None;
+    }
+    Some(HlodPlugin {
+        world_bin: world_bin.to_path_buf(),
+        config: HlodConfig::default(),
+        enabled: true,
+    })
+}
+
 /// The cells of `cells` that have a proxy file in `dir`, in input order.
 pub fn existing_proxies(dir: &Path, cells: &[PartitionCell]) -> Vec<(PartitionCell, PathBuf)> {
     cells
@@ -315,5 +337,55 @@ mod tests {
             dummy_gpu()
         });
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn no_hlod_files_means_no_plugin() {
+        let dir = TempDir::new("no_plugin");
+        let world = write_world(&dir.0);
+        assert!(hlod_plugin_for(&world).is_none());
+    }
+
+    #[test]
+    fn a_folder_with_a_proxy_builds_the_plugin() {
+        let dir = TempDir::new("plugin");
+        let world = write_world(&dir.0);
+        fs::write(dir.0.join(KINDS_FILE_NAME), KINDS).unwrap();
+        fs::write(dir.0.join("0_0.hlod"), triangle_proxy().to_bytes((0, 0))).unwrap();
+        assert!(hlod_plugin_for(&world).is_some());
+    }
+
+    #[test]
+    fn plugin_without_files_does_not_change_the_frame() {
+        let dir = TempDir::new("frame");
+        let world = write_world(&dir.0);
+        fs::write(dir.0.join(KINDS_FILE_NAME), KINDS).unwrap();
+        let mut ecs = redox_ecs::World::new();
+        let scene = load_hlod_scene(&world, HlodConfig::default(), |_| dummy_gpu()).unwrap();
+        assert!(scene.is_none());
+        crate::hlod_system::hlod_frame_system(&mut ecs);
+        let _ = hlod_plugin_for(&world);
+    }
+
+    #[test]
+    fn pie_boot_inserts_hlod_runtime_when_proxies_exist() {
+        let dir = TempDir::new("pie_hlod");
+        let world = write_world(&dir.0);
+        fs::write(dir.0.join(KINDS_FILE_NAME), KINDS).unwrap();
+        fs::write(dir.0.join("0_0.hlod"), triangle_proxy().to_bytes((0, 0))).unwrap();
+        let scene = load_hlod_scene(&world, HlodConfig::default(), |_| dummy_gpu())
+            .unwrap()
+            .expect("runtime");
+        let mut ecs = redox_ecs::World::new();
+        ecs.insert_resource(scene.runtime);
+        assert!(ecs.get_resource::<HlodRuntime>().is_some());
+    }
+
+    #[test]
+    fn pie_boot_without_proxies_has_no_runtime() {
+        let dir = TempDir::new("pie_no");
+        let world = write_world(&dir.0);
+        let scene = load_hlod_scene(&world, HlodConfig::default(), |_| dummy_gpu()).unwrap();
+        assert!(scene.is_none());
     }
 }

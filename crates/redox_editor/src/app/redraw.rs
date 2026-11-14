@@ -469,15 +469,38 @@ impl EditorApp {
         if let Some(host) = self.render_host.as_mut() {
             let cam = self.camera.lock().clone();
             let assets_root = Some(std::path::Path::new("assets"));
+            let project_root = self
+                .core
+                .status
+                .lock()
+                .strip_prefix("project:")
+                .map(std::path::PathBuf::from);
+            let world = self.core.world.lock();
             let plan = redox_editor_viewport::ViewportShadingPlan::resolve(shading);
             let fps = *self.ui_ctx.fps.lock();
             let cpu_ms = *self.ui_ctx.frame_ms.lock();
             match layout {
                 ViewportLayout::Quad => {
-                    host.render_quad(&cam, draws, selected_id, shading, assets_root);
+                    host.render_quad(
+                        &cam,
+                        draws,
+                        selected_id,
+                        shading,
+                        assets_root,
+                        project_root.as_deref(),
+                        Some(&*world),
+                    );
                 }
                 ViewportLayout::Single => {
-                    host.render(&cam, draws, selected_id, shading, assets_root);
+                    host.render(
+                        &cam,
+                        draws,
+                        selected_id,
+                        shading,
+                        assets_root,
+                        project_root.as_deref(),
+                        Some(&*world),
+                    );
                 }
             }
             host.record_stats(fps, cpu_ms, &plan);

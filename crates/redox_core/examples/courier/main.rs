@@ -378,7 +378,13 @@ fn main() {
     ctx.set_exposure(0.9);
     ctx.set_ibl_intensity(0.55);
     load_environment(&mut ctx);
-    showcase::apply(&mut ctx, &level, !std::env::args().any(|a| a == "--no-gi"));
+    let sdf_dir = pak_path.parent().map(|p| p.join(".redox"));
+    showcase::apply(
+        &mut ctx,
+        &level,
+        !std::env::args().any(|a| a == "--no-gi"),
+        sdf_dir.as_deref().filter(|d| d.is_dir()),
+    );
 
     let mut assets = AssetManager::with_workers(".", 2);
     assets.set_source(source);

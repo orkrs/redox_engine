@@ -86,7 +86,13 @@ pub(crate) fn run_command(
                 pie.resume();
             } else if !pie.running {
                 let settings = redox_editor_core::settings::EditorSettings::default().pie;
-                prepare_pie_world(&settings, None, &registry, &mut world);
+                let project_root = ui_ctx
+                    .core
+                    .status
+                    .lock()
+                    .strip_prefix("project:")
+                    .map(std::path::Path::new);
+                prepare_pie_world(&settings, project_root, &registry, &mut world);
                 pie.start_with_mode(&world, &registry, PieRunMode::Play);
                 ui_ctx.log("[INFO] PIE started");
             }
@@ -142,6 +148,9 @@ pub(crate) fn run_command(
         }
         "bake_meshlets" => {
             ui_ctx.log("[WARN] Bake Meshlets not wired yet — use Packager for OFPA report")
+        }
+        "bake_navmesh" => {
+            ui_ctx.log("[INFO] Use Packager → Bake Navmesh (same path as redox_cook)")
         }
         "bake_report" => *ui_ctx.core.status.lock() = "bake_report".into(),
         "spawn_agent" => ui_ctx.spawn_demo_agent(),

@@ -16,8 +16,9 @@ use crate::game::Level;
 /// Thickness of the ground slab the GI volume sees.
 const GROUND_THICKNESS: f32 = 0.25;
 
-/// Switches the new rendering features on. `gi` builds the GI volume from the arena and crates.
-pub fn apply(r: &mut Renderer, level: &Level, gi: bool) {
+/// Switches the new rendering features on. `gi` builds the GI volume from the arena and crates
+/// unless `sdf_dir` already contains streamed `.sdf` cells (GI-07).
+pub fn apply(r: &mut Renderer, level: &Level, gi: bool, sdf_dir: Option<&std::path::Path>) {
     r.set_smrt_quality(SmrtQuality::Quality);
     r.set_ssr(Some(SsrSettings {
         max_roughness: 0.45,
@@ -40,7 +41,12 @@ pub fn apply(r: &mut Renderer, level: &Level, gi: bool) {
     }));
     if gi {
         r.set_gi_quality(GiQuality::Medium);
-        r.set_gi_static_geometry(&level_boxes(level));
+        let streamed = sdf_dir.is_some_and(|dir| {
+            redox_core::gi_streaming::gi_sdf_resource_if_present(dir, level.half * 4.0).is_some()
+        });
+        if !streamed {
+            r.set_gi_static_geometry(&level_boxes(level));
+        }
         r.set_gi_enabled(true);
     }
 }

@@ -14,7 +14,8 @@
 //! # Stubs / not fully wired
 //! - Virtual Geometry meshlet path: constructed with the engine but unused (no
 //!   `VirtualMesh` entities in the editor world).
-//! - GI / SDF shadow bricks: GPU objects exist; editor does not seed probes/bricks.
+//! - GI static volume: [`seed_editor_gi_static_scene`] seeds boxes or `.redox` SDF bricks when GI is on.
+//! - Reflection probes: [`apply_editor_reflection_probes`] runs before the frame draw (same rules as RFL-02).
 //! - IBL: dummy environment (no HDR load); skybox off.
 //! - Mesh path: glTF via [`ViewportMeshCache`]; proxy cube only when asset missing.
 //! - Shading modes report **unavailable** when the engine has no debug view (no cube hacks).
@@ -25,8 +26,12 @@ use redox_editor_viewport::{
     apply_viewport_runtime, mesh_wireframe_lines, quad_pane_cameras, screenshot_texture_to_png,
 };
 use redox_math::{Mat4, Transform, Vec3};
+use redox_render::light::LightScene;
+use redox_render::sdf::global::SdfBox;
 use redox_render::{Material, RenderObject, Renderer, mesh::primitive::create_cube};
-use std::path::Path;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use winit::window::Window;
 
@@ -154,6 +159,8 @@ pub struct RenderHost {
     pub last_stats: ViewportStatsOverlay,
     /// Wireframe edge overlay for the current frame (Lit + wire mode).
     pub wireframe_overlay: Vec<(Vec3, Vec3, [f32; 4])>,
+    gi_scene_fingerprint: u64,
+    editor_probe_dirty: [bool; 4],
     /// Rebuilds the passes of WGSL files edited while the editor runs (`shader-hot-reload`).
     #[cfg(feature = "shader-hot-reload")]
     shader_hot_reload: redox_render::renderer::ShaderHotReload,
@@ -238,6 +245,8 @@ impl RenderHost {
             runtime: ViewportRuntimeSettings::default(),
             last_stats: ViewportStatsOverlay::default(),
             wireframe_overlay: Vec::new(),
+            gi_scene_fingerprint: 0,
+            editor_probe_dirty: [true; 4],
             #[cfg(feature = "shader-hot-reload")]
             shader_hot_reload: redox_render::renderer::ShaderHotReload::new(),
         }
@@ -334,6 +343,8 @@ impl RenderHost {
         selected_id: Option<u32>,
         shading: ViewportShading,
         assets_root: Option<&Path>,
+        project_root: Option<&Path>,
+        world: Option<&redox_ecs::World>,
     ) {
         #[cfg(feature = "shader-hot-reload")]
         self.poll_shader_edits();
@@ -364,6 +375,20 @@ impl RenderHost {
             &mut self.wireframe_overlay,
         );
 
+        seed_editor_gi_static_scene(
+            renderer,
+            self.runtime.gi_enabled,
+            &self.object_scratch,
+            project_root.map(|root| root.join(".redox")),
+            &mut self.gi_scene_fingerprint,
+        );
+        apply_editor_reflection_probes(
+            renderer,
+            world,
+            &self.object_scratch,
+            &mut self.editor_probe_dirty,
+        );
+
         let _ = renderer.render_frame_into(&self.object_scratch, self.viewport.color_view());
         clear_viewport_depth_for_overlay(renderer, &self.viewport);
         self.last_stats.toggle_hints = toggle_hints
@@ -381,6 +406,8 @@ impl RenderHost {
         selected_id: Option<u32>,
         shading: ViewportShading,
         assets_root: Option<&Path>,
+        project_root: Option<&Path>,
+        world: Option<&redox_ecs::World>,
     ) {
         let (tw, th) = (self.width.max(1), self.height.max(1));
         let hw = (tw / 2).max(1);
@@ -410,6 +437,19 @@ impl RenderHost {
                 self.selected_mat,
                 &plan,
                 &mut self.wireframe_overlay,
+            );
+            seed_editor_gi_static_scene(
+                renderer,
+                self.runtime.gi_enabled,
+                &self.object_scratch,
+                project_root.map(|root| root.join(".redox")),
+                &mut self.gi_scene_fingerprint,
+            );
+            apply_editor_reflection_probes(
+                renderer,
+                world,
+                &self.object_scratch,
+                &mut self.editor_probe_dirty,
             );
         }
         let objects = self.object_scratch.clone();
@@ -557,6 +597,89 @@ fn apply_editor_camera(renderer: &mut Renderer, camera: &EditorCamera) {
     renderer.update_camera_buffer();
 }
 
+fn object_scene_fingerprint(objects: &[RenderObject]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    objects.len().hash(&mut hasher);
+    for object in objects {
+        object.bounds.min.x.to_bits().hash(&mut hasher);
+        object.bounds.max.x.to_bits().hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+/// Seeds GI from project `.sdf` bricks or static mesh AABBs once per scene fingerprint (GI-07).
+pub fn seed_editor_gi_static_scene(
+    renderer: &mut Renderer,
+    enabled: bool,
+    objects: &[RenderObject],
+    sdf_dir: Option<PathBuf>,
+    fingerprint: &mut u64,
+) {
+    if !enabled {
+        *fingerprint = 0;
+        return;
+    }
+    let fp = object_scene_fingerprint(objects);
+    if fp == *fingerprint {
+        return;
+    }
+    *fingerprint = fp;
+    if let Some(dir) = sdf_dir.filter(|path| path.is_dir()) {
+        if let Some(resource) = redox_core::gi_streaming::gi_sdf_resource_if_present(&dir, 64.0) {
+            if let Ok(bricks) =
+                redox_core::gi_streaming::load_cell_bricks(&resource.dir, &resource.available)
+            {
+                if !bricks.is_empty() {
+                    let pairs: Vec<_> = bricks
+                        .into_iter()
+                        .map(|brick| (brick, redox_core::gi_streaming::GI_SDF_BRICK_COLOUR))
+                        .collect();
+                    renderer.set_gi_static_bricks(&pairs);
+                    return;
+                }
+            }
+        }
+    }
+    let boxes: Vec<SdfBox> = objects
+        .iter()
+        .map(|object| SdfBox {
+            min: object.bounds.min,
+            max: object.bounds.max,
+            albedo: Vec3::new(0.55, 0.55, 0.55),
+            emissive: Vec3::ZERO,
+        })
+        .collect();
+    if !boxes.is_empty() {
+        renderer.set_gi_static_geometry(&boxes);
+    }
+}
+
+fn apply_editor_reflection_probes(
+    renderer: &mut Renderer,
+    world: Option<&redox_ecs::World>,
+    objects: &[RenderObject],
+    dirty_slots: &mut [bool; 4],
+) {
+    let Some(world) = world else {
+        return;
+    };
+    let probes = redox_core::probes_from_world(world);
+    for (slot, probe) in probes.iter().enumerate().take(4) {
+        dirty_slots[slot] = world.all_entities().any(|entity| {
+            world
+                .get_component::<redox_render::reflection::ReflectionProbeComponent>(entity)
+                .is_some_and(|component| component.probe.priority == probe.priority && component.dirty)
+        });
+    }
+    redox_core::reflection_probe_apply_slice(
+        renderer,
+        &probes,
+        objects,
+        &LightScene::default(),
+        dirty_slots,
+    );
+}
+
 fn push_ground(out: &mut Vec<RenderObject>, mesh: usize, mat: usize) {
     let model = Mat4::from_scale_rotation_translation(
         Vec3::new(64.0, 0.1, 64.0),
@@ -632,6 +755,37 @@ fn push_draw_items(
             material_index,
             bounds,
         });
+    }
+}
+
+#[cfg(test)]
+mod gi_seed_tests {
+    use super::*;
+
+    #[test]
+    fn editor_static_boxes_change_the_frame_when_gi_is_enabled() {
+        let objects = vec![RenderObject {
+            id: 0,
+            shadow_class: redox_render::shadow::ShadowClass::Auto,
+            deforms: false,
+            pose_version: 0,
+            model_matrix: Mat4::IDENTITY,
+            color: [1.0; 4],
+            mesh_index: 0,
+            material_index: 0,
+            bounds: redox_math::Aabb::from_center_size(Vec3::ZERO, Vec3::ONE),
+        }];
+        let mut fp_a = 0;
+        let mut fp_b = 0;
+        assert_ne!(
+            object_scene_fingerprint(&objects),
+            object_scene_fingerprint(&[])
+        );
+        assert_eq!(
+            object_scene_fingerprint(&objects),
+            object_scene_fingerprint(&objects)
+        );
+        let _ = (fp_a, fp_b);
     }
 }
 

@@ -174,3 +174,8 @@ GPU-тесты `tests/tsr.rs` написаны; проверка числами 
 - **SSR:** `renderer.set_ssr(Some(SsrSettings::default()))`. Отражения берутся с экрана (то, чего нет в кадре, не отражается), roughness и metallic берутся из скаляров материала (карты не читаются). Пропускаются поверхности с roughness от 0,5. Работает только в TAA-ветке, как motion blur и DoF; у выключенного эффекта кадр побитно прежний.
 - **Туман:** `renderer.set_fog(Some(FogSettings::default()))`. Высотный туман с аналитическим интегралом; солнечное рассеяние (`sun_scatter > 0`) без теней, поэтому лучи видны и сквозь стены. Froxel-сетка с тенями (шаг 3 PST-06) не реализована.
 - Цепочка эффектов: TAA → SSR → motion blur → DoF → туман → bloom → tone mapping.
+
+## 9. Рантайм (GI-07 / RFL-02)
+
+- **GI SDF:** `App::with_gi_sdf(dir, cell_size)` вставляет `GiSdfStreaming`; редактор при включённом GI вызывает `seed_editor_gi_static_scene` (кирпичи из `.redox/*.sdf` или AABB статики viewport).
+- **Пробы отражений:** локальные пробы выключены, пока в ECS нет `ReflectionProbeComponent`; `ReflectionProbePlugin` и viewport вызывают `set_reflection_probes` и не более одного `capture_reflection_probe` за кадр на грязный слот.

@@ -39,6 +39,9 @@ pub mod dispatcher;
 pub mod gi_streaming;
 pub mod hlod_load;
 pub mod hlod_system;
+pub mod level_boot;
+pub mod nav_load;
+pub mod reflection_probes;
 pub mod material_graph;
 pub mod net_plugin;
 pub mod plugin;
@@ -56,8 +59,14 @@ pub use dispatcher::{
 };
 pub use material_graph::{GraphBinding, MaterialGraphBindings, MaterialGraphPlugin};
 pub use net_plugin::{NetMode, NetPlugin};
+pub use level_boot::{boot_navigation, boot_reflection_probes};
+pub use nav_load::{insert_nav_from_path, load_nav_world};
 pub use plugin::{
     App, AudioPlugin, CorePlugin, NavPlugin, PhysicsPlugin, Plugin, RenderPlugin, ScriptWorldPlugin,
+};
+pub use reflection_probes::{
+    ReflectionProbePlugin, SceneLightScene, mark_all_reflection_probes_dirty, probes_from_world,
+    reflection_probe_apply_slice, reflection_probe_render_system,
 };
 pub use state::{AppState, NextState, State, in_state};
 pub use time::Time;

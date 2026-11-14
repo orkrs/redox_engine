@@ -25,6 +25,7 @@ redox_math = { path = "../redox_math" }
 redox_scene = { path = "../redox_scene" }
 redox_render = { path = "../redox_render" }
 redox_gameplay = { path = "../redox_gameplay" }
+redox_cook = { path = "../redox_cook" }
 redox_anim = { path = "../redox_anim" }
 redox_asset = { path = "../redox_asset" }
 redox_ui = { path = "../redox_ui" }

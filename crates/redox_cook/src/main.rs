@@ -34,9 +34,7 @@ mod audio_check;
 mod audit;
 #[cfg(feature = "bake")]
 mod bake;
-mod hlod_bake;
-mod nav;
-mod project_cook;
+use redox_cook::{hlod_bake, nav, project_cook};
 mod project_import;
 mod project_validate;
 mod texture;
