@@ -101,6 +101,21 @@ pub(crate) fn run_command(ui_ctx: &EditorUiCtx, dock: &mut EditorDock, id: &str)
                 *ui_ctx.core.status.lock() = format!("snap:{}", e.id());
             }
         }
+        "material_save" => {
+            let mut material = ui_ctx.material.lock();
+            if let Some(session) = material.as_mut() {
+                match session.save() {
+                    Ok(path) => ui_ctx.log(format!("[INFO] Saved material {path}")),
+                    Err(err) => ui_ctx.log(format!("[ERROR] Material save failed: {err}")),
+                }
+            } else {
+                ui_ctx.log("[WARN] No material document open");
+            }
+        }
+        "graph_tab" => {
+            ui_ctx.log("[INFO] Open the Graph dock tab to edit materials");
+            *ui_ctx.core.status.lock() = "focus_graph_tab".into();
+        }
         other => ui_ctx.log(format!("[WARN] Unknown command: {other}")),
     }
 }
