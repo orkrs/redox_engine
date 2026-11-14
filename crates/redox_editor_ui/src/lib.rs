@@ -16,6 +16,7 @@ pub mod context;
 pub mod dock;
 /// Version-control overlay.
 pub mod git_overlay;
+pub use git_overlay::{GitOverlay, GitOverlayAction};
 /// File menu, unsaved-changes prompt, path dialogs and load report.
 pub mod file_menu;
 pub mod import_dialog_panel;

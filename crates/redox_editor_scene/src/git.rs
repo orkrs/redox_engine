@@ -6,6 +6,12 @@ use redox_math::{Transform, Vec3};
 use redox_scene::ofpa::{self, ActorRecord};
 use redox_scene::{PartitionCell, StreamedActor};
 
+use crate::scene_diff::SceneEntityChange;
+use crate::scene_git::{
+    SceneGitError, SceneGitStatus, commit_scene_files, diff_scene_worktree_vs_head, pull_ff_only,
+    scene_git_status,
+};
+
 /// Change state of one actor relative to its last committed state.
 #[derive(Clone, Debug)]
 pub enum ActorGitStatus {
@@ -61,6 +67,14 @@ pub struct WorldGitTracker {
     pub world_root: PathBuf,
     /// Ghost transforms to draw (actor_id → old transform).
     pub ghosts: Vec<(String, Transform)>,
+    /// Open scene file tracked for scene-level git (optional).
+    scene_file: Option<PathBuf>,
+    /// Project root containing `project.ron` (optional).
+    project_root: Option<PathBuf>,
+    /// Last refreshed scene git status.
+    pub scene_status: Option<SceneGitStatus>,
+    /// Last GUID-level diff of the scene vs `HEAD`.
+    pub scene_diff: Vec<SceneEntityChange>,
 }
 
 impl std::fmt::Debug for WorldGitTracker {
@@ -68,7 +82,11 @@ impl std::fmt::Debug for WorldGitTracker {
         let mut d = f.debug_struct("WorldGitTracker");
         d.field("status_cache", &self.status_cache)
             .field("world_root", &self.world_root)
-            .field("ghosts", &self.ghosts);
+            .field("ghosts", &self.ghosts)
+            .field("scene_file", &self.scene_file)
+            .field("project_root", &self.project_root)
+            .field("scene_status", &self.scene_status)
+            .field("scene_diff_len", &self.scene_diff.len());
         #[cfg(feature = "editor-git")]
         d.field("has_repo", &self.repo.is_some());
         d.finish()
@@ -87,6 +105,10 @@ impl WorldGitTracker {
             status_cache: HashMap::new(),
             world_root: world_root.as_ref().to_path_buf(),
             ghosts: Vec::new(),
+            scene_file: None,
+            project_root: None,
+            scene_status: None,
+            scene_diff: Vec::new(),
         }
     }
 
@@ -284,6 +306,113 @@ impl WorldGitTracker {
     /// All non-Unmodified actors (Modified + Added + Deleted).
     pub fn dirty_count(&self) -> usize {
         self.status_cache.values().filter(|s| s.is_dirty()).count()
+    }
+
+    /// Registers the open scene file and project root for scene-level git status and diff.
+    pub fn set_tracked_scene(
+        &mut self,
+        scene_file: impl AsRef<Path>,
+        project_root: impl AsRef<Path>,
+    ) {
+        self.scene_file = Some(scene_file.as_ref().to_path_buf());
+        self.project_root = Some(project_root.as_ref().to_path_buf());
+        #[cfg(feature = "editor-git")]
+        {
+            let root = project_root.as_ref();
+            self.repo = git2::Repository::discover(root)
+                .or_else(|_| git2::Repository::open(root))
+                .ok();
+        }
+    }
+
+    /// Clears scene tracking (for example when only a world level is open).
+    pub fn clear_tracked_scene(&mut self) {
+        self.scene_file = None;
+        self.project_root = None;
+        self.scene_status = None;
+        self.scene_diff.clear();
+    }
+
+    /// Refreshes [`Self::scene_status`] and [`Self::scene_diff`] when `editor-git` is on.
+    pub fn refresh_scene_git(&mut self) -> Result<(), SceneGitError> {
+        let (Some(scene), Some(root)) = (self.scene_file.as_ref(), self.project_root.as_ref())
+        else {
+            self.scene_status = None;
+            self.scene_diff.clear();
+            return Ok(());
+        };
+
+        #[cfg(feature = "editor-git")]
+        {
+            let Some(repo) = self.repo.as_ref() else {
+                return Err(SceneGitError::NoRepository {
+                    root: root.clone(),
+                });
+            };
+            self.scene_status = Some(scene_git_status(repo, scene, root)?);
+            self.scene_diff = diff_scene_worktree_vs_head(repo, scene)?;
+            return Ok(());
+        }
+
+        #[cfg(not(feature = "editor-git"))]
+        {
+            let _ = (scene, root);
+            Err(SceneGitError::FeatureDisabled)
+        }
+    }
+
+    /// Stages the tracked scene and `project.ron`, then commits with `message`.
+    pub fn commit_tracked_scene(&self, message: &str) -> Result<(), SceneGitError> {
+        let (Some(scene), Some(root)) = (self.scene_file.as_ref(), self.project_root.as_ref())
+        else {
+            return Err(SceneGitError::NoRepository {
+                root: self.world_root.clone(),
+            });
+        };
+
+        #[cfg(feature = "editor-git")]
+        {
+            let repo = self.repo.as_ref().ok_or(SceneGitError::NoRepository {
+                root: root.clone(),
+            })?;
+            return commit_scene_files(repo, scene, root, message);
+        }
+
+        #[cfg(not(feature = "editor-git"))]
+        {
+            let _ = (scene, root, message);
+            Err(SceneGitError::FeatureDisabled)
+        }
+    }
+
+    /// Fast-forward pull of the current branch's upstream.
+    pub fn pull_ff_only_tracked(&self) -> Result<(), SceneGitError> {
+        #[cfg(feature = "editor-git")]
+        {
+            let root = self
+                .project_root
+                .as_ref()
+                .unwrap_or(&self.world_root);
+            let repo = self.repo.as_ref().ok_or(SceneGitError::NoRepository {
+                root: root.clone(),
+            })?;
+            return pull_ff_only(repo);
+        }
+
+        #[cfg(not(feature = "editor-git"))]
+        {
+            Err(SceneGitError::FeatureDisabled)
+        }
+    }
+
+    /// One-line scene git summary for the status bar (empty when nothing is tracked).
+    pub fn scene_summary(&self) -> Option<String> {
+        let status = self.scene_status.as_ref()?;
+        let dirty = if status.dirty { "dirty" } else { "clean" };
+        Some(format!(
+            "{} · {} · ↑{} ↓{}",
+            status.branch, dirty, status.ahead, status.behind
+        ))
     }
 
     /// One-line status for status bar / menus.

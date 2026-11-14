@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::context::EditorUiCtx;
-use crate::git_overlay::GitOverlay;
+use crate::git_overlay::{GitOverlay, GitOverlayAction};
 use crate::inspector::{InspectorPanel, selection_entities};
 use crate::profiler_panel::ProfilerPanel;
 use crate::undo_history::UndoHistoryPanel;
@@ -473,8 +473,22 @@ impl TabViewer for TabViewerImpl<'_> {
                     .show(ui, service.registry());
             }
             Tab::Console => {
-                if GitOverlay::show(ui, &self.ui_ctx.git.lock()) {
-                    *self.ui_ctx.core.status.lock() = "git_refresh".into();
+                let mut commit_msg = self.ui_ctx.scene_commit_message.lock();
+                let overlay_action = {
+                    let git = self.ui_ctx.git.lock();
+                    GitOverlay::show(ui, &git, &mut commit_msg)
+                };
+                match overlay_action {
+                    GitOverlayAction::Refresh => {
+                        *self.ui_ctx.core.status.lock() = "git_refresh".into();
+                    }
+                    GitOverlayAction::Commit => {
+                        *self.ui_ctx.core.status.lock() = "git_scene_commit".into();
+                    }
+                    GitOverlayAction::Pull => {
+                        *self.ui_ctx.core.status.lock() = "git_scene_pull".into();
+                    }
+                    GitOverlayAction::None => {}
                 }
                 ui.separator();
                 crate::console_panel::ConsolePanel::show(ui, &self.ui_ctx, &self.ui_ctx.core);

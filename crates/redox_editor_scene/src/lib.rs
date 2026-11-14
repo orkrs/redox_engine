@@ -4,6 +4,10 @@
 
 /// Version-control status of actor files.
 pub mod git;
+/// GUID-level diff between scene file snapshots.
+pub mod scene_diff;
+/// Git status, commit and pull for scene documents.
+pub mod scene_git;
 /// Two-way index between scene entities and their stable guids.
 pub mod guid_index;
 /// On-disk layout of `*.scene.ron` files: format version, entities and migrations.
@@ -31,6 +35,8 @@ pub use document::{
 };
 pub use format::SCENE_FORMAT_VERSION;
 pub use git::{ActorGitStatus, WorldGitTracker};
+pub use scene_diff::{SceneEntityChange, diff_scene_files};
+pub use scene_git::{SceneGitError, SceneGitStatus, load_scene_file};
 pub use register::register_scene_components;
 pub use level::{Level, LevelError, LevelKind};
 pub use validate::{

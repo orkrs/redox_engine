@@ -163,9 +163,11 @@ impl EditorApp {
                         }
                     });
                     ui.menu_button("Git", |ui| {
-                        // Agent E: surface git2 availability + refresh
                         let git = ui_ctx_ref.git.lock();
                         ui.label(git.summary());
+                        if let Some(scene) = git.scene_summary() {
+                            ui.label(format!("Scene: {scene}"));
+                        }
                         ui.label(if git.is_available() {
                             "editor-git: git2 compiled in"
                         } else {
@@ -174,6 +176,14 @@ impl EditorApp {
                         drop(git);
                         if ui.button("Refresh status").clicked() {
                             *ui_ctx_ref.core.status.lock() = "git_refresh".into();
+                            ui.close();
+                        }
+                        if ui.button("Commit scene…").clicked() {
+                            *ui_ctx_ref.core.status.lock() = "git_scene_commit".into();
+                            ui.close();
+                        }
+                        if ui.button("Pull (ff-only)…").clicked() {
+                            *ui_ctx_ref.core.status.lock() = "git_scene_pull".into();
                             ui.close();
                         }
                     });
@@ -251,12 +261,22 @@ impl EditorApp {
 
             egui::Panel::bottom("status_bar").show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    let git = if ui_ctx_ref.world_session.lock().is_some() {
-                        format!("🟢 {}", ui_ctx_ref.git.lock().summary())
+                    let git = ui_ctx_ref.git.lock();
+                    let world = if ui_ctx_ref.world_session.lock().is_some() {
+                        format!("🟢 {}", git.summary())
                     } else {
                         "⚪ No world".into()
                     };
-                    ui.label(git);
+                    let branch = git
+                        .scene_status
+                        .as_ref()
+                        .map(|s| s.branch.as_str())
+                        .unwrap_or("—");
+                    let scene_bar = git.scene_summary().unwrap_or_else(|| "scene n/a".into());
+                    drop(git);
+                    ui.label(world);
+                    ui.separator();
+                    ui.label(format!("branch {branch} · {scene_bar}"));
                     ui.separator();
                     if let Some(service) = &self.assets {
                         let counts = service.import_counts();

@@ -108,6 +108,8 @@ pub struct EditorUiCtx {
     pub runtime_search: Mutex<RuntimeSearchQuery>,
     /// Viewport highlight driven by runtime inspector.
     pub runtime_highlight: Mutex<RuntimeInspectorHighlight>,
+    /// Commit message buffer for scene git (Console / git overlay).
+    pub scene_commit_message: Mutex<String>,
 }
 
 impl EditorUiCtx {
@@ -159,12 +161,22 @@ impl EditorUiCtx {
             console_filter: Mutex::new(ConsoleFilter::default()),
             runtime_search: Mutex::new(RuntimeSearchQuery::default()),
             runtime_highlight: Mutex::new(RuntimeInspectorHighlight::default()),
+            scene_commit_message: Mutex::new("Update scene".into()),
         }
     }
 
     /// Appends a line to the console.
     pub fn log(&self, line: impl Into<String>) {
         self.core.log.push(line);
+    }
+
+    /// Registers the open scene and project root for scene-level git (status, diff, commit, pull).
+    pub fn track_scene_git(&self, scene_file: impl AsRef<std::path::Path>, project_root: impl AsRef<std::path::Path>) {
+        let mut git = self.git.lock();
+        git.set_tracked_scene(scene_file, project_root);
+        if let Err(err) = git.refresh_scene_git() {
+            self.log(format!("[WARN] Scene git: {err}"));
+        }
     }
 
     /// Queue an asset spawn request (no world mutation).

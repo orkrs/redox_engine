@@ -1,12 +1,25 @@
-use redox_editor_scene::WorldGitTracker;
+use redox_editor_scene::{SceneEntityChange, WorldGitTracker};
 
-/// Panel showing the version-control state of the world.
+/// Action requested from the git overlay (handled by the editor host).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GitOverlayAction {
+    /// No action.
+    None,
+    /// Refresh OFPA and scene git status.
+    Refresh,
+    /// Commit staged scene + `project.ron` (message in host state).
+    Commit,
+    /// Fast-forward pull only.
+    Pull,
+}
+
+/// Panel showing version-control state for OFPA worlds and scene documents.
 pub struct GitOverlay;
 
 impl GitOverlay {
-    /// Returns true if Refresh was clicked (caller should set `git_refresh` status).
-    pub fn show(ui: &mut egui::Ui, tracker: &WorldGitTracker) -> bool {
-        let mut refresh = false;
+    /// Renders the overlay. Returns the action the host should perform.
+    pub fn show(ui: &mut egui::Ui, tracker: &WorldGitTracker, commit_message: &mut String) -> GitOverlayAction {
+        let mut action = GitOverlayAction::None;
 
         ui.horizontal(|ui| {
             ui.label(format!(
@@ -23,13 +36,47 @@ impl GitOverlay {
                 }
             ));
             if ui.button("Refresh").clicked() {
-                refresh = true;
+                action = GitOverlayAction::Refresh;
             }
         });
 
         ui.label(format!("Root: {}", tracker.world_root.display()));
         ui.label(tracker.summary());
 
+        if let Some(scene_line) = tracker.scene_summary() {
+            ui.separator();
+            ui.label("Scene document");
+            if let Some(status) = tracker.scene_status.as_ref() {
+                ui.label(format!(
+                    "File: {} · {}",
+                    status.path.display(),
+                    scene_line
+                ));
+            } else {
+                ui.label("No scene file tracked (set via project open)");
+            }
+            if !tracker.scene_diff.is_empty() {
+                ui.label(format!("Object diff ({} changes)", tracker.scene_diff.len()));
+                for change in tracker.scene_diff.iter().take(16) {
+                    ui.label(change_label(change));
+                }
+                let rest = tracker.scene_diff.len().saturating_sub(16);
+                if rest > 0 {
+                    ui.label(format!("… +{rest} more"));
+                }
+            }
+            ui.horizontal(|ui| {
+                ui.text_edit_singleline(commit_message);
+                if ui.button("Commit").clicked() {
+                    action = GitOverlayAction::Commit;
+                }
+                if ui.button("Pull (ff-only)").clicked() {
+                    action = GitOverlayAction::Pull;
+                }
+            });
+        }
+
+        ui.separator();
         let dirty = tracker.dirty_actor_ids();
         if dirty.is_empty() {
             ui.label("No dirty actors");
@@ -47,6 +94,17 @@ impl GitOverlay {
         }
 
         ui.label("Revert: Outliner → actor → Revert (restores disk / git checkout)");
-        refresh
+        action
+    }
+}
+
+fn change_label(change: &SceneEntityChange) -> String {
+    match change {
+        SceneEntityChange::Added { guid } => format!("+ entity {guid}"),
+        SceneEntityChange::Removed { guid } => format!("− entity {guid}"),
+        SceneEntityChange::Changed {
+            guid,
+            changed_components,
+        } => format!("~ entity {guid} ({})", changed_components.join(", ")),
     }
 }
