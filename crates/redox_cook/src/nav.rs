@@ -64,6 +64,17 @@ pub fn parse_bake_navmesh(args: &[&str]) -> Result<NavJob, String> {
     Ok(job)
 }
 
+/// Bakes walkable geometry from a glTF/GLB file into `output` (shared by CLI, cook, Packager).
+pub fn bake_navmesh_from_gltf(input: &Path, output: &Path) -> Result<(), String> {
+    let job = NavJob {
+        input: input.to_path_buf(),
+        out: output.to_path_buf(),
+        tile: DEFAULT_TILE,
+        agent: AgentParams::default(),
+    };
+    run(&job)
+}
+
 /// Runs the bake and writes the `.nav` file.
 ///
 /// # Errors

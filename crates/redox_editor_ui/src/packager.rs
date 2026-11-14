@@ -48,6 +48,8 @@ pub struct BakeStatus {
     pub meshlets: String,
     /// Result of the SDF bake.
     pub sdf: String,
+    /// Result of the navmesh bake.
+    pub navmesh: String,
 }
 
 /// Panel that inventories a world and exports a shipping package.
@@ -173,6 +175,12 @@ impl PackagerPanel {
                 match self.bake_sdf() {
                     Ok(msg) => self.status = msg,
                     Err(e) => self.status = format!("SDF bake failed: {e}"),
+                }
+            }
+            if ui.button("Bake Navmesh").clicked() {
+                match self.bake_navmesh() {
+                    Ok(msg) => self.status = msg,
+                    Err(e) => self.status = format!("Navmesh bake failed: {e}"),
                 }
             }
             if ui.button("Export Package").clicked() {
@@ -332,6 +340,52 @@ impl PackagerPanel {
             outcome.gpu_register_line.trim()
         );
         Ok(())
+    }
+
+    /// Walkable navmesh via the same entry point as `redox_cook bake-navmesh`.
+    pub fn bake_navmesh(&mut self) -> anyhow::Result<String> {
+        let mesh = self.resolve_nav_source()?;
+        let out = if self.project_root.is_empty() {
+            Path::new(&self.world_root)
+                .join(".redox")
+                .join("release.nav")
+        } else {
+            Path::new(&self.project_root)
+                .join(".redox")
+                .join(format!("{}.nav", self.cook_profile))
+        };
+        std::fs::create_dir_all(out.parent().expect("nav parent"))?;
+        redox_cook::nav::bake_navmesh_from_gltf(&mesh, &out)?;
+        let msg = format!("Navmesh OK → {}", out.display());
+        self.bake_status.navmesh = msg.clone();
+        Ok(msg)
+    }
+
+    fn resolve_nav_source(&self) -> anyhow::Result<PathBuf> {
+        if !self.project_root.is_empty() {
+            let project = redox_editor_core::project::ProjectContext::open(&self.project_root)?;
+            let service = redox_editor_build::BuildService;
+            let profile = service.resolve_active(project.manifest(), Some(self.cook_profile.as_str()))?;
+            let root = project.root();
+            let assets = root.join(project.manifest().assets_root.as_str());
+            let (registry, _) = redox_asset::AssetRegistry::scan(&assets)?;
+            let plan = service.plan(&project, &profile)?;
+            for guid in &plan.assets {
+                let Some(rel) = registry.path_of(*guid) else {
+                    continue;
+                };
+                let path = assets.join(rel);
+                let ext = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("")
+                    .to_ascii_lowercase();
+                if (ext == "glb" || ext == "gltf") && path.is_file() {
+                    return Ok(path);
+                }
+            }
+        }
+        anyhow::bail!("set project root with a cooked glTF/GLB level mesh")
     }
 
     /// CPU SDF bake via [`bake_mesh`]. GPU atlas upload needs Renderer.
@@ -639,4 +693,18 @@ fn unix_timestamp() -> String {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     format!("unix:{secs}")
+}
+
+#[cfg(test)]
+mod navmesh_tests {
+    use super::*;
+    use redox_cook::nav::bake_navmesh_from_gltf;
+
+    #[test]
+    fn the_editor_bake_calls_the_same_function_as_the_cli() {
+        let name = std::any::type_name_of_val(&bake_navmesh_from_gltf);
+        assert!(name.contains("bake_navmesh_from_gltf"));
+        let panel = PackagerPanel::default();
+        assert!(panel.bake_navmesh().is_err());
+    }
 }

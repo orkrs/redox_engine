@@ -130,8 +130,8 @@ fn sync_audio_listener(world: &mut World) {
 /// Navigation on `Stage::Update`: path requests and path following, or local avoidance when the
 /// [`redox_nav::NavWorld`] resource has agents.
 ///
-/// The plugin loads no navigation data. The game inserts a [`redox_nav::NavWorld`] resource
-/// (built from baked `.nav` data); without it the systems do nothing.
+/// The level loader inserts [`redox_nav::NavWorld`] from a baked `.nav` file; without it the
+/// systems do nothing.
 pub struct NavPlugin;
 
 impl Plugin for NavPlugin {
@@ -201,5 +201,13 @@ mod tests {
         AudioPlugin.build(&mut app);
         RenderPlugin.build(&mut app);
         let _ = app;
+    }
+
+    #[test]
+    fn with_navigation_registers_the_path_queue() {
+        let mut app = App::new().with_navigation();
+        let mut world = redox_ecs::World::new();
+        app.run_setup_for_test(&mut world);
+        assert!(world.get_resource::<redox_nav::PathQueue>().is_some());
     }
 }

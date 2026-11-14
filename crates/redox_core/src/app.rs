@@ -1,5 +1,6 @@
 //! Engine runner and Application builder.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -149,6 +150,33 @@ impl AppBuilder {
         self.add_plugin(crate::plugin::AudioPlugin)
     }
 
+    /// Enables navigation: [`NavPlugin`] and a [`redox_nav::PathQueue`] on setup.
+    pub fn with_navigation(self) -> Self {
+        self.add_plugin(crate::plugin::NavPlugin)
+    }
+
+    /// Enables HLOD when [`crate::hlod_load::hlod_plugin_for`] finds proxies beside `world_bin`.
+    pub fn with_hlod(self, world_bin: PathBuf) -> Self {
+        if let Some(plugin) = crate::hlod_load::hlod_plugin_for(&world_bin) {
+            self.add_plugin(plugin)
+        } else {
+            self
+        }
+    }
+
+    /// Enables streamed GI SDF bricks when `dir` contains at least one `<x>_<y>.sdf`.
+    pub fn with_gi_sdf(self, dir: impl Into<PathBuf>, cell_size: f32) -> Self {
+        let dir = dir.into();
+        let mut builder = self.add_plugin(crate::gi_streaming::GiSdfStreamingPlugin);
+        builder.on_setup(move |world| {
+            let Some(resource) = crate::gi_streaming::gi_sdf_resource_if_present(&dir, cell_size) else {
+                return;
+            };
+            world.insert_resource(resource);
+        });
+        builder
+    }
+
     /// Runs `hook` once after the renderer is created and before the first frame,
     /// with the world and the render context (for uploads such as meshes or materials).
     pub fn on_render_setup<F>(&mut self, hook: F)
@@ -284,5 +312,15 @@ impl AppBuilder {
             .expect("winit event loop terminated with an error");
 
         std::process::exit(0)
+    }
+}
+
+#[cfg(test)]
+impl AppBuilder {
+    /// Runs setup hooks without creating a window (unit tests).
+    pub fn run_setup_for_test(&mut self, world: &mut redox_ecs::World) {
+        for hook in self.setup_hooks.drain(..) {
+            hook(world);
+        }
     }
 }

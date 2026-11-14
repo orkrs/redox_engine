@@ -7,6 +7,7 @@
 //! `Renderer::set_gi_static_bricks`.
 
 use std::collections::BTreeSet;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use redox_ecs::World;
@@ -237,6 +238,54 @@ pub fn gi_sdf_streaming_system(world: &mut World, renderer: &mut RenderContext) 
     renderer.set_gi_static_bricks(&pairs);
 }
 
+/// Lists every `<x>_<y>.sdf` file name in `dir`.
+pub fn scan_gi_sdf_cells(dir: &Path) -> Vec<Cell> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut cells = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let Some(stem) = name.strip_suffix(".sdf") else {
+            continue;
+        };
+        let Some((x, y)) = stem.split_once('_') else {
+            continue;
+        };
+        let Ok(x) = x.parse::<i32>() else {
+            continue;
+        };
+        let Ok(y) = y.parse::<i32>() else {
+            continue;
+        };
+        cells.push((x, y));
+    }
+    cells.sort_unstable();
+    cells.dedup();
+    cells
+}
+
+/// Builds a [`GiSdfStreaming`] resource when `dir` exists and lists at least one cell file.
+pub fn gi_sdf_resource_if_present(dir: &Path, cell_size: f32) -> Option<GiSdfStreaming> {
+    if !dir.is_dir() {
+        return None;
+    }
+    let available = scan_gi_sdf_cells(dir);
+    if available.is_empty() {
+        return None;
+    }
+    Some(GiSdfStreaming {
+        dir: dir.to_path_buf(),
+        cell_size,
+        available,
+        settings: GiStreamingSettings::default(),
+        streamer: GiSdfStreamer::new(),
+    })
+}
+
 /// Registers [`gi_sdf_streaming_system`] on [`Stage::Render`]. Inert until the game inserts a
 /// [`GiSdfStreaming`] resource.
 pub struct GiSdfStreamingPlugin;
@@ -440,6 +489,32 @@ mod tests {
         let bricks = gi_sdf_streaming_step(&mut res, 1.0, CAMERA).unwrap();
         assert_eq!(bricks.len(), 1);
         assert_eq!(bricks[0].origin_ws.x, 2.0);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn with_gi_sdf_inserts_the_resource_when_a_cell_file_exists() {
+        let dir = stream_dir("with_gi");
+        write_cell(&dir, (0, 0), &[solid_brick(1.0)]);
+        let resource = gi_sdf_resource_if_present(&dir, SIZE).expect("resource");
+        assert_eq!(resource.available, vec![(0, 0)]);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_missing_directory_does_not_insert_the_resource() {
+        let dir = stream_dir("missing_dir");
+        let _ = fs::remove_dir_all(&dir);
+        assert!(gi_sdf_resource_if_present(&dir, SIZE).is_none());
+    }
+
+    #[test]
+    fn the_available_list_matches_the_filenames() {
+        let dir = stream_dir("names");
+        write_cell(&dir, (2, -1), &[solid_brick(1.0)]);
+        fs::write(dir.join("bogus.txt"), b"x").unwrap();
+        let cells = scan_gi_sdf_cells(&dir);
+        assert_eq!(cells, vec![(2, -1)]);
         std::fs::remove_dir_all(&dir).ok();
     }
 }

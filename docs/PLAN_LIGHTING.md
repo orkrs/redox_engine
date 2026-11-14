@@ -175,3 +175,8 @@ GPU-тесты `tests/tsr.rs` написаны; проверка числами 
 - **Туман:** `renderer.set_fog(Some(FogSettings::default()))`. Аналитический высотный туман; `set_fog_froxel(true)` — froxel-сетка с тенями VSM (промах страницы не считается полным солнцем).
 - **Преломление (MAT-09):** непрозрачный HDR копируется в mip-цепочку перед прозрачным проходом; `Material::refractive`.
 - Цепочка эффектов: (TAA?) → HDR или история TAA → SSR → motion blur → DoF → туман → bloom → tone mapping → (SMAA/RCAS на Sharp AA).
+
+## 9. Рантайм (GI-07 / RFL-02)
+
+- **GI SDF:** `App::with_gi_sdf(dir, cell_size)` вставляет `GiSdfStreaming`; редактор при включённом GI вызывает `seed_editor_gi_static_scene` (кирпичи из `.redox/*.sdf` или AABB статики viewport).
+- **Пробы отражений:** локальные пробы выключены, пока в ECS нет `ReflectionProbeComponent`; `ReflectionProbePlugin` и viewport вызывают `set_reflection_probes` и не более одного `capture_reflection_probe` за кадр на грязный слот.

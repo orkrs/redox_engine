@@ -566,6 +566,7 @@ impl EditorApp {
                     (Some(p.root().to_path_buf()), Some(assets))
                 })
                 .unwrap_or((None, Some(std::path::PathBuf::from("assets"))));
+            let world = self.core.world.lock();
             let plan = redox_editor_viewport::ViewportShadingPlan::resolve(shading);
             let fps = *self.ui_ctx.fps.lock();
             let cpu_ms = *self.ui_ctx.frame_ms.lock();
@@ -578,6 +579,7 @@ impl EditorApp {
                         shading,
                         assets_root.as_deref(),
                         project_root.as_deref(),
+                        Some(&*world),
                     );
                 }
                 ViewportLayout::Single => {
@@ -588,6 +590,7 @@ impl EditorApp {
                         shading,
                         assets_root.as_deref(),
                         project_root.as_deref(),
+                        Some(&*world),
                     );
                 }
             }

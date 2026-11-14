@@ -35,3 +35,7 @@ mip it wants next at `HIGH`. Queued reads can be re-prioritised or cancelled.
 ## Файлы `.sdf` (GI-06)
 
 `redox_cook bake-sdf <world.bin> <out-dir> [--kinds actor_kinds.ron] [--max-world-size 8]` пишет `<x>_<y>.sdf` на ячейку: кирпичи расстояний 64³ в мировых осях. Формат: `RSDF`, версия 1, число кирпичей, на кирпич — центр, размер, диапазон `D = 0.5·max(size)` и `64³` значений `u16` (`round((d/D+1)·32767)`), в конце FNV-1a 32. Читает `redox_render::sdf::format::read_bricks`; стриминг по ячейкам — `redox_core::gi_streaming`.
+
+## Файлы `.nav` (NAV-06)
+
+`redox_cook bake-navmesh <level.glb> <out.nav>` и профиль `redox_cook cook` пишут `<project>/.redox/<profile>.nav` из первого glTF/GLB в замыкании cook. Packager **Bake Navmesh** вызывает тот же код. Читает `redox_core::nav_load::insert_nav_from_path` на старте игры/PIE; `NavPlugin` в `App::with_navigation()`.

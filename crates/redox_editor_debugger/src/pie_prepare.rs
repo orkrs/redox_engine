@@ -27,48 +27,29 @@ pub fn prepare_pie_world(
     registry: &TypeRegistry,
     world: &mut World,
 ) -> (PieArgs, PieSceneLoad) {
-    world.insert_resource(PieArgs {
+    let args = PieArgs {
         args: settings.args.clone(),
-    });
-    let Some(root) = project_root else {
-        return (
-            PieArgs {
-                args: settings.args.clone(),
-            },
-            PieSceneLoad::Skipped,
-        );
     };
-    let Some(path) = settings.start_scene_path(root) else {
-        return (
-            PieArgs {
-                args: settings.args.clone(),
-            },
-            PieSceneLoad::Skipped,
-        );
-    };
-    if !path.is_file() {
-        return (
-            PieArgs {
-                args: settings.args.clone(),
-            },
-            PieSceneLoad::Failed(format!("missing start scene {}", path.display())),
-        );
+    world.insert_resource(args.clone());
+    let mut load = PieSceneLoad::Skipped;
+    if let Some(root) = project_root {
+        if let Some(path) = settings.start_scene_path(root) {
+            if path.is_file() {
+                *world = World::new();
+                match Level::open(&path, registry, world) {
+                    Ok((_level, _report)) => load = PieSceneLoad::Loaded,
+                    Err(err) => load = PieSceneLoad::Failed(format!("{err:?}")),
+                }
+            } else {
+                load = PieSceneLoad::Failed(format!("missing start scene {}", path.display()));
+            }
+        }
+        let world_bin = root.join(".redox/world.bin");
+        let bin = world_bin.is_file().then_some(world_bin.as_path());
+        redox_core::boot_navigation(world, root, bin, "release");
+        redox_core::boot_reflection_probes(world);
     }
-    *world = World::new();
-    match Level::open(&path, registry, world) {
-        Ok((_level, _report)) => (
-            PieArgs {
-                args: settings.args.clone(),
-            },
-            PieSceneLoad::Loaded,
-        ),
-        Err(err) => (
-            PieArgs {
-                args: settings.args.clone(),
-            },
-            PieSceneLoad::Failed(format!("{err:?}")),
-        ),
-    }
+    (args, load)
 }
 
 #[cfg(test)]
