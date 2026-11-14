@@ -211,8 +211,34 @@ impl EditorApp {
         {
             let status = self.ui_ctx.core.status.lock().clone();
             if status == "git_refresh" {
-                self.ui_ctx.git.lock().refresh(&self.core.world.lock());
+                {
+                    let mut git = self.ui_ctx.git.lock();
+                    git.refresh(&self.core.world.lock());
+                    if let Err(err) = git.refresh_scene_git() {
+                        self.ui_ctx
+                            .log(format!("[WARN] Scene git refresh: {err}"));
+                    }
+                }
                 self.ui_ctx.log("[INFO] Git/OFPA status refreshed");
+                self.ui_ctx.core.status.lock().clear();
+            } else if status == "git_scene_commit" {
+                let message = self.ui_ctx.scene_commit_message.lock().clone();
+                match self.ui_ctx.git.lock().commit_tracked_scene(&message) {
+                    Ok(()) => {
+                        self.ui_ctx.log("[INFO] Scene commit created");
+                        let _ = self.ui_ctx.git.lock().refresh_scene_git();
+                    }
+                    Err(err) => self.ui_ctx.log(format!("[WARN] Scene commit failed: {err}")),
+                }
+                self.ui_ctx.core.status.lock().clear();
+            } else if status == "git_scene_pull" {
+                match self.ui_ctx.git.lock().pull_ff_only_tracked() {
+                    Ok(()) => {
+                        self.ui_ctx.log("[INFO] Scene pull (ff-only) completed");
+                        let _ = self.ui_ctx.git.lock().refresh_scene_git();
+                    }
+                    Err(err) => self.ui_ctx.log(format!("[WARN] Scene pull failed: {err}")),
+                }
                 self.ui_ctx.core.status.lock().clear();
             } else if let Some(path) = status.strip_prefix("open_world:") {
                 // Agent E: World menu / suggest_world_roots → open_world:<path>

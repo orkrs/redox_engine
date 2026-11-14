@@ -76,6 +76,8 @@ pub struct EditorUiCtx {
     pub frame_ms: Mutex<f32>,
     /// Integrator may overwrite with real GPU memory stats; shown in Viewport toolbar.
     pub vram_label: Mutex<String>,
+    /// Commit message buffer for scene git (Console / git overlay).
+    pub scene_commit_message: Mutex<String>,
 }
 
 impl EditorUiCtx {
@@ -116,12 +118,22 @@ impl EditorUiCtx {
             fps: Mutex::new(0.0),
             frame_ms: Mutex::new(0.0),
             vram_label: Mutex::new("VRAM: n/a".into()),
+            scene_commit_message: Mutex::new("Update scene".into()),
         }
     }
 
     /// Appends a line to the console.
     pub fn log(&self, line: impl Into<String>) {
         self.core.log.push(line);
+    }
+
+    /// Registers the open scene and project root for scene-level git (status, diff, commit, pull).
+    pub fn track_scene_git(&self, scene_file: impl AsRef<std::path::Path>, project_root: impl AsRef<std::path::Path>) {
+        let mut git = self.git.lock();
+        git.set_tracked_scene(scene_file, project_root);
+        if let Err(err) = git.refresh_scene_git() {
+            self.log(format!("[WARN] Scene git: {err}"));
+        }
     }
 
     /// Queue an asset spawn request (no world mutation).
