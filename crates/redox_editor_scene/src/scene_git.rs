@@ -216,7 +216,7 @@ pub fn commit_scene_files(
     Err(SceneGitError::FeatureDisabled)
 }
 
-/// Fast-forward merge of the current branch's upstream; refuses diverged histories.
+/// Fast-forward merge of the current branch's upstream; refuses diverged histories (no force push).
 #[cfg(feature = "editor-git")]
 pub fn pull_ff_only(repo: &git2::Repository) -> Result<(), SceneGitError> {
     let head = repo.head()?;
