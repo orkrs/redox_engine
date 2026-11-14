@@ -74,6 +74,7 @@ struct Pending {
     path: PathBuf,
     guid: AssetGuid,
     importer: Arc<dyn AssetImporter>,
+    settings: String,
     seq: u64,
 }
 
@@ -133,6 +134,16 @@ impl ImportQueue {
     /// Queues an import of `path` with the importer for its extension. Returns `false` when no
     /// importer handles the file, or the file is already queued or running.
     pub fn submit(&self, path: PathBuf, guid: AssetGuid) -> bool {
+        self.submit_with_settings(path, guid, String::new())
+    }
+
+    /// Queues an import with per-asset settings stored in the sidecar.
+    pub fn submit_with_settings(
+        &self,
+        path: PathBuf,
+        guid: AssetGuid,
+        settings: String,
+    ) -> bool {
         let Some(importer) = self.importers.for_path(&path) else {
             return false;
         };
@@ -150,6 +161,7 @@ impl ImportQueue {
             path,
             guid,
             importer,
+            settings,
             seq,
         });
         drop(state);
@@ -269,6 +281,7 @@ fn run_job(
         path,
         guid,
         importer,
+        settings,
         seq: _,
     } = job;
     let _ = events.send(ImportEvent::Started {
@@ -278,7 +291,7 @@ fn run_job(
     let request = ImportJob {
         path: path.clone(),
         guid,
-        settings: String::new(),
+        settings,
     };
     let outcome = catch_unwind(AssertUnwindSafe(|| importer.import(&request, token)));
     let event = match outcome {

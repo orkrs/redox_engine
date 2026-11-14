@@ -27,7 +27,7 @@ pub use error::AssetError;
 pub use event::{AssetLoadFailedEvent, AssetLoadedEvent, AssetReloadedEvent};
 pub use guid::{
     AssetGuid, AssetMeta, AssetRegistry, DependentRef, RegistryChange, RegistryError, ScanReport,
-    is_sidecar_or_temp,
+    content_hash, is_sidecar_or_temp,
 };
 pub use handle::{AssetId, AssetStatus, Handle, WeakHandle};
 pub use hot_reload::{AssetEvent, HotReloadWatcher, ReloadRequest};

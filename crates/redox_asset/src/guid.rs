@@ -424,13 +424,47 @@ impl AssetRegistry {
         Ok(content_hash(&bytes) != meta.source_hash)
     }
 
+    /// Reads the `.meta` sidecar of a registered asset.
+    pub fn read_meta(&self, path: &str) -> Result<AssetMeta, RegistryError> {
+        let file = self.root.join(path);
+        read_meta(&file)?.ok_or_else(|| RegistryError::Unknown(path.to_owned()))
+    }
+
+    /// Writes the `.meta` sidecar of a registered asset.
+    pub fn write_meta(&self, path: &str, meta: &AssetMeta) -> Result<(), RegistryError> {
+        if !self.by_path.contains_key(path) {
+            return Err(RegistryError::Unknown(path.to_owned()));
+        }
+        write_meta(&self.root.join(path), meta)
+    }
+
+    /// FNV-1a hash of the asset bytes on disk.
+    pub fn file_hash(&self, path: &str) -> Result<u64, RegistryError> {
+        let file = self.root.join(path);
+        let bytes = fs::read(&file).map_err(io_err(&file))?;
+        Ok(content_hash(&bytes))
+    }
+
     /// Records the current file hash in the sidecar (call after (re)importing).
     pub fn mark_imported(&self, path: &str, importer_version: u32) -> Result<(), RegistryError> {
+        self.mark_imported_with_settings(path, importer_version, None)
+    }
+
+    /// Records a successful import, optionally persisting the settings blob used.
+    pub fn mark_imported_with_settings(
+        &self,
+        path: &str,
+        importer_version: u32,
+        settings: Option<&str>,
+    ) -> Result<(), RegistryError> {
         let file = self.root.join(path);
         let mut meta = read_meta(&file)?.ok_or_else(|| RegistryError::Unknown(path.to_owned()))?;
         let bytes = fs::read(&file).map_err(io_err(&file))?;
         meta.source_hash = content_hash(&bytes);
         meta.importer_version = importer_version;
+        if let Some(blob) = settings {
+            meta.settings = blob.to_owned();
+        }
         write_meta(&file, &meta)
     }
 
@@ -478,6 +512,14 @@ impl AssetRegistry {
     /// Every reference of every indexed scene, in scene path order.
     pub fn scene_references(&self) -> Vec<DependentRef> {
         self.scene_refs.values().flatten().cloned().collect()
+    }
+
+    /// References recorded for one scene path.
+    pub fn scene_refs(&self, scene: &str) -> &[DependentRef] {
+        self.scene_refs
+            .get(scene)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
     }
 
     /// Applies one file-system event incrementally and reports what changed.

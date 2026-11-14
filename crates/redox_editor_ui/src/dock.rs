@@ -11,6 +11,7 @@ use crate::inspector::{InspectorPanel, selection_entities};
 use crate::profiler_panel::ProfilerPanel;
 use crate::undo_history::UndoHistoryPanel;
 use crate::validation_panel::ValidationPanel;
+use redox_editor_assets::AssetService;
 use redox_editor_viewport::{GizmoMode, ViewportLayout, ViewportShading};
 
 /// Tabs of the editor dock.
@@ -38,6 +39,12 @@ pub enum Tab {
     UndoHistory,
     /// Scene validation issues.
     Issues,
+    /// Import queue log.
+    ImportLog,
+    /// Reference viewer for the selected asset.
+    ReferenceViewer,
+    /// Asset audit and size map export.
+    AssetAudit,
 }
 
 impl std::fmt::Display for Tab {
@@ -54,6 +61,9 @@ impl std::fmt::Display for Tab {
             Tab::Packager => write!(f, "Packager"),
             Tab::UndoHistory => write!(f, "Undo History"),
             Tab::Issues => write!(f, "Issues"),
+            Tab::ImportLog => write!(f, "Import Log"),
+            Tab::ReferenceViewer => write!(f, "References"),
+            Tab::AssetAudit => write!(f, "Asset Audit"),
         }
     }
 }
@@ -84,6 +94,9 @@ impl EditorDock {
         Tab::Packager,
         Tab::UndoHistory,
         Tab::Issues,
+        Tab::ImportLog,
+        Tab::ReferenceViewer,
+        Tab::AssetAudit,
     ];
 
     /// Creates the dock with the layout from `editor_layout.ron` in the working directory.
@@ -150,6 +163,9 @@ impl EditorDock {
             0.72,
             vec![
                 Tab::AssetBrowser,
+                Tab::ImportLog,
+                Tab::ReferenceViewer,
+                Tab::AssetAudit,
                 Tab::Console,
                 Tab::Graph,
                 Tab::TimeTravel,
@@ -193,11 +209,13 @@ impl EditorDock {
         ui_ctx: &EditorUiCtx,
         viewport_tex_id: Option<egui::TextureId>,
         viewport_rect: Option<Arc<Mutex<Option<egui::Rect>>>>,
+        assets: Option<&mut AssetService>,
     ) {
         let mut viewer = TabViewerImpl {
             ui_ctx,
             viewport_tex_id,
             viewport_rect,
+            assets,
         };
         let style = Style::from_egui(ui.style().as_ref());
         DockArea::new(&mut self.tree)
@@ -260,6 +278,7 @@ struct TabViewerImpl<'a> {
     ui_ctx: &'a EditorUiCtx,
     viewport_tex_id: Option<egui::TextureId>,
     viewport_rect: Option<Arc<Mutex<Option<egui::Rect>>>>,
+    assets: Option<&'a mut AssetService>,
 }
 
 impl TabViewer for TabViewerImpl<'_> {
@@ -408,10 +427,50 @@ impl TabViewer for TabViewerImpl<'_> {
             }
             Tab::UndoHistory => UndoHistoryPanel::show(ui, &self.ui_ctx.core),
             Tab::AssetBrowser => {
-                let mut assets = self.ui_ctx.assets.lock();
-                if let Some(req) = assets.show(ui) {
+                let mut panel = self.ui_ctx.assets.lock();
+                if let Some(req) = panel.show(ui) {
                     self.ui_ctx.pending_asset_spawns.lock().push(req);
                 }
+            }
+            Tab::ImportLog => {
+                let Some(service) = self.assets.as_mut() else {
+                    ui.label("Assets are not loaded.");
+                    return;
+                };
+                let mut shell = self.ui_ctx.import_log.lock();
+                if let Some(path) = self.ui_ctx.assets.lock().take_import_log_focus() {
+                    shell.focus(path);
+                }
+                if let Some(retry) =
+                    shell.show(ui, service.import_log_mut())
+                {
+                    let _ = service.retry_import(&retry);
+                }
+            }
+            Tab::ReferenceViewer => {
+                let Some(service) = self.assets.as_mut() else {
+                    ui.label("Assets are not loaded.");
+                    return;
+                };
+                let guid = self.ui_ctx.assets.lock().model.selected().map(|e| e.guid);
+                if let Some(guid) = guid {
+                    self.ui_ctx.reference_viewer.lock().select(
+                        guid,
+                        service.registry(),
+                        service.references_index(),
+                    );
+                }
+                self.ui_ctx.reference_viewer.lock().show(ui);
+            }
+            Tab::AssetAudit => {
+                let Some(service) = self.assets.as_mut() else {
+                    ui.label("Assets are not loaded.");
+                    return;
+                };
+                self.ui_ctx
+                    .audit
+                    .lock()
+                    .show(ui, service.registry());
             }
             Tab::Console => {
                 if GitOverlay::show(ui, &self.ui_ctx.git.lock()) {

@@ -28,6 +28,7 @@
 //! and skips the work when nothing changed since the last run.
 
 mod audio_check;
+mod audit;
 #[cfg(feature = "bake")]
 mod bake;
 mod hlod_bake;
@@ -73,12 +74,27 @@ enum Command {
         out: PathBuf,
         options: hlod_bake::SdfOptions,
     },
+    Audit(audit::AuditJob),
 }
 
 fn parse(args: &[String]) -> Result<Command, String> {
     let rest: Vec<&str> = args.iter().skip(1).map(String::as_str).collect();
     match rest.as_slice() {
         ["scan", dir] => Ok(Command::Scan(dir.into())),
+        ["audit", dir, flags @ ..] => {
+            let mut json = false;
+            for flag in flags {
+                if *flag == "--json" {
+                    json = true;
+                } else {
+                    return Err(format!("unknown audit option: {flag}"));
+                }
+            }
+            Ok(Command::Audit(audit::AuditJob {
+                assets_dir: dir.into(),
+                json,
+            }))
+        }
         ["pack", dir, out, flags @ ..] => {
             let mut command = Command::Pack {
                 dir: dir.into(),
@@ -140,6 +156,7 @@ fn parse(args: &[String]) -> Result<Command, String> {
                 "bake-sdf",
                 "bake-navmesh",
                 "audio-check",
+                "audit",
             ]
             .contains(cmd) =>
         {
@@ -233,6 +250,7 @@ fn run(command: Command) -> Result<(), String> {
         }),
         Command::BakeNavmesh(job) => nav::run(&job),
         Command::AudioCheck(job) => audio_check::run(&job),
+        Command::Audit(job) => audit::run(&job).map(|_| ()),
         Command::Verify(pak) => {
             let reader = PakReader::open(&pak).map_err(|e| e.to_string())?;
             let mut bad = 0usize;

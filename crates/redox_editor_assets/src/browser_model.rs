@@ -108,6 +108,8 @@ pub struct BrowserEntry {
     pub kind: AssetKind,
     /// Import status; `None` when the asset needs no import.
     pub status: Option<AssetStatus>,
+    /// Cached thumbnail PNG when generated.
+    pub thumb_path: Option<PathBuf>,
 }
 
 /// An action offered for an asset in the browser.
@@ -135,6 +137,8 @@ pub enum AssetAction {
     CopyGuid,
     /// Open in a document tab (material graphs).
     Open,
+    /// Focus the import log on this asset.
+    ShowInLog,
 }
 
 /// Actions allowed for an entry. A missing file cannot be renamed, moved or revealed; a failed
@@ -148,6 +152,7 @@ pub fn actions_for(entry: &BrowserEntry) -> Vec<AssetAction> {
         ],
         Some(AssetStatus::Failed(_)) => vec![
             AssetAction::ShowError,
+            AssetAction::ShowInLog,
             AssetAction::Reimport,
             AssetAction::Rename,
             AssetAction::Move,
@@ -158,6 +163,7 @@ pub fn actions_for(entry: &BrowserEntry) -> Vec<AssetAction> {
         ],
         Some(AssetStatus::Importing) => vec![
             AssetAction::Cancel,
+            AssetAction::ShowInLog,
             AssetAction::ShowReferences,
             AssetAction::CopyGuid,
         ],
@@ -169,6 +175,7 @@ pub fn actions_for(entry: &BrowserEntry) -> Vec<AssetAction> {
                 AssetAction::Reimport,
                 AssetAction::RevealInExplorer,
                 AssetAction::ShowReferences,
+                AssetAction::ShowInLog,
                 AssetAction::CopyGuid,
             ];
             if entry.kind == AssetKind::Mesh {
@@ -210,6 +217,7 @@ impl BrowserModel {
                 guid,
                 kind: AssetKind::from_path(Path::new(path)),
                 status: registry.status(path).cloned(),
+                thumb_path: None,
             })
             .collect();
         self.references = registry.scene_references();
@@ -264,6 +272,21 @@ impl BrowserModel {
     /// Scenes and entities that reference an asset, in scene path order.
     pub fn references_of(&self, guid: AssetGuid) -> Vec<&DependentRef> {
         self.references.iter().filter(|r| r.guid == guid).collect()
+    }
+
+    /// Attaches thumbnail paths from the cache service.
+    pub fn apply_thumbnails(
+        &mut self,
+        thumbs: &crate::thumbnail_service::ThumbnailService,
+    ) {
+        for entry in &mut self.entries {
+            match thumbs.lookup(entry.guid, entry.kind) {
+                crate::thumbnail_service::ThumbnailOutcome::Cached(path) => {
+                    entry.thumb_path = Some(path);
+                }
+                _ => entry.thumb_path = None,
+            }
+        }
     }
 }
 

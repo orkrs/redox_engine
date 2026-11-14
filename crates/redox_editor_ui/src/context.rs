@@ -11,6 +11,10 @@ use redox_editor_viewport::{
 use std::sync::Arc;
 
 use crate::asset_browser::{AssetBrowserPanel, AssetSpawnRequest};
+use crate::audit_panel::AuditPanel;
+use crate::import_dialog_panel::ImportDialogPanel;
+use crate::import_log_panel::ImportLogPanel;
+use crate::reference_panel::ReferenceViewerPanel;
 use crate::brush_panel::BrushPanel;
 use crate::command_palette::CommandPalette;
 use crate::material_canvas::{focus_from_report, graph_from_view};
@@ -43,6 +47,14 @@ pub struct EditorUiCtx {
     pub outliner: Mutex<OutlinerPanel>,
     /// Asset browser panel state.
     pub assets: Mutex<AssetBrowserPanel>,
+    /// Import log tab shell.
+    pub import_log: Mutex<ImportLogPanel>,
+    /// Import file dialog.
+    pub import_dialog: Mutex<ImportDialogPanel>,
+    /// Reference viewer tab.
+    pub reference_viewer: Mutex<ReferenceViewerPanel>,
+    /// Asset audit tab.
+    pub audit: Mutex<AuditPanel>,
     /// Command palette state.
     pub palette: Mutex<CommandPalette>,
     /// Brush panel state.
@@ -105,6 +117,10 @@ impl EditorUiCtx {
             git: Arc::new(Mutex::new(WorldGitTracker::new("worlds/arena"))),
             outliner: Mutex::new(OutlinerPanel::default()),
             assets: Mutex::new(AssetBrowserPanel::default()),
+            import_log: Mutex::new(ImportLogPanel::new()),
+            import_dialog: Mutex::new(ImportDialogPanel::new()),
+            reference_viewer: Mutex::new(ReferenceViewerPanel::new()),
+            audit: Mutex::new(AuditPanel::new()),
             palette: Mutex::new(palette),
             brush: Mutex::new(BrushPanel::default()),
             graph: Mutex::new(NodeCanvas::default()),

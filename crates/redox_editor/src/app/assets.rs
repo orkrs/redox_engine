@@ -88,7 +88,10 @@ impl EditorApp {
         if let Some(service) = self.assets.as_mut() {
             service.set_open_asset(open_path.as_deref());
             if changed || refresh_due {
-                self.ui_ctx.assets.lock().refresh(service.registry());
+                self.ui_ctx.assets.lock().refresh_with_thumbs(
+                    service.registry(),
+                    service.thumbnails(),
+                );
                 self.last_asset_refresh = Instant::now();
             }
         }
@@ -162,6 +165,9 @@ impl EditorApp {
                     self.ui_ctx
                         .log(format!("[ERROR] Cannot open Explorer: {err}"));
                 }
+            }
+            AssetRequest::FocusImportLog { path } => {
+                self.ui_ctx.import_log.lock().focus(path);
             }
             AssetRequest::UpdateHints { guid } => match service.update_path_hints(guid) {
                 Ok(count) => {
