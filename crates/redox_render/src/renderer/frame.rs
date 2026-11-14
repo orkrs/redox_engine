@@ -105,6 +105,7 @@ impl Renderer {
     ) -> Result<(), crate::surface::SurfaceError> {
         let t0 = std::time::Instant::now();
         let objects = self.keep_frame_objects(objects);
+        self.sync_material_instances();
         // Graph materials read one shared frame time in every stage and pass.
         let frame_seconds = self.taa_frame_count as f32 / 60.0;
         let prev_seconds = (self.taa_frame_count as f32 - 1.0).max(0.0) / 60.0;

@@ -157,6 +157,7 @@ pub struct RenderHost {
     /// Rebuilds the passes of WGSL files edited while the editor runs (`shader-hot-reload`).
     #[cfg(feature = "shader-hot-reload")]
     shader_hot_reload: redox_render::renderer::ShaderHotReload,
+    pub material_preview: Option<crate::material_preview_host::MaterialPreviewRig>,
 }
 
 impl RenderHost {
@@ -223,6 +224,9 @@ impl RenderHost {
 
         let pane_views = Some(make_pane_views(&renderer.device, width, height));
 
+        let material_preview =
+            Some(crate::material_preview_host::init_material_preview(&mut renderer));
+
         Self {
             viewport,
             renderer: Some(renderer),
@@ -240,6 +244,7 @@ impl RenderHost {
             wireframe_overlay: Vec::new(),
             #[cfg(feature = "shader-hot-reload")]
             shader_hot_reload: redox_render::renderer::ShaderHotReload::new(),
+            material_preview,
         }
     }
 

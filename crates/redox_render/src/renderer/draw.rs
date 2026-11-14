@@ -95,9 +95,7 @@ impl Renderer {
             return Ok(());
         };
         let Some(graph) = graphs.get(&id) else {
-            let error = crate::matgraph_cache::MaterialGraphError::UnknownGraph(id);
-            log::warn!("material {material_index}: {error}");
-            return Err(error);
+            return Err(crate::matgraph_cache::MaterialGraphError::UnknownGraph(id));
         };
         self.set_material_graph(material_index, graph, params)
     }

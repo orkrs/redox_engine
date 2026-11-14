@@ -66,6 +66,7 @@ pub struct EditorUiCtx {
     pub graph: Mutex<NodeCanvas>,
     /// Open material graph document, if any (Graph tab / Material mode).
     pub material: Mutex<Option<MaterialEditorSession>>,
+    pub material_preview_tex: Mutex<Option<egui::TextureId>>,
     /// Packager panel state.
     pub packager: Mutex<PackagerPanel>,
     /// Entity driven by the node graph demo, if any.
@@ -140,6 +141,7 @@ impl EditorUiCtx {
             brush: Mutex::new(BrushPanel::default()),
             graph: Mutex::new(NodeCanvas::default()),
             material: Mutex::new(None),
+            material_preview_tex: Mutex::new(None),
             packager: Mutex::new(PackagerPanel::new("worlds/arena")),
             demo_agent: Mutex::new(None),
             pending_actions: Mutex::new(Vec::new()),
