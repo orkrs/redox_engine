@@ -351,14 +351,28 @@ impl TabViewer for TabViewerImpl<'_> {
             Tab::Outliner => {
                 let mut outliner = self.ui_ctx.outliner.lock();
                 let world = self.ui_ctx.core.world.lock();
+                let registry = self.ui_ctx.core.registry.lock();
                 let mut selection = self.ui_ctx.core.selection.lock();
+                let mut undo = self.ui_ctx.core.undo.lock();
                 let session = self.ui_ctx.world_session.lock();
                 let git = self.ui_ctx.git.lock();
-                let actions =
-                    outliner.show(ui, &world, &mut selection, session.as_ref(), Some(&git));
+                let scene_mode = session.is_none();
+                let actions = outliner.show(
+                    ui,
+                    &world,
+                    &registry,
+                    &mut selection,
+                    &mut undo,
+                    &self.ui_ctx.core,
+                    scene_mode,
+                    session.as_ref(),
+                    Some(&git),
+                );
                 drop(git);
                 drop(session);
+                drop(undo);
                 drop(selection);
+                drop(registry);
                 drop(world);
                 drop(outliner);
                 if !actions.is_empty() {

@@ -232,3 +232,21 @@ cargo test -p redox_editor --test bench_asset_scan -- --ignored --nocapture
 | 10 000 | | | | | |
 
 Стресс «1 000 случайных операций с полным Undo» идёт в обычном прогоне сценариев (`s04_undo_stress`, фиксированный seed `0x5EED_A7_0001`), отдельного замера не имеет.
+
+## EDT-B1: outliner на 50k сущностей (2026-11-14)
+
+**Замер: координатор.** Исполнитель не запускал сборку и тесты. Порог для «кадра» outliner с высотой 800 px не задан — координатор заполняет после прогона.
+
+Команды:
+
+```text
+cargo test -p redox_editor_scene outliner_model::tests::virtual_list_does_not_draw_all_rows_at_50k -- --nocapture
+cargo test -p redox_editor_scene outliner_model::tests::bench_build_50k_entities -- --ignored --nocapture
+```
+
+Ожидание: `virtual_list_does_not_draw_all_rows_at_50k` ограничивает число строк отрисовки (≈ `800/20 + 1`, не 50 000); `bench_build_50k_entities` печатает время построения модели (порог внести сюда после замера).
+
+| Что | Значение |
+|---|---|
+| Построение `OutlinerModel`, 50k | |
+| Плоский список + виртуальное окно 800 px | |

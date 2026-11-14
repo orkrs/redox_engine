@@ -1,6 +1,8 @@
 //! Registration of the scene component types for reflection, saving and the inspector.
 
 use redox_ecs::{Entity, World};
+use redox_editor_core::markers::{EditorFolder, Locked};
+use redox_editor_core::selection::Visibility;
 use redox_gameplay::AttributeSet;
 use redox_physics::Velocity;
 use redox_reflect::{ReflectValue, TypeRegistry, register_engine_defaults};
@@ -49,6 +51,9 @@ pub fn register_scene_components(registry: &mut TypeRegistry) {
     registry.register::<AssetRefs>();
     registry.register::<Velocity>();
     registry.register::<AttributeSet>();
+    registry.register::<Visibility>();
+    registry.register::<Locked>();
+    registry.register::<EditorFolder>();
     registry.override_read("MeshHandle", |world, entity| {
         read_handle_value(world, entity, "MeshHandle")
     });

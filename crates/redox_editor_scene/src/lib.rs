@@ -18,6 +18,10 @@ pub mod register;
 pub mod level;
 /// The open world: partition streamer, manifest and root directory.
 pub mod world_session;
+/// Scene hierarchy for the outliner (no UI).
+pub mod outliner_model;
+/// Undoable outliner operations.
+pub mod outliner_ops;
 
 pub use asset_resolve::bind_render_handles;
 pub use document::{
@@ -28,3 +32,9 @@ pub use git::{ActorGitStatus, WorldGitTracker};
 pub use register::register_scene_components;
 pub use level::{Level, LevelError, LevelKind};
 pub use world_session::WorldSession;
+pub use outliner_model::{
+    FlatRow, OutlinerFilter, OutlinerModel, OutlinerNode, OutlinerWarning, OUTLINER_ROW_HEIGHT,
+    VisibleRows, build, flatten, invert_selection, select_children, select_range,
+    toggle_select, visible_row_range, SelectionModifiers,
+};
+pub use outliner_ops::{apply_lock, apply_visibility, isolate, is_hidden, is_locked, is_pickable, reparent};
