@@ -38,3 +38,6 @@ ron = { workspace = true }
 log = { workspace = true }
 
 parking_lot = "0.12"
+
+[dev-dependencies]
+redox_matgraph = { path = "../redox_matgraph" }
