@@ -429,6 +429,14 @@ impl ReferenceIndex {
         Ok(())
     }
 
+    /// Parsed references inside one scene file.
+    pub fn refs_in_scene(&self, scene: &str) -> &[SceneRef] {
+        self.scenes
+            .get(scene)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
     /// References whose asset cannot be resolved right now, in scene path order.
     pub fn missing_refs(&self, registry: &AssetRegistry) -> Vec<MissingRef> {
         let mut out = Vec::new();
