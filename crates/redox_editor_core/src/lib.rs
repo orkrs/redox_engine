@@ -10,6 +10,10 @@
 pub mod autosave;
 /// Built-in commands that work on the domain state (create, duplicate, delete).
 pub mod builtin_commands;
+/// Catalog of component types for the add menu and soft dependency prompts.
+pub mod component_catalog;
+/// Add/remove/copy component values as undo transactions.
+pub mod component_commands;
 /// Editor commands addressed by identifier and the registry that runs them.
 pub mod command;
 /// Shared handles to the editor state.
@@ -48,4 +52,12 @@ pub use markers::{EditorFolder, Locked};
 pub use guid::GuidResolver;
 pub use log::EditorLog;
 pub use selection::{Selection, Visibility};
+pub use component_catalog::{
+    AddableType, CatalogEntry, ComponentCatalog, DependencyPromptAnswer, DependencyPromptOutcome,
+    DependencyWarning, addable_types, dependency_warning_for_add, resolve_dependency_prompt,
+};
+pub use component_commands::{
+    ComponentAddResult, bulk_add_component, component_add, component_add_and_record,
+    component_copy_values, component_remove, record_component_transaction,
+};
 pub use undo::{Clock, SystemClock, UndoCommand, UndoEntry, UndoError, UndoHotkey, UndoStack};

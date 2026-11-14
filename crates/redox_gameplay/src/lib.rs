@@ -51,6 +51,57 @@ impl redox_reflect::Reflect for AttributeSet {
         "AttributeSet"
     }
 
+    fn reflect_schema() -> redox_reflect::ReflectSchema {
+        use redox_reflect::meta::{FieldMeta, TypeMeta};
+        use redox_reflect::{ReflectField, ReflectSchema};
+        ReflectSchema {
+            type_name: Self::type_name(),
+            fields: vec![
+                ReflectField {
+                    name: "health",
+                    type_name: "f32",
+                    meta: FieldMeta {
+                        label: Some("Health"),
+                        category: Some("Vitality"),
+                        ..Default::default()
+                    },
+                },
+                ReflectField {
+                    name: "health_max",
+                    type_name: "f32",
+                    meta: FieldMeta {
+                        label: Some("Max health"),
+                        category: Some("Vitality"),
+                        ..Default::default()
+                    },
+                },
+                ReflectField {
+                    name: "stamina",
+                    type_name: "f32",
+                    meta: FieldMeta {
+                        label: Some("Stamina"),
+                        category: Some("Vitality"),
+                        ..Default::default()
+                    },
+                },
+                ReflectField {
+                    name: "stamina_max",
+                    type_name: "f32",
+                    meta: FieldMeta {
+                        label: Some("Max stamina"),
+                        category: Some("Vitality"),
+                        ..Default::default()
+                    },
+                },
+            ],
+            meta: TypeMeta {
+                category: Some("Gameplay"),
+                tooltip: Some("Character health and stamina (GAS-lite)"),
+                ..Default::default()
+            },
+        }
+    }
+
     fn to_value(&self) -> redox_reflect::ReflectValue {
         use redox_reflect::ReflectValue;
         ReflectValue::Struct {

@@ -107,49 +107,6 @@ impl super::InspectorModel {
     }
 }
 
-/// Types the add menu offers for the entities: the ones not present on all of them, matching
-/// `filter` (case-insensitive substring of the name or category). Editor-only types are included
-/// only when `include_editor_only` is set. Sorted by category, then name.
-pub fn addable_types(
-    registry: &TypeRegistry,
-    world: &World,
-    entities: &[Entity],
-    filter: &str,
-    include_editor_only: bool,
-) -> Vec<AddableType> {
-    let needle = filter.trim().to_lowercase();
-    let mut types: Vec<AddableType> = registry
-        .type_names()
-        .filter_map(|name| {
-            let schema = registry.schema(name)?;
-            if schema.meta.editor_only && !include_editor_only {
-                return None;
-            }
-            let present_everywhere = !entities.is_empty()
-                && entities
-                    .iter()
-                    .all(|&entity| registry.read_component(world, entity, name).is_some());
-            if present_everywhere {
-                return None;
-            }
-            let category = schema.meta.category;
-            let matches = needle.is_empty()
-                || name.to_lowercase().contains(&needle)
-                || category.is_some_and(|c| c.to_lowercase().contains(&needle));
-            matches.then_some(AddableType {
-                type_name: name,
-                category,
-            })
-        })
-        .collect();
-    types.sort_by(|a, b| {
-        (a.category.is_none(), a.category.unwrap_or(""))
-            .cmp(&(b.category.is_none(), b.category.unwrap_or("")))
-            .then_with(|| a.type_name.cmp(b.type_name))
-    });
-    types
-}
-
 /// Adds `name` to `entity` unless it is already there or planned, then plans its requirements
 /// first. `required_by` names the component that needs `name`, for the note.
 fn plan_component(
