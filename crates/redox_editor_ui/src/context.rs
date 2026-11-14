@@ -13,6 +13,8 @@ use std::sync::Arc;
 use crate::asset_browser::{AssetBrowserPanel, AssetSpawnRequest};
 use crate::brush_panel::BrushPanel;
 use crate::command_palette::CommandPalette;
+use crate::material_canvas::{focus_from_report, graph_from_view};
+use crate::material_editor::{MaterialEditorSession, MaterialOpenRequest};
 use crate::node_canvas::NodeCanvas;
 use crate::outliner::{OutlinerAction, OutlinerPanel};
 use crate::packager::PackagerPanel;
@@ -46,6 +48,8 @@ pub struct EditorUiCtx {
     pub brush: Mutex<BrushPanel>,
     /// Node graph panel state.
     pub graph: Mutex<NodeCanvas>,
+    /// Open material graph document, if any (Graph tab / Material mode).
+    pub material: Mutex<Option<MaterialEditorSession>>,
     /// Packager panel state.
     pub packager: Mutex<PackagerPanel>,
     /// Entity driven by the node graph demo, if any.
@@ -101,6 +105,7 @@ impl EditorUiCtx {
             palette: Mutex::new(palette),
             brush: Mutex::new(BrushPanel::default()),
             graph: Mutex::new(NodeCanvas::default()),
+            material: Mutex::new(None),
             packager: Mutex::new(PackagerPanel::new("worlds/arena")),
             demo_agent: Mutex::new(None),
             pending_actions: Mutex::new(Vec::new()),
@@ -139,6 +144,39 @@ impl EditorUiCtx {
     /// Drain queued asset spawn requests for the integrator.
     pub fn drain_asset_spawns(&self) -> Vec<AssetSpawnRequest> {
         std::mem::take(&mut *self.pending_asset_spawns.lock())
+    }
+
+    /// Opens a `.matgraph` into the material editor and switches the graph canvas to Material mode.
+    pub fn open_material(&self, request: MaterialOpenRequest) -> Result<(), String> {
+        let session = MaterialEditorSession::open(&request.path, request.guid)
+            .map_err(|e| e.to_string())?;
+        let graph = graph_from_view(&session.view);
+        let active =
+            focus_from_report(&session.compile, session.focused_node);
+        {
+            let mut canvas = self.graph.lock();
+            canvas.load_material(graph, active);
+        }
+        *self.material.lock() = Some(session);
+        self.log(format!(
+            "[INFO] Opened material {}",
+            request.path.display()
+        ));
+        Ok(())
+    }
+
+    /// Pushes the material view back into the node canvas (after edits).
+    pub fn refresh_material_canvas(&self) {
+        let material = self.material.lock();
+        let Some(session) = material.as_ref() else {
+            return;
+        };
+        let graph = graph_from_view(&session.view);
+        let active = focus_from_report(&session.compile, session.focused_node);
+        drop(material);
+        self.graph
+            .lock()
+            .load_material(graph, active);
     }
 
     /// Spawn a patrol/chase AI agent for the StateTree debugger.

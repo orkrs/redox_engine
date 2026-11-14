@@ -21,6 +21,9 @@ pub mod file_menu;
 pub mod input_adapters;
 /// Component inspector.
 pub mod inspector;
+pub mod material_canvas;
+pub mod material_editor;
+pub mod material_panel;
 pub mod node_canvas;
 /// World outliner.
 pub mod outliner;
@@ -38,6 +41,7 @@ pub use brush_panel::BrushPanel;
 pub use context::EditorUiCtx;
 pub use dock::{EditorDock, Tab};
 pub use input_adapters::{egui_to_viewport_coords, undo_hotkey};
+pub use material_editor::{MaterialEditorSession, MaterialOpenRequest};
 pub use outliner::OutlinerAction;
 pub use packager::{BakeReport, BakeStatus, PackagerPanel};
 pub use recovery_dialog::{

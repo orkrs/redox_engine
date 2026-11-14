@@ -401,6 +401,40 @@ impl TabViewer for TabViewerImpl<'_> {
                     });
             }
             Tab::Graph => {
+                if let Some(mut session) = self.ui_ctx.material.lock().take() {
+                    use crate::material_panel::{MaterialPanel, MaterialPanelAction};
+                    match MaterialPanel::show(ui, &mut session) {
+                        MaterialPanelAction::None | MaterialPanelAction::FocusNode => {}
+                        MaterialPanelAction::Undo => {
+                            if let Some(prev) = session.view.undo.undo(&session.view.graph) {
+                                session.view.graph = prev;
+                                session.sync_graph_from_view();
+                            }
+                        }
+                        MaterialPanelAction::Save => {
+                            match session.save() {
+                                Ok(path) => {
+                                    self.ui_ctx
+                                        .log(format!("[INFO] Saved material {path}"));
+                                }
+                                Err(err) => {
+                                    self.ui_ctx
+                                        .log(format!("[ERROR] Material save failed: {err}"));
+                                }
+                            }
+                        }
+                    }
+                    let graph = crate::material_canvas::graph_from_view(&session.view);
+                    let active = crate::material_canvas::focus_from_report(
+                        &session.compile,
+                        session.focused_node,
+                    );
+                    self.ui_ctx
+                        .graph
+                        .lock()
+                        .load_material(graph, active);
+                    *self.ui_ctx.material.lock() = Some(session);
+                }
                 let agent_e = self.ui_ctx.resolve_graph_agent_entity();
                 let primary = self.ui_ctx.core.selection.lock().primary;
                 let mut world = self.ui_ctx.core.world.lock();
@@ -414,7 +448,22 @@ impl TabViewer for TabViewerImpl<'_> {
                 let mut graph = self.ui_ctx.graph.lock();
                 use crate::node_canvas::GraphMode;
                 // Avoid dual mut borrows from the same World: StateTree vs SkinnedMesh.
-                if graph.mode == GraphMode::AnimGraph {
+                if graph.mode == GraphMode::Material {
+                    let mut session = self.ui_ctx.material.lock();
+                    if let Some(mat) = session.as_mut() {
+                        let (rect, response) =
+                            ui.allocate_exact_size(ui.available_size(), egui::Sense::drag());
+                        graph.show_material_canvas(
+                            ui,
+                            rect,
+                            &response,
+                            &mut mat.view,
+                        );
+                        mat.sync_graph_from_view();
+                    } else {
+                        graph.show(ui, None, None, None, None, dt);
+                    }
+                } else if graph.mode == GraphMode::AnimGraph {
                     let active_name = graph
                         .rig
                         .clips

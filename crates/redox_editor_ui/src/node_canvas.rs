@@ -1,4 +1,4 @@
-//! Visual node canvases: StateTree debugger, AnimGraph, PCG placeholder.
+//! Visual node canvases: StateTree debugger, AnimGraph, PCG placeholder, Material graphs.
 
 use redox_anim::{Inertializer, LocalPose, Pose, SkinnedModel};
 use redox_ecs::Entity;
@@ -14,6 +14,8 @@ pub enum GraphMode {
     AnimGraph,
     /// A procedural generation graph.
     Pcg,
+    /// Material graph from `.matgraph` (wired when a material session is open).
+    Material,
 }
 
 /// A node of the graph.
@@ -232,6 +234,13 @@ impl NodeCanvas {
         self.active_id = Some(3);
     }
 
+    /// Shows an authored material graph on the canvas.
+    pub fn load_material(&mut self, graph: NodeGraph, active_id: Option<usize>) {
+        self.mode = GraphMode::Material;
+        self.graph = graph;
+        self.active_id = active_id;
+    }
+
     /// Shows the procedural generation demo.
     pub fn load_pcg_demo(&mut self) {
         self.mode = GraphMode::Pcg;
@@ -379,6 +388,17 @@ impl NodeCanvas {
         }
     }
 
+    /// Draws only the material graph canvas and writes dragged node positions into `view`.
+    pub fn show_material_canvas(
+        &mut self,
+        ui: &mut egui::Ui,
+        rect: egui::Rect,
+        response: &egui::Response,
+        view: &mut redox_editor_assets::MatGraphView,
+    ) {
+        crate::material_canvas::draw_material(self, ui, rect, response, view);
+    }
+
     /// Draws the canvas and advances the animation by `dt`.
     pub fn show(
         &mut self,
@@ -409,6 +429,7 @@ impl NodeCanvas {
             {
                 self.load_pcg_demo();
             }
+            ui.selectable_label(self.mode == GraphMode::Material, "Material");
         });
         ui.separator();
 
@@ -539,6 +560,9 @@ impl NodeCanvas {
             }
             GraphMode::Pcg => {
                 ui.label("PCG graph → Packager tab / Build menu for OFPA bake");
+            }
+            GraphMode::Material => {
+                ui.label("Material graph — use the Material panel below the canvas");
             }
         }
 
