@@ -14,6 +14,7 @@ path = "src/main.rs"
 
 [features]
 editor-git = ["redox_editor_scene/editor-git"]
+editor-native-plugins = ["redox_editor_plugins/editor-native-plugins"]
 # Read WGSL from disk at startup and report shader compile errors on save.
 shader-hot-reload = ["redox_render/shader-hot-reload"]
 
@@ -24,6 +25,7 @@ redox_editor_scene = { path = "../redox_editor_scene" }
 redox_editor_assets = { path = "../redox_editor_assets" }
 redox_editor_debugger = { path = "../redox_editor_debugger" }
 redox_editor_ui = { path = "../redox_editor_ui" }
+redox_editor_plugins = { path = "../redox_editor_plugins" }
 redox_core = { path = "../redox_core" }
 redox_ecs = { path = "../redox_ecs" }
 redox_reflect = { path = "../redox_reflect" }
