@@ -16,6 +16,8 @@ pub mod console;
 pub mod runtime_inspector;
 /// Rolling frame-time profiler.
 pub mod profiler;
+/// CPU timeline from dispatcher spans.
+pub mod cpu_timeline;
 /// Ring buffer of world snapshots for scrubbing back in time.
 pub mod time_travel;
 
@@ -28,4 +30,5 @@ pub use runtime_inspector::{
     RuntimeInspectorHighlight, RuntimeSearchHit, RuntimeSearchQuery, search_runtime_entities,
 };
 pub use profiler::FrameProfiler;
+pub use cpu_timeline::{CpuSpan, CpuTimeline};
 pub use time_travel::TimeTravelBuffer;

@@ -12,6 +12,7 @@ workspace = true
 path = "src/lib.rs"
 
 [dependencies]
+redox_core = { path = "../redox_core" }
 redox_ecs = { path = "../redox_ecs" }
 redox_editor_scene = { path = "../redox_editor_scene" }
 redox_math = { path = "../redox_math" }
