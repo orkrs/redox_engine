@@ -872,6 +872,11 @@ impl EditorHarness {
             .map(|status: &AssetStatus| format!("{status:?}"))
     }
 
+    /// Mutable asset service when a project is open.
+    pub fn assets_mut(&mut self) -> Option<&mut AssetService> {
+        self.assets.as_mut()
+    }
+
     /// Moves or renames an asset through the asset service. `confirm` accepts rewriting the
     /// references in closed scenes.
     pub fn move_asset(&mut self, from: &str, to: &str, confirm: bool) -> Result<(), String> {

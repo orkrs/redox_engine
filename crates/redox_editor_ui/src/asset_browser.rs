@@ -50,6 +50,11 @@ pub enum AssetRequest {
         /// Identity of the moved asset.
         guid: AssetGuid,
     },
+    /// Focus the import log on this path.
+    FocusImportLog {
+        /// Path relative to the root.
+        path: String,
+    },
 }
 
 /// Request to create a proxy object in the world for an asset (the browser never mutates the world).
@@ -186,6 +191,7 @@ pub struct AssetBrowserPanel {
     hint_prompt: Option<(AssetGuid, Vec<String>)>,
     references_view: Option<AssetGuid>,
     error_view: Option<AssetGuid>,
+    import_log_focus: Option<String>,
     meta_cache: HashMap<PathBuf, Result<GltfMeta, String>>,
     texture_cache: HashMap<PathBuf, Result<TextureMeta, String>>,
 }
@@ -194,6 +200,21 @@ impl AssetBrowserPanel {
     /// Takes the entries and references from the registry.
     pub fn refresh(&mut self, registry: &AssetRegistry) {
         self.model.refresh(registry);
+    }
+
+    /// Refreshes entries and thumbnail paths from the cache.
+    pub fn refresh_with_thumbs(
+        &mut self,
+        registry: &AssetRegistry,
+        thumbs: &redox_editor_assets::ThumbnailService,
+    ) {
+        self.model.refresh(registry);
+        self.model.apply_thumbnails(thumbs);
+    }
+
+    /// Path waiting to be focused in the import log tab.
+    pub fn take_import_log_focus(&mut self) -> Option<String> {
+        self.import_log_focus.take()
     }
 
     /// Takes the requests made since the last call.
@@ -226,9 +247,32 @@ impl AssetBrowserPanel {
         egui::ScrollArea::vertical().show(ui, |ui| {
             for entry in &rows {
                 ui.horizontal(|ui| {
-                    let (thumb, _) =
-                        ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
-                    ui.painter().rect_filled(thumb, 2.0, swatch(entry.kind));
+                    let size = egui::vec2(14.0, 14.0);
+                    let (thumb, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+                    if let Some(path) = &entry.thumb_path {
+                        if let Ok(image) = image::open(path) {
+                            let rgba = image.to_rgba8();
+                            let texture = ui.ctx().load_texture(
+                                format!("thumb_{}", entry.guid),
+                                egui::ColorImage::from_rgba_unmultiplied(
+                                    [
+                                        rgba.width() as usize,
+                                        rgba.height() as usize,
+                                    ],
+                                    rgba.as_raw(),
+                                ),
+                                egui::TextureOptions::LINEAR,
+                            );
+                            ui.painter().image(
+                                texture.id(),
+                                thumb,
+                                egui::Rect::from_min_max(thumb.min, thumb.max),
+                                egui::Color32::WHITE,
+                            );
+                        }
+                    } else {
+                        ui.painter().rect_filled(thumb, 2.0, swatch(entry.kind));
+                    }
                     let label = format!("{}  [{}]", entry.name, entry.kind.label());
                     let response = ui
                         .selectable_label(selected == Some(entry.guid), label)
@@ -347,6 +391,12 @@ impl AssetBrowserPanel {
                 path: entry.path.clone(),
             }),
             AssetAction::ShowReferences => self.references_view = Some(entry.guid),
+            AssetAction::ShowInLog => {
+                self.import_log_focus = Some(entry.path.clone());
+                self.requests.push(AssetRequest::FocusImportLog {
+                    path: entry.path.clone(),
+                });
+            }
             AssetAction::CopyGuid => ui.ctx().copy_text(entry.guid.to_string()),
         }
         None
@@ -651,6 +701,7 @@ fn action_label(action: AssetAction) -> &'static str {
         AssetAction::ShowError => "Show error",
         AssetAction::RevealInExplorer => "Reveal in Explorer",
         AssetAction::ShowReferences => "Show references",
+        AssetAction::ShowInLog => "Show in import log",
         AssetAction::CopyGuid => "Copy GUID",
     }
 }

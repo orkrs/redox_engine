@@ -321,6 +321,7 @@ impl EditorApp {
                 &ui_ctx_ref,
                 self.viewport_tex_id,
                 Some(self.viewport_rect.clone()),
+                self.assets.as_mut(),
             );
 
             if self.asset_report.open

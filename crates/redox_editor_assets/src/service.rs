@@ -12,11 +12,18 @@ use redox_asset::{
 };
 
 use crate::import::ImporterRegistry;
+use crate::import_log::ImportLogModel;
 use crate::import_queue::{ImportEvent, ImportQueue, default_worker_count};
+use crate::import_settings::{
+    ImportPresetId, PerAssetImportSettings, read_per_asset_settings, record_imported_settings,
+    settings_blob, write_per_asset_settings,
+};
 use crate::reference_index::{
     MissingRef, RefEdit, RefResolution, ReferenceError, ReferenceIndex, edit_scene_refs,
     is_scene_path, resolve_ref,
 };
+use crate::thumbnail_service::ThumbnailService;
+use crate::browser_model::AssetKind;
 
 /// Errors of the asset service.
 #[derive(Debug, thiserror::Error)]
@@ -199,6 +206,8 @@ pub struct AssetService {
     importers: ImporterRegistry,
     queue: ImportQueue,
     auto_import: bool,
+    import_log: ImportLogModel,
+    thumbnails: ThumbnailService,
 }
 
 impl AssetService {
@@ -222,6 +231,10 @@ impl AssetService {
         let mut references = ReferenceIndex::default();
         let unreadable = references.rebuild(&mut registry);
         let importers = ImporterRegistry::with_builtins();
+        let project_root = root
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| root.clone());
         let mut service = Self {
             registry,
             watcher: start_watcher(&root),
@@ -230,6 +243,8 @@ impl AssetService {
             queue: ImportQueue::new(importers.clone(), settings.workers),
             importers,
             auto_import: settings.auto_import,
+            import_log: ImportLogModel::new(),
+            thumbnails: ThumbnailService::new(&project_root),
         };
         service.settle_statuses();
         service.report = service.build_report(scan, unreadable);
@@ -280,8 +295,10 @@ impl AssetService {
         let import_events = self.queue.drain_events();
         let imported_any = !import_events.is_empty();
         for event in import_events {
+            self.log_import_event(&event);
             self.apply_import_event(event, &mut changes);
         }
+        let _ = self.thumbnails.tick(1);
         if self.auto_import && (!events.is_empty() || imported_any || rebuild_all) {
             self.queue_outdated();
         }
@@ -362,9 +379,76 @@ impl AssetService {
     /// importer, or is not registered.
     pub fn import(&mut self, path: &str) -> bool {
         match self.registry.guid_of(path) {
-            Some(guid) => self.queue.submit(self.registry.root().join(path), guid),
+            Some(guid) => {
+                let settings = read_per_asset_settings(&self.registry, path)
+                    .unwrap_or_else(|_| PerAssetImportSettings::default());
+                self.queue.submit_with_settings(
+                    self.registry.root().join(path),
+                    guid,
+                    settings_blob(&settings),
+                )
+            }
             None => false,
         }
+    }
+
+    /// Import log accumulated from queue events.
+    pub fn import_log(&self) -> &ImportLogModel {
+        &self.import_log
+    }
+
+    /// Mutable import log (for UI filters).
+    pub fn import_log_mut(&mut self) -> &mut ImportLogModel {
+        &mut self.import_log
+    }
+
+    /// Background thumbnail cache.
+    pub fn thumbnails(&self) -> &ThumbnailService {
+        &self.thumbnails
+    }
+
+    /// Mutable thumbnail service.
+    pub fn thumbnails_mut(&mut self) -> &mut ThumbnailService {
+        &mut self.thumbnails
+    }
+
+    /// Reference index used by the audit viewer.
+    pub fn references_index(&self) -> &ReferenceIndex {
+        &self.references
+    }
+
+    /// Reads per-asset import settings from the sidecar.
+    pub fn per_asset_settings(
+        &self,
+        path: &str,
+    ) -> Result<PerAssetImportSettings, RegistryError> {
+        read_per_asset_settings(&self.registry, path)
+    }
+
+    /// Writes settings and marks the asset outdated when knobs changed after a prior import.
+    pub fn set_per_asset_settings(
+        &mut self,
+        path: &str,
+        settings: &PerAssetImportSettings,
+    ) -> Result<(), RegistryError> {
+        if write_per_asset_settings(&self.registry, path, settings)? {
+            self.registry
+                .set_status(path, AssetStatus::Outdated);
+        }
+        Ok(())
+    }
+
+    /// Applies a named preset to an asset path.
+    pub fn apply_import_preset(
+        &mut self,
+        path: &str,
+        preset: ImportPresetId,
+    ) -> Result<(), RegistryError> {
+        let mut settings = crate::import_settings::settings_for_preset(preset);
+        settings.imported_fingerprint = read_per_asset_settings(&self.registry, path)
+            .map(|s| s.imported_fingerprint)
+            .unwrap_or(0);
+        self.set_per_asset_settings(path, &settings)
     }
 
     /// Queues again an asset whose last import failed or was cancelled.
@@ -585,9 +669,27 @@ impl AssetService {
                 for warning in &report.warnings {
                     log::warn!("import {rel}: {warning}");
                 }
-                match self.registry.mark_imported(&rel, importer_version) {
+                let settings = read_per_asset_settings(&self.registry, &rel).ok();
+                let blob = settings.as_ref().map(settings_blob);
+                match self.registry.mark_imported_with_settings(
+                    &rel,
+                    importer_version,
+                    blob.as_deref(),
+                ) {
                     Ok(()) => {
+                        if let Some(settings) = settings {
+                            let _ = record_imported_settings(&self.registry, &rel, &settings);
+                        }
                         self.registry.set_status(&rel, AssetStatus::Imported);
+                        if let Some(guid) = self.registry.guid_of(&rel) {
+                            let kind = AssetKind::from_path(Path::new(&rel));
+                            self.thumbnails.request(
+                                guid,
+                                rel.clone(),
+                                kind,
+                                self.registry.root().join(&rel),
+                            );
+                        }
                         out.push(AssetChange::Imported { path: rel });
                     }
                     Err(err) => {
@@ -635,6 +737,36 @@ impl AssetService {
         for path in paths {
             self.settle(&path);
         }
+    }
+
+    fn log_import_event(&mut self, event: &ImportEvent) {
+        let path = match event {
+            ImportEvent::Started { path, .. }
+            | ImportEvent::Progress { path, .. }
+            | ImportEvent::Finished { path, .. }
+            | ImportEvent::Failed { path, .. }
+            | ImportEvent::Cancelled { path, .. } => path.clone(),
+        };
+        let guid = match event {
+            ImportEvent::Started { guid, .. }
+            | ImportEvent::Finished { guid, .. }
+            | ImportEvent::Failed { guid, .. }
+            | ImportEvent::Cancelled { guid, .. } => *guid,
+            ImportEvent::Progress { .. } => {
+                let Some(rel) = self.relative(&path) else {
+                    return;
+                };
+                return self
+                    .registry
+                    .guid_of(&rel)
+                    .map(|guid| self.import_log.ingest(&rel, guid, event))
+                    .unwrap_or(());
+            }
+        };
+        let Some(rel) = self.relative(&path) else {
+            return;
+        };
+        self.import_log.ingest(&rel, guid, event);
     }
 
     fn relative(&self, abs: &Path) -> Option<String> {

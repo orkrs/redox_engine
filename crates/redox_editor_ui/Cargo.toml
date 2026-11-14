@@ -38,3 +38,4 @@ ron = { workspace = true }
 log = { workspace = true }
 
 parking_lot = "0.12"
+image = { workspace = true }

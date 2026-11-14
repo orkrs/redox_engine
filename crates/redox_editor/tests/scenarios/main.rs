@@ -11,6 +11,7 @@ mod s00_harness;
 mod s01_project_roundtrip;
 mod s02_scene_roundtrip;
 mod s03_edit_undo;
+mod s04_import_preview;
 mod s04_undo_stress;
 mod s05_asset_rename;
 mod s06_references;
