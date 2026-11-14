@@ -345,6 +345,7 @@ impl Renderer {
             new_width,
             new_height,
             &PostFxInputs {
+                hdr_view: &self.hdr_view,
                 history_views: [&self.taa_history_view[0], &self.taa_history_view[1]],
                 velocity_view: &self.taa_velocity_view,
                 depth_view: &self.depth_view,

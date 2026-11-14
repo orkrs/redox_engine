@@ -1,6 +1,7 @@
 //! Refraction math (MAT-06 step 4): screen-space UV offset and the roughness
-//! mip selection for sampling the scene-colour copy. Pure functions, no GPU
-//! access. The GPU path (scene copy and shader branch) is not wired yet.
+//! mip selection for sampling the scene-colour copy. The renderer copies opaque
+//! HDR into a mip chain (`post::scene_copy`); shader sampling still uses mip 0
+//! until `pbr.wgsl` selects `refraction_mip_level` (MAT-09).
 
 /// Smallest distance used for the offset, avoids huge offsets next to the camera.
 const MIN_DISTANCE: f32 = 1.0;
@@ -34,4 +35,31 @@ pub fn refraction_mip_level(roughness: f32, mip_count: u32) -> f32 {
         0.0
     };
     (r * max_level).clamp(0.0, max_level)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn offset_grows_with_the_normal_tilt() {
+        let a = refraction_offset(1.5, [0.1, 0.0], 1.0, 2.0);
+        let b = refraction_offset(1.5, [0.5, 0.0], 1.0, 2.0);
+        assert!(b[0].abs() > a[0].abs());
+    }
+
+    #[test]
+    fn offset_shrinks_with_distance() {
+        let near = refraction_offset(1.5, [0.5, 0.0], 1.0, 2.0);
+        let far = refraction_offset(1.5, [0.5, 0.0], 1.0, 20.0);
+        assert!(near[0].abs() > far[0].abs());
+    }
+
+    #[test]
+    fn mip_level_scales_with_roughness_and_is_clamped() {
+        assert_eq!(refraction_mip_level(0.0, 6), 0.0);
+        assert_eq!(refraction_mip_level(1.0, 6), 5.0);
+        assert_eq!(refraction_mip_level(10.0, 6), 5.0);
+        assert_eq!(refraction_mip_level(0.5, 0), 0.0);
+    }
 }

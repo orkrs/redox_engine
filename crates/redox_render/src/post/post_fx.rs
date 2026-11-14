@@ -1,11 +1,10 @@
-//! Post effects between TAA and bloom: screen-space reflections, motion blur, depth of field
-//! and height fog.
+//! Post effects before bloom: screen-space reflections, motion blur, depth of field and fog.
 //!
-//! The chain is `TAA output -> [SSR] -> [motion blur] -> [depth of field] -> [fog] -> bloom ->
-//! tone mapping`. It runs only in the TAA branch, because the velocity and depth it reads are
-//! produced there. Effects write their own targets and never the TAA history, so they do not
-//! accumulate across frames. With every effect off, `PostFx::run_chain` records nothing and the
-//! frame is bit-identical to a build without this module.
+//! The chain is `HDR or TAA history -> [SSR] -> [motion blur] -> [DoF] -> [fog] -> bloom -> tone
+//! mapping`. With TAA on, input is the freshly written history slot; with Sharp AA or the standard
+//! path, input is the HDR scene colour. Effects write their own targets and never the TAA history,
+//! so they do not accumulate across frames. With every effect off, `PostFx::run_chain` records
+//! nothing and the input texture is unchanged.
 
 use bytemuck::{Pod, Zeroable};
 
@@ -428,6 +427,8 @@ impl EffectPass {
 
 /// Views the effect targets and their bind groups are built from.
 pub(crate) struct PostFxInputs<'a> {
+    /// HDR scene colour (Sharp AA / no-TAA path).
+    pub hdr_view: &'a wgpu::TextureView,
     /// The two TAA history slots. The chain reads the one this frame wrote.
     pub history_views: [&'a wgpu::TextureView; 2],
     /// Velocity texture (`Rgba16Float`, xy = UV offset per frame).
@@ -471,6 +472,7 @@ struct EffectPasses {
 struct Lanes {
     history: [wgpu::BindGroup; 2],
     target: [wgpu::BindGroup; 2],
+    hdr: wgpu::BindGroup,
 }
 
 /// Bind groups of every effect.
@@ -485,20 +487,37 @@ struct EffectLanes {
     fog_froxel: Lanes,
 }
 
-/// Where the chain's current image lives: a TAA history slot, or effect target `i`.
+/// Where the chain's current image lives: TAA history, HDR scene colour, or effect target `i`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Source {
     History(usize),
+    Hdr,
     Target(usize),
+}
+
+/// Entry point of the post chain for this frame.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum ChainInput {
+    /// TAA history slot written this frame.
+    History(usize),
+    /// Raw HDR before post (Sharp AA or standard path).
+    Hdr,
 }
 
 impl Source {
     /// Target an effect reads `self` from and writes to: the first target when the input is
-    /// the TAA history, otherwise the other one, so an effect never reads and writes one target.
+    /// the TAA history or HDR colour, otherwise the other one.
     fn next_target(self) -> usize {
         match self {
-            Source::History(_) => 0,
+            Source::History(_) | Source::Hdr => 0,
             Source::Target(i) => 1 - i,
+        }
+    }
+
+    fn from_input(input: ChainInput) -> Self {
+        match input {
+            ChainInput::History(slot) => Source::History(slot),
+            ChainInput::Hdr => Source::Hdr,
         }
     }
 }
@@ -508,6 +527,7 @@ impl Lanes {
         match source {
             Source::History(slot) => &self.history[slot],
             Source::Target(i) => &self.target[i],
+            Source::Hdr => &self.hdr,
         }
     }
 }
@@ -592,15 +612,14 @@ impl PostFx {
         self.lanes = lanes;
     }
 
-    /// Records the enabled effects after TAA, in the order SSR, motion blur, DoF, fog.
+    /// Records the enabled effects in order SSR, motion blur, DoF, fog.
     ///
-    /// `history_slot` is the TAA slot this frame wrote. Returns the index of the target that
-    /// holds the result, or `None` when no effect is on, in which case nothing is recorded.
+    /// Returns the index of the target that holds the result, or `None` when no effect is on.
     pub(crate) fn run_chain(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         queue: &wgpu::Queue,
-        history_slot: usize,
+        input: ChainInput,
         frame: &ChainFrame<'_>,
         settings: &PostFxSettings,
     ) -> Option<usize> {
@@ -613,7 +632,7 @@ impl PostFx {
         {
             return None;
         }
-        let mut source = Source::History(history_slot);
+        let mut source = Source::from_input(input);
         if let Some(s) = settings.sss {
             for (pass, lanes, direction) in [
                 (&self.passes.sss_h, &self.lanes.sss_h, [1.0, 0.0]),
@@ -836,6 +855,7 @@ fn create_passes(device: &wgpu::Device) -> EffectPasses {
 fn lane_bindings(
     device: &wgpu::Device,
     pass: &EffectPass,
+    hdr: &wgpu::TextureView,
     history: [&wgpu::TextureView; 2],
     targets: &[wgpu::TextureView; 2],
     extra: &[&wgpu::TextureView],
@@ -847,6 +867,7 @@ fn lane_bindings(
         pass.bind_group(device, &textures)
     };
     Lanes {
+        hdr: bind(hdr),
         history: [bind(history[0]), bind(history[1])],
         target: [bind(&targets[0]), bind(&targets[1])],
     }
@@ -872,10 +893,12 @@ fn build_bindings(
         )
     };
     let history = inputs.history_views;
+    let hdr = inputs.hdr_view;
     let lanes = EffectLanes {
         gi_reflect: lane_bindings(
             device,
             &passes.gi_reflect,
+            hdr,
             history,
             views,
             &[inputs.reflect_view],
@@ -883,6 +906,7 @@ fn build_bindings(
         sss_h: lane_bindings(
             device,
             &passes.sss_h,
+            hdr,
             history,
             views,
             &[inputs.normal_view, inputs.surface_view],
@@ -890,6 +914,7 @@ fn build_bindings(
         sss_v: lane_bindings(
             device,
             &passes.sss_v,
+            hdr,
             history,
             views,
             &[inputs.normal_view, inputs.surface_view],
@@ -897,6 +922,7 @@ fn build_bindings(
         ssr: lane_bindings(
             device,
             &passes.ssr,
+            hdr,
             history,
             views,
             &[inputs.normal_view, inputs.surface_view],
@@ -904,15 +930,31 @@ fn build_bindings(
         motion_blur: lane_bindings(
             device,
             &passes.motion_blur,
+            hdr,
             history,
             views,
             &[inputs.velocity_view, inputs.depth_view, neighbor_view],
         ),
-        dof: lane_bindings(device, &passes.dof, history, views, &[inputs.depth_view]),
-        fog: lane_bindings(device, &passes.fog, history, views, &[inputs.depth_view]),
+        dof: lane_bindings(
+            device,
+            &passes.dof,
+            hdr,
+            history,
+            views,
+            &[inputs.depth_view],
+        ),
+        fog: lane_bindings(
+            device,
+            &passes.fog,
+            hdr,
+            history,
+            views,
+            &[inputs.depth_view],
+        ),
         fog_froxel: lane_bindings(
             device,
             &passes.fog_froxel,
+            hdr,
             history,
             views,
             &[inputs.depth_view, volume_view],

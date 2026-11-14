@@ -150,37 +150,46 @@ impl Renderer {
             return;
         }
         let size = self.hdr_texture.size();
-        let stale = self
-            .scene_copy
-            .as_ref()
-            .is_none_or(|t| t.size() != size || t.format() != self.hdr_texture.format());
+        let stale = self.scene_copy.as_ref().is_none_or(|t| {
+            t.size() != size
+                || t.format() != self.hdr_texture.format()
+                || t.mip_level_count() != crate::post::scene_copy::SCENE_COPY_MIP_COUNT
+        });
         if stale {
-            let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("scene_copy"),
-                size,
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: self.hdr_texture.format(),
-                usage: wgpu::TextureUsages::TEXTURE_BINDING
-                    | wgpu::TextureUsages::COPY_DST
-                    | wgpu::TextureUsages::RENDER_ATTACHMENT,
-                view_formats: &[],
-            });
-            self.scene_copy_view = texture.create_view(&Default::default());
+            let texture = crate::post::scene_copy::create_scene_copy_texture(
+                &self.device,
+                size.width,
+                size.height,
+                self.hdr_texture.format(),
+            );
+            let (mips, chain_view) = crate::post::scene_copy::scene_copy_views(&texture);
+            let down_bgs = crate::renderer::helpers::create_bloom_downsample_bgs(
+                &self.bloom_pass,
+                &self.device,
+                &mips[0],
+                &mips,
+                &self.hdr_sampler,
+            );
+            self.scene_copy_view = chain_view;
+            self.scene_copy_mip_views = Some(mips);
+            self.scene_copy_down_bgs = Some(down_bgs);
             self.scene_copy = Some(texture);
             self.update_global_bind_group();
         }
-        if let Some(copy) = &self.scene_copy {
+        if let (Some(copy), Some(mips), Some(down_bgs)) = (
+            &self.scene_copy,
+            &self.scene_copy_mip_views,
+            &self.scene_copy_down_bgs,
+        ) {
             if self.msaa_sample_count > 1 {
                 // Resolve-only pass: loads the multisampled opaque colour and resolves it into
-                // the copy; the multisampled content is stored for the transparent pass.
+                // mip 0; the multisampled content is stored for the transparent pass.
                 let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("scene_copy_resolve"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         depth_slice: None,
                         view: &self.hdr_msaa_view,
-                        resolve_target: Some(&self.scene_copy_view),
+                        resolve_target: Some(&mips[0]),
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Load,
                             store: wgpu::StoreOp::Store,
@@ -194,10 +203,25 @@ impl Renderer {
             } else {
                 encoder.copy_texture_to_texture(
                     self.hdr_texture.as_image_copy(),
-                    copy.as_image_copy(),
-                    size,
+                    wgpu::ImageCopyTexture {
+                        texture: copy,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    wgpu::Extent3d {
+                        width: size.width,
+                        height: size.height,
+                        depth_or_array_layers: 1,
+                    },
                 );
             }
+            crate::post::scene_copy::record_scene_copy_mips(
+                encoder,
+                &self.bloom_pass,
+                down_bgs,
+                mips,
+            );
             self.scene_copy_frames += 1;
         }
     }

@@ -66,6 +66,14 @@ pub enum ShaderDebugVizMode {
     GiIrradiance = 4,
     /// GI visibility: mean probe distance of the nearest fine probe, grey.
     GiVisibility = 5,
+    /// World-space shading normal (greyscale encode).
+    WorldNormal = 6,
+    /// Per-pixel roughness from the material.
+    Roughness = 7,
+    /// Linear view-space depth between the camera near/far planes.
+    ViewDepth = 8,
+    /// Base colour only (no lights, IBL, or shadows).
+    UnlitAlbedo = 9,
 }
 use crate::camera::Camera;
 use crate::frame::FrameView;
@@ -154,6 +162,14 @@ pub struct Renderer {
     pub pbr_pass: PbrPass,
     /// Graph-driven material slots of the forward pass (MAT-02).
     pub matgraphs: crate::matgraph_cache::MaterialGraphs,
+    /// Per-slot material instances (graph id + base material) synced each frame (MAT-10).
+    material_instances: Vec<crate::material::MaterialInstance>,
+    /// Graph parameter values per material slot (parallel to `material_instances`).
+    material_graph_params: Vec<Vec<[f32; 4]>>,
+    /// Registered graph sources keyed by [`crate::material::MaterialGraphId`].
+    registered_graphs: std::collections::HashMap<crate::material::MaterialGraphId, redox_matgraph::MaterialGraph>,
+    /// Unknown graph ids already warned once this session.
+    unknown_graph_logged: std::collections::HashSet<crate::material::MaterialGraphId>,
     /// Shadow depth pass.
     pub shadow_pass: ShadowPass,
     /// Pass that renders normals and depth.
@@ -288,6 +304,8 @@ pub struct Renderer {
     pub fallback_normal_view: wgpu::TextureView,
     /// Fallback metallic-roughness texture.
     pub fallback_mr_view: wgpu::TextureView,
+    /// Black when no lightmap is assigned.
+    pub fallback_lightmap_view: wgpu::TextureView,
     /// Sampler shared by material textures.
     pub common_sampler: wgpu::Sampler,
     /// Per-material blend mode, parallel to registry legacy material indices.
@@ -302,6 +320,10 @@ pub struct Renderer {
     pub scene_copy: Option<wgpu::Texture>,
     /// View bound at `@binding(25)`: the scene copy, or a 1x1 placeholder.
     pub scene_copy_view: wgpu::TextureView,
+    /// Per-mip views when the scene copy is active.
+    scene_copy_mip_views: Option<[wgpu::TextureView; crate::post::bloom::BLOOM_MIP_COUNT]>,
+    /// Downsample bind groups for scene-copy mip generation.
+    scene_copy_down_bgs: Option<[wgpu::BindGroup; crate::post::bloom::BLOOM_MIP_COUNT]>,
     /// Frames in which the scene copy was made (test hook).
     pub scene_copy_frames: u64,
 

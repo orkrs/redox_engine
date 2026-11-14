@@ -171,6 +171,7 @@ GPU-тесты `tests/tsr.rs` написаны; проверка числами 
 
 ## 8. Что включается в коде (PST-05 SSR, PST-06 туман)
 
-- **SSR:** `renderer.set_ssr(Some(SsrSettings::default()))`. Отражения берутся с экрана (то, чего нет в кадре, не отражается), roughness и metallic берутся из скаляров материала (карты не читаются). Пропускаются поверхности с roughness от 0,5. Работает только в TAA-ветке, как motion blur и DoF; у выключенного эффекта кадр побитно прежний.
-- **Туман:** `renderer.set_fog(Some(FogSettings::default()))`. Высотный туман с аналитическим интегралом; солнечное рассеяние (`sun_scatter > 0`) без теней, поэтому лучи видны и сквозь стены. Froxel-сетка с тенями (шаг 3 PST-06) не реализована.
-- Цепочка эффектов: TAA → SSR → motion blur → DoF → туман → bloom → tone mapping.
+- **SSR:** `renderer.set_ssr(Some(SsrSettings::default()))`. Отражения берутся с экрана; roughness и metallic — из скаляров материала. Эффект в цепочке до bloom (TAA или Sharp AA).
+- **Туман:** `renderer.set_fog(Some(FogSettings::default()))`. Аналитический высотный туман; `set_fog_froxel(true)` — froxel-сетка с тенями VSM (промах страницы не считается полным солнцем).
+- **Преломление (MAT-09):** непрозрачный HDR копируется в mip-цепочку перед прозрачным проходом; `Material::refractive`.
+- Цепочка эффектов: (TAA?) → HDR или история TAA → SSR → motion blur → DoF → туман → bloom → tone mapping → (SMAA/RCAS на Sharp AA).

@@ -165,14 +165,15 @@ fn vsm_pcf_bilinear(lk: VsmLookup, bias_ndc: f32, min_diff: f32) -> f32 {
     return mix(mix(s00, s10, a.x), mix(s01, s11, a.x), a.y);
 }
 
-// Sun visibility at a world point: 1 when lit, or when VSM is off or the point is not covered.
+// Sun visibility at a world point: 1 when lit. When no resident VSM page covers the point
+// (after trying coarser levels), treat as shadowed so froxel air does not read as full sun.
 fn sun_visibility(p: vec3<f32>) -> f32 {
     if (fog.scatter.x <= 0.0 || vsm_info.level_count == 0u) {
         return 1.0;
     }
     let lk = vsm_lookup(p);
     if (lk.valid < 0.5) {
-        return 1.0;
+        return 0.0;
     }
     let min_diff = (1.25 * lk.texel_world) / lk.z_world_per_ndc;
     return vsm_pcf_bilinear(lk, 0.0, min_diff);

@@ -270,10 +270,78 @@ fn froxel_shafts_light_to_shadow_ratio() {
     // The shadow of the columns in the volume is still not seen: the ratio stays near 1 because
     // `sun_visibility` returns "lit" for points whose VSM page is not resident (open item,
     // see docs/engineering/notes/SKY-01-report.md). The target is reported, not asserted.
-    if ratios[2] < MIN_RATIO_AT_FULL_SUN {
-        println!(
-            "NOTE: ratio {:.3} at sun_scatter 1 is below the target {MIN_RATIO_AT_FULL_SUN}",
-            ratios[2]
-        );
-    }
+    assert!(
+        ratios[2] >= MIN_RATIO_AT_FULL_SUN,
+        "light/shadow ratio {:.3} should reach {MIN_RATIO_AT_FULL_SUN}",
+        ratios[2]
+    );
+}
+
+#[test]
+fn shafts_between_columns_are_at_least_1_5_times_brighter_than_the_shadow() {
+    let _guard = lock();
+    let Some(mut rig) = rig() else {
+        return;
+    };
+    rig.renderer.set_fog_froxel(true);
+    rig.renderer.set_fog(Some(FogSettings {
+        density: FOG_DENSITY,
+        height_falloff: 0.0,
+        sun_scatter: 1.0,
+        anisotropy: 0.5,
+        ..FogSettings::default()
+    }));
+    let frame = rig.frame(&columns(&rig));
+    let (light, shadow) = measure(&frame);
+    let ratio = light / shadow.max(1e-3);
+    assert!(
+        ratio >= MIN_RATIO_AT_FULL_SUN,
+        "ratio {ratio:.3} below {MIN_RATIO_AT_FULL_SUN}"
+    );
+}
+
+#[test]
+fn an_empty_fog_volume_stays_even() {
+    let _guard = lock();
+    let Some(mut rig) = rig() else {
+        return;
+    };
+    rig.renderer.set_fog_froxel(true);
+    rig.renderer.set_fog(Some(FogSettings {
+        density: FOG_DENSITY,
+        height_falloff: 0.0,
+        sun_scatter: 1.0,
+        ..FogSettings::default()
+    }));
+    let frame = rig.frame(&[]);
+    let (light, shadow) = measure(&frame);
+    let ratio = light / shadow.max(1e-3);
+    assert!(ratio <= 1.05, "empty volume ratio {ratio:.3}");
+}
+
+#[test]
+fn opaque_shadows_of_the_columns_are_unchanged() {
+    let _guard = lock();
+    let Some(mut rig) = rig() else {
+        return;
+    };
+    rig.renderer.set_fog_froxel(true);
+    rig.renderer.set_fog(Some(FogSettings {
+        density: 0.0,
+        sun_scatter: 0.0,
+        ..FogSettings::default()
+    }));
+    let objs = columns(&rig);
+    let frame = rig.frame(&objs);
+    let (light, shadow) = measure(&frame);
+    let ratio = light / shadow.max(1e-3);
+    assert!(
+        ratio <= 1.05,
+        "with sun scatter off, column geometry shadows unchanged (ratio {ratio:.3})"
+    );
+}
+
+#[test]
+fn fog_shafts_gpu() {
+    shafts_between_columns_are_at_least_1_5_times_brighter_than_the_shadow();
 }

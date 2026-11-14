@@ -1,7 +1,6 @@
-//! Motion blur and depth of field (PST-01, PST-02) on the real renderer. Skipped without a GPU.
-//!
-//! Both effects live in the TAA branch of the post chain, so every test renders with TAA on. With an effect
-//! off the frame must be byte-identical to a renderer that never heard of it.
+//! Motion blur, depth of field (PST-01, PST-02) and post chain without TAA (PST-08) on the real renderer.
+//! Skipped without a GPU. With an effect off the frame must be byte-identical to a build that never
+//! enabled it (on the same AA path).
 
 #![allow(clippy::unwrap_used)]
 
@@ -14,7 +13,9 @@ use redox_render::frame::FrameView;
 use redox_render::light::{DirectionalLight, LightScene};
 use redox_render::material::Material;
 use redox_render::mesh::primitive::create_cube;
+use redox_render::post::fog::FogSettings;
 use redox_render::post::post_fx::{DofSettings, MotionBlurSettings};
+use redox_render::post::ssr::SsrSettings;
 use redox_render::resource::ibl::read_texture_ktx2;
 use redox_render::systems::RenderObject;
 
@@ -31,7 +32,7 @@ struct Rig {
     lights: LightScene,
 }
 
-fn rig() -> Option<Rig> {
+fn rig_taa() -> Option<Rig> {
     let _gpu = common::lock_gpu();
     let adapter = common::adapter()?;
     let mut renderer = common::renderer(&adapter, SIZE)?;
@@ -74,6 +75,17 @@ fn rig() -> Option<Rig> {
         camera,
         lights,
     })
+}
+
+fn rig() -> Option<Rig> {
+    rig_taa()
+}
+
+fn rig_sharp() -> Option<Rig> {
+    let mut r = rig_taa()?;
+    r.renderer.enable_taa(false);
+    r.renderer.set_aa_sharp(true);
+    Some(r)
 }
 
 impl Rig {
@@ -302,4 +314,179 @@ fn dof_and_motion_blur_can_run_together() {
         .set_depth_of_field(Some(DofSettings::default()));
     let frame = flying_cube(&mut rig);
     assert!(covered_width(&frame, 25.0) > 5, "not black, cube visible");
+}
+
+// ---------------------------------------------------------------- PST-08: post fx without TAA
+
+fn fog_pair() -> (Vec<u8>, Vec<u8>) {
+    let without = {
+        let Some(mut r) = rig_sharp() else {
+            return (Vec::new(), Vec::new());
+        };
+        let cube = r.object(Vec3::new(0.0, 0.0, -30.0), Vec3::splat(4.0));
+        r.frame(&[cube])
+    };
+    let with = {
+        let Some(mut r) = rig_sharp() else {
+            return (Vec::new(), Vec::new());
+        };
+        r.renderer.set_fog(Some(FogSettings {
+            density: 0.08,
+            height_falloff: 0.0,
+            ..FogSettings::default()
+        }));
+        let cube = r.object(Vec3::new(0.0, 0.0, -30.0), Vec3::splat(4.0));
+        r.frame(&[cube])
+    };
+    (without, with)
+}
+
+#[test]
+fn fog_changes_the_frame_when_taa_is_off() {
+    let (Some(_), Some(_)) = (rig_sharp(), rig_sharp()) else {
+        eprintln!("no GPU adapter, skipping");
+        return;
+    };
+    let (off, on) = fog_pair();
+    assert!(!off.is_empty() && !on.is_empty());
+    assert!(max_difference(&off, &on) > 4, "fog must change the sharp-AA frame");
+}
+
+fn mirror_scene(rig: &mut Rig, roughness: f32) -> Vec<RenderObject> {
+    let floor_mat = {
+        let mut m = Material::solid(Vec3::new(0.9, 0.9, 0.95));
+        m.roughness = roughness;
+        m.metallic = 0.8;
+        rig.renderer.add_material(m)
+    };
+    let wall = rig
+        .renderer
+        .add_material(Material::solid(Vec3::new(0.8, 0.2, 0.1)));
+    vec![
+        rig.object(Vec3::new(0.0, -1.0, -8.0), Vec3::new(6.0, 0.2, 6.0)),
+        rig.object(Vec3::new(0.0, 2.0, -12.0), Vec3::new(0.2, 4.0, 4.0)),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(i, obj)| {
+        let mut o = obj;
+        o.id = i as u32;
+        o.material_index = if i == 0 { floor_mat } else { wall };
+        o
+    })
+    .collect()
+}
+
+#[test]
+fn ssr_changes_a_mirror_pixel_when_taa_is_off() {
+    let a = {
+        let Some(mut r) = rig_sharp() else {
+            return;
+        };
+        let objects = mirror_scene(&mut r, 0.05);
+        for _ in 0..4 {
+            r.frame(&objects);
+        }
+        r.frame(&objects)
+    };
+    let b = {
+        let Some(mut r) = rig_sharp() else {
+            return;
+        };
+        r.renderer.set_ssr(Some(SsrSettings::default()));
+        let objects = mirror_scene(&mut r, 0.05);
+        for _ in 0..4 {
+            r.frame(&objects);
+        }
+        r.frame(&objects)
+    };
+    assert!(max_difference(&a, &b) > 6, "SSR must change the sharp-AA frame");
+}
+
+#[test]
+fn sharp_aa_without_effects_matches_the_previous_sharp_path() {
+    let a = {
+        let Some(mut r) = rig_sharp() else {
+            return;
+        };
+        let cube = r.object(Vec3::new(0.0, 0.0, -5.0), Vec3::ONE);
+        for _ in 0..4 {
+            r.frame(&[cube]);
+        }
+        r.frame(&[cube])
+    };
+    let b = {
+        let Some(mut r) = rig_sharp() else {
+            return;
+        };
+        r.renderer.set_fog(None);
+        r.renderer.set_ssr(None);
+        r.renderer.set_motion_blur(None);
+        r.renderer.set_depth_of_field(None);
+        let cube = r.object(Vec3::new(0.0, 0.0, -5.0), Vec3::ONE);
+        for _ in 0..4 {
+            r.frame(&[cube]);
+        }
+        r.frame(&[cube])
+    };
+    let worst = max_difference(&a, &b);
+    assert!(
+        worst == 0,
+        "with all effects off the sharp path must match itself (worst {worst})"
+    );
+}
+
+#[test]
+fn smaa_still_runs_after_fog_on_the_sharp_path() {
+    let Some(mut r) = rig_sharp() else {
+        return;
+    };
+    r.renderer.set_fog(Some(FogSettings {
+        density: 0.04,
+        ..FogSettings::default()
+    }));
+    let cube = r.object(Vec3::new(0.5, 0.0, -4.0), Vec3::ONE);
+    let frame = {
+        for _ in 0..4 {
+            r.frame(&[cube]);
+        }
+        r.frame(&[cube])
+    };
+  // SMAA softens the cube silhouette: some edge pixels sit between sky and interior.
+    let sky = luminance(&frame, 4, SIZE / 2);
+    let edge = luminance(&frame, SIZE / 2 - 8, SIZE / 2);
+    assert!(
+        (edge - sky).abs() > 5.0 && (edge - sky).abs() < 80.0,
+        "fogged sharp-AA frame should show smoothed edges (sky {sky}, edge {edge})"
+    );
+}
+
+#[test]
+fn taa_on_still_runs_the_chain() {
+    let off = {
+        let Some(mut r) = rig() else {
+            return;
+        };
+        let cube = r.object(Vec3::new(0.0, 0.0, -25.0), Vec3::splat(3.0));
+        for _ in 0..5 {
+            r.frame(&[cube]);
+        }
+        r.frame(&[cube])
+    };
+    let on = {
+        let Some(mut r) = rig() else {
+            return;
+        };
+        r.renderer.set_fog(Some(FogSettings {
+            density: 0.06,
+            height_falloff: 0.0,
+            ..FogSettings::default()
+        }));
+        let cube = r.object(Vec3::new(0.0, 0.0, -25.0), Vec3::splat(3.0));
+        for _ in 0..5 {
+            r.frame(&[cube]);
+        }
+        r.frame(&[cube])
+    };
+    assert!(max_difference(&off, &on) > 4, "fog must still run on the TAA path");
 }

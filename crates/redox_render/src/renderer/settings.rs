@@ -207,9 +207,9 @@ impl Renderer {
         self.post_fx_settings.ssr
     }
 
-    /// Enables height fog (`None` turns it off). The pass runs last in the post chain, so like
-    /// motion blur and DoF it works only with TAA on; the sharp-AA and standard paths draw no fog.
-    /// Sun in-scatter has no shadows, so light shafts show through walls.
+    /// Enables height fog (`None` turns it off). The pass runs last in the post chain on HDR
+    /// (with or without TAA). Analytic sun in-scatter has no shadows; use [`Self::set_fog_froxel`]
+    /// for VSM-shadowed shafts.
     pub fn set_fog(&mut self, settings: Option<FogSettings>) {
         self.post_fx_settings.fog = settings;
     }
@@ -221,7 +221,7 @@ impl Renderer {
 
     /// Switches fog to the froxel volume (PST-06 step 3). Sun in-scatter is then shadowed by the
     /// VSM clipmap, so light shafts stop at occluders. The grid is approximate (slab sampling), and
-    /// shadows are off wherever VSM is off. Needs `set_fog(Some(..))` and TAA, like the analytic fog.
+    /// shadows are off wherever VSM is off. Needs `set_fog(Some(..))`.
     pub fn set_fog_froxel(&mut self, on: bool) {
         self.post_fx_settings.fog_froxel = on;
     }

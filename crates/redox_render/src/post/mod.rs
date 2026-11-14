@@ -11,6 +11,8 @@ pub mod motion_blur_tiles;
 pub mod post_fx;
 /// Refraction offset and mip math for refractive materials (MAT-06).
 pub mod refraction;
+/// Opaque scene-colour copy and mip generation for refraction (MAT-09).
+pub mod scene_copy;
 /// Screen-space ambient occlusion and the VSM screen-space shadow passes.
 pub mod ssao;
 pub mod ssr;
