@@ -26,6 +26,7 @@ gltf = { workspace = true }
 image = { workspace = true }
 ktx2 = "0.5"
 redox_render = { path = "../redox_render" }
+ron = { workspace = true }
 # World cells for `bake-hlod`.
 redox_scene = { path = "../redox_scene" }
 wgpu = { workspace = true, optional = true }

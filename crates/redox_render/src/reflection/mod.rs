@@ -1,11 +1,16 @@
 //! Local reflection probes: box-shaped influence volumes with parallax-corrected cubemap lookups.
 
+mod baked;
 mod capture;
 mod component;
 mod gpu;
 mod probe;
 mod set;
 
+pub use baked::{
+    ProbeBakeEntry, ProbeFileError, ProbesManifest, export_slot_prefiltered, read_probe_prefiltered,
+    read_probes_manifest, write_probe, write_probes_manifest,
+};
 pub use capture::ProbeCaptureError;
 pub use component::{DEFAULT_PROBE_RESOLUTION, ReflectionProbeComponent, is_valid_resolution};
 pub use gpu::{ProbeGpu, ProbesGpu};

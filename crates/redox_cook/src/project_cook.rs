@@ -51,9 +51,13 @@ pub fn run(job: &CookJob) -> Result<CookReport, String> {
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
     let pak = out_dir.join(format!("{}.pak", profile.name));
     let report_path = out_dir.join("cook_report.json");
-    let report = service
+    let mut report = service
         .cook(&project, &profile, &pak, &report_path)
         .map_err(|e| e.to_string())?;
+    report.probes = crate::probe_bake::cook_profile_bake_probes(project.root());
+    report.lightmaps = crate::lightmap::cook_profile_bake_lightmap(project.root());
+    let json = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
+    std::fs::write(&report_path, json).map_err(|e| e.to_string())?;
     if job.json {
         let text = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
         println!("{text}");

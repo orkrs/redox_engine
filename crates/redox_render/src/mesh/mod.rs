@@ -23,6 +23,7 @@ pub struct Vertex {
     pub normal: [f32; 3],
     /// Texture coordinates (UV).
     pub uv: [f32; 2],
+    pub uv2: [f32; 2],
     /// Surface tangent (for normal mapping).
     pub tangent: [f32; 3],
 }

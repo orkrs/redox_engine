@@ -14,35 +14,35 @@ pub fn create_cube() -> Mesh {
     #[rustfmt::skip]
     let vertices = vec![
         // Front  (+Z)
-        Vertex { position: [-0.5, -0.5,  0.5], normal: [ 0.0,  0.0,  1.0], uv: [0.0, 1.0], tangent: [ 1.0,  0.0,  0.0] },
-        Vertex { position: [ 0.5, -0.5,  0.5], normal: [ 0.0,  0.0,  1.0], uv: [1.0, 1.0], tangent: [ 1.0,  0.0,  0.0] },
-        Vertex { position: [ 0.5,  0.5,  0.5], normal: [ 0.0,  0.0,  1.0], uv: [1.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
-        Vertex { position: [-0.5,  0.5,  0.5], normal: [ 0.0,  0.0,  1.0], uv: [0.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [-0.5, -0.5,  0.5], normal: [ 0.0,  0.0,  1.0], uv: [0.0, 1.0], uv2: [0.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [ 0.5, -0.5,  0.5], normal: [ 0.0,  0.0,  1.0], uv: [1.0, 1.0], uv2: [0.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [ 0.5,  0.5,  0.5], normal: [ 0.0,  0.0,  1.0], uv: [1.0, 0.0], uv2: [0.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [-0.5,  0.5,  0.5], normal: [ 0.0,  0.0,  1.0], uv: [0.0, 0.0], uv2: [0.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
         // Back   (-Z)
-        Vertex { position: [ 0.5, -0.5, -0.5], normal: [ 0.0,  0.0, -1.0], uv: [0.0, 1.0], tangent: [-1.0,  0.0,  0.0] },
-        Vertex { position: [-0.5, -0.5, -0.5], normal: [ 0.0,  0.0, -1.0], uv: [1.0, 1.0], tangent: [-1.0,  0.0,  0.0] },
-        Vertex { position: [-0.5,  0.5, -0.5], normal: [ 0.0,  0.0, -1.0], uv: [1.0, 0.0], tangent: [-1.0,  0.0,  0.0] },
-        Vertex { position: [ 0.5,  0.5, -0.5], normal: [ 0.0,  0.0, -1.0], uv: [0.0, 0.0], tangent: [-1.0,  0.0,  0.0] },
+        Vertex { position: [ 0.5, -0.5, -0.5], normal: [ 0.0,  0.0, -1.0], uv: [0.0, 1.0], uv2: [0.0, 0.0], tangent: [-1.0,  0.0,  0.0] },
+        Vertex { position: [-0.5, -0.5, -0.5], normal: [ 0.0,  0.0, -1.0], uv: [1.0, 1.0], uv2: [0.0, 0.0], tangent: [-1.0,  0.0,  0.0] },
+        Vertex { position: [-0.5,  0.5, -0.5], normal: [ 0.0,  0.0, -1.0], uv: [1.0, 0.0], uv2: [0.0, 0.0], tangent: [-1.0,  0.0,  0.0] },
+        Vertex { position: [ 0.5,  0.5, -0.5], normal: [ 0.0,  0.0, -1.0], uv: [0.0, 0.0], uv2: [0.0, 0.0], tangent: [-1.0,  0.0,  0.0] },
         // Top    (+Y)
-        Vertex { position: [-0.5,  0.5,  0.5], normal: [ 0.0,  1.0,  0.0], uv: [0.0, 1.0], tangent: [ 1.0,  0.0,  0.0] },
-        Vertex { position: [ 0.5,  0.5,  0.5], normal: [ 0.0,  1.0,  0.0], uv: [1.0, 1.0], tangent: [ 1.0,  0.0,  0.0] },
-        Vertex { position: [ 0.5,  0.5, -0.5], normal: [ 0.0,  1.0,  0.0], uv: [1.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
-        Vertex { position: [-0.5,  0.5, -0.5], normal: [ 0.0,  1.0,  0.0], uv: [0.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [-0.5,  0.5,  0.5], normal: [ 0.0,  1.0,  0.0], uv: [0.0, 1.0], uv2: [0.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [ 0.5,  0.5,  0.5], normal: [ 0.0,  1.0,  0.0], uv: [1.0, 1.0], uv2: [0.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [ 0.5,  0.5, -0.5], normal: [ 0.0,  1.0,  0.0], uv: [1.0, 0.0], uv2: [0.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [-0.5,  0.5, -0.5], normal: [ 0.0,  1.0,  0.0], uv: [0.0, 0.0], uv2: [0.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
         // Bottom (-Y)
-        Vertex { position: [-0.5, -0.5, -0.5], normal: [ 0.0, -1.0,  0.0], uv: [0.0, 1.0], tangent: [ 1.0,  0.0,  0.0] },
-        Vertex { position: [ 0.5, -0.5, -0.5], normal: [ 0.0, -1.0,  0.0], uv: [1.0, 1.0], tangent: [ 1.0,  0.0,  0.0] },
-        Vertex { position: [ 0.5, -0.5,  0.5], normal: [ 0.0, -1.0,  0.0], uv: [1.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
-        Vertex { position: [-0.5, -0.5,  0.5], normal: [ 0.0, -1.0,  0.0], uv: [0.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [-0.5, -0.5, -0.5], normal: [ 0.0, -1.0,  0.0], uv: [0.0, 1.0], uv2: [0.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [ 0.5, -0.5, -0.5], normal: [ 0.0, -1.0,  0.0], uv: [1.0, 1.0], uv2: [0.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [ 0.5, -0.5,  0.5], normal: [ 0.0, -1.0,  0.0], uv: [1.0, 0.0], uv2: [0.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
+        Vertex { position: [-0.5, -0.5,  0.5], normal: [ 0.0, -1.0,  0.0], uv: [0.0, 0.0], uv2: [0.0, 0.0], tangent: [ 1.0,  0.0,  0.0] },
         // Right  (+X)
-        Vertex { position: [ 0.5, -0.5,  0.5], normal: [ 1.0,  0.0,  0.0], uv: [0.0, 1.0], tangent: [ 0.0,  0.0, -1.0] },
-        Vertex { position: [ 0.5, -0.5, -0.5], normal: [ 1.0,  0.0,  0.0], uv: [1.0, 1.0], tangent: [ 0.0,  0.0, -1.0] },
-        Vertex { position: [ 0.5,  0.5, -0.5], normal: [ 1.0,  0.0,  0.0], uv: [1.0, 0.0], tangent: [ 0.0,  0.0, -1.0] },
-        Vertex { position: [ 0.5,  0.5,  0.5], normal: [ 1.0,  0.0,  0.0], uv: [0.0, 0.0], tangent: [ 0.0,  0.0, -1.0] },
+        Vertex { position: [ 0.5, -0.5,  0.5], normal: [ 1.0,  0.0,  0.0], uv: [0.0, 1.0], uv2: [0.0, 0.0], tangent: [ 0.0,  0.0, -1.0] },
+        Vertex { position: [ 0.5, -0.5, -0.5], normal: [ 1.0,  0.0,  0.0], uv: [1.0, 1.0], uv2: [0.0, 0.0], tangent: [ 0.0,  0.0, -1.0] },
+        Vertex { position: [ 0.5,  0.5, -0.5], normal: [ 1.0,  0.0,  0.0], uv: [1.0, 0.0], uv2: [0.0, 0.0], tangent: [ 0.0,  0.0, -1.0] },
+        Vertex { position: [ 0.5,  0.5,  0.5], normal: [ 1.0,  0.0,  0.0], uv: [0.0, 0.0], uv2: [0.0, 0.0], tangent: [ 0.0,  0.0, -1.0] },
         // Left   (-X)
-        Vertex { position: [-0.5, -0.5, -0.5], normal: [-1.0,  0.0,  0.0], uv: [0.0, 1.0], tangent: [ 0.0,  0.0,  1.0] },
-        Vertex { position: [-0.5, -0.5,  0.5], normal: [-1.0,  0.0,  0.0], uv: [1.0, 1.0], tangent: [ 0.0,  0.0,  1.0] },
-        Vertex { position: [-0.5,  0.5,  0.5], normal: [-1.0,  0.0,  0.0], uv: [1.0, 0.0], tangent: [ 0.0,  0.0,  1.0] },
-        Vertex { position: [-0.5,  0.5, -0.5], normal: [-1.0,  0.0,  0.0], uv: [0.0, 0.0], tangent: [ 0.0,  0.0,  1.0] },
+        Vertex { position: [-0.5, -0.5, -0.5], normal: [-1.0,  0.0,  0.0], uv: [0.0, 1.0], uv2: [0.0, 0.0], tangent: [ 0.0,  0.0,  1.0] },
+        Vertex { position: [-0.5, -0.5,  0.5], normal: [-1.0,  0.0,  0.0], uv: [1.0, 1.0], uv2: [0.0, 0.0], tangent: [ 0.0,  0.0,  1.0] },
+        Vertex { position: [-0.5,  0.5,  0.5], normal: [-1.0,  0.0,  0.0], uv: [1.0, 0.0], uv2: [0.0, 0.0], tangent: [ 0.0,  0.0,  1.0] },
+        Vertex { position: [-0.5,  0.5, -0.5], normal: [-1.0,  0.0,  0.0], uv: [0.0, 0.0], uv2: [0.0, 0.0], tangent: [ 0.0,  0.0,  1.0] },
     ];
 
     let mut indices = Vec::with_capacity(36);

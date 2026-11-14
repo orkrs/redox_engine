@@ -136,6 +136,8 @@ impl BuildService {
             report_json,
             profile.compress,
             runtime_entities,
+            None,
+            None,
         )
         .map_err(BuildError::Failed)
     }

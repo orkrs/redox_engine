@@ -60,7 +60,8 @@ pub fn load_obj<P: AsRef<Path>>(path: P) -> Result<Vec<Mesh>, tobj::LoadError> {
                     Vertex {
                         position: positions[i],
                         normal: normals[i],
-                        uv: uvs[i],
+                        uv: uvs[i]
+                        uv2: [0.0, 0.0],
                         // Vertex layout carries xyz only; handedness (w) is
                         // not part of `Vertex` yet.
                         tangent: [t[0], t[1], t[2]],

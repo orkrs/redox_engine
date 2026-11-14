@@ -31,6 +31,10 @@ pub struct CookReport {
     pub assets: Vec<CookAssetEntry>,
     /// Runtime entity count when a scene snapshot was taken (editor-only stripped).
     pub runtime_entities: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probes: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lightmaps: Option<String>,
 }
 
 /// Packs only the assets listed in `plan` into `out_pak` and writes `report_json` atomically.
@@ -42,6 +46,8 @@ pub fn cook_pack(
     report_json: &Path,
     compress: bool,
     runtime_entities: Option<usize>,
+    probes: Option<String>,
+    lightmaps: Option<String>,
 ) -> Result<CookReport, String> {
     let allowed: HashSet<String> = plan
         .assets
@@ -80,6 +86,8 @@ pub fn cook_pack(
         pak: out_pak.display().to_string(),
         assets,
         runtime_entities,
+        probes,
+        lightmaps,
     };
 
     let json =

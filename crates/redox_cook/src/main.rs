@@ -35,6 +35,8 @@ mod audit;
 #[cfg(feature = "bake")]
 mod bake;
 mod hlod_bake;
+mod lightmap;
+mod probe_bake;
 mod nav;
 mod project_cook;
 mod project_import;
@@ -68,6 +70,14 @@ enum Command {
     TextureInfo(PathBuf),
     BakeIbl {
         input: PathBuf,
+        out: PathBuf,
+    },
+    BakeProbes {
+        world: PathBuf,
+        out: PathBuf,
+    },
+    BakeLightmap {
+        world: PathBuf,
         out: PathBuf,
     },
     BakeHlod {
@@ -139,6 +149,14 @@ fn parse(args: &[String]) -> Result<Command, String> {
             input: input.into(),
             out: out.into(),
         }),
+        ["bake-probes", world, out] => Ok(Command::BakeProbes {
+            world: world.into(),
+            out: out.into(),
+        }),
+        ["bake-lightmap", world, out] => Ok(Command::BakeLightmap {
+            world: world.into(),
+            out: out.into(),
+        }),
         ["bake-hlod", world, out, flags @ ..] => Ok(Command::BakeHlod {
             world: world.into(),
             out: out.into(),
@@ -164,6 +182,8 @@ fn parse(args: &[String]) -> Result<Command, String> {
                 "texture",
                 "texture-info",
                 "bake-ibl",
+                "bake-probes",
+                "bake-lightmap",
                 "bake-hlod",
                 "bake-sdf",
                 "bake-navmesh",
@@ -259,6 +279,16 @@ fn run(command: Command) -> Result<u8, String> {
         }
         Command::BakeIbl { input, out } => {
             run_bake_ibl(&input, &out)?;
+            Ok(0)
+        }
+        Command::BakeProbes { world, out } => {
+            let written = probe_bake::bake_probes(&world, &out)?;
+            println!("wrote {} to {}", written.join(", "), out.display());
+            Ok(0)
+        }
+        Command::BakeLightmap { world, out } => {
+            let written = lightmap::bake_lightmap(&world, &out)?;
+            println!("wrote {} to {}", written.join(", "), out.display());
             Ok(0)
         }
         Command::BakeHlod {

@@ -30,6 +30,7 @@ pub fn pick_by_priority(probes: &[ReflectionProbe]) -> Vec<ReflectionProbe> {
 pub struct ReflectionProbeSet {
     probes: Vec<ReflectionProbe>,
     enabled: bool,
+    pub(crate) baked_slots: [bool; MAX_PROBES],
     texture: wgpu::Texture,
     view: wgpu::TextureView,
     buffer: wgpu::Buffer,
@@ -68,6 +69,7 @@ impl ReflectionProbeSet {
         Self {
             probes: Vec::new(),
             enabled: false,
+            baked_slots: [false; MAX_PROBES],
             texture,
             view,
             buffer,
@@ -89,6 +91,7 @@ impl ReflectionProbeSet {
     /// Returns the number of accepted probes.
     pub fn set_probes(&mut self, probes: &[ReflectionProbe]) -> usize {
         self.probes = pick_by_priority(probes);
+        self.baked_slots = [false; MAX_PROBES];
         self.probes.len()
     }
 

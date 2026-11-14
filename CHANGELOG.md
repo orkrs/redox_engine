@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 ## [Unreleased]
 
 ### Added
+- Render / editor (MAT-10): `MaterialInstance.graph` synced each frame; `MaterialGraphRegistry`; material preview on `RenderHost`; tests in `matgraph_draw` and `material_preview_gpu`.
 - Editor (EDT-A8): scene asset references persist through save/load via `AssetRefs` (`redox_scene`) beside runtime handles; registry-aware scene open (`ResolvedAssetRef`, `SceneDocument::open_with_resolver`); merged handle reads in `register_scene_components`; `bind_render_handles` for viewport binding after import; A7 reference/rename scenarios un-ignored; EDT-A-07 narrowed in `KNOWN_LIMITS.md`. Coordinator must run `cargo test -p redox_scene -p redox_editor_scene -p redox_editor --test scenarios`.
 - Editor (EDT-B5): material graph authoring — `MaterialDocument` (save only when `redox_matgraph` validates and emits), `MatGraphView` with snapshot undo, Material mode on `NodeCanvas`, compile error list with node focus, asset browser Open/double-click on `.matgraph`, palette `material_save`, scenario `s07` (TZ §23.7); ignored GPU preview test `material_preview_gpu`.
 - Editor (EDT-B4): per-asset import settings and presets in `.meta`, import dialog model/UI, texture thumbnails under `.redox/thumbs`, import log model and dock tab, browser actions `Show in log` and thumbnail swatches; scenario `s04_import_preview` (TZ §23.4); mesh thumbnails deferred (EDT-B3).
@@ -115,6 +116,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 - Example `courier`: third-person prototype using all of the above plus a pak-loaded level and streamed KTX2 textures.
 - Tests: golden frames for IBL from KTX2 and for a converged streamed texture; third-party KTX2/BasisLZ check (`REDOX_THIRD_PARTY_KTX2`).
 - Textures: Basis Universal (UASTC, ETC1S/BasisLZ) in `.basis` and KTX2 with BC7/RGBA8 target choice; `redox_cook texture`, `texture-info`, `bake-ibl`, `pack --textures`; IBL from baked KTX2 cubes (`IBLResource::from_ktx2/export_ktx2`); cube/array bind layouts.
+- Lighting: `redox_cook bake-probes` / `bake-lightmap`, `ReflectionProbeSet::load_baked`, mesh UV2, PBR lightmap indirect term; `cook_report.json` fields `probes` and `lightmaps`.
 - Assets: priority task queue with cancel and a worker pool, range reads (`AssetSource::size/read_range`), `StreamedTexture`, uncompressed `.pak` entries.
 - Render: `TextureStreamer` (floor mips first, mip choice from on-screen size, promotion/demotion with GPU copy, memory budget, hysteresis); the editor asset panel shows KTX2/Basis headers.
 - KTX2: Zstandard supercompression, cube maps, 2D arrays and cube arrays, RGBA16F; `Ktx2Texture` now has `layers`/`faces` (`new_2d` for plain images), `to_ktx2_bytes`; `redox_asset::testing::Ktx2Builder`; `redox_cook texture-info`; `Texture::from_ktx2` keeps the texture shape (`Texture::view_dimension`).
