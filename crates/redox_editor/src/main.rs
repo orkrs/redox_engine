@@ -5,7 +5,7 @@ mod cli;
 mod commands;
 mod render_host;
 
-use cli::{HELP_TEXT, parse_cli, run_bake, run_play_host};
+use cli::{HELP_TEXT, parse_cli, run_bake, run_bench, run_play_host};
 use redox_core::window::RunClosure;
 use std::sync::Arc;
 
@@ -31,6 +31,17 @@ fn main() {
     }
     if let Some(project) = cli.play_project.as_deref() {
         if let Err(e) = run_play_host(project) {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+    if let Some(project) = cli.bench_project.as_deref() {
+        let out = cli
+            .bench_out
+            .as_deref()
+            .unwrap_or("report.json");
+        if let Err(e) = run_bench(project, cli.bench_frames, out) {
             eprintln!("{e}");
             std::process::exit(1);
         }

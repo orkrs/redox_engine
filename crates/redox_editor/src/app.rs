@@ -13,6 +13,7 @@ use redox_editor_core::settings::{EditorSettings, SETTINGS_FILE};
 use redox_editor_scene::WorldSession;
 use redox_editor_ui::asset_report::AssetReportPanel;
 use redox_editor_ui::file_menu::FileMenu;
+use redox_editor_ui::profiler_panel::ProfilerPanel;
 use redox_editor_ui::{
     EditorDock, EditorUiCtx, PreferencesWindow, RecoveryDialog, egui_to_viewport_coords,
 };
@@ -163,6 +164,7 @@ impl EditorApp {
         }
 
         ui_ctx.spawn_demo_agent();
+        *ui_ctx.gpu_passes.lock() = ProfilerPanel::default_gpu_passes(1280, 720, &[]);
         // The startup agent is part of the opened state, not an edit to save.
         ui_ctx.core.undo.lock().mark_saved();
 

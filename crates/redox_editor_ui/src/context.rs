@@ -4,8 +4,8 @@ use parking_lot::Mutex;
 use redox_editor_core::EditorContext;
 use redox_editor_core::builtin_commands::record_spawn;
 use redox_editor_debugger::{
-    ConsoleFilter, FrameProfiler, PieSession, RuntimeInspectorHighlight, RuntimeSearchQuery,
-    TimeTravelBuffer,
+    ConsoleFilter, CpuTimeline, FrameProfiler, GpuPassEntry, PieSession, RuntimeInspectorHighlight,
+    RuntimeSearchQuery, TimeTravelBuffer,
 };
 use redox_editor_scene::{WorldGitTracker, WorldSession};
 use redox_editor_viewport::{
@@ -71,6 +71,10 @@ pub struct EditorUiCtx {
     pub debug_flags: Mutex<ViewportDebugFlags>,
     /// Frame time history.
     pub profiler: Mutex<FrameProfiler>,
+    /// Latest CPU span timeline from the dispatcher.
+    pub cpu_timeline: Mutex<CpuTimeline>,
+    /// Latest GPU pass list (durations optional).
+    pub gpu_passes: Mutex<Vec<GpuPassEntry>>,
     /// Position of the time-travel scrubber.
     pub tt_scrub_idx: Mutex<usize>,
     /// Frames per second shown in the UI.
@@ -121,6 +125,8 @@ impl EditorUiCtx {
             layout: Mutex::new(ViewportLayout::Single),
             debug_flags: Mutex::new(ViewportDebugFlags::default()),
             profiler: Mutex::new(FrameProfiler::default()),
+            cpu_timeline: Mutex::new(CpuTimeline::default()),
+            gpu_passes: Mutex::new(Vec::new()),
             tt_scrub_idx: Mutex::new(0),
             fps: Mutex::new(0.0),
             frame_ms: Mutex::new(0.0),

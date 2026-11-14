@@ -18,6 +18,12 @@ pub mod runtime_inspector;
 pub mod profiler;
 /// CPU timeline from dispatcher spans.
 pub mod cpu_timeline;
+/// GPU pass list model.
+pub mod gpu_passes;
+/// Profiler JSON export.
+pub mod profiler_export;
+/// Benchmark runner schema.
+pub mod benchmark;
 /// Ring buffer of world snapshots for scrubbing back in time.
 pub mod time_travel;
 
@@ -31,4 +37,9 @@ pub use runtime_inspector::{
 };
 pub use profiler::FrameProfiler;
 pub use cpu_timeline::{CpuSpan, CpuTimeline};
+pub use gpu_passes::{GpuPassEntry, merge_gpu_timings, passes_from_frame_graph_report};
+pub use profiler_export::{
+    ProfilerFrameExport, export_profiler_frame, export_profiler_frame_json,
+};
+pub use benchmark::{BenchMetadata, BenchReport};
 pub use time_travel::TimeTravelBuffer;

@@ -478,7 +478,12 @@ impl TabViewer for TabViewerImpl<'_> {
                 }
             }
             Tab::Profiler => {
-                ProfilerPanel::show(ui, &self.ui_ctx.profiler.lock());
+                ProfilerPanel::show(
+                    ui,
+                    &self.ui_ctx.profiler.lock(),
+                    &self.ui_ctx.cpu_timeline.lock(),
+                    &self.ui_ctx.gpu_passes.lock(),
+                );
             }
             Tab::Packager => {
                 self.ui_ctx.packager.lock().show(ui);
