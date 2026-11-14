@@ -3,31 +3,39 @@
 mod app;
 mod cli;
 mod commands;
+mod headless;
 mod render_host;
 
 use cli::{HELP_TEXT, parse_cli, run_bake};
 use redox_core::window::RunClosure;
+use std::process::ExitCode;
 use std::sync::Arc;
 
-fn main() {
+fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     let cli = match parse_cli(&args) {
         Ok(cli) => cli,
         Err(e) => {
             eprintln!("{e}\n{HELP_TEXT}");
-            std::process::exit(2);
+            return ExitCode::from(2);
         }
     };
     if cli.help {
         println!("{HELP_TEXT}");
-        return;
+        return ExitCode::SUCCESS;
+    }
+    if let Some(root) = &cli.validate_project {
+        return ExitCode::from(headless::validate_project_root(root.as_ref()));
+    }
+    if let Some(root) = &cli.run_sample {
+        return ExitCode::from(headless::run_sample(root.as_ref(), cli.sample_frames));
     }
     if cli.bake {
         if let Err(e) = run_bake(&cli.world_root) {
             eprintln!("{e}");
-            std::process::exit(1);
+            return ExitCode::FAILURE;
         }
-        return;
+        return ExitCode::SUCCESS;
     }
 
     env_logger::init();
@@ -48,4 +56,5 @@ fn main() {
 
     let mut app = app::EditorApp::new(window, &cli);
     let _ = event_loop.run_closure(move |event, elwt| app.handle_event(event, elwt));
+    ExitCode::SUCCESS
 }
