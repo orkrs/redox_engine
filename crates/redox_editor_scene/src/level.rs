@@ -9,7 +9,7 @@ use redox_ecs::World;
 use redox_reflect::{TypeRegistry, WorldSnapshot};
 use redox_scene::ofpa;
 
-use crate::{LoadReport, SceneDocument, SceneError, WorldSession};
+use crate::{LoadReport, ResolvedAssetRef, SceneDocument, SceneError, WorldSession};
 
 /// Suffix that marks a scene file.
 const SCENE_SUFFIX: &str = ".scene.ron";
@@ -78,10 +78,21 @@ impl Level {
         world: &mut World,
         assets_root: Option<&Path>,
     ) -> Result<(Self, LoadReport), LevelError> {
+        Self::open_with_resolver(path, registry, world, assets_root, None)
+    }
+
+    /// Opens a scene with registry-aware asset resolution when `resolve` is given.
+    pub fn open_with_resolver(
+        path: impl AsRef<Path>,
+        registry: &TypeRegistry,
+        world: &mut World,
+        assets_root: Option<&Path>,
+        resolve: Option<&dyn Fn(Option<&str>, Option<&str>) -> ResolvedAssetRef>,
+    ) -> Result<(Self, LoadReport), LevelError> {
         let path = path.as_ref();
         if is_scene_file(path) {
             let (document, report) =
-                SceneDocument::open_with_assets(path, registry, world, assets_root)?;
+                SceneDocument::open_with_resolver(path, registry, world, assets_root, resolve)?;
             let level = Self::with_kind(LevelKind::Scene(document), registry, world);
             Ok((level, report))
         } else if path.is_dir() && path.join(WORLD_MANIFEST).is_file() {

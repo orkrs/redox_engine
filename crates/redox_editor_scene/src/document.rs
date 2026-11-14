@@ -63,6 +63,34 @@ pub enum SceneError {
     Serialize(String),
 }
 
+/// Outcome of resolving one asset reference against the project registry on scene load.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolvedAssetRef {
+    /// The GUID is registered; `path` is its current location.
+    Found {
+        /// GUID text (32 hex digits).
+        guid: String,
+        /// Path relative to the project root.
+        path: String,
+    },
+    /// The file had no GUID but the path names a registered asset.
+    Restored {
+        /// GUID text restored from the registry.
+        guid: String,
+        /// Path relative to the project root.
+        path: String,
+    },
+    /// The GUID and/or path do not resolve to a registered on-disk asset.
+    Missing {
+        /// GUID text from the file, if any.
+        guid: Option<String>,
+        /// Path hint from the file, if any.
+        path: Option<String>,
+    },
+    /// No GUID and no path.
+    Unset,
+}
+
 /// A problem found while loading. The load itself succeeds; the editor shows these.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoadWarning {
@@ -150,6 +178,19 @@ impl SceneDocument {
         world: &mut World,
         assets_root: Option<&Path>,
     ) -> Result<(Self, LoadReport), SceneError> {
+        Self::open_with_resolver(path, registry, world, assets_root, None)
+    }
+
+    /// Like [`Self::open_with_assets`], but asset references are reconciled through `resolve`
+    /// when it is given (GUID-first, path fallback, path hint refresh). References are never
+    /// cleared when an asset is missing.
+    pub fn open_with_resolver(
+        path: impl AsRef<Path>,
+        registry: &TypeRegistry,
+        world: &mut World,
+        assets_root: Option<&Path>,
+        resolve: Option<&dyn Fn(Option<&str>, Option<&str>) -> ResolvedAssetRef>,
+    ) -> Result<(Self, LoadReport), SceneError> {
         let path = path.as_ref();
         let text = fs::read_to_string(path).map_err(|source| io_error(path, source))?;
         let mut file: SceneFile = ron::from_str(&text).map_err(|err| parse_error(path, &err))?;
@@ -165,6 +206,7 @@ impl SceneDocument {
         let loader = Loader {
             registry,
             assets_root,
+            resolve,
             index: GuidIndex::new(),
             report: LoadReport::default(),
             unknown: HashMap::new(),
@@ -299,6 +341,7 @@ struct PendingParent {
 struct Loader<'a> {
     registry: &'a TypeRegistry,
     assets_root: Option<&'a Path>,
+    resolve: Option<&'a dyn Fn(Option<&str>, Option<&str>) -> ResolvedAssetRef>,
     index: GuidIndex,
     report: LoadReport,
     unknown: HashMap<EntityGuid, Vec<ReflectValue>>,
@@ -378,16 +421,55 @@ impl Loader<'_> {
             self.unknown.entry(guid).or_default().push(value.clone());
             return Ok(None);
         }
-        self.check_asset(type_name, value, guid);
+        let loaded = if HANDLE_TYPES.contains(&type_name) {
+            self.normalize_handle(type_name, value, guid)
+        } else {
+            value.clone()
+        };
+        self.check_asset(type_name, &loaded, guid);
         self.registry
-            .insert_component(world, entity, value) // undo: init
+            .insert_component(world, entity, &loaded) // undo: init
             .map_err(|err| SceneError::Invalid {
                 reason: err.to_string(),
             })?;
         if HANDLE_TYPES.contains(&type_name) {
-            store_ref(world, entity, type_name, value);
+            store_ref(world, entity, type_name, &loaded);
         }
         Ok(None)
+    }
+
+    /// Reconciles a handle value with the project registry and keeps missing references intact.
+    fn normalize_handle(
+        &mut self,
+        type_name: &str,
+        value: &ReflectValue,
+        entity: EntityGuid,
+    ) -> ReflectValue {
+        let guid = value
+            .field("guid")
+            .and_then(ReflectValue::as_string)
+            .map(str::to_owned);
+        let path = value.as_handle_path().flatten();
+        let Some(resolve) = self.resolve else {
+            return ReflectValue::asset_ref(type_name, guid, path);
+        };
+        match resolve(guid.as_deref(), path.as_deref()) {
+            ResolvedAssetRef::Found { guid, path } | ResolvedAssetRef::Restored { guid, path } => {
+                ReflectValue::asset_ref(type_name, Some(guid), Some(path))
+            }
+            ResolvedAssetRef::Missing { guid, path } => {
+                let warning_path = path.clone().or_else(|| guid.clone()).unwrap_or_default();
+                if !warning_path.is_empty() {
+                    self.report.warnings.push(LoadWarning::MissingAsset {
+                        entity,
+                        type_name: type_name.to_owned(),
+                        path: warning_path,
+                    });
+                }
+                ReflectValue::asset_ref(type_name, guid, path)
+            }
+            ResolvedAssetRef::Unset => ReflectValue::asset_ref(type_name, None, None),
+        }
     }
 
     fn check_asset(&mut self, type_name: &str, value: &ReflectValue, guid: EntityGuid) {
@@ -395,6 +477,9 @@ impl Loader<'_> {
             return;
         };
         if !HANDLE_TYPES.contains(&type_name) {
+            return;
+        }
+        if self.resolve.is_some() {
             return;
         }
         if let Some(Some(path)) = value.as_handle_path()

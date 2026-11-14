@@ -15,6 +15,7 @@ path = "src/lib.rs"
 editor-git = ["dep:git2"]
 
 [dependencies]
+redox_asset = { path = "../redox_asset" }
 redox_ecs = { path = "../redox_ecs" }
 redox_editor_core = { path = "../redox_editor_core" }
 redox_gameplay = { path = "../redox_gameplay" }

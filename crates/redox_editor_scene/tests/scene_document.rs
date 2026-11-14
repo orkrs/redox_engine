@@ -11,7 +11,7 @@ use redox_editor_scene::{LoadWarning, SceneDocument, SceneError, register_scene_
 use redox_math::{Transform, Vec3};
 use redox_reflect::{Reflect, ReflectValue, TypeRegistry};
 use redox_render::{Camera, DirectionalLight, MaterialHandle, MeshHandle, PointLight, SpotLight};
-use redox_scene::{EntityGuid, Name, ParentRef, Tag};
+use redox_scene::{AssetRefs, EntityGuid, Name, ParentRef, Tag};
 
 /// Components, parent guid and sorted child guids of every entity with a guid.
 type Described = (Vec<ReflectValue>, Option<EntityGuid>, Vec<EntityGuid>);
@@ -456,6 +456,76 @@ fn a_version_zero_file_is_migrated_and_its_old_copy_is_kept() {
     let written: SceneFile =
         ron::from_str(&fs::read_to_string(&path).expect("read")).expect("parse");
     assert_eq!(written.format_version, SCENE_FORMAT_VERSION);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn asset_guid_and_path_survive_a_save_and_reload() {
+    let dir = temp_dir("asset_guid");
+    let path = dir.join("main.scene.ron");
+    let assets = dir.join("assets");
+    fs::create_dir_all(assets.join("textures")).expect("textures dir");
+    fs::write(assets.join("textures/checker.png"), b"png").expect("png");
+    let entity_guid: EntityGuid = "00000000000000000000000000000003"
+        .parse()
+        .expect("valid guid");
+    let guid_text = "00000000000000000000000000001001";
+    let asset_path = "assets/textures/checker.png";
+    write_scene(
+        &path,
+        &scene_with(vec![SceneEntity {
+            guid: Some(entity_guid),
+            components: vec![ReflectValue::asset_ref(
+                "MaterialHandle",
+                Some(guid_text.into()),
+                Some(asset_path.into()),
+            )],
+            unknown_components: Vec::new(),
+        }]),
+    );
+    let registry = registry();
+    let mut world = World::new();
+    let (_, _) = SceneDocument::open_with_assets(&path, &registry, &mut world, Some(dir.as_path()))
+        .expect("open");
+    let entity = world
+        .all_entities()
+        .find(|e| {
+            world
+                .get_component::<EntityGuid>(*e)
+                .is_some_and(|g| *g == entity_guid)
+        })
+        .expect("entity");
+    let saved = world
+        .get_component::<AssetRefs>(entity)
+        .and_then(|r| r.get("MaterialHandle"))
+        .expect("stored ref");
+    assert_eq!(saved.guid.as_deref(), Some(guid_text));
+    assert_eq!(saved.path.as_deref(), Some(asset_path));
+
+    let mut document = SceneDocument::new("main");
+    document
+        .save_as(&dir.join("roundtrip.scene.ron"), &registry, &mut world)
+        .expect("save");
+    let text = fs::read_to_string(dir.join("roundtrip.scene.ron")).expect("read");
+    assert!(text.contains(guid_text));
+    assert!(text.contains(asset_path));
+
+    let mut reloaded = World::new();
+    SceneDocument::open(&dir.join("roundtrip.scene.ron"), &registry, &mut reloaded).expect("open");
+    let entity = reloaded
+        .all_entities()
+        .find(|e| {
+            reloaded
+                .get_component::<EntityGuid>(*e)
+                .is_some_and(|g| *g == entity_guid)
+        })
+        .expect("entity again");
+    let saved = reloaded
+        .get_component::<AssetRefs>(entity)
+        .and_then(|r| r.get("MaterialHandle"))
+        .expect("stored ref again");
+    assert_eq!(saved.guid.as_deref(), Some(guid_text));
+    assert_eq!(saved.path.as_deref(), Some(asset_path));
     let _ = fs::remove_dir_all(&dir);
 }
 

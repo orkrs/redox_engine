@@ -28,7 +28,8 @@ use std::path::{Path, PathBuf};
 use redox_asset::guid::AssetStatus;
 use redox_ecs::hierarchy::{Parent, set_parent};
 use redox_ecs::{Entity, World};
-use redox_editor_assets::{AssetService, DeleteOutcome};
+use redox_editor_assets::{AssetService, DeleteOutcome, RefResolution};
+use redox_editor_scene::ResolvedAssetRef;
 use redox_editor_core::EditorContext;
 use redox_editor_core::EditorLog;
 use redox_editor_core::autosave::{AutosavePolicy, AutosaveService, AutosaveSource, WriteMode};
@@ -325,8 +326,33 @@ impl EditorHarness {
             let mut world = self.ctx.world.lock();
             let registry = self.ctx.registry.lock();
             let assets_root = self.project_dir();
-            Level::open_with_assets(&path, &registry, &mut world, Some(&assets_root))
-                .map_err(|e| format!("{e:?}"))?
+            let resolve = |guid: Option<&str>, path: Option<&str>| -> ResolvedAssetRef {
+                let Some(assets) = self.assets.as_ref() else {
+                    return ResolvedAssetRef::Unset;
+                };
+                match assets.resolve_ref(guid, path) {
+                    RefResolution::Resolved { guid, path } => ResolvedAssetRef::Found {
+                        guid: guid.to_string(),
+                        path,
+                    },
+                    RefResolution::Restored { guid, path } => ResolvedAssetRef::Restored {
+                        guid: guid.to_string(),
+                        path,
+                    },
+                    RefResolution::Missing { guid, path } => {
+                        ResolvedAssetRef::Missing { guid, path }
+                    }
+                    RefResolution::Unset => ResolvedAssetRef::Unset,
+                }
+            };
+            Level::open_with_resolver(
+                &path,
+                &registry,
+                &mut world,
+                Some(&assets_root),
+                Some(&resolve),
+            )
+            .map_err(|e| format!("{e:?}"))?
         };
         self.load_report = Some(report);
         self.level = Some(level);
