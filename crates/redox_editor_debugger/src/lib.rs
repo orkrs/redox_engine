@@ -9,6 +9,6 @@ pub mod profiler;
 /// Ring buffer of world snapshots for scrubbing back in time.
 pub mod time_travel;
 
-pub use pie::PieSession;
+pub use pie::{PieRunMode, PieSession};
 pub use profiler::FrameProfiler;
 pub use time_travel::TimeTravelBuffer;
