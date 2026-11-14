@@ -5,12 +5,12 @@
 
 ## Коммиты
 
-| Шаг | Сообщение | Файлы |
+| Шаг | Коммит | Файлы |
 |---|---|---|
-| 1 | `ci: pin engine job to rust-toolchain — EDT-C4 step 1` | `.github/workflows/ci.yml` |
-| 2 | `ci: editor-pipeline job and helper script — EDT-C4 step 2` | `.github/workflows/ci.yml`, `scripts/ci_editor_pipeline.ps1` |
-| 3 | `ci: golden-gpu workflow_dispatch and CI docs — EDT-C4 step 3` | `.github/workflows/ci.yml`, `scripts/ci_golden.ps1`, `CONTRIBUTING.md`, `PROJECT_MAP.md`, `CHANGELOG.md` |
-| отчёт | `docs: EDT-C4 report` | этот файл |
+| 1 | `fef27c5` `ci: engine job with pinned toolchain — EDT-C4 step 1` | `.github/workflows/ci.yml` |
+| 2 | `550f9f1` `ci: gated editor-pipeline job — EDT-C4 step 2` | `.github/workflows/ci.yml`, `scripts/ci_editor_pipeline.ps1` |
+| 3 | `cb77c80` `ci: optional golden-gpu and CI docs — EDT-C4 step 3` | `.github/workflows/ci.yml`, `scripts/ci_golden.ps1`, `CONTRIBUTING.md`, `PROJECT_MAP.md`, `CHANGELOG.md` |
+| отчёт | `d1dae06` `docs: EDT-C4 CI implementation report` | этот файл |
 
 ## Jobs: включены vs gated
 
