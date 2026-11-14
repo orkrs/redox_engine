@@ -35,6 +35,13 @@ pub struct BuildProfileStub {
     pub name: String,
 }
 
+/// Options when opening a project (plugin catalog for warnings).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ProjectOpenOptions {
+    /// Plugin names the editor can load; others stay [`ProjectWarning::MissingPlugin`].
+    pub loadable_plugins: Vec<String>,
+}
+
 /// Contents of `project.ron`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProjectManifest {
@@ -200,6 +207,15 @@ impl ProjectContext {
     /// migrated: `project.ron.bak-v<N>` keeps the first copy of the old file. Missing plugins
     /// and a missing start scene only add warnings.
     pub fn open(root: impl AsRef<Path>) -> Result<Self, ProjectError> {
+        Self::open_with_options(root, ProjectOpenOptions::default())
+    }
+
+    /// Like [`Self::open`], but plugins listed in [`ProjectOpenOptions::loadable_plugins`] do
+    /// not produce [`ProjectWarning::MissingPlugin`].
+    pub fn open_with_options(
+        root: impl AsRef<Path>,
+        options: ProjectOpenOptions,
+    ) -> Result<Self, ProjectError> {
         let root = root.as_ref().to_path_buf();
         let manifest_path = root.join(MANIFEST_FILE);
         let text = fs::read_to_string(&manifest_path).map_err(|source| {
@@ -232,12 +248,17 @@ impl ProjectContext {
             Ordering::Less => migrate(&manifest_path, &mut manifest)?,
             Ordering::Equal => {}
         }
-        let warnings = check_references(&root, &manifest);
+        let warnings = check_references(&root, &manifest, &options.loadable_plugins);
         Ok(Self {
             root,
             manifest,
             warnings,
         })
+    }
+
+    /// Mutable manifest for UI edits (for example the plugins list).
+    pub fn manifest_mut(&mut self) -> &mut ProjectManifest {
+        &mut self.manifest
     }
 
     /// Project root folder.
@@ -396,11 +417,18 @@ fn migrate(manifest_path: &Path, manifest: &mut ProjectManifest) -> Result<(), P
     write_manifest(manifest_path, manifest)
 }
 
-fn check_references(root: &Path, manifest: &ProjectManifest) -> Vec<ProjectWarning> {
+fn check_references(
+    root: &Path,
+    manifest: &ProjectManifest,
+    loadable_plugins: &[String],
+) -> Vec<ProjectWarning> {
     let mut warnings: Vec<ProjectWarning> = manifest
         .plugins
         .iter()
-        .map(|name| ProjectWarning::MissingPlugin { name: name.clone() })
+        .filter(|name| !loadable_plugins.iter().any(|known| known == *name))
+        .map(|name| ProjectWarning::MissingPlugin {
+            name: name.clone(),
+        })
         .collect();
     if !manifest.start_scene.is_empty() {
         let path = root.join(&manifest.start_scene);
