@@ -15,6 +15,8 @@ pub enum AssetKind {
     Texture,
     /// A scene file.
     Scene,
+    /// A material graph (`.matgraph`).
+    Material,
     /// Any other file.
     Other,
 }
@@ -32,6 +34,7 @@ impl AssetKind {
             Some("png") | Some("jpg") | Some("jpeg") | Some("webp") | Some("hdr")
             | Some("ktx2") | Some("basis") => Self::Texture,
             Some("ron") => Self::Scene,
+            Some("matgraph") => Self::Material,
             _ => Self::Other,
         }
     }
@@ -42,6 +45,7 @@ impl AssetKind {
             Self::Mesh => "mesh",
             Self::Texture => "tex",
             Self::Scene => "scene",
+            Self::Material => "mat",
             Self::Other => "file",
         }
     }
@@ -129,6 +133,8 @@ pub enum AssetAction {
     ShowReferences,
     /// Copy the GUID to the clipboard.
     CopyGuid,
+    /// Open in a document tab (material graphs).
+    Open,
 }
 
 /// Actions allowed for an entry. A missing file cannot be renamed, moved or revealed; a failed
@@ -167,6 +173,9 @@ pub fn actions_for(entry: &BrowserEntry) -> Vec<AssetAction> {
             ];
             if entry.kind == AssetKind::Mesh {
                 actions.insert(0, AssetAction::Spawn);
+            }
+            if entry.kind == AssetKind::Material {
+                actions.insert(0, AssetAction::Open);
             }
             actions
         }

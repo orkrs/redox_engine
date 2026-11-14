@@ -79,6 +79,14 @@ impl Default for CommandPalette {
                 id: "shading_wire".into(),
                 label: "> Shading: Wireframe".into(),
             },
+            Command {
+                id: "material_save".into(),
+                label: "> Save Material".into(),
+            },
+            Command {
+                id: "graph_tab".into(),
+                label: "> Focus Graph Tab (Material)".into(),
+            },
         ];
         Self {
             open: false,

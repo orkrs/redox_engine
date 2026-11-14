@@ -52,3 +52,4 @@ bytemuck = { workspace = true }
 # Scenario tests (EDT-A7). Other editor crates are already normal dependencies above.
 redox_asset = { path = "../redox_asset" }
 redox_editor_assets = { path = "../redox_editor_assets" }
+redox_matgraph = { path = "../redox_matgraph" }

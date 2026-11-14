@@ -75,6 +75,7 @@ impl EditorApp {
         for request in requests {
             self.handle_asset_request(request);
         }
+        self.sync_material_opens();
 
         let open_path = self
             .ui_ctx

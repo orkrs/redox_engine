@@ -7,12 +7,24 @@
 
 pub mod browser_model;
 pub mod import;
+pub mod mat_graph_view;
+pub mod material_compile;
+pub mod material_document;
+pub mod material_preview;
 pub mod import_queue;
 pub mod reference_index;
 pub mod service;
 
 pub use browser_model::{
     AssetAction, AssetKind, BrowserEntry, BrowserFilter, BrowserModel, StatusFilter, actions_for,
+};
+pub use mat_graph_view::{ConnectError, MatGraphUndo, MatGraphView, NodeLayout};
+pub use material_compile::{CompileMessage, CompileReport};
+pub use material_document::{
+    CompiledMaterial, MaterialDocument, MaterialError, compile_for_save,
+};
+pub use material_preview::{
+    MaterialPreviewSettings, PreviewLighting, PreviewMesh, SimplePreviewLight,
 };
 
 pub use import::{

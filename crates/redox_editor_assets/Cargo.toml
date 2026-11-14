@@ -13,6 +13,7 @@ path = "src/lib.rs"
 
 [dependencies]
 redox_asset = { path = "../redox_asset" }
+redox_matgraph = { path = "../redox_matgraph" }
 redox_scene = { path = "../redox_scene" }
 redox_reflect = { path = "../redox_reflect" }
 flume = { workspace = true }

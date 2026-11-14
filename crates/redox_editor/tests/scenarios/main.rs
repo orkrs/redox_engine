@@ -14,6 +14,7 @@ mod s03_edit_undo;
 mod s04_undo_stress;
 mod s05_asset_rename;
 mod s06_references;
+mod s07_material_editor;
 mod s08_pie_isolation;
 mod s12_import_failure;
 mod s13_crash_recovery;

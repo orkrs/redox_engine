@@ -11,6 +11,8 @@ use redox_editor_assets::{
     AssetAction, BrowserEntry, BrowserModel, StatusFilter, actions_for,
 };
 
+use crate::material_editor::MaterialOpenRequest;
+
 /// Request from the browser for the editor's asset service; the app drains them each frame.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AssetRequest {
@@ -188,6 +190,7 @@ pub struct AssetBrowserPanel {
     error_view: Option<AssetGuid>,
     meta_cache: HashMap<PathBuf, Result<GltfMeta, String>>,
     texture_cache: HashMap<PathBuf, Result<TextureMeta, String>>,
+    material_opens: Vec<MaterialOpenRequest>,
 }
 
 impl AssetBrowserPanel {
@@ -199,6 +202,11 @@ impl AssetBrowserPanel {
     /// Takes the requests made since the last call.
     pub fn take_requests(&mut self) -> Vec<AssetRequest> {
         std::mem::take(&mut self.requests)
+    }
+
+    /// Open-material requests since the last drain (double-click / Open action).
+    pub fn take_material_opens(&mut self) -> Vec<MaterialOpenRequest> {
+        std::mem::take(&mut self.material_opens)
     }
 
     /// Opens the delete confirmation for a referenced asset (after a blocked delete).
@@ -222,6 +230,7 @@ impl AssetBrowserPanel {
         let rows: Vec<BrowserEntry> = self.model.visible().into_iter().cloned().collect();
         let selected = self.model.selected().map(|e| e.guid);
         let mut clicked: Option<AssetGuid> = None;
+        let mut dbl_open: Option<BrowserEntry> = None;
         let mut chosen: Vec<(AssetAction, BrowserEntry)> = Vec::new();
         egui::ScrollArea::vertical().show(ui, |ui| {
             for entry in &rows {
@@ -235,6 +244,9 @@ impl AssetBrowserPanel {
                         .on_hover_text(format!("{}\n{}", entry.path, entry.guid));
                     if response.clicked() {
                         clicked = Some(entry.guid);
+                    }
+                    if response.double_clicked() && entry.kind == AssetKind::Material {
+                        dbl_open = Some(entry.clone());
                     }
                     if let Some(status) = &entry.status {
                         ui.colored_label(status_color(status), status_text(Some(status)));
@@ -252,6 +264,10 @@ impl AssetBrowserPanel {
         });
         if let Some(guid) = clicked {
             self.model.select(Some(guid));
+        }
+        if let Some(entry) = dbl_open {
+            let root = self.model.root().to_path_buf();
+            self.queue_material_open(&root, &entry);
         }
 
         let root = self.model.root().to_path_buf();
@@ -279,6 +295,7 @@ impl AssetBrowserPanel {
                         AssetKind::Mesh,
                         AssetKind::Texture,
                         AssetKind::Scene,
+                        AssetKind::Material,
                         AssetKind::Other,
                     ] {
                         ui.selectable_value(&mut self.model.filter.kind, Some(kind), kind.label());
@@ -348,8 +365,16 @@ impl AssetBrowserPanel {
             }),
             AssetAction::ShowReferences => self.references_view = Some(entry.guid),
             AssetAction::CopyGuid => ui.ctx().copy_text(entry.guid.to_string()),
+            AssetAction::Open => self.queue_material_open(root, entry),
         }
         None
+    }
+
+    fn queue_material_open(&mut self, root: &Path, entry: &BrowserEntry) {
+        self.material_opens.push(MaterialOpenRequest {
+            path: root.join(&entry.path),
+            guid: Some(entry.guid),
+        });
     }
 
     fn show_selected_details(&mut self, ui: &mut egui::Ui, root: &Path) -> Option<AssetSpawnRequest> {
@@ -379,6 +404,14 @@ impl AssetBrowserPanel {
                     );
                 }
                 None => {}
+            }
+        }
+        if entry.kind == AssetKind::Material {
+            if ui.button("Open in Material Editor").clicked() {
+                self.material_opens.push(MaterialOpenRequest {
+                    path: abs.clone(),
+                    guid: Some(entry.guid),
+                });
             }
         }
         if entry.kind == AssetKind::Texture && is_gpu_texture(&abs) {
@@ -600,6 +633,7 @@ fn swatch(kind: AssetKind) -> egui::Color32 {
         AssetKind::Mesh => egui::Color32::from_rgb(90, 160, 220),
         AssetKind::Texture => egui::Color32::from_rgb(120, 190, 130),
         AssetKind::Scene => egui::Color32::from_rgb(210, 170, 90),
+        AssetKind::Material => egui::Color32::from_rgb(180, 120, 220),
         AssetKind::Other => egui::Color32::from_rgb(140, 140, 150),
     }
 }
@@ -652,5 +686,6 @@ fn action_label(action: AssetAction) -> &'static str {
         AssetAction::RevealInExplorer => "Reveal in Explorer",
         AssetAction::ShowReferences => "Show references",
         AssetAction::CopyGuid => "Copy GUID",
+        AssetAction::Open => "Open",
     }
 }

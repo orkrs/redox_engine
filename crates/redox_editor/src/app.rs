@@ -28,6 +28,7 @@ use std::time::Instant;
 
 mod assets;
 mod autosave;
+mod material;
 mod redraw;
 mod ui;
 
