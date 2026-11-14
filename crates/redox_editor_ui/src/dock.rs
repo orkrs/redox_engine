@@ -10,6 +10,7 @@ use crate::git_overlay::GitOverlay;
 use crate::inspector::{InspectorPanel, selection_entities};
 use crate::profiler_panel::ProfilerPanel;
 use crate::undo_history::UndoHistoryPanel;
+use crate::validation_panel::ValidationPanel;
 use redox_editor_viewport::{GizmoMode, ViewportLayout, ViewportShading};
 
 /// Tabs of the editor dock.
@@ -35,6 +36,8 @@ pub enum Tab {
     Packager,
     /// Undo history: the steps, the current position and jumps to any step.
     UndoHistory,
+    /// Scene validation issues.
+    Issues,
 }
 
 impl std::fmt::Display for Tab {
@@ -50,6 +53,7 @@ impl std::fmt::Display for Tab {
             Tab::Profiler => write!(f, "Profiler"),
             Tab::Packager => write!(f, "Packager"),
             Tab::UndoHistory => write!(f, "Undo History"),
+            Tab::Issues => write!(f, "Issues"),
         }
     }
 }
@@ -79,6 +83,7 @@ impl EditorDock {
         Tab::Profiler,
         Tab::Packager,
         Tab::UndoHistory,
+        Tab::Issues,
     ];
 
     /// Creates the dock with the layout from `editor_layout.ron` in the working directory.
@@ -151,6 +156,7 @@ impl EditorDock {
                 Tab::Profiler,
                 Tab::Packager,
                 Tab::UndoHistory,
+                Tab::Issues,
             ],
         );
         tree
@@ -488,6 +494,24 @@ impl TabViewer for TabViewerImpl<'_> {
             }
             Tab::Packager => {
                 self.ui_ctx.packager.lock().show(ui);
+            }
+            Tab::Issues => {
+                let mut model = self.ui_ctx.validation.lock();
+                let mut selection = self.ui_ctx.core.selection.lock();
+                let mut world = self.ui_ctx.core.world.lock();
+                let registry = self.ui_ctx.core.registry.lock();
+                let mut undo = self.ui_ctx.core.undo.lock();
+                let (_actions, refresh) = ValidationPanel::show(
+                    ui,
+                    &mut model,
+                    &mut selection,
+                    &mut world,
+                    &registry,
+                    &mut undo,
+                );
+                if refresh {
+                    *self.ui_ctx.core.status.lock() = "validation_refresh".into();
+                }
             }
         }
     }

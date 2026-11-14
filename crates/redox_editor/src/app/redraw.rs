@@ -229,6 +229,9 @@ impl EditorApp {
                     }
                 }
                 self.ui_ctx.core.status.lock().clear();
+            } else if status == "validation_refresh" {
+                self.refresh_validation();
+                self.ui_ctx.core.status.lock().clear();
             } else if let Some(rest) = status.strip_prefix("snap:") {
                 if let Ok(id) = rest.parse::<u32>()
                     && let Some(e) = resolve_entity(&self.core.world.lock(), id)
@@ -604,5 +607,33 @@ impl EditorApp {
         que.submit(Some(encoder.finish()));
         que.present(frame);
         self.window.request_redraw();
+    }
+
+    /// Re-runs scene validation for the Issues tab.
+    pub(super) fn refresh_validation(&mut self) {
+        let Some(level) = self.files.level() else {
+            return;
+        };
+        let assets_root = self
+            .files
+            .project()
+            .map(|p| p.root().join(p.manifest().assets_root));
+        let (asset_registry, reference_index) = self
+            .assets
+            .as_ref()
+            .map(|s| (Some(s.registry()), Some(s.reference_index())))
+            .unwrap_or((None, None));
+        let world = self.core.world.lock();
+        let registry = self.core.registry.lock();
+        let mut model = self.ui_ctx.validation.lock();
+        model.load_report = self.files.last_load_report().clone();
+        model.validate_open_level(
+            &world,
+            &registry,
+            level,
+            assets_root.as_deref(),
+            asset_registry,
+            reference_index,
+        );
     }
 }

@@ -16,6 +16,7 @@ use crate::command_palette::CommandPalette;
 use crate::node_canvas::NodeCanvas;
 use crate::outliner::{OutlinerAction, OutlinerPanel};
 use crate::packager::PackagerPanel;
+use crate::validation_model::ValidationPanelModel;
 use redox_ecs::Entity;
 use redox_gameplay::{AttributeSet, StateTreeComponent};
 use std::path::PathBuf;
@@ -76,6 +77,8 @@ pub struct EditorUiCtx {
     pub frame_ms: Mutex<f32>,
     /// Integrator may overwrite with real GPU memory stats; shown in Viewport toolbar.
     pub vram_label: Mutex<String>,
+    /// Scene validation issues for the Issues tab.
+    pub validation: Mutex<ValidationPanelModel>,
 }
 
 impl EditorUiCtx {
@@ -116,6 +119,7 @@ impl EditorUiCtx {
             fps: Mutex::new(0.0),
             frame_ms: Mutex::new(0.0),
             vram_label: Mutex::new("VRAM: n/a".into()),
+            validation: Mutex::new(ValidationPanelModel::default()),
         }
     }
 

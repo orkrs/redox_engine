@@ -323,6 +323,11 @@ impl AssetService {
         self.references.missing_refs(&self.registry)
     }
 
+    /// Index of parsed scene references.
+    pub fn reference_index(&self) -> &ReferenceIndex {
+        &self.references
+    }
+
     /// Current path of the asset whose GUID is written as 32 hex digits.
     pub fn path_of_text(&self, guid_text: &str) -> Option<String> {
         let parsed = u128::from_str_radix(guid_text, 16).ok()?;

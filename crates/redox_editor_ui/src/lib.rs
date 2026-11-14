@@ -29,6 +29,10 @@ pub mod packager;
 pub mod profiler_panel;
 /// Undo history panel.
 pub mod undo_history;
+/// Issues / validation panel model without egui.
+pub mod validation_model;
+/// egui Issues tab.
+pub mod validation_panel;
 /// Crash-recovery prompt and the Preferences window.
 pub mod recovery_dialog;
 
@@ -43,3 +47,5 @@ pub use packager::{BakeReport, BakeStatus, PackagerPanel};
 pub use recovery_dialog::{
     PreferencesWindow, RecoveryAnswer, RecoveryDialog, RecoveryPrompt, format_hhmm,
 };
+pub use validation_model::{SeverityFilter, ValidationPanelAction, ValidationPanelModel};
+pub use validation_panel::ValidationPanel;

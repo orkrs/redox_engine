@@ -14,6 +14,10 @@ use redox_editor_core::file_state::{
 use redox_editor_core::project::{ProjectContext, RECENT_FILE, RecentProjects};
 use redox_editor_core::project_template::ProjectTemplate;
 use redox_editor_core::autosave::AutosaveSource;
+use redox_editor_assets::{AssetRegistry, ReferenceIndex};
+use redox_editor_scene::validate::{
+    blocks_pie, validate_level, ValidateLevelOptions, ValidationReport, ValidationSettings,
+};
 use redox_editor_scene::{Level, LoadReport};
 
 /// Window title when no level is open.
@@ -64,6 +68,7 @@ pub struct FileMenu {
     prompt: Option<PendingAction>,
     dialog: Option<PathDialog>,
     report: Vec<String>,
+    last_load_report: LoadReport,
     quit_requested: bool,
     shown_title: String,
 }
@@ -84,9 +89,52 @@ impl FileMenu {
             prompt: None,
             dialog: None,
             report: Vec::new(),
+            last_load_report: LoadReport::default(),
             quit_requested: false,
             shown_title: String::new(),
         }
+    }
+
+    /// The open level, if any.
+    pub fn level(&self) -> Option<&Level> {
+        self.level.as_ref()
+    }
+
+    /// Warnings from the last level open.
+    pub fn last_load_report(&self) -> &LoadReport {
+        &self.last_load_report
+    }
+
+    /// Re-runs scene validation on the open level.
+    pub fn validate_current(
+        &self,
+        ctx: &EditorContext,
+        assets_root: Option<&Path>,
+        asset_registry: Option<&AssetRegistry>,
+        reference_index: Option<&ReferenceIndex>,
+        settings: ValidationSettings,
+    ) -> Option<ValidationReport> {
+        let level = self.level.as_ref()?;
+        let world = ctx.world.lock();
+        let registry = ctx.registry.lock();
+        let scene_path = level.path().and_then(|p| p.to_str());
+        Some(validate_level(
+            &world,
+            &registry,
+            ValidateLevelOptions {
+                assets_root,
+                asset_registry,
+                reference_index,
+                scene_path,
+                settings,
+                load_report: Some(&self.last_load_report),
+            },
+        ))
+    }
+
+    /// Whether PIE should be blocked for `report` under `settings`.
+    pub fn pie_blocked(report: &ValidationReport, settings: &ValidationSettings) -> bool {
+        blocks_pie(report, settings)
     }
 
     /// Queues `request` for the next [`Self::handle_requests`].
@@ -284,6 +332,18 @@ impl FileMenu {
         let Some(level) = self.level.as_mut() else {
             return false;
         };
+        let settings = ValidationSettings::default();
+        if settings.warn_before_save {
+            if let Some(report) =
+                self.validate_current(ctx, None, None, None, settings)
+                && report.has_problems()
+            {
+                ctx.log.warn(format!(
+                    "validation: {} issue(s) before save",
+                    report.issues.len()
+                ));
+            }
+        }
         let mut world = ctx.world.lock();
         let registry = ctx.registry.lock();
         match level.save(&registry, &mut world) {
@@ -335,9 +395,11 @@ impl FileMenu {
             Level::open(path, &registry, &mut fresh).map_err(|err| err.to_string())?
         };
         *ctx.world.lock() = fresh;
+        self.last_load_report = report;
         self.install_level(level, ctx);
+        *ctx.status.lock() = "validation_refresh".into();
         ctx.log.info(format!("opened {}", path.display()));
-        Ok(report_lines(&report))
+        Ok(report_lines(&self.last_load_report))
     }
 
     fn save_level_as(&mut self, path: &Path, ctx: &EditorContext) -> Result<(), String> {
