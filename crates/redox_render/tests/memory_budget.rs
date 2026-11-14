@@ -3,7 +3,7 @@
 //! A pure bookkeeping structure, no GPU involved. API to implement in a NEW file
 //! `crates/redox_render/src/memory_budget.rs`, declared and re-exported in `lib.rs`
 //! (`pub mod memory_budget;` and `pub use memory_budget::{CategoryUsage, MemoryBudget, MemoryCategory};`).
-//! Do not wire it into the renderer (that is a separate step).
+//! Wired into the renderer via `Renderer::memory_usage` and upload rejection (RND-13).
 //!
 //! ```text
 //! #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]

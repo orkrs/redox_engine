@@ -22,10 +22,32 @@ fn gpu_texture_bytes(texture: &wgpu::Texture) -> u64 {
 }
 
 impl Renderer {
-    /// Sets or clears the byte limit of a memory category. Limits do not stop uploads; they only mark
-    /// the category as over budget in [`Self::memory_usage`] and [`Self::memory_report`].
+    /// Sets or clears the byte limit of a memory category. New uploads are rejected when a category
+    /// would exceed its limit (see [`Self::try_upload_mesh`] and [`Self::try_upload_texture`]).
     pub fn set_memory_limit(&mut self, category: MemoryCategory, bytes: Option<u64>) {
         self.memory_limits.set_limit(category, bytes);
+    }
+
+    /// Returns whether `bytes` would fit in `category` (ignoring the pending upload).
+    pub(crate) fn memory_would_fit(&self, category: MemoryCategory, bytes: u64) -> bool {
+        let usage = self.memory_usage_inner();
+        match usage.limit(category) {
+            None => true,
+            Some(limit) => usage
+                .used(category)
+                .checked_add(bytes)
+                .is_some_and(|total| total <= limit),
+        }
+    }
+
+    pub(crate) fn log_memory_reject(&self, category: MemoryCategory, detail: &str) {
+        let mut warned = self.memory_reject_warned.borrow_mut();
+        if warned.insert(category) {
+            log::warn!(
+                "memory budget rejected {detail} in category `{}`",
+                category.name()
+            );
+        }
     }
 
     /// GPU memory by category, computed from the resources that exist right now (so unloading is
@@ -35,12 +57,20 @@ impl Renderer {
     /// textures, virtual geometry from its big buffers, `Other` from the render targets, and
     /// `Buffers` from the renderer's persistent uniform and storage buffers.
     pub fn memory_usage(&self) -> MemoryBudget {
+        self.memory_reject_warned.borrow_mut().clear();
+        self.memory_usage_inner()
+    }
+
+    fn memory_usage_inner(&self) -> MemoryBudget {
         let mut budget = self.memory_limits.clone();
         budget.add(MemoryCategory::Meshes, self.registry.mesh_bytes());
         // Reflection probe array (RFL-01), allocated once; counted as texture memory.
         budget.add(MemoryCategory::Textures, self.reflection_probes.gpu_bytes());
         for texture in self.registry.textures() {
             budget.add(MemoryCategory::Textures, gpu_texture_bytes(texture));
+        }
+        if let Some(cards) = self.gi.cards.as_ref() {
+            budget.add(MemoryCategory::Textures, cards.memory_bytes());
         }
         let shadows = [
             &self.local_shadow_atlas,
@@ -55,15 +85,12 @@ impl Renderer {
         if let Some(vg) = &self.vg_system {
             budget.add(MemoryCategory::VirtualGeometry, vg.gpu_bytes());
         }
+        budget.add(MemoryCategory::Transient, self.transient_pool.gpu_bytes());
         let targets = [
-            &self.hdr_texture,
             &self.hdr_msaa_texture,
-            &self.normal_texture,
             &self.material_surface_texture,
             &self.ssao_raw_texture,
             &self.ssao_half_blurred_texture,
-            &self.ssao_blurred_texture,
-            &self.depth_texture,
             &self.depth_msaa_texture,
             &self.prev_depth_texture,
             &self.ldr_texture,

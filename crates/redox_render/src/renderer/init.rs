@@ -798,7 +798,7 @@ impl Renderer {
         let gpu_profiler = crate::profiler::GpuProfiler::new(&device, &queue);
         let vsm_page_request = crate::shadow::page_request::PageRequestPass::new(&device);
 
-        Self {
+        let mut renderer = Self {
             device,
             queue,
             surface,
@@ -1007,7 +1007,14 @@ impl Renderer {
             main_vis_scratch: Vec::new(),
             vg_sync_scratch: Vec::new(),
             staging_ring,
-        }
+            memory_reject_warned: std::cell::RefCell::new(std::collections::BTreeSet::new()),
+            transient_pool: crate::transient_pool::TransientPool::new(),
+            compiled_frame_graph: crate::frame_graph::frame_graph(1, 1)
+                .compile()
+                .expect("frame graph valid"),
+        };
+        renderer.rebuild_transient_pool();
+        renderer
     }
 
     // ── MSAA helpers ────────────────────────────────────────────────────────

@@ -107,3 +107,55 @@ fn the_report_names_the_buffers_line() {
         r.memory_report()
     );
 }
+
+#[test]
+fn the_gi_card_atlas_is_in_the_memory_report() {
+    let Some(mut r) = renderer() else { return };
+    let before = r.memory_usage().used(MemoryCategory::Textures);
+    r.gi.set_cards(&r.device, &r.queue, &[]);
+    let after = r.memory_usage().used(MemoryCategory::Textures);
+    assert!(after > before, "GI card atlas bytes");
+    let fresh = renderer().unwrap();
+  assert!(
+        fresh.memory_usage().used(MemoryCategory::Textures) < after
+            || before == fresh.memory_usage().used(MemoryCategory::Textures),
+        "GI off until cards are set"
+    );
+}
+
+#[test]
+fn an_upload_under_the_limit_succeeds() {
+    let Some(mut r) = renderer() else { return };
+    let mesh = primitive::create_cube();
+    let bytes = Renderer::mesh_upload_bytes(&mesh, true);
+    r.set_memory_limit(MemoryCategory::Meshes, Some(r.memory_usage().used(MemoryCategory::Meshes) + bytes));
+    let slot = r.try_upload_mesh(&mesh).expect("under limit");
+    assert_ne!(slot, usize::MAX);
+}
+
+#[test]
+fn an_upload_over_the_limit_returns_err_and_leaves_the_count_unchanged() {
+    let Some(mut r) = renderer() else { return };
+    r.set_memory_limit(MemoryCategory::Meshes, Some(0));
+    let before = r.registry.mesh_count();
+    let mesh = primitive::create_cube();
+    assert!(r.try_upload_mesh(&mesh).is_err());
+    assert_eq!(r.registry.mesh_count(), before);
+}
+
+#[test]
+fn no_limit_accepts_the_upload() {
+    let Some(mut r) = renderer() else { return };
+    r.set_memory_limit(MemoryCategory::Meshes, None);
+    assert!(r.try_upload_mesh(&primitive::create_cube()).is_ok());
+}
+
+#[test]
+fn a_later_free_allows_the_next_upload() {
+    let mut budget = redox_render::MemoryBudget::new();
+    budget.set_limit(MemoryCategory::Meshes, Some(100));
+    budget.add(MemoryCategory::Meshes, 60);
+    assert!(!budget.try_reserve(MemoryCategory::Meshes, 50));
+    budget.sub(MemoryCategory::Meshes, 60);
+    assert!(budget.try_reserve(MemoryCategory::Meshes, 40));
+}

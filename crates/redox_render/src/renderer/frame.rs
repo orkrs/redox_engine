@@ -181,7 +181,7 @@ impl Renderer {
     /// Describes the frame graph at the current surface size: passes in execution order with
     /// their resources, slots, culled passes and access changes. Does not touch the GPU.
     pub fn frame_graph_report(&self) -> String {
-        crate::frame_graph::frame_graph_report(self.config.width, self.config.height)
+        self.frame_graph_report_with_pool()
     }
 
     /// Runs the named pass of the frame graph.
@@ -213,6 +213,13 @@ impl Renderer {
                 f.touch("depth");
                 f.touch("vg_clusters");
                 self.record_scatter_light_pass(&mut f.encoder);
+            }
+            "fog" => {
+                f.touch("hdr_color");
+                f.touch("depth");
+                if self.post_fx_settings.fog.is_some() {
+                    f.touch("fog_scratch");
+                }
             }
             "taa_tonemap_bloom_smaa" => {
                 // The post chain reads the HDR target for bloom and tonemap and writes the
@@ -349,7 +356,11 @@ impl Renderer {
             vsm_dirty,
             hdr_resolve_pass,
             #[cfg(debug_assertions)]
-            usage: usage::FrameUsage::for_size(self.config.width, self.config.height),
+            usage: usage::FrameUsage::for_size(
+                self.internal_width,
+                self.internal_height,
+                self.frame_features(),
+            ),
         }
     }
 

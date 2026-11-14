@@ -36,6 +36,7 @@ pub mod profiler;
 pub mod reflection;
 pub mod registry;
 pub mod render_graph;
+pub mod transient_pool;
 pub mod renderer;
 pub mod resource;
 pub mod sdf;
@@ -65,7 +66,7 @@ pub use memory_budget::{
 };
 pub use mesh::{Mesh, Vertex};
 pub use profiler::{GpuProfiler, GpuTiming, PROFILER_FEATURES};
-pub use renderer::{Renderer, RendererError, pick_hdr_msaa_sample_count};
+pub use renderer::{Renderer, RendererError, UploadRejected, pick_hdr_msaa_sample_count};
 pub use skinning::{SkinnedMeshBinding, SkinningMode};
 pub use surface::{SurfaceError, acquire_surface_texture};
 pub use systems::{

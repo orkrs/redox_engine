@@ -23,9 +23,11 @@ mod post;
 mod reload;
 pub use reload::{ReloadablePass, ShaderHotReload};
 mod resize;
+mod transient_targets;
 mod scene_sync;
 mod settings;
 
+pub use assets::UploadRejected;
 pub use create::required_device_limits;
 pub use error::RendererError;
 pub use helpers::pick_hdr_msaa_sample_count;
@@ -433,6 +435,12 @@ pub struct Renderer {
     last_cpu_timings: FrameCpuTimings,
     /// Byte limits per memory category (usage is computed on demand, see `memory_usage`).
     memory_limits: crate::memory_budget::MemoryBudget,
+    /// Categories that already logged a budget rejection this frame (cleared in `memory_usage`).
+    memory_reject_warned: std::cell::RefCell<std::collections::BTreeSet<crate::memory_budget::MemoryCategory>>,
+    /// Pooled transient render targets (RND-12).
+    transient_pool: crate::transient_pool::TransientPool,
+    /// Last compiled frame graph used by the pool (for reports and savings).
+    compiled_frame_graph: crate::render_graph::CompiledGraph,
     /// Ping-pong history texture 0.
     pub taa_history_tex: [wgpu::Texture; 2],
     /// Views into the ping-pong history textures.

@@ -1,8 +1,8 @@
 //! GPU memory bookkeeping by category.
 //!
-//! A pure accounting structure with no GPU access and no dependencies. It
-//! records how many bytes each [`MemoryCategory`] uses and, optionally, a
-//! byte limit per category. It is not wired into the renderer yet.
+//! Pure accounting with no GPU access. Limits are stored here; the renderer
+//! rejects new uploads that would exceed a category limit and does not evict
+//! existing resources when over budget.
 
 const MIB: u64 = 1024 * 1024;
 
@@ -70,18 +70,21 @@ pub enum MemoryCategory {
     VirtualGeometry,
     /// Generic GPU buffers (uniforms, storage, staging).
     Buffers,
+    /// Pooled transient render targets (one physical texture per graph slot).
+    Transient,
     /// Anything not covered by the other categories.
     Other,
 }
 
 impl MemoryCategory {
     /// Every category, in declaration order.
-    pub const ALL: [MemoryCategory; 6] = [
+    pub const ALL: [MemoryCategory; 7] = [
         MemoryCategory::Textures,
         MemoryCategory::Meshes,
         MemoryCategory::Shadows,
         MemoryCategory::VirtualGeometry,
         MemoryCategory::Buffers,
+        MemoryCategory::Transient,
         MemoryCategory::Other,
     ];
 
@@ -93,6 +96,7 @@ impl MemoryCategory {
             MemoryCategory::Shadows => "shadows",
             MemoryCategory::VirtualGeometry => "virtual_geometry",
             MemoryCategory::Buffers => "buffers",
+            MemoryCategory::Transient => "transient",
             MemoryCategory::Other => "other",
         }
     }
@@ -376,8 +380,8 @@ mod tests {
 
     #[test]
     fn names_match_all_order_length() {
-        assert_eq!(MemoryCategory::ALL.len(), 6);
+        assert_eq!(MemoryCategory::ALL.len(), 7);
         assert_eq!(MemoryCategory::ALL[0].name(), "textures");
-        assert_eq!(MemoryCategory::ALL[5].name(), "other");
+        assert_eq!(MemoryCategory::ALL[6].name(), "other");
     }
 }

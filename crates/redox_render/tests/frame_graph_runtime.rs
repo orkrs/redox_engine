@@ -1,10 +1,6 @@
-//! RND-09 step 2: the frame graph declares which textures each pass reads and writes; the passes
-//! report the textures they hand to the GPU, and a debug build compares the two after every frame.
-//! Skipped without a GPU, and only meaningful in debug builds (the check is compiled out in release).
+//! RND-09 step 2 + RND-12: frame graph usage vs passes and transient pool behavior.
 //!
-//! The declarations in `frame_graph.rs` match the textures the passes touch. On a mismatch the
-//! test prints every difference: run `cargo test -p redox_render --test frame_graph_runtime
-//! --nocapture` to see them.
+//! GPU tests skip without an adapter. Pool unit tests are CPU-only.
 
 #![cfg(debug_assertions)]
 #![allow(clippy::unwrap_used)]
@@ -14,11 +10,15 @@ mod common;
 use redox_math::{Aabb, Mat4, Quat, Vec3};
 use redox_render::camera::Camera;
 use redox_render::frame::FrameView;
+use redox_render::frame_graph::{self, FrameFeatures};
 use redox_render::light::{DirectionalLight, LightScene};
 use redox_render::material::Material;
 use redox_render::mesh::primitive::create_cube;
+use redox_render::post::fog::FogSettings;
+use redox_render::render_graph::{RenderGraph, TextureDesc, TextureUsages};
 use redox_render::shadow::ShadowClass;
 use redox_render::systems::RenderObject;
+use redox_render::transient_pool::{PoolKey, TransientPool};
 
 const SIZE: u32 = 128;
 
@@ -32,7 +32,11 @@ fn every_declared_read_and_write_is_used_by_the_pass() {
         return;
     };
     renderer.enable_taa(true);
+    renderer.vsm_enabled = true;
+    renderer.post_fx_settings.fog = Some(FogSettings::default());
+    renderer.rebuild_transient_pool();
     let mesh = renderer.upload_mesh(&create_cube());
+    assert_ne!(mesh, usize::MAX);
     let material = renderer.add_material(Material::solid(Vec3::new(0.8, 0.4, 0.2)));
     let target = common::target(&renderer.device, SIZE);
     let camera = Camera::new(0.9, 1.0, 0.1, 50.0);
@@ -70,4 +74,100 @@ fn every_declared_read_and_write_is_used_by_the_pass() {
         "{} declaration mismatches",
         mismatches.len()
     );
+}
+
+#[test]
+fn declared_access_matches_the_frame() {
+    every_declared_read_and_write_is_used_by_the_pass();
+}
+
+#[test]
+fn two_nonoverlapping_targets_share_a_slot() {
+    let mut g = RenderGraph::new();
+    let desc = TextureDesc {
+        width: 64,
+        height: 64,
+        format: wgpu::TextureFormat::Rgba16Float,
+        usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+        sample_count: 1,
+        mip_level_count: 1,
+    };
+    let a = g.create_texture("a", desc);
+    let b = g.create_texture("b", desc);
+    let c = g.create_texture("c", desc);
+    let out = g.import_texture("out", desc);
+    g.add_pass("p1", |p| p.write(a));
+    g.add_pass("p2", |p| p.read(a).write(b));
+    g.add_pass("p3", |p| p.read(b).write(c));
+    g.add_pass("p4", |p| p.read(c).write(out));
+    let comp = g.compile().unwrap();
+    assert_eq!(comp.slot_of(a), comp.slot_of(c));
+    assert_eq!(comp.slot_count, 2);
+}
+
+#[test]
+fn resize_keeps_an_unchanged_slot() {
+    let Some(adapter) = common::adapter() else {
+        return;
+    };
+    let Some(device) = common::device_with_bc(&adapter).map(|(d, _)| d) else {
+        return;
+    };
+    let graph = frame_graph::frame_graph(64, 64).compile().unwrap();
+    let key = PoolKey {
+        width: 64,
+        height: 64,
+        features: FrameFeatures::default(),
+    };
+    let mut pool = TransientPool::new();
+    pool.reset_creation_counter();
+    pool.rebuild(&device, &graph, key);
+    let created_first = pool.textures_created();
+    pool.rebuild(&device, &graph, key);
+    assert_eq!(pool.textures_created(), created_first, "unchanged size reuses slots");
+}
+
+#[test]
+fn disabling_fog_drops_its_transient_target() {
+    let with = frame_graph::frame_graph_with_features(320, 180, FrameFeatures { fog: true })
+        .compile()
+        .unwrap();
+    let without = frame_graph::frame_graph_with_features(320, 180, FrameFeatures { fog: false })
+        .compile()
+        .unwrap();
+    let fog_transient = |c: &redox_render::render_graph::CompiledGraph| {
+        c.logical_transients()
+            .iter()
+            .any(|(_, name)| *name == "fog_scratch")
+    };
+    assert!(fog_transient(&with));
+    assert!(!fog_transient(&without));
+    assert!(with.slot_count >= without.slot_count);
+}
+
+#[test]
+fn a_partial_write_does_not_alias() {
+    let mut g = RenderGraph::new();
+    let desc = TextureDesc {
+        width: 32,
+        height: 32,
+        format: wgpu::TextureFormat::R8Unorm,
+        usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+        sample_count: 1,
+        mip_level_count: 1,
+    };
+    let a = g.create_texture("mask", desc);
+    let b = g.create_texture("full", desc);
+    let screen = g.import_texture("screen", desc);
+    g.add_pass("partial", |p| {
+        p.write_partial(a);
+    });
+    g.add_pass("fullpass", |p| {
+        p.write(b);
+    });
+    g.add_pass("out", |p| {
+        p.read(b).write(screen);
+    });
+    let c = g.compile().unwrap();
+    assert_ne!(c.slot_of(a), c.slot_of(b));
 }
