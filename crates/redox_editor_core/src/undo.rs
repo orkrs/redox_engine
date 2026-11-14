@@ -290,7 +290,11 @@ impl UndoCommand {
                 old_local: *new_local,
                 new_local: *old_local,
             },
-            Self::Rename { guid, before, after } => Self::Rename {
+            Self::Rename {
+                guid,
+                before,
+                after,
+            } => Self::Rename {
                 guid: *guid,
                 before: after.clone(),
                 after: before.clone(),

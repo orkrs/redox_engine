@@ -1,7 +1,7 @@
 //! egui Issues tab (EDT-B7 step 3).
 
-use redox_editor_core::guid::GuidResolver;
 use redox_editor_core::Selection;
+use redox_editor_core::guid::GuidResolver;
 use redox_editor_scene::validate::{IssueUserAction, Severity};
 
 use crate::validation_model::{SeverityFilter, ValidationPanelAction, ValidationPanelModel};
@@ -27,11 +27,7 @@ impl ValidationPanel {
                 .selected_text(filter_label(model.filter))
                 .show_ui(ui, |ui| {
                     ui.selectable_value(&mut model.filter, SeverityFilter::All, "All");
-                    ui.selectable_value(
-                        &mut model.filter,
-                        SeverityFilter::WarnPlus,
-                        "Warn+",
-                    );
+                    ui.selectable_value(&mut model.filter, SeverityFilter::WarnPlus, "Warn+");
                     ui.selectable_value(&mut model.filter, SeverityFilter::Errors, "Errors");
                 });
             if ui.button("Re-validate").clicked() {
@@ -43,11 +39,7 @@ impl ValidationPanel {
             ui.label("No issues.");
             return (actions, refresh);
         }
-        let rows: Vec<_> = model
-            .filtered_issues()
-            .into_iter()
-            .cloned()
-            .collect();
+        let rows: Vec<_> = model.filtered_issues().into_iter().cloned().collect();
         egui::ScrollArea::vertical().show(ui, |ui| {
             for issue in &rows {
                 let color = match issue.severity {
@@ -70,9 +62,7 @@ impl ValidationPanel {
                                 undo,
                             ) {
                                 if let ValidationPanelAction::Select(guid) = act {
-                                    if let Some(entity) =
-                                        GuidResolver::resolve(world, guid)
-                                    {
+                                    if let Some(entity) = GuidResolver::resolve(world, guid) {
                                         selection.set_primary(Some(entity));
                                     }
                                     actions.push(act);
@@ -94,13 +84,9 @@ impl ValidationPanel {
                         }
                     }
                     if issue.fix.is_some() && ui.small_button("Fix").clicked() {
-                        if let Ok(act) = model.apply_action(
-                            issue,
-                            IssueUserAction::Fix,
-                            world,
-                            registry,
-                            undo,
-                        ) {
+                        if let Ok(act) =
+                            model.apply_action(issue, IssueUserAction::Fix, world, registry, undo)
+                        {
                             actions.push(act);
                         }
                     }

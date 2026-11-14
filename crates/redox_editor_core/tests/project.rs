@@ -1,7 +1,7 @@
 //! Tests of project files: creation, opening, templates, migration, warnings and recent projects.
 
 use redox_editor_core::project::{
-    ENGINE_VERSION, MANIFEST_FILE, PROJECT_FORMAT_VERSION, PRIVATE_DIR, ProjectContext,
+    ENGINE_VERSION, MANIFEST_FILE, PRIVATE_DIR, PROJECT_FORMAT_VERSION, ProjectContext,
     ProjectError, ProjectManifest, ProjectWarning, RECENT_LIMIT, RecentProjects, format_utc,
 };
 use redox_editor_core::project_template::ProjectTemplate;
@@ -60,8 +60,8 @@ fn write_manifest(root: &Path, manifest: &ProjectManifest) {
 #[test]
 fn create_then_open_returns_equal_manifest() {
     let dir = TempDir::new("roundtrip");
-    let created = ProjectContext::create(dir.path(), "Demo", ProjectTemplate::Empty)
-        .expect("create project");
+    let created =
+        ProjectContext::create(dir.path(), "Demo", ProjectTemplate::Empty).expect("create project");
     let opened = ProjectContext::open(dir.path()).expect("open project");
 
     assert_eq!(created.manifest(), opened.manifest());
@@ -166,7 +166,10 @@ fn older_engine_migrates_and_keeps_the_first_backup() {
     let backup = dir
         .path()
         .join(format!("{MANIFEST_FILE}.bak-v{PROJECT_FORMAT_VERSION}"));
-    assert_eq!(fs::read_to_string(&backup).expect("backup exists"), original);
+    assert_eq!(
+        fs::read_to_string(&backup).expect("backup exists"),
+        original
+    );
 
     // A second migration must not overwrite the first backup.
     write_manifest(dir.path(), &manifest("Older still", "0.0.2", Vec::new()));

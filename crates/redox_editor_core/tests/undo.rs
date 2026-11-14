@@ -7,10 +7,10 @@ use std::time::{Duration, Instant};
 use redox_ecs::World;
 use redox_ecs::hierarchy::{Parent, set_parent};
 use redox_editor_core::builtin_commands::record_spawn;
-use redox_editor_core::{EditorContext, GuidResolver};
 use redox_editor_core::undo::{
     Clock, UndoCommand, UndoError, UndoStack, capture_entity, capture_world,
 };
+use redox_editor_core::{EditorContext, GuidResolver};
 use redox_math::{Transform, Vec3};
 use redox_reflect::{Reflect, TypeRegistry};
 use redox_scene::components::{EntityGuid, Name};
@@ -342,7 +342,9 @@ fn approx(actual: Option<f32>, expected: f32) -> bool {
 
 fn name_of(world: &World, guid: EntityGuid) -> Option<String> {
     let entity = GuidResolver::resolve(world, guid)?;
-    world.get_component::<Name>(entity).map(|name| name.0.clone())
+    world
+        .get_component::<Name>(entity)
+        .map(|name| name.0.clone())
 }
 
 #[test]
@@ -410,7 +412,8 @@ fn rename_is_undone_and_redone() {
         before: Some("Old".into()),
         after: Some("New".into()),
     };
-    cmd.apply(&mut world, &registry).expect("the rename applies");
+    cmd.apply(&mut world, &registry)
+        .expect("the rename applies");
     undo.push(cmd);
     assert_eq!(name_of(&world, guid).as_deref(), Some("New"));
 
@@ -445,7 +448,7 @@ fn primary_guid(ctx: &EditorContext) -> EntityGuid {
 #[test]
 fn create_entity_is_undone_and_redone_with_the_same_guid() {
     let ctx = EditorContext::new(registry());
-    assert!(ctx.commands.run(&ctx, "create_entity"));
+    assert!(ctx.commands.lock().run(&ctx, "create_entity"));
     let guid = primary_guid(&ctx);
     assert_eq!(ctx.undo.lock().entries()[0].label, "Create Entity");
 
@@ -459,8 +462,8 @@ fn create_entity_is_undone_and_redone_with_the_same_guid() {
 #[test]
 fn duplicate_is_one_step_and_undo_removes_the_copy() {
     let ctx = EditorContext::new(registry());
-    assert!(ctx.commands.run(&ctx, "create_entity"));
-    assert!(ctx.commands.run(&ctx, "duplicate"));
+    assert!(ctx.commands.lock().run(&ctx, "create_entity"));
+    assert!(ctx.commands.lock().run(&ctx, "duplicate"));
     assert_eq!(entity_count(&ctx), 2);
     assert_eq!(ctx.undo.lock().len(), 2);
     assert_eq!(ctx.undo.lock().entries()[1].label, "Duplicate Entity");
@@ -472,14 +475,19 @@ fn duplicate_is_one_step_and_undo_removes_the_copy() {
 #[test]
 fn delete_is_undone_with_its_components_and_guid() {
     let ctx = EditorContext::new(registry());
-    assert!(ctx.commands.run(&ctx, "create_entity"));
+    assert!(ctx.commands.lock().run(&ctx, "create_entity"));
     let guid = primary_guid(&ctx);
-    assert!(ctx.commands.run(&ctx, "delete"));
+    assert!(ctx.commands.lock().run(&ctx, "delete"));
     assert!(GuidResolver::resolve(&ctx.world.lock(), guid).is_none());
 
     assert!(undo_in(&ctx));
     let restored = GuidResolver::resolve(&ctx.world.lock(), guid).expect("the entity is back");
-    assert!(ctx.world.lock().get_component::<Transform>(restored).is_some());
+    assert!(
+        ctx.world
+            .lock()
+            .get_component::<Transform>(restored)
+            .is_some()
+    );
     assert_eq!(ctx.undo.lock().redo_entries()[0].label, "Delete Entity");
 }
 

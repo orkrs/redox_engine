@@ -19,7 +19,7 @@ pub enum ImportLogFilter {
 }
 
 /// Status column of one log row.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ImportLogStatus {
     /// Worker picked up the job.
     Started,
@@ -34,7 +34,7 @@ pub enum ImportLogStatus {
 }
 
 /// One import log entry.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ImportLogEntry {
     /// Path relative to the assets root.
     pub path: String,

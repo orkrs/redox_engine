@@ -88,10 +88,10 @@ impl EditorApp {
         if let Some(service) = self.assets.as_mut() {
             service.set_open_asset(open_path.as_deref());
             if changed || refresh_due {
-                self.ui_ctx.assets.lock().refresh_with_thumbs(
-                    service.registry(),
-                    service.thumbnails(),
-                );
+                self.ui_ctx
+                    .assets
+                    .lock()
+                    .refresh_with_thumbs(service.registry(), service.thumbnails());
                 self.last_asset_refresh = Instant::now();
             }
         }

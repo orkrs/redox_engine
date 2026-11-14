@@ -6,8 +6,8 @@ use redox_ecs::hierarchy::Parent;
 use redox_ecs::{Entity, World};
 use redox_editor_core::editor_only::EditorOnly;
 use redox_editor_core::markers::EditorFolder;
-use redox_editor_core::selection::{Selection, Visibility};
 use redox_editor_core::markers::Locked;
+use redox_editor_core::selection::{Selection, Visibility};
 use redox_reflect::{ReflectValue, TypeRegistry};
 use redox_scene::{EntityGuid, Name};
 
@@ -156,9 +156,15 @@ pub fn build(world: &World, index: &GuidIndex, error_guids: &HashSet<EntityGuid>
         }
     }
 
-    model.roots.sort_by_key(|g| model.nodes.get(g).map(|n| n.name.clone()));
+    let names: HashMap<EntityGuid, String> = model
+        .nodes
+        .iter()
+        .map(|(guid, node)| (*guid, node.name.clone()))
+        .collect();
+    model.roots.sort_by_key(|guid| names.get(guid).cloned());
     for node in model.nodes.values_mut() {
-        node.children.sort_by_key(|g| model.nodes.get(g).map(|n| n.name.clone()));
+        node.children
+            .sort_by_key(|guid| names.get(guid).cloned().unwrap_or_default());
     }
     model
 }
@@ -192,16 +198,12 @@ pub fn flatten(
     expanded: &HashSet<EntityGuid>,
 ) -> Vec<FlatRow> {
     let visible = visible_guids(model, world, registry, filter, error_guids);
+    let filter_active =
+        !filter.name.is_empty() || !filter.component.is_empty() || filter.errors_only;
+    let walk_expanded = if filter_active { &visible } else { expanded };
     let mut out = Vec::new();
     for &root in &model.roots {
-        walk_flat(
-            model,
-            root,
-            0,
-            expanded,
-            &visible,
-            &mut out,
-        );
+        walk_flat(model, root, 0, walk_expanded, &visible, &mut out);
     }
     out
 }
@@ -235,7 +237,9 @@ fn visible_guids(
     for guid in matched {
         visible.insert(guid);
         add_ancestors(model, guid, &mut visible);
-        add_descendants(model, guid, &mut visible);
+        if !name_needle.is_empty() {
+            add_descendants(model, guid, &mut visible);
+        }
     }
     visible
 }
@@ -429,18 +433,18 @@ pub fn spawn_chain_world(world: &mut World) -> (EntityGuid, EntityGuid, EntityGu
     let ga = EntityGuid(1);
     let gb = EntityGuid(2);
     let gc = EntityGuid(3);
-    let a = world.spawn();
-    world.add_component(a, ga);
-    world.add_component(a, Name("A".into()));
-    world.add_component(a, Transform::default());
-    let b = world.spawn();
-    world.add_component(b, gb);
-    world.add_component(b, Name("B".into()));
-    world.add_component(b, Transform::default());
-    let c = world.spawn();
-    world.add_component(c, gc);
-    world.add_component(c, Name("C".into()));
-    world.add_component(c, Transform::default());
+    let a = world.spawn(); // undo: n/a
+    world.add_component(a, ga); // undo: n/a
+    world.add_component(a, Name("A".into())); // undo: n/a
+    world.add_component(a, Transform::default()); // undo: n/a
+    let b = world.spawn(); // undo: n/a
+    world.add_component(b, gb); // undo: n/a
+    world.add_component(b, Name("B".into())); // undo: n/a
+    world.add_component(b, Transform::default()); // undo: n/a
+    let c = world.spawn(); // undo: n/a
+    world.add_component(c, gc); // undo: n/a
+    world.add_component(c, Name("C".into())); // undo: n/a
+    world.add_component(c, Transform::default()); // undo: n/a
     redox_ecs::hierarchy::set_parent(world, b, a);
     redox_ecs::hierarchy::set_parent(world, c, b);
     (ga, gb, gc)
@@ -451,11 +455,11 @@ pub fn spawn_chain_world(world: &mut World) -> (EntityGuid, EntityGuid, EntityGu
 pub fn spawn_many_entities(world: &mut World, count: usize) -> GuidIndex {
     let mut index = GuidIndex::new();
     for i in 0..count {
-        let e = world.spawn();
+        let e = world.spawn(); // undo: n/a
         let guid = EntityGuid(i as u128 + 10_000);
-        world.add_component(e, guid);
-        world.add_component(e, Name(format!("Node {i}")));
-        world.add_component(e, Transform::default());
+        world.add_component(e, guid); // undo: n/a
+        world.add_component(e, Name(format!("Node {i}"))); // undo: n/a
+        world.add_component(e, Transform::default()); // undo: n/a
         index.insert(guid, e);
     }
     index
@@ -464,11 +468,11 @@ pub fn spawn_many_entities(world: &mut World, count: usize) -> GuidIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::register_scene_components;
     use redox_editor_core::undo::{UndoCommand, UndoStack};
     use redox_math::{Transform, Vec3};
     use redox_reflect::TypeRegistry;
     use redox_render::Camera;
-    use crate::register_scene_components;
 
     fn registry() -> TypeRegistry {
         let mut registry = TypeRegistry::new();
@@ -530,7 +534,11 @@ mod tests {
         let (a, _, _) = spawn_chain_world(&mut world);
         let entity = world
             .all_entities()
-            .find(|e| world.get_component::<EntityGuid>(*e).is_some_and(|g| *g == a))
+            .find(|e| {
+                world
+                    .get_component::<EntityGuid>(*e)
+                    .is_some_and(|g| *g == a)
+            })
             .expect("entity");
         world.add_component(entity, Camera::default());
         let mut index = GuidIndex::new();
@@ -563,16 +571,13 @@ mod tests {
         world.add_component(e2, g2);
         world.add_component(e1, Name("One".into()));
         world.add_component(e2, Name("Two".into()));
-        redox_ecs::hierarchy::set_parent(world, e1, e2);
-        redox_ecs::hierarchy::set_parent(world, e2, e1);
+        redox_ecs::hierarchy::set_parent(&mut world, e1, e2);
+        redox_ecs::hierarchy::set_parent(&mut world, e2, e1);
         let mut index = GuidIndex::new();
         index.rebuild(&world);
         let model = build(&world, &index, &HashSet::new());
         assert_eq!(model.roots.len(), 2);
-        assert!(model
-            .warnings
-            .iter()
-            .any(|w| w.message.contains("cycle")));
+        assert!(model.warnings.iter().any(|w| w.message.contains("cycle")));
     }
 
     #[test]
@@ -586,10 +591,7 @@ mod tests {
         let parent = world.spawn();
         world.add_component(child, child_g);
         world.add_component(parent, parent_g);
-        world.add_component(
-            child,
-            Transform::from_translation(Vec3::new(5.0, 0.0, 0.0)),
-        );
+        world.add_component(child, Transform::from_translation(Vec3::new(5.0, 0.0, 0.0)));
         world.add_component(parent, Transform::default());
         let mut index = GuidIndex::new();
         index.rebuild(&world);
@@ -611,7 +613,10 @@ mod tests {
         let (a, b, _) = spawn_chain_world(&mut world);
         let before = snapshot_parents(&world);
         let err = UndoCommand::reparent(&world, a, Some(b), true);
-        assert!(matches!(err, Err(redox_editor_core::undo::UndoError::Cycle)));
+        assert!(matches!(
+            err,
+            Err(redox_editor_core::undo::UndoError::Cycle)
+        ));
         assert_eq!(snapshot_parents(&world), before);
         let _ = err;
     }
@@ -649,7 +654,7 @@ mod tests {
             &registry(),
             &OutlinerFilter::default(),
             &HashSet::new(),
-            &HashSet::from([a]),
+            &HashSet::new(),
         );
         let mut selection = Selection::default();
         select_range(&mut selection, &flat, &index, a, c);
@@ -712,11 +717,7 @@ mod tests {
     fn snapshot_parents(world: &World) -> Vec<(Entity, Entity)> {
         world
             .all_entities()
-            .filter_map(|e| {
-                world
-                    .get_component::<Parent>(e)
-                    .map(|p| (e, p.0))
-            })
+            .filter_map(|e| world.get_component::<Parent>(e).map(|p| (e, p.0)))
             .collect()
     }
 }

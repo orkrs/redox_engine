@@ -27,8 +27,8 @@ pub struct EditorContext {
     pub log: EditorLog,
     /// Text of the status bar; a front end reads it and acts on it.
     pub status: Arc<Mutex<String>>,
-    /// Commands that run by identifier.
-    pub commands: CommandRegistry,
+    /// Commands that run by identifier. Clones share this registry.
+    pub commands: Arc<Mutex<CommandRegistry>>,
 }
 
 impl EditorContext {
@@ -47,7 +47,7 @@ impl EditorContext {
             undo: Arc::new(Mutex::new(UndoStack::default())),
             log: EditorLog::new(),
             status: Arc::new(Mutex::new(String::new())),
-            commands,
+            commands: Arc::new(Mutex::new(commands)),
         }
     }
 

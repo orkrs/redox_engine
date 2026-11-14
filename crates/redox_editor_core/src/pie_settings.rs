@@ -26,9 +26,7 @@ impl PieSettings {
 
     /// Resolved start scene path under `project_root`, if configured.
     pub fn start_scene_path(&self, project_root: &Path) -> Option<PathBuf> {
-        self.start_scene
-            .as_ref()
-            .map(|rel| project_root.join(rel))
+        self.start_scene.as_ref().map(|rel| project_root.join(rel))
     }
 }
 
@@ -75,19 +73,13 @@ mod tests {
 
     #[test]
     fn project_overrides_load_from_redox_folder() {
-        let dir = std::env::temp_dir().join(format!(
-            "redox_pie_settings_{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("redox_pie_settings_{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(dir.join(".redox")).expect("mkdir");
         let ron = r#"(start_scene: Some("custom.scene.ron"), args: ["--test"])"#;
         fs::write(dir.join(".redox/pie_settings.ron"), ron).expect("write");
         let loaded = PieSettings::load_project_overrides(&dir);
-        assert_eq!(
-            loaded.start_scene.as_deref(),
-            Some("custom.scene.ron")
-        );
+        assert_eq!(loaded.start_scene.as_deref(), Some("custom.scene.ron"));
         assert_eq!(loaded.args, vec!["--test"]);
         let _ = fs::remove_dir_all(&dir);
     }

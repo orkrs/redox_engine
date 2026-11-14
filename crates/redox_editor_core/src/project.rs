@@ -470,9 +470,7 @@ fn check_references(
         .plugins
         .iter()
         .filter(|name| !loadable_plugins.iter().any(|known| known == *name))
-        .map(|name| ProjectWarning::MissingPlugin {
-            name: name.clone(),
-        })
+        .map(|name| ProjectWarning::MissingPlugin { name: name.clone() })
         .collect();
     if !manifest.start_scene.is_empty() {
         let path = root.join(&manifest.start_scene);

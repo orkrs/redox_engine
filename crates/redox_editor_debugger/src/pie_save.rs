@@ -1,8 +1,8 @@
 //! Guards persistent saves while PIE is running.
 
 use crate::PieSession;
-use redox_editor_scene::Level;
 use redox_ecs::World;
+use redox_editor_scene::Level;
 use redox_reflect::TypeRegistry;
 
 /// Why a level save was refused.
@@ -40,7 +40,10 @@ pub fn save_level_if_allowed(
 }
 
 /// Applies `mark_saved` on the undo stack only when PIE is stopped.
-pub fn mark_saved_if_allowed(pie: &PieSession, undo: &mut redox_editor_core::UndoStack) -> PieSaveBlock {
+pub fn mark_saved_if_allowed(
+    pie: &PieSession,
+    undo: &mut redox_editor_core::UndoStack,
+) -> PieSaveBlock {
     match save_guard(pie) {
         PieSaveBlock::BlockedByPie => PieSaveBlock::BlockedByPie,
         PieSaveBlock::Allowed => {
@@ -88,7 +91,10 @@ mod tests {
         );
 
         let after = fs::read_to_string(&path).expect("read again");
-        assert_eq!(before, after, "level file on disk must be unchanged during PIE");
+        assert_eq!(
+            before, after,
+            "level file on disk must be unchanged during PIE"
+        );
         pie.stop(&mut world, &registry);
         let _ = fs::remove_dir_all(&dir);
     }

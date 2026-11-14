@@ -44,6 +44,7 @@ pub enum SceneGitError {
         path: PathBuf,
     },
     /// libgit2 returned an error.
+    #[cfg(feature = "editor-git")]
     #[error("git error: {0}")]
     Git(#[from] git2::Error),
     /// Scene file could not be read or parsed.
@@ -108,10 +109,7 @@ pub fn scene_file_at_head(
 }
 
 #[cfg(not(feature = "editor-git"))]
-pub fn scene_file_at_head(
-    _repo: &(),
-    _path: &Path,
-) -> Result<Option<SceneFile>, SceneGitError> {
+pub fn scene_file_at_head(_repo: &(), _path: &Path) -> Result<Option<SceneFile>, SceneGitError> {
     Err(SceneGitError::FeatureDisabled)
 }
 
@@ -190,19 +188,12 @@ pub fn commit_scene_files(
     index.write()?;
     let tree_id = index.write_tree()?;
     let tree = repo.find_tree(tree_id)?;
-    let sig = repo.signature().or_else(|_| {
-        git2::Signature::now("RedOx Editor", "editor@redox.local")
-    })?;
+    let sig = repo
+        .signature()
+        .or_else(|_| git2::Signature::now("RedOx Editor", "editor@redox.local"))?;
     let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
     let parents: Vec<&git2::Commit> = parent.iter().collect();
-    repo.commit(
-        Some("HEAD"),
-        &sig,
-        &sig,
-        message,
-        &tree,
-        parents.as_slice(),
-    )?;
+    repo.commit(Some("HEAD"), &sig, &sig, message, &tree, parents.as_slice())?;
     Ok(())
 }
 
@@ -271,7 +262,9 @@ fn path_dirty(repo: &git2::Repository, path: &Path) -> Result<bool, SceneGitErro
 }
 
 #[cfg(feature = "editor-git")]
-fn ahead_behind_and_branch(repo: &git2::Repository) -> Result<(usize, usize, String), SceneGitError> {
+fn ahead_behind_and_branch(
+    repo: &git2::Repository,
+) -> Result<(usize, usize, String), SceneGitError> {
     let head = repo.head()?;
     let branch = head
         .shorthand()

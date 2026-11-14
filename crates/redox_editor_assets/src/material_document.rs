@@ -135,10 +135,7 @@ impl MaterialDocument {
     }
 
     /// Saves to `path` and makes it the document path.
-    pub fn save_as(
-        &mut self,
-        path: impl AsRef<Path>,
-    ) -> Result<CompiledMaterial, MaterialError> {
+    pub fn save_as(&mut self, path: impl AsRef<Path>) -> Result<CompiledMaterial, MaterialError> {
         let path = path.as_ref();
         let compiled = self.write_to(path)?;
         self.path = Some(path.to_path_buf());

@@ -6,13 +6,9 @@ mod project;
 pub mod rules;
 pub mod settings;
 
-pub use actions::{
-    apply_fix, apply_issue_action, IssueUserAction, ValidationActionResult,
-};
-pub use issue::{
-    Severity, ValidationFix, ValidationIssue, ValidationReport, ValidationRule,
-};
-pub use project::{validate_project, ValidateProjectError};
+pub use actions::{IssueUserAction, ValidationActionResult, apply_fix, apply_issue_action};
+pub use issue::{Severity, ValidationFix, ValidationIssue, ValidationReport, ValidationRule};
+pub use project::{ValidateProjectError, validate_project};
 pub use rules::RuleContext;
 pub use settings::ValidationSettings;
 
@@ -69,7 +65,9 @@ pub fn validate_level(
         load_report: options.load_report,
     };
     let mut report = ValidationReport::default();
-    report.issues.extend(rules::check_missing_and_broken_assets(&ctx));
+    report
+        .issues
+        .extend(rules::check_missing_and_broken_assets(&ctx));
     report.issues.extend(rules::check_unknown_components(&ctx));
     report.issues.extend(rules::check_hierarchy(&ctx));
     report.issues.extend(rules::check_active_camera(&ctx));

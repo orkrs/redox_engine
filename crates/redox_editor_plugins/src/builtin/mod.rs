@@ -2,9 +2,9 @@
 
 mod hello;
 
-pub use hello::{HelloPlugin, HELLO_COMMAND_ID, HELLO_PANEL_ID, HELLO_PLUGIN_NAME};
+pub use hello::{HELLO_COMMAND_ID, HELLO_PANEL_ID, HELLO_PLUGIN_NAME, HelloPlugin};
 
-use crate::plugin::{EditorPlugin, BUILTIN_PLUGIN_NAMES};
+use crate::plugin::{BUILTIN_PLUGIN_NAMES, EditorPlugin};
 use std::sync::Arc;
 
 /// Every built-in plugin instance.

@@ -4,22 +4,21 @@
 
 use std::path::{Path, PathBuf};
 
+use redox_asset::AssetRegistry;
 use redox_ecs::World;
+use redox_editor_assets::ReferenceIndex;
 use redox_editor_core::EditorContext;
-use redox_editor_debugger::pie_save::{PieSaveBlock, save_level_if_allowed};
-use redox_editor_debugger::PieSession;
 use redox_editor_core::UndoStack;
-use redox_editor_core::file_commands::{FileRequest, FileRequestQueue};
-use redox_editor_core::file_state::{
-    self, PendingAction, PromptAnswer, PromptOutcome, SaveTarget,
-};
-use redox_editor_core::project::{ProjectContext, ProjectOpenOptions, RECENT_FILE, RecentProjects};
-use redox_editor_plugins::BUILTIN_PLUGIN_NAMES;
-use redox_editor_core::project_template::ProjectTemplate;
 use redox_editor_core::autosave::AutosaveSource;
-use redox_editor_assets::{AssetRegistry, ReferenceIndex};
+use redox_editor_core::file_commands::{FileRequest, FileRequestQueue};
+use redox_editor_core::file_state::{self, PendingAction, PromptAnswer, PromptOutcome, SaveTarget};
+use redox_editor_core::project::{ProjectContext, ProjectOpenOptions, RECENT_FILE, RecentProjects};
+use redox_editor_core::project_template::ProjectTemplate;
+use redox_editor_debugger::PieSession;
+use redox_editor_debugger::pie_save::{PieSaveBlock, save_level_if_allowed};
+use redox_editor_plugins::BUILTIN_PLUGIN_NAMES;
 use redox_editor_scene::validate::{
-    blocks_pie, validate_level, ValidateLevelOptions, ValidationReport, ValidationSettings,
+    ValidateLevelOptions, ValidationReport, ValidationSettings, blocks_pie, validate_level,
 };
 use redox_editor_scene::{Level, LoadReport};
 
@@ -277,7 +276,12 @@ impl FileMenu {
     }
 
     /// Draws the open dialogs: the unsaved-changes prompt, the path dialog and the load report.
-    pub fn show_windows(&mut self, egui_ctx: &egui::Context, ctx: &EditorContext, pie: &PieSession) {
+    pub fn show_windows(
+        &mut self,
+        egui_ctx: &egui::Context,
+        ctx: &EditorContext,
+        pie: &PieSession,
+    ) {
         self.show_prompt(egui_ctx, ctx, pie);
         self.show_path_dialog(egui_ctx, ctx);
         self.show_report(egui_ctx);
@@ -353,13 +357,9 @@ impl FileMenu {
             self.open_path_dialog(PathPurpose::SaveAs);
             return false;
         }
-        let Some(level) = self.level.as_mut() else {
-            return false;
-        };
         let settings = ValidationSettings::default();
         if settings.warn_before_save {
-            if let Some(report) =
-                self.validate_current(ctx, None, None, None, settings)
+            if let Some(report) = self.validate_current(ctx, None, None, None, settings)
                 && report.has_problems()
             {
                 ctx.log.warn(format!(
@@ -368,6 +368,9 @@ impl FileMenu {
                 ));
             }
         }
+        let Some(level) = self.level.as_mut() else {
+            return false;
+        };
         let mut world = ctx.world.lock();
         let registry = ctx.registry.lock();
         match save_level_if_allowed(pie, level, &registry, &mut world) {
@@ -450,8 +453,8 @@ impl FileMenu {
                 .map(|name| (*name).to_string())
                 .collect(),
         };
-        let mut project = ProjectContext::open_with_options(root, options)
-            .map_err(|err| err.to_string())?;
+        let mut project =
+            ProjectContext::open_with_options(root, options).map_err(|err| err.to_string())?;
         project.mark_opened().map_err(|err| err.to_string())?;
         self.adopt_project(project, ctx);
         Ok(())
@@ -467,7 +470,8 @@ impl FileMenu {
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| "project".to_string());
-        let project = ProjectContext::create(root, &name, template).map_err(|err| err.to_string())?;
+        let project =
+            ProjectContext::create(root, &name, template).map_err(|err| err.to_string())?;
         self.adopt_project(project, ctx);
         Ok(())
     }
@@ -483,7 +487,8 @@ impl FileMenu {
         let start_scene = project.start_scene_path().filter(|path| path.is_file());
         self.recent.push(project.root());
         self.save_recent(ctx);
-        ctx.log.info(format!("project {} ready", project.manifest().name));
+        ctx.log
+            .info(format!("project {} ready", project.manifest().name));
         self.project = Some(project);
         if let Some(scene) = start_scene {
             match self.load_level(&scene, ctx) {
@@ -581,12 +586,15 @@ impl FileMenu {
             .resizable(false)
             .open(&mut open)
             .show(egui_ctx, |ui| {
-                ui.label("Type a path: a folder for projects and worlds, a *.scene.ron file for scenes.");
+                ui.label(
+                    "Type a path: a folder for projects and worlds, a *.scene.ron file for scenes.",
+                );
                 ui.add(egui::TextEdit::singleline(&mut dialog.text).desired_width(360.0));
                 if dialog.purpose == PathPurpose::NewProject {
                     ui.horizontal(|ui| {
                         for template in ProjectTemplate::ALL {
-                            let _ = ui.radio_value(&mut dialog.template, template, template.label());
+                            let _ =
+                                ui.radio_value(&mut dialog.template, template, template.label());
                         }
                     });
                 }

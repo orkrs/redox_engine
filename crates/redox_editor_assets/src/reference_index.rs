@@ -171,14 +171,15 @@ pub fn resolve_ref(
 /// GUID of the asset a reference points to, even when that asset is missing on disk.
 /// Used for the reverse index, so that "show references" also works for missing assets.
 fn known_guid(registry: &AssetRegistry, sref: &SceneRef) -> Option<AssetGuid> {
-    if let Some(guid) = sref.guid.as_deref().and_then(|t| t.parse::<AssetGuid>().ok())
+    if let Some(guid) = sref
+        .guid
+        .as_deref()
+        .and_then(|t| t.parse::<AssetGuid>().ok())
         && registry.path_of(guid).is_some()
     {
         return Some(guid);
     }
-    sref.path
-        .as_deref()
-        .and_then(|hint| registry.guid_of(hint))
+    sref.path.as_deref().and_then(|hint| registry.guid_of(hint))
 }
 
 /// What to do with one asset reference while a scene file is rewritten.
@@ -312,7 +313,13 @@ pub fn scene_asset_refs(path: &Path) -> Result<Vec<SceneRef>, ReferenceError> {
                 refs.push(sref.clone());
                 RefEdit::Keep
             };
-            visit_refs(&mut owned, entity.guid.as_deref(), &name, &mut collect, &mut 0);
+            visit_refs(
+                &mut owned,
+                entity.guid.as_deref(),
+                &name,
+                &mut collect,
+                &mut 0,
+            );
         }
     }
     Ok(refs)
@@ -344,12 +351,13 @@ where
         }
     }
     if changed > 0 {
-        let text = ron::ser::to_string_pretty(&model, ron::ser::PrettyConfig::new()).map_err(
-            |e| ReferenceError::Write {
-                path: path.clone(),
-                message: e.to_string(),
-            },
-        )?;
+        let text =
+            ron::ser::to_string_pretty(&model, ron::ser::PrettyConfig::new()).map_err(|e| {
+                ReferenceError::Write {
+                    path: path.clone(),
+                    message: e.to_string(),
+                }
+            })?;
         redox_scene::ofpa::write_atomic(&path, text.as_bytes()).map_err(|source| {
             ReferenceError::Io {
                 path: path.clone(),
@@ -431,10 +439,7 @@ impl ReferenceIndex {
 
     /// Parsed references inside one scene file.
     pub fn refs_in_scene(&self, scene: &str) -> &[SceneRef] {
-        self.scenes
-            .get(scene)
-            .map(Vec::as_slice)
-            .unwrap_or(&[])
+        self.scenes.get(scene).map(Vec::as_slice).unwrap_or(&[])
     }
 
     /// References whose asset cannot be resolved right now, in scene path order.

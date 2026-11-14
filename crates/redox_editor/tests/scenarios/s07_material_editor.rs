@@ -6,10 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 
 fn temp() -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "edt_b5_s07_{}",
-        std::process::id()
-    ))
+    std::env::temp_dir().join(format!("edt_b5_s07_{}", std::process::id()))
 }
 
 #[test]
@@ -30,7 +27,14 @@ fn s07_invalid_matgraph_is_not_written() {
             Node {
                 id: 2,
                 kind: NodeKind::SurfaceOutput,
-                inputs: vec![Some(PortRef { node: 1, port: 0 }), None, None, None, None, None],
+                inputs: vec![
+                    Some(PortRef { node: 1, port: 0 }),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ],
             },
         ],
     };
@@ -41,7 +45,7 @@ fn s07_invalid_matgraph_is_not_written() {
     let before = fs::read(&path).expect("read");
 
     let mut open = MaterialDocument::open(&path, None).expect("open");
-    open.graph.nodes[1].inputs[0] = None;
+    open.graph.nodes.pop();
     let err = open.save().expect_err("save must fail");
     assert!(matches!(err, MaterialError::SaveBlocked { .. }));
     let after = fs::read(&path).expect("read after");

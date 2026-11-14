@@ -1,10 +1,8 @@
 //! Material graph drawing on the shared node canvas (EDT-B5 step 3).
 
-use redox_editor_assets::{CompileReport, MatGraphView};
-use redox_matgraph::graph::NodeKind;
+use redox_editor_assets::{CompileReport, MatGraphView, NodeLayout};
 use redox_matgraph::NodeId;
-
-use redox_editor_assets::{MatGraphView, NodeLayout};
+use redox_matgraph::graph::{NodeKind, PortRef};
 
 use crate::node_canvas::{Edge, GraphMode, Node, NodeCanvas, NodeGraph};
 
@@ -34,7 +32,7 @@ pub fn graph_from_view(view: &MatGraphView) -> NodeGraph {
             continue;
         };
         for (port, input) in n.inputs.iter().enumerate() {
-            let Some(redox_matgraph::graph::PortRef { node, .. }) = input else {
+            let Some(PortRef { node, .. }) = input else {
                 continue;
             };
             let Some(&to_idx) = id_to_idx.get(&(*node as usize)) else {
@@ -91,9 +89,11 @@ pub fn draw_material(
         && let Some(pos) = response.interact_pointer_pos()
     {
         let rel = pos - rect.min.to_vec2();
-        if let Some(n) = canvas.graph.nodes.iter_mut().find(|n| {
-            egui::Rect::from_center_size(n.pos, egui::vec2(130.0, 44.0)).contains(rel)
-        }) {
+        if let Some(n) =
+            canvas.graph.nodes.iter_mut().find(|n| {
+                egui::Rect::from_center_size(n.pos, egui::vec2(130.0, 44.0)).contains(rel)
+            })
+        {
             n.pos += response.drag_delta();
             view.layout.insert(
                 n.id as u32,
@@ -131,10 +131,8 @@ fn paint_graph(
         }
     }
     for node in &graph.nodes {
-        let r = egui::Rect::from_center_size(
-            node.pos + rect.min.to_vec2(),
-            egui::vec2(130.0, 44.0),
-        );
+        let r =
+            egui::Rect::from_center_size(node.pos + rect.min.to_vec2(), egui::vec2(130.0, 44.0));
         let active = active_id == Some(node.id);
         let fill = if active {
             egui::Color32::from_rgb(140, 60, 60)

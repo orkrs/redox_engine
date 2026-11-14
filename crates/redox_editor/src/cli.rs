@@ -50,8 +50,7 @@ pub(crate) fn parse_cli(args: &[String]) -> Result<CliArgs, String> {
             }
             "--bench" => {
                 cli.bench_project = Some(
-                    iter
-                        .next()
+                    iter.next()
                         .ok_or_else(|| "--bench requires a project path".to_string())?
                         .clone(),
                 );

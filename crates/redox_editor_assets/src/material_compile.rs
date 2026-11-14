@@ -56,7 +56,10 @@ impl CompileReport {
                 wgsl: Some(compiled.wgsl),
             },
             Err(crate::material_document::MaterialError::SaveBlocked { errors, .. }) => Self {
-                errors: errors.iter().map(CompileMessage::from_graph_error).collect(),
+                errors: errors
+                    .iter()
+                    .map(CompileMessage::from_graph_error)
+                    .collect(),
                 save_ok: false,
                 wgsl: None,
             },

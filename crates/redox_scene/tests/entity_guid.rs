@@ -25,8 +25,16 @@ fn leading_zeros_are_kept_in_the_text() {
 #[test]
 fn text_that_is_not_32_hex_digits_is_rejected() {
     assert!("abc".parse::<EntityGuid>().is_err());
-    assert!("0123456789abcdef0123456789abcdeg".parse::<EntityGuid>().is_err());
-    assert!("0123456789abcdef0123456789abcdef00".parse::<EntityGuid>().is_err());
+    assert!(
+        "0123456789abcdef0123456789abcdeg"
+            .parse::<EntityGuid>()
+            .is_err()
+    );
+    assert!(
+        "0123456789abcdef0123456789abcdef00"
+            .parse::<EntityGuid>()
+            .is_err()
+    );
 }
 
 #[test]

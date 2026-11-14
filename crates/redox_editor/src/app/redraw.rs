@@ -30,10 +30,8 @@ impl EditorApp {
         self.handle_outliner_actions();
 
         let draws = collect_viewport_draws(&self.core.world.lock());
-        let entities: Vec<(u32, Transform)> = draws
-            .iter()
-            .map(|d| (d.entity_id, d.transform))
-            .collect();
+        let entities: Vec<(u32, Transform)> =
+            draws.iter().map(|d| (d.entity_id, d.transform)).collect();
         let selected_id = self.core.selection.lock().primary.map(|e| e.id());
         let shading = *self.ui_ctx.shading.lock();
         let layout = *self.ui_ctx.layout.lock();
@@ -175,10 +173,8 @@ impl EditorApp {
     fn handle_viewport_requests(&mut self) {
         let status = self.ui_ctx.core.status.lock().clone();
         if status == "viewport_screenshot" {
-            let path = std::env::temp_dir().join(format!(
-                "redox_viewport_{}.png",
-                std::process::id()
-            ));
+            let path =
+                std::env::temp_dir().join(format!("redox_viewport_{}.png", std::process::id()));
             let msg = match self.render_host.as_ref() {
                 Some(host) => match host.screenshot_to_png(&path) {
                     Ok(()) => format!("[INFO] Viewport saved to {}", path.display()),
@@ -198,9 +194,7 @@ impl EditorApp {
                 _ => {}
             }
             self.settings.viewport = v;
-            let _ = self
-                .settings
-                .save(std::path::Path::new(SETTINGS_FILE));
+            let _ = self.settings.save(std::path::Path::new(SETTINGS_FILE));
             self.ui_ctx
                 .log(format!("[INFO] Viewport setting updated: {field}"));
             self.ui_ctx.core.status.lock().clear();
@@ -234,7 +228,8 @@ impl EditorApp {
         if self.shared_gpu.is_none() {
             let window_clone = self.window.clone();
             let boot = pollster::block_on(SharedGpu::request(window_clone));
-            let host = RenderHost::new(boot.device, boot.queue, &boot.shared.adapter, 1280, 720);
+            let mut host =
+                RenderHost::new(boot.device, boot.queue, &boot.shared.adapter, 1280, 720);
             let mut renderer = egui_wgpu::Renderer::new(
                 host.device(),
                 boot.shared.config.format,
@@ -266,8 +261,7 @@ impl EditorApp {
                     let mut git = self.ui_ctx.git.lock();
                     git.refresh(&self.core.world.lock());
                     if let Err(err) = git.refresh_scene_git() {
-                        self.ui_ctx
-                            .log(format!("[WARN] Scene git refresh: {err}"));
+                        self.ui_ctx.log(format!("[WARN] Scene git refresh: {err}"));
                     }
                 }
                 self.ui_ctx.log("[INFO] Git/OFPA status refreshed");
@@ -279,7 +273,9 @@ impl EditorApp {
                         self.ui_ctx.log("[INFO] Scene commit created");
                         let _ = self.ui_ctx.git.lock().refresh_scene_git();
                     }
-                    Err(err) => self.ui_ctx.log(format!("[WARN] Scene commit failed: {err}")),
+                    Err(err) => self
+                        .ui_ctx
+                        .log(format!("[WARN] Scene commit failed: {err}")),
                 }
                 self.ui_ctx.core.status.lock().clear();
             } else if status == "git_scene_pull" {
@@ -408,12 +404,12 @@ impl EditorApp {
                                 .get_component::<Transform>(entity)
                                 .copied()
                             {
-                                self.camera.lock().focus_on(
-                                    redox_math::Aabb::from_center_size(
+                                self.camera
+                                    .lock()
+                                    .focus_on(redox_math::Aabb::from_center_size(
                                         t.translation,
                                         Vec3::splat(2.0),
-                                    ),
-                                );
+                                    ));
                             }
                         }
                     }
@@ -729,7 +725,7 @@ impl EditorApp {
         let assets_root = self
             .files
             .project()
-            .map(|p| p.root().join(p.manifest().assets_root));
+            .map(|p| p.root().join(p.manifest().assets_root.as_str()));
         let (asset_registry, reference_index) = self
             .assets
             .as_ref()

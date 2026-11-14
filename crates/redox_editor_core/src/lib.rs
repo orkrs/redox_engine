@@ -10,28 +10,30 @@
 pub mod autosave;
 /// Built-in commands that work on the domain state (create, duplicate, delete).
 pub mod builtin_commands;
+/// Editor commands addressed by identifier and the registry that runs them.
+pub mod command;
 /// Catalog of component types for the add menu and soft dependency prompts.
 pub mod component_catalog;
 /// Add/remove/copy component values as undo transactions.
 pub mod component_commands;
-/// Editor commands addressed by identifier and the registry that runs them.
-pub mod command;
 /// Shared handles to the editor state.
 pub mod context;
+/// Marker for entities that exist only inside the editor.
+pub mod editor_only;
 /// File and project commands; they queue requests for the editor host.
 pub mod file_commands;
 /// Pure rules of the file dialogs: prompts, Save target, menu availability, window title.
 pub mod file_state;
-/// Marker for entities that exist only inside the editor.
-pub mod editor_only;
-/// Folder, lock and related scene markers used by the outliner.
-pub mod markers;
 /// Lookup of entities by their stable GUID.
 pub mod guid;
 /// Inspector state without egui: rows, sections, filtering and the edit commands they produce.
 pub mod inspector_model;
 /// Console log ring buffer.
 pub mod log;
+/// Folder, lock and related scene markers used by the outliner.
+pub mod markers;
+/// PIE start scene and arguments stored with editor settings.
+pub mod pie_settings;
 /// Project manifest `project.ron`, project creation, opening and the recent-projects list.
 pub mod project;
 /// Starter templates for new projects.
@@ -42,21 +44,12 @@ pub mod recovery;
 pub mod selection;
 /// Editor preferences in `editor_settings.ron`.
 pub mod settings;
-/// PIE start scene and arguments stored with editor settings.
-pub mod pie_settings;
-/// Viewport runtime toggles (sky, GI, fog) serialized in settings.
-pub mod viewport_prefs;
 /// Undo and redo commands.
 pub mod undo;
+/// Viewport runtime toggles (sky, GI, fog) serialized in settings.
+pub mod viewport_prefs;
 
 pub use command::{CommandRegistry, EditorCommand};
-pub use context::EditorContext;
-pub use editor_only::{EditorOnly, editor_only_entities};
-pub use markers::{EditorFolder, Locked};
-pub use guid::GuidResolver;
-pub use log::EditorLog;
-pub use project::{ProjectOpenOptions, ProjectWarning};
-pub use selection::{Selection, Visibility};
 pub use component_catalog::{
     AddableType, CatalogEntry, ComponentCatalog, DependencyPromptAnswer, DependencyPromptOutcome,
     DependencyWarning, addable_types, dependency_warning_for_add, resolve_dependency_prompt,
@@ -65,6 +58,13 @@ pub use component_commands::{
     ComponentAddResult, bulk_add_component, component_add, component_add_and_record,
     component_copy_values, component_remove, record_component_transaction,
 };
+pub use context::EditorContext;
+pub use editor_only::{EditorOnly, editor_only_entities};
+pub use guid::GuidResolver;
+pub use log::EditorLog;
+pub use markers::{EditorFolder, Locked};
 pub use pie_settings::{PieArgs, PieSettings};
+pub use project::{ProjectOpenOptions, ProjectWarning};
+pub use selection::{Selection, Visibility};
 pub use settings::{EditorSettings, PluginEditorSettings};
 pub use undo::{Clock, SystemClock, UndoCommand, UndoEntry, UndoError, UndoHotkey, UndoStack};

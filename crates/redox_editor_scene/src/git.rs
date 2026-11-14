@@ -345,9 +345,7 @@ impl WorldGitTracker {
         #[cfg(feature = "editor-git")]
         {
             let Some(repo) = self.repo.as_ref() else {
-                return Err(SceneGitError::NoRepository {
-                    root: root.clone(),
-                });
+                return Err(SceneGitError::NoRepository { root: root.clone() });
             };
             self.scene_status = Some(scene_git_status(repo, scene, root)?);
             self.scene_diff = diff_scene_worktree_vs_head(repo, scene)?;
@@ -372,9 +370,10 @@ impl WorldGitTracker {
 
         #[cfg(feature = "editor-git")]
         {
-            let repo = self.repo.as_ref().ok_or(SceneGitError::NoRepository {
-                root: root.clone(),
-            })?;
+            let repo = self
+                .repo
+                .as_ref()
+                .ok_or(SceneGitError::NoRepository { root: root.clone() })?;
             return commit_scene_files(repo, scene, root, message);
         }
 
@@ -389,13 +388,11 @@ impl WorldGitTracker {
     pub fn pull_ff_only_tracked(&self) -> Result<(), SceneGitError> {
         #[cfg(feature = "editor-git")]
         {
-            let root = self
-                .project_root
+            let root = self.project_root.as_ref().unwrap_or(&self.world_root);
+            let repo = self
+                .repo
                 .as_ref()
-                .unwrap_or(&self.world_root);
-            let repo = self.repo.as_ref().ok_or(SceneGitError::NoRepository {
-                root: root.clone(),
-            })?;
+                .ok_or(SceneGitError::NoRepository { root: root.clone() })?;
             return pull_ff_only(repo);
         }
 

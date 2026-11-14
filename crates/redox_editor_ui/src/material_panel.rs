@@ -29,11 +29,7 @@ impl MaterialPanel {
             egui::ComboBox::from_id_salt("mat_preview_mesh")
                 .selected_text(preview_mesh_label(session.preview.mesh))
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(
-                        &mut session.preview.mesh,
-                        PreviewMesh::Sphere,
-                        "Sphere",
-                    );
+                    ui.selectable_value(&mut session.preview.mesh, PreviewMesh::Sphere, "Sphere");
                     ui.selectable_value(&mut session.preview.mesh, PreviewMesh::Cube, "Cube");
                     ui.selectable_value(&mut session.preview.mesh, PreviewMesh::Plane, "Plane");
                 });
@@ -56,11 +52,17 @@ impl MaterialPanel {
             if session.compile.errors.is_empty() {
                 ui.label("No compile errors");
             } else {
-                for (i, err) in session.compile.errors.iter().enumerate() {
-                    let label = if let Some(n) = err.node {
-                        format!("#{n}: {}", err.message)
+                let errors: Vec<(Option<u32>, String)> = session
+                    .compile
+                    .errors
+                    .iter()
+                    .map(|err| (err.node, err.message.clone()))
+                    .collect();
+                for (i, (node, message)) in errors.iter().enumerate() {
+                    let label = if let Some(n) = node {
+                        format!("#{n}: {message}")
                     } else {
-                        err.message.clone()
+                        message.clone()
                     };
                     if ui.selectable_label(false, label).clicked() {
                         session.focus_error(i);

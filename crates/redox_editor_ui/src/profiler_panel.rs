@@ -35,11 +35,7 @@ impl ProfilerPanel {
                 ui.label("Enable dispatcher system timing (editor flag).");
                 return;
             }
-            let max_ms = cpu
-                .spans
-                .iter()
-                .map(|s| s.ms)
-                .fold(0.1_f32, f32::max);
+            let max_ms = cpu.spans.iter().map(|s| s.ms).fold(0.1_f32, f32::max);
             for span in &cpu.spans {
                 ui.horizontal(|ui| {
                     ui.label(&span.name);

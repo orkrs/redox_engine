@@ -35,7 +35,11 @@ impl AuditPanel {
         }
         ui.heading("Duplicates");
         for group in find_duplicates(registry) {
-            ui.label(format!("hash {:x} ({} files)", group.hash, group.members.len()));
+            ui.label(format!(
+                "hash {:x} ({} files)",
+                group.hash,
+                group.members.len()
+            ));
             for (_, path) in &group.members {
                 ui.label(format!("  {path}"));
             }

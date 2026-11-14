@@ -258,16 +258,13 @@ impl RenderHost {
 
     /// Refreshes [`Self::last_stats`] from editor timing inputs.
     pub fn record_stats(&mut self, fps: f32, cpu_ms: f32, plan: &ViewportShadingPlan) {
-        let gpu_ms = self
-            .renderer
-            .as_ref()
-            .and_then(|r| {
-                if r.gpu_profiler.is_enabled() && r.gpu_profiler.total_ms() > 0.0 {
-                    Some(r.gpu_profiler.total_ms())
-                } else {
-                    None
-                }
-            });
+        let gpu_ms = self.renderer.as_ref().and_then(|r| {
+            if r.gpu_profiler.is_enabled() && r.gpu_profiler.total_ms() > 0.0 {
+                Some(r.gpu_profiler.total_ms())
+            } else {
+                None
+            }
+        });
         self.last_stats = ViewportStatsOverlay {
             fps,
             cpu_frame_ms: cpu_ms,

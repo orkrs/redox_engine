@@ -1,6 +1,9 @@
 //! EDT-B3 viewport tests (coordinator runs GPU tests separately).
 
-use redox_editor_viewport::{ViewportDrawItem, ViewportMeshCache, ViewportShading, ViewportShadingPlan, gltf_mesh_to_render_mesh};
+use redox_editor_viewport::{
+    ViewportDrawItem, ViewportMeshCache, ViewportShading, ViewportShadingPlan,
+    gltf_mesh_to_render_mesh,
+};
 use redox_math::Transform;
 #[test]
 fn shading_unlit_is_marked_unavailable() {

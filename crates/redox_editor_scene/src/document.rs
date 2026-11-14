@@ -364,7 +364,19 @@ impl Loader<'_> {
         for link in pending {
             self.link(link, world);
         }
+        self.sync_asset_refs(world);
         Ok((self.report, self.unknown))
+    }
+
+    fn sync_asset_refs(&self, world: &mut World) {
+        for entity in world.all_entities().collect::<Vec<_>>() {
+            for type_name in HANDLE_TYPES {
+                let Some(value) = self.registry.read_component(world, entity, type_name) else {
+                    continue;
+                };
+                store_ref(world, entity, type_name, &value);
+            }
+        }
     }
 
     fn spawn_entity(

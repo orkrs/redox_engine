@@ -13,16 +13,15 @@ impl EditorApp {
             .unwrap_or_default();
         self.plugin_host.apply_project_plugins(
             &plugins,
-            &mut self.core.commands,
+            &mut self.core.commands.lock(),
             &self.core.log,
         );
-        self.ui_ctx.core.commands = self.core.commands.clone();
         let hello = self.plugin_host.is_enabled(HELLO_PLUGIN_NAME);
         self.dock.set_hello_plugin_tab(hello);
         self.ui_ctx
             .palette
             .lock()
-            .add_registry_commands(self.core.commands.entries());
+            .add_registry_commands(self.core.commands.lock().entries());
     }
 
     /// Runs a command and keeps the UI command registry in sync.
@@ -31,10 +30,9 @@ impl EditorApp {
             &self.ui_ctx,
             &mut self.dock,
             Some(&mut self.plugin_host),
-            &mut self.core.commands,
+            &mut self.core.commands.lock(),
             self.settings.plugins.isolate_plugin_panics,
             id,
         );
-        self.ui_ctx.core.commands = self.core.commands.clone();
     }
 }

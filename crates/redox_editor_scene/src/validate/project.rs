@@ -8,7 +8,7 @@ use redox_editor_assets::ReferenceIndex;
 use redox_editor_core::project::{ProjectContext, ProjectError, SCENE_SUFFIX};
 use redox_reflect::TypeRegistry;
 
-use super::{validate_level, ValidateLevelOptions, ValidationReport, ValidationSettings};
+use super::{ValidateLevelOptions, ValidationReport, ValidationSettings, validate_level};
 use crate::{Level, LevelError, register_scene_components};
 
 /// Errors of [`validate_project`].

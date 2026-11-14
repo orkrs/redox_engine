@@ -64,7 +64,9 @@ pub fn read_rgba8_texture(
     rx.recv()
         .map_err(|_| "map channel closed".to_string())?
         .map_err(|e| format!("map failed: {e:?}"))?;
-    let mapped = slice.get_mapped_range();
+    let mapped = slice
+        .get_mapped_range()
+        .map_err(|err| format!("map range failed: {err:?}"))?;
     let mut out = Vec::with_capacity((width * height * 4) as usize);
     for row in 0..height {
         let start = row as usize * padded as usize;

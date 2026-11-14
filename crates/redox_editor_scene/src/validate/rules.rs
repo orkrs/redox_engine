@@ -10,8 +10,8 @@ use redox_editor_assets::import::probe_texture_header;
 use redox_editor_assets::{MissingRef, ReferenceIndex};
 use redox_math::Transform;
 use redox_reflect::{Reflect, TypeRegistry};
-use redox_render::camera::ActiveCamera;
 use redox_render::Camera;
+use redox_render::camera::ActiveCamera;
 use redox_scene::{AssetRef, AssetRefs, EntityGuid};
 
 use super::issue::{Severity, ValidationFix, ValidationIssue, ValidationRule};
@@ -178,7 +178,11 @@ pub fn check_hierarchy(ctx: &RuleContext<'_>) -> Vec<ValidationIssue> {
             .get_component::<Parent>(entity)
             .map(|parent| parent.0)
         {
-            match ctx.world.get_component::<EntityGuid>(parent_entity).copied() {
+            match ctx
+                .world
+                .get_component::<EntityGuid>(parent_entity)
+                .copied()
+            {
                 Some(parent_guid) => {
                     parent_of.insert(guid, parent_guid);
                 }
@@ -316,11 +320,11 @@ pub fn check_texture_mips(ctx: &RuleContext<'_>) -> Vec<ValidationIssue> {
                     header.width, header.height
                 ),
                 entity: None,
-                asset_path: Some(path.clone()),
+                asset_path: Some(path.to_owned()),
                 scene_path: ctx.scene_path.map(str::to_owned),
                 fix: None,
                 select: None,
-                open: Some(path.clone()),
+                open: Some(path.to_owned()),
             });
         }
     }
@@ -371,7 +375,9 @@ fn missing_ref_issue(missing: &MissingRef, scene_path: Option<&str>) -> Validati
         ),
         entity,
         asset_path: missing.path.clone(),
-        scene_path: scene_path.map(str::to_owned).or(Some(missing.scene.clone())),
+        scene_path: scene_path
+            .map(str::to_owned)
+            .or(Some(missing.scene.clone())),
         fix: None,
         select: entity,
         open: missing.path.clone(),
@@ -455,5 +461,7 @@ fn ktx2_level_count(bytes: &[u8]) -> Option<u32> {
     if bytes.len() < 44 {
         return None;
     }
-    Some(u32::from_le_bytes([bytes[40], bytes[41], bytes[42], bytes[43]]))
+    Some(u32::from_le_bytes([
+        bytes[40], bytes[41], bytes[42], bytes[43],
+    ]))
 }

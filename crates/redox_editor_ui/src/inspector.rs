@@ -8,8 +8,8 @@ use egui::{Color32, Id, Ui};
 use redox_ecs::{Entity, World};
 use redox_editor_core::component_catalog::{ComponentCatalog, DependencyPromptAnswer};
 use redox_editor_core::component_commands::{
-    component_add, component_copy_values, component_remove, record_component_transaction,
-    ComponentAddResult,
+    ComponentAddResult, component_add, component_copy_values, component_remove,
+    record_component_transaction,
 };
 use redox_editor_core::inspector_model::{InspectorModel, Row, RowValue};
 use redox_editor_core::{EditorLog, UndoCommand, UndoStack};
@@ -123,8 +123,7 @@ fn draw(
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     if ui.small_button("Reset component").clicked() {
-                        let result =
-                            model.reset_component(registry, world_ref, &section.component);
+                        let result = model.reset_component(registry, world_ref, &section.component);
                         push_result(&mut pending, log, result);
                     }
                     if ui.small_button("Remove").clicked() {
@@ -241,8 +240,7 @@ fn draw(
                 log.warn(&warning.message);
                 ui.horizontal(|ui| {
                     if ui.button("Continue").clicked() {
-                        state.pending_add =
-                            Some((component, DependencyPromptAnswer::Continue));
+                        state.pending_add = Some((component, DependencyPromptAnswer::Continue));
                     }
                     if ui.button("Cancel").clicked() {
                         state.pending_add = Some((component, DependencyPromptAnswer::Cancel));

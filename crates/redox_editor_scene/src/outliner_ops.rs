@@ -69,7 +69,9 @@ pub fn apply_visibility(
 pub fn lock_command(world: &World, guid: EntityGuid, lock: bool) -> Result<UndoCommand, UndoError> {
     let entity = redox_editor_core::guid::GuidResolver::resolve(world, guid)
         .ok_or(UndoError::EntityNotFound(guid))?;
-    let before = world.get_component::<Locked>(entity).map(|_| Locked.to_value());
+    let before = world
+        .get_component::<Locked>(entity)
+        .map(|_| Locked.to_value());
     let after = lock.then(|| Locked.to_value());
     Ok(UndoCommand::SetComponent {
         guid,

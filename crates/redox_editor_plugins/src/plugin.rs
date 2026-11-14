@@ -1,7 +1,7 @@
 //! Plugin trait and built-in catalog.
 
-use crate::registry::PluginRegistry;
 use crate::PLUGIN_API_VERSION;
+use crate::registry::PluginRegistry;
 
 /// One in-process editor plugin.
 pub trait EditorPlugin: Send + Sync {

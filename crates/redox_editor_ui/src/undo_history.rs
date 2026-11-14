@@ -39,10 +39,7 @@ impl UndoHistoryPanel {
 
         let mut target = None;
         egui::ScrollArea::vertical().show(ui, |ui| {
-            if ui
-                .selectable_label(current == 0, "Initial state")
-                .clicked()
-            {
+            if ui.selectable_label(current == 0, "Initial state").clicked() {
                 target = Some(0);
             }
             for (index, label) in applied.iter().enumerate() {
@@ -73,8 +70,9 @@ impl UndoHistoryPanel {
             let registry = core.registry.lock();
             let mut undo = core.undo.lock();
             if !undo.goto(position, &mut world, &registry) {
-                core.log
-                    .warn(format!("[WARN] Undo history: position {position} not reached"));
+                core.log.warn(format!(
+                    "[WARN] Undo history: position {position} not reached"
+                ));
             }
             undo.last_error.take()
         };

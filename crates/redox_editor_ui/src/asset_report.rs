@@ -180,7 +180,9 @@ fn regenerated_rows(ui: &mut egui::Ui, report: &AssetReport, actions: &mut Vec<R
         let rel = path.to_string_lossy().replace('\\', "/");
         ui.horizontal(|ui| {
             ui.colored_label(Severity::Info.color(), Severity::Info.label());
-            ui.label(format!("{rel}: copy received a new GUID; references stay on the original"));
+            ui.label(format!(
+                "{rel}: copy received a new GUID; references stay on the original"
+            ));
             if ui.small_button("Select").clicked() {
                 actions.push(ReportAction::SelectPath(rel.clone()));
             }

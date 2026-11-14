@@ -4,10 +4,10 @@
 
 mod common;
 
-use redox_matgraph::{MaterialGraph, Node, NodeKind, PortRef, Ty};
-use redox_math::{Mat4, Quat, Vec3};
 use redox_editor_assets::SimplePreviewLight;
+use redox_matgraph::{MaterialGraph, Node, NodeKind, PortRef, Ty};
 use redox_math::Aabb;
+use redox_math::{Mat4, Quat, Vec3};
 use redox_render::Material;
 use redox_render::Renderer;
 use redox_render::camera::Camera;
@@ -37,7 +37,14 @@ fn tint_graph() -> MaterialGraph {
             Node {
                 id: 2,
                 kind: NodeKind::SurfaceOutput,
-                inputs: vec![Some(PortRef { node: 1, port: 0 }), None, None, None, None, None],
+                inputs: vec![
+                    Some(PortRef { node: 1, port: 0 }),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ],
             },
         ],
     }
@@ -46,11 +53,11 @@ fn tint_graph() -> MaterialGraph {
 #[test]
 #[ignore = "gpu: coordinator"]
 fn material_preview_graph_matches_tint_within_tolerance() {
-    let adapter = match common::adapter() {
+    let adapter = match gpu_adapter() {
         Some(a) => a,
         None => return,
     };
-    let mut renderer = match common::renderer(&adapter, SIZE) {
+    let mut renderer = match gpu_renderer(&adapter, SIZE) {
         Some(r) => r,
         None => return,
     };
@@ -99,11 +106,10 @@ fn material_preview_graph_matches_tint_within_tolerance() {
         material_index: material,
         bounds: Aabb::from_center_size(centre, Vec3::ONE),
     };
-    let frame = FrameView::new(&camera, &[object], &lights);
+    let objects = [object];
+    let frame = FrameView::new(&camera, &objects, &lights);
     renderer.render_frame_view(&frame, &view).expect("draw");
-    let _ = renderer
-        .device
-        .poll(wgpu::PollType::wait_indefinitely());
+    let _ = renderer.device.poll(wgpu::PollType::wait_indefinitely());
     let rgba = read_texture_ktx2(&renderer.device, &renderer.queue, &target, false)
         .expect("readback")
         .levels
@@ -113,4 +119,35 @@ fn material_preview_graph_matches_tint_within_tolerance() {
         (r as i32 - 204).abs() <= 8 && (g as i32 - 102).abs() <= 8 && (b as i32 - 51).abs() <= 8,
         "unexpected tint rgb=({r},{g},{b})"
     );
+}
+
+fn gpu_adapter() -> Option<wgpu::Adapter> {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())).ok()
+}
+
+fn gpu_renderer(adapter: &wgpu::Adapter, size: u32) -> Option<Renderer> {
+    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        required_features: adapter.features()
+            & (wgpu::Features::PRIMITIVE_INDEX
+                | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+                | wgpu::Features::TEXTURE_COMPRESSION_BC),
+        required_limits: wgpu::Limits::default(),
+        ..Default::default()
+    }))
+    .ok()?;
+    let config = wgpu::SurfaceConfiguration {
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        width: size,
+        height: size,
+        present_mode: wgpu::PresentMode::Fifo,
+        alpha_mode: wgpu::CompositeAlphaMode::Auto,
+        view_formats: vec![],
+        desired_maximum_frame_latency: 2,
+        color_space: Default::default(),
+    };
+    Some(Renderer::from_shared_device(
+        device, queue, adapter, None, config,
+    ))
 }

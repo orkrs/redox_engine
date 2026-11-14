@@ -42,9 +42,9 @@ impl EditorApp {
         let ui_ctx_ref = self.ui_ctx.clone();
         let mut recovery_answer: Option<RecoveryAnswer> = None;
         let mut preferences_answer: Option<AutosavePolicy> = None;
-        let mut plugins_saved = false;
         let mut report_actions: Vec<ReportAction> = Vec::new();
-        let output = self.egui_ctx.run_ui(raw_input, |ui| {
+        let egui_ctx = self.egui_ctx.clone();
+        let output = egui_ctx.run_ui(raw_input, |ui| {
             let ctx = ui.ctx().clone();
             let ctx = &ctx;
             // Ctrl+P palette
@@ -214,10 +214,8 @@ impl EditorApp {
                     ui.menu_button("Project", |ui| {
                         if ui.button("Plugins…").clicked() {
                             if let Some(project) = self.files.project() {
-                                self.plugin_manager.open_for_project(
-                                    project,
-                                    self.settings.plugins,
-                                );
+                                self.plugin_manager
+                                    .open_for_project(project, self.settings.plugins);
                             } else {
                                 ui_ctx_ref.log("[WARN] Open a project to edit plugins");
                             }
@@ -239,10 +237,10 @@ impl EditorApp {
                             self.run_editor_command("pie_stop");
                         }
                         if ui.button("⏭ Step").clicked() {
-                            run_command(&ui_ctx_ref, &mut self.dock, "pie_step");
+                            self.run_editor_command("pie_step");
                         }
                         if ui.button("Standalone").clicked() {
-                            run_command(&ui_ctx_ref, &mut self.dock, "pie_standalone");
+                            self.run_editor_command("pie_standalone");
                         }
                         if ui.button("⏸").clicked() {
                             let mut pie = ui_ctx_ref.pie.lock();
@@ -283,8 +281,8 @@ impl EditorApp {
                     let branch = git
                         .scene_status
                         .as_ref()
-                        .map(|s| s.branch.as_str())
-                        .unwrap_or("—");
+                        .map(|s| s.branch.clone())
+                        .unwrap_or_else(|| "—".into());
                     let scene_bar = git.scene_summary().unwrap_or_else(|| "scene n/a".into());
                     drop(git);
                     ui.label(world);
@@ -367,11 +365,10 @@ impl EditorApp {
                 &mut self.plugin_host,
                 self.files.project_mut(),
                 &self.core,
-                &mut self.core.commands,
+                &mut self.core.commands.lock(),
                 &mut self.settings.plugins,
             );
             if plugins_saved {
-                self.ui_ctx.core.commands = self.core.commands.clone();
                 self.sync_project_plugins();
             }
 

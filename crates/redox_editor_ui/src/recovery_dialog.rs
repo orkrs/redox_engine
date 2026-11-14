@@ -67,9 +67,8 @@ impl RecoveryDialog {
                 RecoveryAnswer::Discard(offer)
             }
             (RecoveryPrompt::Locked(_), RecoveryButton::Primary) => RecoveryAnswer::OpenAnyway,
-            (_, RecoveryButton::Cancel) | (RecoveryPrompt::Locked(_), RecoveryButton::Secondary) => {
-                RecoveryAnswer::Cancel
-            }
+            (_, RecoveryButton::Cancel)
+            | (RecoveryPrompt::Locked(_), RecoveryButton::Secondary) => RecoveryAnswer::Cancel,
         })
     }
 }
@@ -185,7 +184,8 @@ impl PreferencesWindow {
 
 /// Whole seconds since the Unix epoch of `time`; times before the epoch give 0.
 fn unix_secs(time: SystemTime) -> u64 {
-    time.duration_since(UNIX_EPOCH).map_or(0, |elapsed| elapsed.as_secs())
+    time.duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs())
 }
 
 /// `HH:MM` of a Unix time, in UTC (the editor has no time-zone dependency).

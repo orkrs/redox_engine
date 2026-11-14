@@ -21,16 +21,23 @@ fn cache_hit_skips_regeneration() {
     thumbs.request(guid, "a.png", AssetKind::Texture, src.clone());
     thumbs.tick(1);
     let path = thumbs.cache_path(guid);
-    let mtime = std::fs::metadata(&path).expect("cached").modified().expect("mtime");
+    let mtime = std::fs::metadata(&path)
+        .expect("cached")
+        .modified()
+        .expect("mtime");
     thumbs.request(guid, "a.png", AssetKind::Texture, src);
     thumbs.tick(1);
-    let mtime2 = std::fs::metadata(&path).expect("cached").modified().expect("mtime2");
+    let mtime2 = std::fs::metadata(&path)
+        .expect("cached")
+        .modified()
+        .expect("mtime2");
     assert_eq!(mtime, mtime2);
 }
 
 #[test]
 fn slow_worker_does_not_block_browser_tick() {
-    let root = PathBuf::from(std::env::temp_dir()).join(format!("thumbs_slow_{}", std::process::id()));
+    let root =
+        PathBuf::from(std::env::temp_dir()).join(format!("thumbs_slow_{}", std::process::id()));
     let _ = std::fs::create_dir_all(&root);
     let mut thumbs = ThumbnailService::new(&root);
     thumbs.set_slow_mode(true);
@@ -47,7 +54,8 @@ fn slow_worker_does_not_block_browser_tick() {
 
 #[test]
 fn moved_guid_writes_new_cache_file() {
-    let root = PathBuf::from(std::env::temp_dir()).join(format!("thumbs_guid_{}", std::process::id()));
+    let root =
+        PathBuf::from(std::env::temp_dir()).join(format!("thumbs_guid_{}", std::process::id()));
     let _ = std::fs::create_dir_all(&root);
     let mut thumbs = ThumbnailService::new(&root);
     let guid_a = AssetGuid(1);

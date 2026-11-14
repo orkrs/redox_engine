@@ -187,11 +187,9 @@ pub fn dependency_warning_for_add(
     let mut missing: Vec<String> = soft
         .iter()
         .filter(|&&required| {
-            entities.iter().any(|&entity| {
-                registry
-                    .read_component(world, entity, required)
-                    .is_none()
-            })
+            entities
+                .iter()
+                .any(|&entity| registry.read_component(world, entity, required).is_none())
         })
         .map(|s| (*s).to_string())
         .collect();

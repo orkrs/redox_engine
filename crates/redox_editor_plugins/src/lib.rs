@@ -11,12 +11,12 @@ mod registry;
 mod validation;
 
 pub use builtin::{
-    HelloPlugin, HELLO_COMMAND_ID, HELLO_PANEL_ID, HELLO_PLUGIN_NAME, builtin_plugins, is_builtin,
+    HELLO_COMMAND_ID, HELLO_PANEL_ID, HELLO_PLUGIN_NAME, HelloPlugin, builtin_plugins, is_builtin,
 };
 pub use host::{PluginHost, PluginLoadError};
-pub use manifest::{PluginManifest, PLUGIN_API_VERSION};
-pub use native::{NativePluginError, NativePluginHandle, NATIVE_PLUGIN_ENTRY, load_native_plugin};
-pub use plugin::{EditorPlugin, BUILTIN_PLUGIN_NAMES};
+pub use manifest::{PLUGIN_API_VERSION, PluginManifest};
+pub use native::{NATIVE_PLUGIN_ENTRY, NativePluginError, NativePluginHandle, load_native_plugin};
+pub use plugin::{BUILTIN_PLUGIN_NAMES, EditorPlugin};
 pub use registry::{PanelRegistration, PluginRegistry};
 pub use validation::{EditorValidationRule, ValidationIssue, ValidationSeverity};
 

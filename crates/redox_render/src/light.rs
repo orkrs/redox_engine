@@ -164,7 +164,9 @@ impl redox_reflect::Reflect for DirectionalLight {
                     type_name: "f32",
                     meta: FieldMeta {
                         category: Some("Shadows"),
-                        tooltip: Some("Angular radius of the light disc; the sun is about 0.53 degrees"),
+                        tooltip: Some(
+                            "Angular radius of the light disc; the sun is about 0.53 degrees",
+                        ),
                         widget: WidgetHint::Angle,
                         range: Some((0.0, 0.1)),
                         advanced: true,
@@ -432,7 +434,14 @@ impl SpotLight {
 impl Default for SpotLight {
     /// Default: a white spot light pointing down from the origin.
     fn default() -> Self {
-        Self::new(Vec3::ZERO, Vec3::new(0.0, -1.0, 0.0), Vec3::ONE, 1.0, 10.0, 0.5)
+        Self::new(
+            Vec3::ZERO,
+            Vec3::new(0.0, -1.0, 0.0),
+            Vec3::ONE,
+            1.0,
+            10.0,
+            0.5,
+        )
     }
 }
 

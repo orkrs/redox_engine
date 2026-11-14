@@ -87,7 +87,10 @@ fn flags_and_widget_are_recorded() {
     assert!(tint.advanced);
     assert!(tint.editor_only);
     assert_eq!(tint.widget, WidgetHint::Color);
-    assert_eq!(field(&schema, "enabled").meta.default, Some(ReflectValue::Bool(true)));
+    assert_eq!(
+        field(&schema, "enabled").meta.default,
+        Some(ReflectValue::Bool(true))
+    );
     assert_eq!(
         field(&schema, "offset").meta.default,
         Some(ReflectValue::I64(-2))
@@ -135,7 +138,10 @@ fn skip_still_hides_fields_from_schema() {
         .iter()
         .map(|f| f.name)
         .collect();
-    assert_eq!(names, ["mass", "tint", "enabled", "offset", "note", "plain"]);
+    assert_eq!(
+        names,
+        ["mass", "tint", "enabled", "offset", "note", "plain"]
+    );
     assert!(Everything::default().to_value().field("cache").is_none());
 }
 
@@ -169,11 +175,23 @@ fn tuning_world() -> (TypeRegistry, World, redox_ecs::Entity) {
 fn values_outside_the_range_are_clamped_to_the_boundary() {
     let (registry, mut world, entity) = tuning_world();
     registry
-        .set_field(&mut world, entity, "Tuning", "amount", &ReflectValue::F64(5.0))
+        .set_field(
+            &mut world,
+            entity,
+            "Tuning",
+            "amount",
+            &ReflectValue::F64(5.0),
+        )
         .unwrap();
     assert_eq!(world.get_component::<Tuning>(entity).unwrap().amount, 1.0);
     registry
-        .set_field(&mut world, entity, "Tuning", "amount", &ReflectValue::F64(-3.0))
+        .set_field(
+            &mut world,
+            entity,
+            "Tuning",
+            "amount",
+            &ReflectValue::F64(-3.0),
+        )
         .unwrap();
     assert_eq!(world.get_component::<Tuning>(entity).unwrap().amount, 0.0);
 }
@@ -182,7 +200,13 @@ fn values_outside_the_range_are_clamped_to_the_boundary() {
 fn numbers_are_rounded_to_the_step() {
     let (registry, mut world, entity) = tuning_world();
     registry
-        .set_field(&mut world, entity, "Tuning", "stepped", &ReflectValue::F64(1.3))
+        .set_field(
+            &mut world,
+            entity,
+            "Tuning",
+            "stepped",
+            &ReflectValue::F64(1.3),
+        )
         .unwrap();
     assert_eq!(world.get_component::<Tuning>(entity).unwrap().stepped, 1.5);
 }
@@ -352,6 +376,9 @@ fn add_default_inserts_the_type_default_once() {
     registry
         .add_default(&mut world, entity, "Tuning")
         .expect("first add");
-    assert_eq!(world.get_component::<Tuning>(entity), Some(&Tuning::default()));
+    assert_eq!(
+        world.get_component::<Tuning>(entity),
+        Some(&Tuning::default())
+    );
     assert!(registry.add_default(&mut world, entity, "Tuning").is_err());
 }

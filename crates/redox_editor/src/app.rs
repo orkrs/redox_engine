@@ -10,10 +10,10 @@ use redox_editor_core::EditorContext;
 use redox_editor_core::autosave::AutosaveService;
 use redox_editor_core::file_commands::{FileRequestQueue, register_file_commands};
 use redox_editor_core::settings::{EditorSettings, SETTINGS_FILE};
+use redox_editor_plugins::PluginHost;
 use redox_editor_scene::WorldSession;
 use redox_editor_ui::asset_report::AssetReportPanel;
 use redox_editor_ui::file_menu::FileMenu;
-use redox_editor_plugins::PluginHost;
 use redox_editor_ui::profiler_panel::ProfilerPanel;
 use redox_editor_ui::{
     EditorDock, EditorUiCtx, PluginManagerWindow, PreferencesWindow, RecoveryDialog,
@@ -96,7 +96,7 @@ impl EditorApp {
             r
         });
         let file_queue = FileRequestQueue::new();
-        register_file_commands(&mut core.commands, &file_queue);
+        register_file_commands(&mut core.commands.lock(), &file_queue);
         let files = FileMenu::new(file_queue, &core);
         let dock = EditorDock::load_or_default(Path::new("editor_layout.ron"), &core.log);
         let settings = EditorSettings::load_or_default(Path::new(SETTINGS_FILE), &core.log);

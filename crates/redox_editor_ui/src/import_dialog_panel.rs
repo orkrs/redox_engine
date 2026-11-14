@@ -2,9 +2,7 @@
 
 use std::path::PathBuf;
 
-use redox_editor_assets::{
-    ImportDialogModel, ImportDialogPhase, ImportPreview, ImportPresetId,
-};
+use redox_editor_assets::{ImportDialogModel, ImportDialogPhase, ImportPresetId, ImportPreview};
 
 /// Shell around [`ImportDialogModel`].
 pub struct ImportDialogPanel {
@@ -38,25 +36,34 @@ impl ImportDialogPanel {
     pub fn show(
         &mut self,
         ctx: &egui::Context,
-        assets_root: &std::path::Path,
+        _assets_root: &std::path::Path,
     ) -> Option<Vec<redox_editor_assets::ImportDialogJob>> {
         if !self.is_open() {
             return None;
         }
         let mut jobs = None;
         let mut open = true;
+        let mut close = false;
+        let preview = match &self.model.phase {
+            ImportDialogPhase::Preview(rows) => Some(rows.clone()),
+            _ => None,
+        };
         egui::Window::new("Import assets")
             .collapsible(false)
             .resizable(true)
             .open(&mut open)
             .show(ctx, |ui| {
-                if let ImportDialogPhase::Preview(rows) = &self.model.phase {
+                if let Some(rows) = &preview {
                     for (index, row) in rows.iter().enumerate() {
                         ui.separator();
                         ui.label(&row.rel_path);
                         ui.label(&row.probe_summary);
                         match &row.preview {
-                            ImportPreview::TextureHeader { width, height, format } => {
+                            ImportPreview::TextureHeader {
+                                width,
+                                height,
+                                format,
+                            } => {
                                 ui.label(format!("preview {width}x{height} {format}"));
                             }
                             ImportPreview::MeshSilhouetteDeferred => {
@@ -69,10 +76,7 @@ impl ImportDialogPanel {
                             .selected_text(preset.name())
                             .show_ui(ui, |ui| {
                                 for id in ImportPresetId::all() {
-                                    if ui
-                                        .selectable_label(preset == *id, id.name())
-                                        .clicked()
-                                    {
+                                    if ui.selectable_label(preset == *id, id.name()).clicked() {
                                         let _ = self.model.set_preset(index, *id);
                                     }
                                 }
@@ -83,17 +87,14 @@ impl ImportDialogPanel {
                             jobs = Some(self.model.confirm());
                         }
                         if ui.button("Cancel").clicked() {
-                            let _ = self.model.cancel();
-                            open = false;
+                            close = true;
                         }
                     });
-                } else if !open {
-                    let _ = self.model.cancel();
                 } else {
                     ui.label("No importable files selected.");
                 }
             });
-        if !open {
+        if !open || close {
             let _ = self.model.cancel();
         }
         jobs

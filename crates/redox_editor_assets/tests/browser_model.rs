@@ -2,9 +2,7 @@
 
 use redox_asset::guid::AssetStatus;
 use redox_asset::{AssetGuid, AssetRegistry, DependentRef};
-use redox_editor_assets::{
-    AssetAction, AssetKind, BrowserModel, StatusFilter, actions_for,
-};
+use redox_editor_assets::{AssetAction, AssetKind, BrowserModel, StatusFilter, actions_for};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -51,7 +49,10 @@ fn fixture(name: &str) -> (TempRoot, AssetRegistry, AssetGuid, AssetGuid, AssetG
     let rock = registry.guid_of("textures/rock.png").expect("rock");
     let crate_guid = registry.guid_of("models/crate.glb").expect("crate");
     let old = registry.guid_of("models/old.glb").expect("old");
-    registry.set_status("textures/rock.png", AssetStatus::Failed("bad header".into()));
+    registry.set_status(
+        "textures/rock.png",
+        AssetStatus::Failed("bad header".into()),
+    );
     registry.set_status("models/crate.glb", AssetStatus::Imported);
     registry.set_status("models/old.glb", AssetStatus::Missing);
     (root, registry, rock, crate_guid, old)
@@ -179,7 +180,10 @@ fn selection_is_cleared_when_the_asset_disappears() {
     let mut model = BrowserModel::new();
     model.refresh(&registry);
     model.select(Some(rock));
-    assert_eq!(model.selected().map(|e| e.path.as_str()), Some("textures/rock.png"));
+    assert_eq!(
+        model.selected().map(|e| e.path.as_str()),
+        Some("textures/rock.png")
+    );
 
     let (empty, empty_registry) = {
         let root = TempRoot::new("selection_empty");

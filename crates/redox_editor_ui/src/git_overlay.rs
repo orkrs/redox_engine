@@ -18,7 +18,11 @@ pub struct GitOverlay;
 
 impl GitOverlay {
     /// Renders the overlay. Returns the action the host should perform.
-    pub fn show(ui: &mut egui::Ui, tracker: &WorldGitTracker, commit_message: &mut String) -> GitOverlayAction {
+    pub fn show(
+        ui: &mut egui::Ui,
+        tracker: &WorldGitTracker,
+        commit_message: &mut String,
+    ) -> GitOverlayAction {
         let mut action = GitOverlayAction::None;
 
         ui.horizontal(|ui| {
@@ -47,16 +51,15 @@ impl GitOverlay {
             ui.separator();
             ui.label("Scene document");
             if let Some(status) = tracker.scene_status.as_ref() {
-                ui.label(format!(
-                    "File: {} · {}",
-                    status.path.display(),
-                    scene_line
-                ));
+                ui.label(format!("File: {} · {}", status.path.display(), scene_line));
             } else {
                 ui.label("No scene file tracked (set via project open)");
             }
             if !tracker.scene_diff.is_empty() {
-                ui.label(format!("Object diff ({} changes)", tracker.scene_diff.len()));
+                ui.label(format!(
+                    "Object diff ({} changes)",
+                    tracker.scene_diff.len()
+                ));
                 for change in tracker.scene_diff.iter().take(16) {
                     ui.label(change_label(change));
                 }

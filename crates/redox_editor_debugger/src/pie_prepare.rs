@@ -31,25 +31,41 @@ pub fn prepare_pie_world(
         args: settings.args.clone(),
     });
     let Some(root) = project_root else {
-        return (PieArgs { args: settings.args.clone() }, PieSceneLoad::Skipped);
+        return (
+            PieArgs {
+                args: settings.args.clone(),
+            },
+            PieSceneLoad::Skipped,
+        );
     };
     let Some(path) = settings.start_scene_path(root) else {
-        return (PieArgs { args: settings.args.clone() }, PieSceneLoad::Skipped);
+        return (
+            PieArgs {
+                args: settings.args.clone(),
+            },
+            PieSceneLoad::Skipped,
+        );
     };
     if !path.is_file() {
         return (
-            PieArgs { args: settings.args.clone() },
+            PieArgs {
+                args: settings.args.clone(),
+            },
             PieSceneLoad::Failed(format!("missing start scene {}", path.display())),
         );
     }
     *world = World::new();
     match Level::open(&path, registry, world) {
         Ok((_level, _report)) => (
-            PieArgs { args: settings.args.clone() },
+            PieArgs {
+                args: settings.args.clone(),
+            },
             PieSceneLoad::Loaded,
         ),
         Err(err) => (
-            PieArgs { args: settings.args.clone() },
+            PieArgs {
+                args: settings.args.clone(),
+            },
             PieSceneLoad::Failed(format!("{err:?}")),
         ),
     }

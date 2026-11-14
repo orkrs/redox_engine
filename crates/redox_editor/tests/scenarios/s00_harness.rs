@@ -12,11 +12,17 @@ fn a_harness_restarts_on_the_same_files() {
 
     let h = h.restart();
 
-    assert!(h.project.is_none(), "restart resets the memory of the editor");
+    assert!(
+        h.project.is_none(),
+        "restart resets the memory of the editor"
+    );
     assert_eq!(h.entity_count(), 0, "the world is empty after restart");
     assert_eq!(
         std::fs::read(dir.join("notes/marker.txt")).expect("the file survives the restart"),
         b"kept on disk"
     );
-    assert!(dir.join("project.ron").is_file(), "the project manifest stays on disk");
+    assert!(
+        dir.join("project.ron").is_file(),
+        "the project manifest stays on disk"
+    );
 }

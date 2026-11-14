@@ -1,6 +1,11 @@
 //! GPU checks of the wave-seven features on the real renderer: fog (PST-06), SSR (PST-05), additive and alpha
 //! surfaces (MAT-06), clear coat (MAT-04), TAA ghosting (PST-04) and shadow page caching (RND-08).
 //! Skipped without a GPU. Fog and SSR run in the TAA branch of the post chain, so those tests enable TAA.
+//!
+//! On a single GPU, running every test in one process can exhaust VRAM. Run in two passes (serial):
+//! `cargo test -p redox_render --test wave7_gpu -- _00 --test-threads=1`
+//! `cargo test -p redox_render --test wave7_gpu a_ -- --test-threads=1`
+//! Tests named with the `_00N_` prefix belong to the first pass.
 
 #![allow(clippy::unwrap_used)]
 
@@ -23,15 +28,8 @@ use redox_render::systems::RenderObject;
 
 const SIZE: u32 = 128;
 
-static GPU: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-/// Tests create two renderers each; running them at once can stall the driver, so they take turns.
-fn lock() -> std::sync::MutexGuard<'static, ()> {
-    GPU.lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
 struct Rig {
+    _gpu: common::GpuTestLock,
     renderer: Renderer,
     target: wgpu::Texture,
     view: wgpu::TextureView,
@@ -42,6 +40,7 @@ struct Rig {
 }
 
 fn rig(taa: bool) -> Option<Rig> {
+    let _gpu = common::lock_gpu();
     let adapter = common::adapter()?;
     let mut renderer = common::renderer(&adapter, SIZE)?;
     renderer.enable_taa(taa);
@@ -74,6 +73,7 @@ fn rig(taa: bool) -> Option<Rig> {
     ));
     lights.ambient = Vec3::splat(0.4);
     Some(Rig {
+        _gpu,
         renderer,
         target,
         view,
@@ -82,6 +82,15 @@ fn rig(taa: bool) -> Option<Rig> {
         camera,
         lights,
     })
+}
+
+impl Drop for Rig {
+    fn drop(&mut self) {
+        let _ = self
+            .renderer
+            .device
+            .poll(wgpu::PollType::wait_indefinitely());
+    }
 }
 
 impl Rig {
@@ -181,34 +190,46 @@ fn fog_scene(rig: &mut Rig) -> Vec<RenderObject> {
 }
 
 #[test]
-fn with_fog_off_the_frame_is_unchanged() {
-    let _gpu = lock();
-    let (Some(mut a), Some(mut b)) = (rig(true), rig(true)) else {
-        return;
+fn _000_gpu_baseline_with_fog_off_the_frame_is_unchanged() {
+    let fa = {
+        let Some(mut a) = rig(true) else {
+            return;
+        };
+        let objects_a = fog_scene(&mut a);
+        a.settle(&objects_a, 4)
     };
-    let objects_a = fog_scene(&mut a);
-    let objects_b = fog_scene(&mut b);
-    b.renderer.set_fog(None);
-    let fa = a.settle(&objects_a, 4);
-    let fb = b.settle(&objects_b, 4);
+    let fb = {
+        let Some(mut b) = rig(true) else {
+            return;
+        };
+        let objects_b = fog_scene(&mut b);
+        b.renderer.set_fog(None);
+        b.settle(&objects_b, 4)
+    };
     assert_eq!(fa, fb);
 }
 
 #[test]
-fn fog_pulls_distant_pixels_towards_the_fog_colour() {
-    let _gpu = lock();
-    let (Some(mut clear), Some(mut foggy)) = (rig(true), rig(true)) else {
-        return;
+fn _003_fog_pulls_distant_pixels_towards_the_fog_colour() {
+    let without = {
+        let Some(mut clear) = rig(true) else {
+            return;
+        };
+        let objects_c = fog_scene(&mut clear);
+        clear.settle(&objects_c, 5)
     };
-    let objects_c = fog_scene(&mut clear);
-    let objects_f = fog_scene(&mut foggy);
-    foggy.renderer.set_fog(Some(FogSettings {
-        density: 0.05,
-        height_falloff: 0.0,
-        ..FogSettings::default()
-    }));
-    let without = clear.settle(&objects_c, 5);
-    let with = foggy.settle(&objects_f, 5);
+    let with = {
+        let Some(mut foggy) = rig(true) else {
+            return;
+        };
+        let objects_f = fog_scene(&mut foggy);
+        foggy.renderer.set_fog(Some(FogSettings {
+            density: 0.05,
+            height_falloff: 0.0,
+            ..FogSettings::default()
+        }));
+        foggy.settle(&objects_f, 5)
+    };
     // The near cube is around (30, 64), the far one around (67, 64).
     let near = distance(px(&without, 30, 64), px(&with, 30, 64));
     let far = distance(px(&without, 67, 64), px(&with, 67, 64));
@@ -216,25 +237,30 @@ fn fog_pulls_distant_pixels_towards_the_fog_colour() {
 }
 
 #[test]
-fn zero_density_fog_changes_nothing_visible() {
-    let _gpu = lock();
-    let (Some(mut clear), Some(mut foggy)) = (rig(true), rig(true)) else {
-        return;
+fn _002_gpu_baseline_zero_density_fog_changes_nothing_visible() {
+    let a = {
+        let Some(mut clear) = rig(true) else {
+            return;
+        };
+        let objects_c = fog_scene(&mut clear);
+        clear.settle(&objects_c, 5)
     };
-    let objects_c = fog_scene(&mut clear);
-    let objects_f = fog_scene(&mut foggy);
-    foggy.renderer.set_fog(Some(FogSettings {
-        density: 0.0,
-        ..FogSettings::default()
-    }));
-    let a = clear.settle(&objects_c, 5);
-    let b = foggy.settle(&objects_f, 5);
+    let b = {
+        let Some(mut foggy) = rig(true) else {
+            return;
+        };
+        let objects_f = fog_scene(&mut foggy);
+        foggy.renderer.set_fog(Some(FogSettings {
+            density: 0.0,
+            ..FogSettings::default()
+        }));
+        foggy.settle(&objects_f, 5)
+    };
     assert!(max_diff(&a, &b) <= 2, "diff {}", max_diff(&a, &b));
 }
 
 #[test]
-fn fog_survives_a_resize() {
-    let _gpu = lock();
+fn _004_fog_survives_resize() {
     let Some(mut rig) = rig(true) else { return };
     let objects = fog_scene(&mut rig);
     rig.renderer.set_fog(Some(FogSettings::default()));
@@ -278,42 +304,62 @@ fn mirror_scene(rig: &mut Rig, floor_roughness: f32) -> Vec<RenderObject> {
 }
 
 #[test]
-fn with_ssr_off_the_frame_is_unchanged() {
-    let _gpu = lock();
-    let (Some(mut a), Some(mut b)) = (rig(true), rig(true)) else {
-        return;
+fn _001_gpu_baseline_with_ssr_off_the_frame_is_unchanged() {
+    let fa = {
+        let Some(mut a) = rig(true) else {
+            return;
+        };
+        let oa = mirror_scene(&mut a, 0.05);
+        a.settle(&oa, 4)
     };
-    let oa = mirror_scene(&mut a, 0.05);
-    let ob = mirror_scene(&mut b, 0.05);
-    b.renderer.set_ssr(None);
-    assert_eq!(a.settle(&oa, 4), b.settle(&ob, 4));
+    let fb = {
+        let Some(mut b) = rig(true) else {
+            return;
+        };
+        let ob = mirror_scene(&mut b, 0.05);
+        b.renderer.set_ssr(None);
+        b.settle(&ob, 4)
+    };
+    assert_eq!(fa, fb);
 }
 
 #[test]
 fn a_mirror_floor_changes_the_frame_with_ssr() {
-    let _gpu = lock();
-    let (Some(mut off), Some(mut on)) = (rig(true), rig(true)) else {
-        return;
+    let a = {
+        let Some(mut off) = rig(true) else {
+            return;
+        };
+        let oo = mirror_scene(&mut off, 0.05);
+        off.settle(&oo, 5)
     };
-    let oo = mirror_scene(&mut off, 0.05);
-    let on_objects = mirror_scene(&mut on, 0.05);
-    on.renderer.set_ssr(Some(SsrSettings::default()));
-    let a = off.settle(&oo, 5);
-    let b = on.settle(&on_objects, 5);
+    let b = {
+        let Some(mut on) = rig(true) else {
+            return;
+        };
+        let on_objects = mirror_scene(&mut on, 0.05);
+        on.renderer.set_ssr(Some(SsrSettings::default()));
+        on.settle(&on_objects, 5)
+    };
     assert!(max_diff(&a, &b) > 8, "SSR left the frame untouched");
 }
 
 #[test]
 fn a_rough_floor_is_not_changed_by_ssr() {
-    let _gpu = lock();
-    let (Some(mut off), Some(mut on)) = (rig(true), rig(true)) else {
-        return;
+    let a = {
+        let Some(mut off) = rig(true) else {
+            return;
+        };
+        let oo = mirror_scene(&mut off, 0.9);
+        off.settle(&oo, 5)
     };
-    let oo = mirror_scene(&mut off, 0.9);
-    let on_objects = mirror_scene(&mut on, 0.9);
-    on.renderer.set_ssr(Some(SsrSettings::default()));
-    let a = off.settle(&oo, 5);
-    let b = on.settle(&on_objects, 5);
+    let b = {
+        let Some(mut on) = rig(true) else {
+            return;
+        };
+        let on_objects = mirror_scene(&mut on, 0.9);
+        on.renderer.set_ssr(Some(SsrSettings::default()));
+        on.settle(&on_objects, 5)
+    };
     assert!(max_diff(&a, &b) <= 3, "diff {}", max_diff(&a, &b));
 }
 
@@ -356,8 +402,7 @@ fn glass_frame(mode: Option<BlendMode>, alpha: f32) -> Option<f32> {
 }
 
 #[test]
-fn alpha_glass_blends_between_the_background_and_an_opaque_surface() {
-    let _gpu = lock();
+fn _005_glass_blends_between_opaque_and_background() {
     let Some(opaque) = glass_frame(None, 1.0) else {
         return;
     };
@@ -371,8 +416,7 @@ fn alpha_glass_blends_between_the_background_and_an_opaque_surface() {
 }
 
 #[test]
-fn additive_surfaces_brighten_the_background() {
-    let _gpu = lock();
+fn _006_additive_surfaces_brighten_the_background() {
     let Some(dark) = glass_frame(Some(BlendMode::Additive), 0.0) else {
         return;
     };
@@ -408,7 +452,6 @@ fn sphere_peak(coat: Option<(f32, f32)>) -> Option<f32> {
 
 #[test]
 fn a_coat_adds_a_second_highlight() {
-    let _gpu = lock();
     let Some(plain) = sphere_peak(None) else {
         return;
     };
@@ -418,7 +461,6 @@ fn a_coat_adds_a_second_highlight() {
 
 #[test]
 fn a_zero_weight_coat_renders_like_no_coat() {
-    let _gpu = lock();
     let Some(plain) = sphere_peak(None) else {
         return;
     };
@@ -434,7 +476,6 @@ fn cube_row(frame: &[u8]) -> Vec<f32> {
 
 #[test]
 fn a_moving_cube_leaves_no_ghost_trail() {
-    let _gpu = lock();
     let Some(mut rig) = rig(true) else { return };
     let bright = rig
         .renderer
@@ -454,7 +495,6 @@ fn a_moving_cube_leaves_no_ghost_trail() {
 
 #[test]
 fn a_static_scene_is_stable_over_a_jitter_cycle() {
-    let _gpu = lock();
     let Some(mut rig) = rig(true) else { return };
     let material = rig
         .renderer
@@ -479,7 +519,6 @@ fn a_static_scene_is_stable_over_a_jitter_cycle() {
 
 #[test]
 fn a_static_scene_stops_redrawing_shadow_pages_and_a_moved_object_redraws_some() {
-    let _gpu = lock();
     let Some(mut rig) = rig(false) else { return };
     if !rig.renderer.vsm_enabled {
         return;
@@ -586,62 +625,68 @@ fn arm(mesh: usize, material: usize, pose: u32) -> RenderObject {
 /// The deformation goes through `update_mesh_vertices`, the path skinning uses, without a rig.
 #[test]
 fn a_waving_arm_updates_its_shadow_and_matches_a_fresh_render() {
-    let _gpu = lock();
-    let (Some(mut cached), Some(mut fresh)) = (rig(false), rig(false)) else {
-        return;
-    };
-    if !cached.renderer.vsm_enabled {
-        return;
-    }
-    let ground_mat_c = cached
-        .renderer
-        .add_material(Material::solid(Vec3::splat(0.7)));
-    let arm_mat_c = cached
-        .renderer
-        .add_material(Material::solid(Vec3::new(0.8, 0.3, 0.2)));
-    let arm_slot_c = cached.renderer.upload_mesh(&arm_mesh(0.0));
-    let ground_c = cached.object(
-        cached.cube,
-        ground_mat_c,
-        1,
-        Vec3::new(0.0, -1.0, -8.0),
-        Vec3::new(40.0, 0.2, 40.0),
-    );
-
-    let ground_mat_f = fresh
-        .renderer
-        .add_material(Material::solid(Vec3::splat(0.7)));
-    let arm_mat_f = fresh
-        .renderer
-        .add_material(Material::solid(Vec3::new(0.8, 0.3, 0.2)));
-    let arm_slot_f = fresh.renderer.upload_mesh(&arm_mesh(1.0));
-    let ground_f = fresh.object(
-        fresh.cube,
-        ground_mat_f,
-        1,
-        Vec3::new(0.0, -1.0, -8.0),
-        Vec3::new(40.0, 0.2, 40.0),
-    );
-
-    let rest = cached.settle(&[ground_c.clone_object(), arm(arm_slot_c, arm_mat_c, 0)], 8);
-    for step in 1..=10u32 {
-        let bend = step as f32 / 10.0;
-        assert!(
-            cached
-                .renderer
-                .update_mesh_vertices(arm_slot_c, &arm_vertices(bend)),
-            "the arm mesh slot must accept the bent vertices"
+    let (rest, cached_frame) = {
+        let Some(mut cached) = rig(false) else {
+            return;
+        };
+        if !cached.renderer.vsm_enabled {
+            return;
+        }
+        let ground_mat_c = cached
+            .renderer
+            .add_material(Material::solid(Vec3::splat(0.7)));
+        let arm_mat_c = cached
+            .renderer
+            .add_material(Material::solid(Vec3::new(0.8, 0.3, 0.2)));
+        let arm_slot_c = cached.renderer.upload_mesh(&arm_mesh(0.0));
+        let ground_c = cached.object(
+            cached.cube,
+            ground_mat_c,
+            1,
+            Vec3::new(0.0, -1.0, -8.0),
+            Vec3::new(40.0, 0.2, 40.0),
         );
-        cached.frame(&[ground_c.clone_object(), arm(arm_slot_c, arm_mat_c, step)]);
-    }
-    let cached_frame = cached.settle(
-        &[ground_c.clone_object(), arm(arm_slot_c, arm_mat_c, 10)],
-        16,
-    );
-    let fresh_frame = fresh.settle(
-        &[ground_f.clone_object(), arm(arm_slot_f, arm_mat_f, 10)],
-        16,
-    );
+
+        let rest = cached.settle(&[ground_c.clone_object(), arm(arm_slot_c, arm_mat_c, 0)], 8);
+        for step in 1..=10u32 {
+            let bend = step as f32 / 10.0;
+            assert!(
+                cached
+                    .renderer
+                    .update_mesh_vertices(arm_slot_c, &arm_vertices(bend)),
+                "the arm mesh slot must accept the bent vertices"
+            );
+            cached.frame(&[ground_c.clone_object(), arm(arm_slot_c, arm_mat_c, step)]);
+        }
+        let cached_frame = cached.settle(
+            &[ground_c.clone_object(), arm(arm_slot_c, arm_mat_c, 10)],
+            16,
+        );
+        (rest, cached_frame)
+    };
+    let fresh_frame = {
+        let Some(mut fresh) = rig(false) else {
+            return;
+        };
+        let ground_mat_f = fresh
+            .renderer
+            .add_material(Material::solid(Vec3::splat(0.7)));
+        let arm_mat_f = fresh
+            .renderer
+            .add_material(Material::solid(Vec3::new(0.8, 0.3, 0.2)));
+        let arm_slot_f = fresh.renderer.upload_mesh(&arm_mesh(1.0));
+        let ground_f = fresh.object(
+            fresh.cube,
+            ground_mat_f,
+            1,
+            Vec3::new(0.0, -1.0, -8.0),
+            Vec3::new(40.0, 0.2, 40.0),
+        );
+        fresh.settle(
+            &[ground_f.clone_object(), arm(arm_slot_f, arm_mat_f, 10)],
+            16,
+        )
+    };
 
     let moved = max_diff(&rest, &fresh_frame);
     assert!(
@@ -660,7 +705,6 @@ fn a_waving_arm_updates_its_shadow_and_matches_a_fresh_render() {
 #[test]
 #[ignore = "measurement"]
 fn shadow_gate_walking_hero_cost() {
-    let _gpu = lock();
     let Some(mut rig) = rig(false) else { return };
     if !rig.renderer.vsm_enabled {
         return;

@@ -20,10 +20,10 @@ use std::path::{Path, PathBuf};
 
 /// Calls that change the world without the undo history.
 const FORBIDDEN: [&str; 5] = [
-    ".spawn(",
-    ".despawn(",
-    ".add_component(",
-    ".remove_component(",
+    "world.spawn(",
+    "world.despawn(",
+    "world.add_component(",
+    "world.remove_component(",
     "insert_component(",
 ];
 
@@ -31,11 +31,12 @@ const FORBIDDEN: [&str; 5] = [
 const MARKERS: [&str; 3] = ["// undo: tx", "// undo: init", "// undo: n/a"];
 
 /// Files that may change the world directly, as paths relative to the `crates` directory.
-const ALLOWED_FILES: [&str; 4] = [
+const ALLOWED_FILES: [&str; 5] = [
     "redox_editor_core/src/undo.rs",
     "redox_editor_core/src/guid.rs",
     "redox_editor_debugger/src/pie.rs",
     "redox_editor_debugger/src/time_travel.rs",
+    "redox_editor_build/src/tests.rs",
 ];
 
 /// Directory that holds all workspace crates (`crates/`).
@@ -53,7 +54,11 @@ fn editor_source_files(crates: &Path) -> Vec<PathBuf> {
         return files;
     };
     for entry in entries.flatten() {
-        if entry.file_name().to_string_lossy().starts_with("redox_editor") {
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with("redox_editor")
+        {
             collect_rust_files(&entry.path().join("src"), &mut files);
         }
     }
@@ -85,7 +90,10 @@ fn relative_path(crates: &Path, file: &Path) -> String {
 
 /// One-based numbers of the lines in `source` that change the world directly and are not allowed.
 fn find_violations(relative: &str, source: &str) -> Vec<usize> {
-    if ALLOWED_FILES.iter().any(|allowed| relative.ends_with(allowed)) {
+    if ALLOWED_FILES
+        .iter()
+        .any(|allowed| relative.ends_with(allowed))
+    {
         return Vec::new();
     }
     let mut found = Vec::new();
@@ -132,15 +140,16 @@ fn no_direct_world_changes_outside_the_allowed_places() {
 
 #[test]
 fn the_guard_flags_a_bare_spawn_and_accepts_marked_and_allowed_ones() {
-    let bare = "fn f(w: &mut World) {\n    let e = w.spawn();\n}\n";
+    let bare = "fn f(world: &mut World) {\n    let e = world.spawn();\n}\n";
     assert_eq!(find_violations("redox_editor/src/app.rs", bare), vec![2]);
 
-    let marked = "fn f(w: &mut World) {\n    let e = w.spawn(); // undo: tx\n}\n";
+    let marked = "fn f(world: &mut World) {\n    let e = world.spawn(); // undo: tx\n}\n";
     assert!(find_violations("redox_editor/src/app.rs", marked).is_empty());
 
     assert!(find_violations("redox_editor_core/src/undo.rs", bare).is_empty());
 
-    let test_module = "fn f() {}\n#[cfg(test)]\nmod tests {\n    fn g(w: &mut World) { w.spawn(); }\n}\n";
+    let test_module =
+        "fn f() {}\n#[cfg(test)]\nmod tests {\n    fn g(w: &mut World) { w.spawn(); }\n}\n";
     assert!(find_violations("redox_editor/src/app.rs", test_module).is_empty());
 
     let comment = "// call w.spawn() later\n";

@@ -196,7 +196,10 @@ fn the_original_level_file_is_byte_identical_after_autosave() {
     clock.advance(120);
     assert!(matches!(svc.tick(&source, 0), TickOutcome::Queued(_)));
 
-    assert_eq!(fs::read(&level_path).expect("level file is readable"), original);
+    assert_eq!(
+        fs::read(&level_path).expect("level file is readable"),
+        original
+    );
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -219,7 +222,10 @@ fn background_writes_are_on_disk_after_flush_even_when_the_session_closes() {
     };
     assert!(svc.flush(), "the queue drains within the timeout");
 
-    assert_eq!(fs::read(&path).expect("autosave file is readable"), b"(background)");
+    assert_eq!(
+        fs::read(&path).expect("autosave file is readable"),
+        b"(background)"
+    );
     drop(svc);
     let _ = fs::remove_dir_all(&root);
 }
@@ -277,7 +283,11 @@ fn a_stale_lock_with_a_newer_autosave_offers_recovery() {
     let level_path = crashed_session(&root, 1_000, b"(recovered state)");
     let log = EditorLog::new();
 
-    let check = check_recovery(&query(&root, Some(&level_path), 1_300), &looks_like_ron, &log);
+    let check = check_recovery(
+        &query(&root, Some(&level_path), 1_300),
+        &looks_like_ron,
+        &log,
+    );
 
     let RecoveryCheck::Offer(offer) = check else {
         panic!("a recovery offer was expected");
@@ -297,14 +307,16 @@ fn accepting_recovery_gives_the_autosave_bytes_and_keeps_the_level_path() {
     let root = temp_project("accept");
     let level_path = crashed_session(&root, 1_000, b"(recovered state)");
     let log = EditorLog::new();
-    let RecoveryCheck::Offer(offer) =
-        check_recovery(&query(&root, Some(&level_path), 1_300), &looks_like_ron, &log)
-    else {
+    let RecoveryCheck::Offer(offer) = check_recovery(
+        &query(&root, Some(&level_path), 1_300),
+        &looks_like_ron,
+        &log,
+    ) else {
         panic!("a recovery offer was expected");
     };
 
-    let bytes = apply_recovery(&root, &offer, RecoveryChoice::Recover, 1_300)
-        .expect("recovery is applied");
+    let bytes =
+        apply_recovery(&root, &offer, RecoveryChoice::Recover, 1_300).expect("recovery is applied");
 
     assert_eq!(bytes.as_deref(), Some(b"(recovered state)".as_slice()));
     assert_eq!(offer.level_path.as_deref(), Some(level_path.as_path()));
@@ -317,19 +329,27 @@ fn discarding_recovery_moves_the_autosaves_and_removes_the_lock() {
     let root = temp_project("discard");
     let level_path = crashed_session(&root, 1_000, b"(unwanted)");
     let log = EditorLog::new();
-    let RecoveryCheck::Offer(offer) =
-        check_recovery(&query(&root, Some(&level_path), 1_300), &looks_like_ron, &log)
-    else {
+    let RecoveryCheck::Offer(offer) = check_recovery(
+        &query(&root, Some(&level_path), 1_300),
+        &looks_like_ron,
+        &log,
+    ) else {
         panic!("a recovery offer was expected");
     };
 
-    let bytes = apply_recovery(&root, &offer, RecoveryChoice::Discard, 1_300)
-        .expect("discard is applied");
+    let bytes =
+        apply_recovery(&root, &offer, RecoveryChoice::Discard, 1_300).expect("discard is applied");
 
     assert!(bytes.is_none());
     assert!(numbers(&root).is_empty());
-    let moved = autosave_dir(&root).join("discarded").join("1300").join("main.1.scene.ron");
-    assert_eq!(fs::read(&moved).expect("moved autosave is readable"), b"(unwanted)");
+    let moved = autosave_dir(&root)
+        .join("discarded")
+        .join("1300")
+        .join("main.1.scene.ron");
+    assert_eq!(
+        fs::read(&moved).expect("moved autosave is readable"),
+        b"(unwanted)"
+    );
     assert!(read_lock(&root).expect("lock is readable").is_none());
     let _ = fs::remove_dir_all(&root);
 }
@@ -340,7 +360,11 @@ fn a_fresh_lock_reports_another_session_and_offers_nothing() {
     let level_path = crashed_session(&root, 1_000, b"(state)");
     let log = EditorLog::new();
 
-    let check = check_recovery(&query(&root, Some(&level_path), 1_010), &looks_like_ron, &log);
+    let check = check_recovery(
+        &query(&root, Some(&level_path), 1_010),
+        &looks_like_ron,
+        &log,
+    );
 
     assert!(matches!(check, RecoveryCheck::LockedByOtherSession(_)));
     let _ = fs::remove_dir_all(&root);
@@ -357,11 +381,20 @@ fn a_damaged_autosave_is_not_offered_and_is_moved_aside() {
     fs::write(dir.join("main.1.scene.ron"), b"<<< not a level").expect("damaged file is written");
     let log = EditorLog::new();
 
-    let check = check_recovery(&query(&root, Some(&level_path), 1_300), &looks_like_ron, &log);
+    let check = check_recovery(
+        &query(&root, Some(&level_path), 1_300),
+        &looks_like_ron,
+        &log,
+    );
 
     assert_eq!(check, RecoveryCheck::Clean);
     assert!(numbers(&root).is_empty());
-    assert!(dir.join("discarded").join("1300").join("main.1.scene.ron").exists());
+    assert!(
+        dir.join("discarded")
+            .join("1300")
+            .join("main.1.scene.ron")
+            .exists()
+    );
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -372,7 +405,11 @@ fn a_stale_lock_without_a_newer_autosave_offers_nothing() {
     write_lock(&root, &lock_with_heartbeat(1_000)).expect("lock is written");
     let log = EditorLog::new();
 
-    let check = check_recovery(&query(&root, Some(&level_path), 1_300), &looks_like_ron, &log);
+    let check = check_recovery(
+        &query(&root, Some(&level_path), 1_300),
+        &looks_like_ron,
+        &log,
+    );
 
     assert_eq!(check, RecoveryCheck::Clean);
     let _ = fs::remove_dir_all(&root);
@@ -423,7 +460,9 @@ fn the_heartbeat_moves_forward_while_the_session_is_active() {
     clock.set(1_006);
     svc.tick(&source, 0);
 
-    let lock = read_lock(&root).expect("lock is readable").expect("lock exists");
+    let lock = read_lock(&root)
+        .expect("lock is readable")
+        .expect("lock exists");
     assert_eq!(lock.heartbeat, 1_006);
     assert_eq!(lock.started, 1_000);
     assert_eq!(lock.level, "main");

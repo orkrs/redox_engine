@@ -1,10 +1,10 @@
 //! Loads in-process plugins and applies their registrations safely.
 
+use crate::PLUGIN_API_VERSION;
 use crate::builtin::builtin_plugins;
 use crate::plugin::EditorPlugin;
 use crate::registry::{PanelRegistration, PluginRegistry};
 use crate::validation::EditorValidationRule;
-use crate::PLUGIN_API_VERSION;
 use redox_editor_assets::AssetImporter;
 use redox_editor_core::log::EditorLog;
 use redox_editor_core::{CommandRegistry, EditorCommand, EditorContext};
@@ -233,8 +233,7 @@ impl PluginHost {
                 self.loaded_command_ids.push(id.clone());
                 self.command_owners.insert(id, name.clone());
             }
-            self.active_panels
-                .extend(registry.panels().iter().cloned());
+            self.active_panels.extend(registry.panels().iter().cloned());
             self.active_importers
                 .extend(registry.importers().iter().cloned());
             for rule in registry.validation_rules() {

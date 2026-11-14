@@ -118,7 +118,10 @@ mod tests {
             resolve_prompt(PromptAnswer::Save),
             PromptOutcome::SaveThenContinue
         );
-        assert_eq!(resolve_prompt(PromptAnswer::DontSave), PromptOutcome::Continue);
+        assert_eq!(
+            resolve_prompt(PromptAnswer::DontSave),
+            PromptOutcome::Continue
+        );
         assert_eq!(resolve_prompt(PromptAnswer::Cancel), PromptOutcome::Abort);
     }
 

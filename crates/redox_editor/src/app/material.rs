@@ -9,7 +9,9 @@ impl EditorApp {
         for open in opens {
             match self.ui_ctx.open_material(open) {
                 Ok(()) => {}
-                Err(err) => self.ui_ctx.log(format!("[ERROR] Cannot open material: {err}")),
+                Err(err) => self
+                    .ui_ctx
+                    .log(format!("[ERROR] Cannot open material: {err}")),
             }
         }
     }

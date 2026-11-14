@@ -33,7 +33,7 @@ pub enum ConnectError {
 }
 
 /// Undo history of whole-graph snapshots (one step per committed edit).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct MatGraphUndo {
     past: Vec<MaterialGraph>,
     future: Vec<MaterialGraph>,
@@ -127,7 +127,12 @@ impl MatGraphView {
     }
 
     /// Whether a link from `from` port 0 into `to` port `to_port` is allowed.
-    pub fn can_connect(&self, from: NodeId, to: NodeId, to_port: usize) -> Result<(), ConnectError> {
+    pub fn can_connect(
+        &self,
+        from: NodeId,
+        to: NodeId,
+        to_port: usize,
+    ) -> Result<(), ConnectError> {
         if !self.graph.nodes.iter().any(|n| n.id == from) {
             return Err(ConnectError::UnknownNode(from));
         }
@@ -147,7 +152,10 @@ impl MatGraphView {
         if node.inputs.len() <= to_port {
             node.inputs.resize(to_port + 1, None);
         }
-        node.inputs[to_port] = Some(PortRef { node: from, port: 0 });
+        node.inputs[to_port] = Some(PortRef {
+            node: from,
+            port: 0,
+        });
         let errors = trial.validate();
         if errors.is_empty() {
             Ok(())
@@ -174,7 +182,10 @@ impl MatGraphView {
         if node.inputs.len() <= to_port {
             node.inputs.resize(to_port + 1, None);
         }
-        node.inputs[to_port] = Some(PortRef { node: from, port: 0 });
+        node.inputs[to_port] = Some(PortRef {
+            node: from,
+            port: 0,
+        });
         Ok(())
     }
 
@@ -184,11 +195,9 @@ impl MatGraphView {
         let id = self.next_id;
         self.next_id = self.next_id.saturating_add(1);
         let inputs = vec![None; arity(&kind)];
-        self.graph.nodes.push(redox_matgraph::graph::Node {
-            id,
-            kind,
-            inputs,
-        });
+        self.graph
+            .nodes
+            .push(redox_matgraph::graph::Node { id, kind, inputs });
         self.layout.insert(id, NodeLayout { x, y });
         id
     }

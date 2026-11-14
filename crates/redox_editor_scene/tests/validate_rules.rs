@@ -5,17 +5,17 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use redox_asset::AssetRegistry;
-use redox_ecs::{Entity, Parent, World, set_parent};
-use redox_editor_scene::validate::{
-    apply_fix, rules, validate_level, ValidateLevelOptions, ValidationFix, ValidationRule,
-    ValidationSettings,
-};
-use redox_editor_scene::{register_scene_components, LoadReport, LoadWarning};
+use redox_ecs::{World, set_parent};
 use redox_editor_core::undo::UndoStack;
-use redox_math::{Transform, Vec3, Aabb};
+use redox_editor_scene::validate::{
+    ValidateLevelOptions, ValidationFix, ValidationRule, ValidationSettings, apply_fix, rules,
+    validate_level,
+};
+use redox_editor_scene::{LoadReport, LoadWarning, register_scene_components};
+use redox_math::{Aabb, Transform, Vec3};
 use redox_reflect::TypeRegistry;
 use redox_render::Camera;
-use redox_scene::{AssetRef, AssetRefs, EntityGuid, Name};
+use redox_scene::{AssetKind, AssetRef, AssetRefs, EntityGuid, Name};
 
 fn registry() -> TypeRegistry {
     let mut registry = TypeRegistry::new();
@@ -42,6 +42,7 @@ fn ctx<'a>(
     assets: Option<&'a std::path::Path>,
     load: Option<&'a LoadReport>,
     asset_registry: Option<&'a AssetRegistry>,
+    settings: &'a ValidationSettings,
 ) -> rules::RuleContext<'a> {
     rules::RuleContext {
         world,
@@ -50,7 +51,7 @@ fn ctx<'a>(
         asset_registry,
         reference_index: None,
         scene_path: None,
-        settings: &ValidationSettings::default(),
+        settings,
         load_report: load,
     }
 }
@@ -69,16 +70,23 @@ fn missing_asset_rule_reports_a_broken_handle_path() {
             component: "MeshHandle".into(),
             guid: None,
             path: Some("meshes/missing.glb".into()),
+            kind: AssetKind::Mesh,
         }]),
     );
+    let settings = ValidationSettings::default();
     let issues = rules::check_missing_and_broken_assets(&ctx(
         &world,
         &registry,
         Some(dir.as_path()),
         None,
         None,
+        &settings,
     ));
-    assert!(issues.iter().any(|i| i.rule == ValidationRule::MissingAsset));
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.rule == ValidationRule::MissingAsset)
+    );
 }
 
 #[test]
@@ -96,16 +104,23 @@ fn broken_asset_ref_rule_reports_an_unknown_guid() {
             component: "MaterialHandle".into(),
             guid: Some("not-a-valid-guid".into()),
             path: None,
+            kind: AssetKind::Material,
         }]),
     );
+    let settings = ValidationSettings::default();
     let issues = rules::check_missing_and_broken_assets(&ctx(
         &world,
         &registry,
         Some(dir.as_path()),
         None,
         Some(&asset_registry),
+        &settings,
     ));
-    assert!(issues.iter().any(|i| i.rule == ValidationRule::BrokenAssetRef));
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.rule == ValidationRule::BrokenAssetRef)
+    );
 }
 
 #[test]
@@ -119,7 +134,15 @@ fn unknown_component_rule_maps_load_warnings() {
             type_name: "LegacyLight".into(),
         }],
     };
-    let issues = rules::check_unknown_components(&ctx(&world, &registry, None, Some(&report), None));
+    let settings = ValidationSettings::default();
+    let issues = rules::check_unknown_components(&ctx(
+        &world,
+        &registry,
+        None,
+        Some(&report),
+        None,
+        &settings,
+    ));
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].rule, ValidationRule::UnknownComponent);
 }
@@ -136,8 +159,20 @@ fn missing_parent_rule_reports_orphan_links() {
             parent_guid: parent,
         }],
     };
-    let issues = rules::check_hierarchy(&ctx(&world, &registry, None, Some(&report), None));
-    assert!(issues.iter().any(|i| i.rule == ValidationRule::MissingParent));
+    let settings = ValidationSettings::default();
+    let issues = rules::check_hierarchy(&ctx(
+        &world,
+        &registry,
+        None,
+        Some(&report),
+        None,
+        &settings,
+    ));
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.rule == ValidationRule::MissingParent)
+    );
 }
 
 #[test]
@@ -150,18 +185,28 @@ fn hierarchy_cycle_rule_detects_a_parent_loop() {
     let gb = EntityGuid::new_random();
     world.add_component(a, ga);
     world.add_component(b, gb);
-    set_parent(world, a, b);
-    set_parent(world, b, a);
-    let issues = rules::check_hierarchy(&ctx(&world, &registry, None, None, None));
-    assert!(issues.iter().any(|i| i.rule == ValidationRule::HierarchyCycle));
+    set_parent(&mut world, a, b);
+    set_parent(&mut world, b, a);
+    let settings = ValidationSettings::default();
+    let issues = rules::check_hierarchy(&ctx(&world, &registry, None, None, None, &settings));
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.rule == ValidationRule::HierarchyCycle)
+    );
 }
 
 #[test]
 fn no_active_camera_rule_errors_when_there_is_no_camera() {
     let registry = registry();
     let world = World::new();
-    let issues = rules::check_active_camera(&ctx(&world, &registry, None, None, None));
-    assert!(issues.iter().any(|i| i.rule == ValidationRule::NoActiveCamera));
+    let settings = ValidationSettings::default();
+    let issues = rules::check_active_camera(&ctx(&world, &registry, None, None, None, &settings));
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.rule == ValidationRule::NoActiveCamera)
+    );
     assert!(issues[0].fix.is_some());
 }
 
@@ -169,7 +214,7 @@ fn no_active_camera_rule_errors_when_there_is_no_camera() {
 fn texture_no_mips_rule_warns_on_a_large_png_without_meta() {
     let dir = temp_assets("tex");
     let png = dir.join("big.png");
-  // minimal 2049x1 PNG would be huge; use 3000x4 stored as raw IHDR hack
+    // minimal 2049x1 PNG would be huge; use 3000x4 stored as raw IHDR hack
     let mut bytes = vec![
         0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, b'I', b'H', b'D',
         b'R',
@@ -199,7 +244,11 @@ fn texture_no_mips_rule_warns_on_a_large_png_without_meta() {
         load_report: None,
     };
     let issues = rules::check_texture_mips(&ctx);
-    assert!(issues.iter().any(|i| i.rule == ValidationRule::TextureNoMips));
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.rule == ValidationRule::TextureNoMips)
+    );
 }
 
 #[test]
@@ -227,7 +276,11 @@ fn out_of_world_bounds_rule_flags_a_far_transform() {
         load_report: None,
     };
     let issues = rules::check_world_bounds(&ctx);
-    assert!(issues.iter().any(|i| i.rule == ValidationRule::OutOfWorldBounds));
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.rule == ValidationRule::OutOfWorldBounds)
+    );
 }
 
 #[test]
@@ -242,9 +295,11 @@ fn fix_on_a_scene_without_camera_adds_camera_in_one_undo_step() {
         &mut undo,
     )
     .expect("fix");
-    assert!(world
-        .all_entities()
-        .any(|e| world.get_component::<Camera>(e).is_some()));
+    assert!(
+        world
+            .all_entities()
+            .any(|e| world.get_component::<Camera>(e).is_some())
+    );
     let undone = undo.undo(&mut world, &registry);
     assert!(undone, "undo removes the camera step");
 }
@@ -265,6 +320,7 @@ fn a_broken_asset_reference_produces_an_issue_with_select() {
             component: "MeshHandle".into(),
             guid: None,
             path: Some("meshes/ghost.glb".into()),
+            kind: AssetKind::Mesh,
         }]),
     );
     let report = validate_level(

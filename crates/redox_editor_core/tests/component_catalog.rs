@@ -64,16 +64,14 @@ fn requires_metadata_adds_dependency_on_fixture() {
         .expect("add");
 
     assert_eq!(outcome.commands.len(), 2);
-    assert!(
-        outcome.commands.iter().any(|cmd| matches!(
-            cmd,
-            redox_editor_core::UndoCommand::SetComponent {
-                type_name,
-                before: None,
-                ..
-            } if type_name == "Transform"
-        ))
-    );
+    assert!(outcome.commands.iter().any(|cmd| matches!(
+        cmd,
+        redox_editor_core::UndoCommand::SetComponent {
+            type_name,
+            before: None,
+            ..
+        } if type_name == "Transform"
+    )));
 }
 
 #[test]

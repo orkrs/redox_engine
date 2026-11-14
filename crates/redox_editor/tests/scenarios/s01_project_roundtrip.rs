@@ -20,7 +20,11 @@ fn a_project_from_the_starter_template_survives_a_restart() {
     h.open_project(&dir).expect("the project opens again");
     h.open_start_scene().expect("the start scene opens again");
 
-    assert_eq!(h.snapshot(), before, "the start scene is the same after restart");
+    assert_eq!(
+        h.snapshot(),
+        before,
+        "the start scene is the same after restart"
+    );
     assert!(
         h.recent_projects().contains(&dir),
         "the project is in the recent list"

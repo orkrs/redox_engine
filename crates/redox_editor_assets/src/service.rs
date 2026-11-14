@@ -11,6 +11,7 @@ use redox_asset::{
     RegistryError, ScanReport,
 };
 
+use crate::browser_model::AssetKind;
 use crate::import::ImporterRegistry;
 use crate::import_log::ImportLogModel;
 use crate::import_queue::{ImportEvent, ImportQueue, default_worker_count};
@@ -23,7 +24,6 @@ use crate::reference_index::{
     is_scene_path, resolve_ref,
 };
 use crate::thumbnail_service::ThumbnailService;
-use crate::browser_model::AssetKind;
 
 /// Errors of the asset service.
 #[derive(Debug, thiserror::Error)]
@@ -423,10 +423,7 @@ impl AssetService {
     }
 
     /// Reads per-asset import settings from the sidecar.
-    pub fn per_asset_settings(
-        &self,
-        path: &str,
-    ) -> Result<PerAssetImportSettings, RegistryError> {
+    pub fn per_asset_settings(&self, path: &str) -> Result<PerAssetImportSettings, RegistryError> {
         read_per_asset_settings(&self.registry, path)
     }
 
@@ -437,8 +434,7 @@ impl AssetService {
         settings: &PerAssetImportSettings,
     ) -> Result<(), RegistryError> {
         if write_per_asset_settings(&self.registry, path, settings)? {
-            self.registry
-                .set_status(path, AssetStatus::Outdated);
+            self.registry.set_status(path, AssetStatus::Outdated);
         }
         Ok(())
     }

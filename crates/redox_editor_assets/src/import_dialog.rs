@@ -5,8 +5,10 @@ use std::path::{Path, PathBuf};
 use redox_asset::AssetGuid;
 
 use crate::browser_model::AssetKind;
-use crate::import::{probe_texture_header};
-use crate::import_settings::{ImportPresetId, PerAssetImportSettings, default_for_kind, settings_for_preset};
+use crate::import::probe_texture_header;
+use crate::import_settings::{
+    ImportPresetId, PerAssetImportSettings, default_for_kind, settings_for_preset,
+};
 
 /// What the dialog can show as a visual hint before import.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -86,10 +88,7 @@ impl Default for ImportDialogModel {
 
 impl ImportDialogModel {
     /// Starts preview for absolute paths mapped under `assets_root`.
-    pub fn begin_paths(
-        paths: impl IntoIterator<Item = PathBuf>,
-        assets_root: &Path,
-    ) -> Self {
+    pub fn begin_paths(paths: impl IntoIterator<Item = PathBuf>, assets_root: &Path) -> Self {
         let rows: Vec<ImportDialogRow> = paths
             .into_iter()
             .filter_map(|source| build_row(source, assets_root))
@@ -119,15 +118,16 @@ impl ImportDialogModel {
         let ImportDialogPhase::Preview(rows) = &mut self.phase else {
             return false;
         };
-        rows.get_mut(index).map(|row| row.settings = settings).is_some()
+        rows.get_mut(index)
+            .map(|row| row.settings = settings)
+            .is_some()
     }
 
     /// Confirms and returns jobs for the import queue. Clears preview state.
     pub fn confirm(&mut self) -> Vec<ImportDialogJob> {
-        let ImportDialogPhase::Preview(rows) = std::mem::replace(
-            &mut self.phase,
-            ImportDialogPhase::Picking,
-        ) else {
+        let ImportDialogPhase::Preview(rows) =
+            std::mem::replace(&mut self.phase, ImportDialogPhase::Picking)
+        else {
             return Vec::new();
         };
         let jobs: Vec<ImportDialogJob> = rows

@@ -12,20 +12,20 @@ pub mod camera;
 pub mod gizmo;
 /// Picking of entities in the viewport.
 pub mod picker;
-/// Gizmo snap modes (grid / surface / vertex).
-pub mod snap;
 /// Shading mode resolution against engine capabilities.
 pub mod shading;
+/// Gizmo snap modes (grid / surface / vertex).
+pub mod snap;
 /// Offscreen viewport target and the passes that draw the scene proxies.
 pub mod viewport;
 /// Shading modes, layouts and debug flags of the viewport.
 pub mod viewport_mode;
-/// Serializable GI / sky / fog toggles.
-pub mod viewport_settings;
 /// Applies runtime toggles on the engine [`Renderer`].
 pub mod viewport_runtime;
 /// Viewport PNG readback.
 pub mod viewport_screenshot;
+/// Serializable GI / sky / fog toggles.
+pub mod viewport_settings;
 /// FPS / CPU / GPU overlay lines.
 pub mod viewport_stats;
 
@@ -36,11 +36,13 @@ pub use asset_bridge::{
 pub use brush::{BrushSettings, BrushStroke, place_on_surface, scatter_poses, scatter_positions};
 pub use camera::EditorCamera;
 pub use gizmo::{GizmoAxis, GizmoMode, GizmoState, GridSettings};
-pub use snap::{GizmoSnapMode, GizmoSnapSettings, apply_snap_to_translation, snap_to_nearest_vertex};
-pub use shading::{ShadingAvailability, ViewportShadingPlan, apply_shading_plan};
 pub use picker::{
     EntityPicker, QuadPickRay, pick_entity_in_quad_pane, pick_in_quad_pane, pick_unit_cubes,
     quad_pane_at_uv, quad_pane_cameras,
+};
+pub use shading::{ShadingAvailability, ViewportShadingPlan, apply_shading_plan};
+pub use snap::{
+    GizmoSnapMode, GizmoSnapSettings, apply_snap_to_translation, snap_to_nearest_vertex,
 };
 pub use viewport::{
     EditorViewport, ViewportCubePass, ViewportLinesPass, build_editor_overlay_lines,

@@ -79,10 +79,7 @@ impl PackagerPanel {
         let project = redox_editor_core::project::ProjectContext::open(&self.project_root)?;
         let service = redox_editor_build::BuildService;
         let profile = service
-            .resolve_active(
-                project.manifest(),
-                Some(self.cook_profile.as_str()),
-            )
+            .resolve_active(project.manifest(), Some(self.cook_profile.as_str()))
             .map_err(|e| anyhow::anyhow!("{e}"))?;
         let out_dir = project.root().join(".redox");
         std::fs::create_dir_all(&out_dir)?;

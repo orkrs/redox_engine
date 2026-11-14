@@ -111,7 +111,9 @@ impl EditorCommand for DeleteEntity {
         ctx.undo.lock().begin("Delete Entity");
         let guid = GuidResolver::ensure(&mut ctx.world.lock(), entity);
         let snapshot = snapshot_of(ctx, entity);
-        ctx.undo.lock().push(UndoCommand::Despawn { guid, snapshot });
+        ctx.undo
+            .lock()
+            .push(UndoCommand::Despawn { guid, snapshot });
         ctx.world.lock().despawn(entity); // undo: tx
         ctx.undo.lock().commit();
         ctx.selection.lock().clear();

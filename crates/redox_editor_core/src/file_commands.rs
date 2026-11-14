@@ -106,9 +106,9 @@ mod tests {
     fn file_save_command_queues_a_save_request() {
         let queue = FileRequestQueue::new();
         let mut ctx = EditorContext::new(TypeRegistry::new());
-        register_file_commands(&mut ctx.commands, &queue);
+        register_file_commands(&mut ctx.commands.lock(), &queue);
 
-        assert!(ctx.commands.run(&ctx, "file_save"));
+        assert!(ctx.commands.lock().run(&ctx, "file_save"));
         assert_eq!(queue.take_all(), vec![FileRequest::Save]);
         assert!(queue.take_all().is_empty());
     }

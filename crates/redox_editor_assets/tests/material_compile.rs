@@ -16,7 +16,14 @@ fn broken() -> MaterialGraph {
             Node {
                 id: 2,
                 kind: NodeKind::SurfaceOutput,
-                inputs: vec![None, Some(PortRef { node: 1, port: 0 }), None, None, None, None],
+                inputs: vec![
+                    None,
+                    Some(PortRef { node: 1, port: 0 }),
+                    None,
+                    None,
+                    None,
+                    None,
+                ],
             },
         ],
     }

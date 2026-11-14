@@ -1,6 +1,6 @@
 //! Material editor session: document, graph view, compile report and preview settings.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use redox_asset::AssetGuid;
 use redox_editor_assets::{
@@ -29,11 +29,8 @@ pub struct MaterialEditorSession {
 
 impl MaterialEditorSession {
     /// Opens a file into a new session.
-    pub fn open(
-        path: impl Into<PathBuf>,
-        guid: Option<AssetGuid>,
-    ) -> Result<Self, MaterialError> {
-        let document = MaterialDocument::open(path, guid)?;
+    pub fn open(path: impl AsRef<Path>, guid: Option<AssetGuid>) -> Result<Self, MaterialError> {
+        let document = MaterialDocument::open(path.as_ref(), guid)?;
         let view = MatGraphView::from_graph(document.graph.clone());
         let compile = CompileReport::refresh(&document.graph);
         let wgsl_display = compile.wgsl.clone().unwrap_or_default();
@@ -102,10 +99,7 @@ impl MaterialEditorSession {
             .nodes
             .iter()
             .filter_map(|n| {
-                if let NodeKind::Param {
-                    name, default, ..
-                } = &n.kind
-                {
+                if let NodeKind::Param { name, default, .. } = &n.kind {
                     Some((n.id, name.clone(), *default))
                 } else {
                     None

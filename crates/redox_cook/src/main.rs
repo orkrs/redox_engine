@@ -151,9 +151,7 @@ fn parse(args: &[String]) -> Result<Command, String> {
         }),
         ["bake-navmesh", args @ ..] => nav::parse_bake_navmesh(args).map(Command::BakeNavmesh),
         ["audio-check", args @ ..] => audio_check::parse_audio_check(args).map(Command::AudioCheck),
-        ["validate", args @ ..] => {
-            project_validate::parse_validate(args).map(Command::Validate)
-        }
+        ["validate", args @ ..] => project_validate::parse_validate(args).map(Command::Validate),
         ["import", args @ ..] => project_import::parse_import(args).map(Command::Import),
         ["cook", args @ ..] => project_cook::parse_cook(args).map(Command::Cook),
         [] => Err("missing command".into()),

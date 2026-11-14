@@ -26,7 +26,9 @@ use redox_ecs::world::World;
 pub struct UiContext {
     /// The egui context; use it to build UI inside a frame.
     pub egui_ctx: egui::Context,
-    egui_state: egui_winit::State,
+    /// Linux clipboard inside `egui_winit::State` is `Send` but not `Sync`.
+    /// The mutex lets [`UiContext`] live in the ECS world, which requires `Sync`.
+    egui_state: std::sync::Mutex<egui_winit::State>,
     egui_renderer: egui_wgpu::Renderer,
 
     /// Whether the debug overlay master switch is on.
@@ -63,7 +65,7 @@ impl UiContext {
 
         Self {
             egui_ctx,
-            egui_state,
+            egui_state: std::sync::Mutex::new(egui_state),
             egui_renderer,
             show_debug: true,
             debug: DebugOverlay::new(),
@@ -78,7 +80,11 @@ impl UiContext {
         window: &winit::window::Window,
         event: &winit::event::WindowEvent,
     ) -> bool {
-        let response = self.egui_state.on_window_event(window, event);
+        let response = self
+            .egui_state
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .on_window_event(window, event);
         response.consumed
     }
 
@@ -94,7 +100,11 @@ impl UiContext {
 
     /// Begins a new egui frame. Call before building any UI.
     pub fn begin_frame(&mut self, window: &winit::window::Window) {
-        let raw_input = self.egui_state.take_egui_input(window);
+        let raw_input = self
+            .egui_state
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .take_egui_input(window);
         self.egui_ctx.begin_pass(raw_input);
     }
 
@@ -131,6 +141,8 @@ impl UiContext {
         let mut full_output = self.egui_ctx.end_pass();
 
         self.egui_state
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
             .handle_platform_output(window, full_output.platform_output);
 
         let tris = self

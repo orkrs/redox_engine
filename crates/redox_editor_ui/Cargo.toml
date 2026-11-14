@@ -41,6 +41,4 @@ log = { workspace = true }
 
 parking_lot = "0.12"
 image = { workspace = true }
-
-[dev-dependencies]
 redox_matgraph = { path = "../redox_matgraph" }

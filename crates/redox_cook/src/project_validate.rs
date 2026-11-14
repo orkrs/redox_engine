@@ -91,10 +91,8 @@ mod tests {
     fn broken_sample_fails_and_json_contains_missing_asset() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../redox_editor/tests/data/sample_project_broken");
-        let json = std::env::temp_dir().join(format!(
-            "validate_broken_{}.json",
-            std::process::id()
-        ));
+        let json =
+            std::env::temp_dir().join(format!("validate_broken_{}.json", std::process::id()));
         let code = run(&ValidateJob {
             root,
             json: Some(json.clone()),

@@ -14,7 +14,7 @@ pub struct GpuPassEntry {
 
 /// Parses `frame_graph_report` / compiled graph report text into pass names.
 pub fn passes_from_frame_graph_report(report: &str) -> Vec<GpuPassEntry> {
-    let mut out = Vec::new();
+    let mut out: Vec<GpuPassEntry> = Vec::new();
     for line in report.lines() {
         let trimmed = line.trim();
         let name = if let Some(rest) = trimmed.strip_prefix("pass ") {
@@ -33,7 +33,7 @@ pub fn passes_from_frame_graph_report(report: &str) -> Vec<GpuPassEntry> {
         }
     }
     if out.is_empty() {
-        for name in redox_render::frame_pass_order() {
+        for name in redox_render::frame_graph::frame_pass_order() {
             out.push(GpuPassEntry {
                 name: (*name).to_string(),
                 duration_ms: None,
@@ -46,10 +46,7 @@ pub fn passes_from_frame_graph_report(report: &str) -> Vec<GpuPassEntry> {
 /// Merges wgpu timestamp timings into the pass list by label (no invented durations).
 pub fn merge_gpu_timings(entries: &mut [GpuPassEntry], timings: &[GpuTiming]) {
     for entry in entries.iter_mut() {
-        let ms = timings
-            .iter()
-            .find(|t| t.label == entry.name)
-            .map(|t| t.ms);
+        let ms = timings.iter().find(|t| t.label == entry.name).map(|t| t.ms);
         entry.duration_ms = ms;
     }
 }

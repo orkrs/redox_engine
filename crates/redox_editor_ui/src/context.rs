@@ -15,16 +15,16 @@ use std::sync::Arc;
 
 use crate::asset_browser::{AssetBrowserPanel, AssetSpawnRequest};
 use crate::audit_panel::AuditPanel;
-use crate::import_dialog_panel::ImportDialogPanel;
-use crate::import_log_panel::ImportLogPanel;
-use crate::reference_panel::ReferenceViewerPanel;
 use crate::brush_panel::BrushPanel;
 use crate::command_palette::CommandPalette;
+use crate::import_dialog_panel::ImportDialogPanel;
+use crate::import_log_panel::ImportLogPanel;
 use crate::material_canvas::{focus_from_report, graph_from_view};
 use crate::material_editor::{MaterialEditorSession, MaterialOpenRequest};
 use crate::node_canvas::NodeCanvas;
 use crate::outliner::{OutlinerAction, OutlinerPanel};
 use crate::packager::PackagerPanel;
+use crate::reference_panel::ReferenceViewerPanel;
 use crate::validation_model::ValidationPanelModel;
 use redox_ecs::Entity;
 use redox_gameplay::{AttributeSet, StateTreeComponent};
@@ -121,7 +121,7 @@ impl EditorUiCtx {
     ) -> Self {
         core.log.info("RedOx Studio ready");
         let mut palette = CommandPalette::default();
-        palette.add_registry_commands(core.commands.entries());
+        palette.add_registry_commands(core.commands.lock().entries());
         Self {
             core,
             gizmo,
@@ -171,7 +171,11 @@ impl EditorUiCtx {
     }
 
     /// Registers the open scene and project root for scene-level git (status, diff, commit, pull).
-    pub fn track_scene_git(&self, scene_file: impl AsRef<std::path::Path>, project_root: impl AsRef<std::path::Path>) {
+    pub fn track_scene_git(
+        &self,
+        scene_file: impl AsRef<std::path::Path>,
+        project_root: impl AsRef<std::path::Path>,
+    ) {
         let mut git = self.git.lock();
         git.set_tracked_scene(scene_file, project_root);
         if let Err(err) = git.refresh_scene_git() {
@@ -198,20 +202,16 @@ impl EditorUiCtx {
 
     /// Opens a `.matgraph` into the material editor and switches the graph canvas to Material mode.
     pub fn open_material(&self, request: MaterialOpenRequest) -> Result<(), String> {
-        let session = MaterialEditorSession::open(&request.path, request.guid)
-            .map_err(|e| e.to_string())?;
+        let session =
+            MaterialEditorSession::open(&request.path, request.guid).map_err(|e| e.to_string())?;
         let graph = graph_from_view(&session.view);
-        let active =
-            focus_from_report(&session.compile, session.focused_node);
+        let active = focus_from_report(&session.compile, session.focused_node);
         {
             let mut canvas = self.graph.lock();
             canvas.load_material(graph, active);
         }
         *self.material.lock() = Some(session);
-        self.log(format!(
-            "[INFO] Opened material {}",
-            request.path.display()
-        ));
+        self.log(format!("[INFO] Opened material {}", request.path.display()));
         Ok(())
     }
 
@@ -224,9 +224,7 @@ impl EditorUiCtx {
         let graph = graph_from_view(&session.view);
         let active = focus_from_report(&session.compile, session.focused_node);
         drop(material);
-        self.graph
-            .lock()
-            .load_material(graph, active);
+        self.graph.lock().load_material(graph, active);
     }
 
     /// Spawn a patrol/chase AI agent for the StateTree debugger.
@@ -236,7 +234,8 @@ impl EditorUiCtx {
         let e = {
             let mut world = self.core.world.lock();
             let e = world.spawn(); // undo: tx
-            world.add_component( // undo: tx
+            world.add_component(
+                // undo: tx
                 e,
                 redox_math::Transform::from_translation(redox_math::Vec3::new(56.0, 1.0, 50.0)),
             );

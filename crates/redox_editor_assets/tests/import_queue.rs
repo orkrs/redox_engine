@@ -18,10 +18,8 @@ struct TempDir(PathBuf);
 
 impl TempDir {
     fn new(name: &str) -> Self {
-        let dir = std::env::temp_dir().join(format!(
-            "redox_editor_import_{name}_{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("redox_editor_import_{name}_{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("create temp dir");
         Self(dir)
@@ -125,9 +123,9 @@ fn has_started(events: &[ImportEvent], path: &Path) -> bool {
 }
 
 fn position_of_start(events: &[ImportEvent], path: &Path) -> Option<usize> {
-    events
-        .iter()
-        .position(|event| matches!(event, ImportEvent::Started { path: p, .. } if p.as_path() == path))
+    events.iter().position(
+        |event| matches!(event, ImportEvent::Started { path: p, .. } if p.as_path() == path),
+    )
 }
 
 #[test]
@@ -173,7 +171,10 @@ fn broken_file_fails_while_other_files_import_and_the_source_is_untouched() {
 
     match outcome_of(&events, &broken) {
         Some(ImportEvent::Failed { message, .. }) => {
-            assert!(message.contains("unknown texture format"), "message: {message}");
+            assert!(
+                message.contains("unknown texture format"),
+                "message: {message}"
+            );
         }
         other => panic!("expected Failed, got {other:?}"),
     }
@@ -181,7 +182,11 @@ fn broken_file_fails_while_other_files_import_and_the_source_is_untouched() {
         outcome_of(&events, &ok),
         Some(ImportEvent::Finished { .. })
     ));
-    assert_eq!(fs::read(&broken).expect("read"), garbage, "source must not change");
+    assert_eq!(
+        fs::read(&broken).expect("read"),
+        garbage,
+        "source must not change"
+    );
 }
 
 #[test]
@@ -203,7 +208,10 @@ fn panicking_importer_does_not_stop_other_jobs() {
     match outcome_of(&events, &boom) {
         Some(ImportEvent::Failed { message, .. }) => {
             assert!(message.contains("panicked"), "message: {message}");
-            assert!(message.contains("simulated importer crash"), "message: {message}");
+            assert!(
+                message.contains("simulated importer crash"),
+                "message: {message}"
+            );
         }
         other => panic!("expected Failed, got {other:?}"),
     }
@@ -360,8 +368,9 @@ fn broken_asset_fails_and_other_assets_still_import() {
 
     poll_service(&mut service, &mut changes, |c| {
         imported(c, "ok.png")
-            && c.iter()
-                .any(|x| matches!(x, AssetChange::ImportFailed { path, .. } if path == "broken.png"))
+            && c.iter().any(
+                |x| matches!(x, AssetChange::ImportFailed { path, .. } if path == "broken.png"),
+            )
     });
 
     assert!(matches!(
@@ -392,7 +401,10 @@ fn changed_file_is_reimported_and_other_files_are_not() {
     let mut after = Vec::new();
     poll_service(&mut service, &mut after, |c| imported(c, "ok.png"));
 
-    assert!(imported(&after, "ok.png"), "changed file must be imported again");
+    assert!(
+        imported(&after, "ok.png"),
+        "changed file must be imported again"
+    );
     assert!(
         !after
             .iter()

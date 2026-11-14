@@ -6,10 +6,8 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use redox_editor_core::project::MANIFEST_FILE;
-use redox_editor_scene::{
-    SceneGitError, WorldGitTracker, diff_scene_files, load_scene_file,
-};
 use redox_editor_scene::format::{SceneEntity, SceneFile};
+use redox_editor_scene::{SceneGitError, WorldGitTracker, diff_scene_files, load_scene_file};
 use redox_reflect::ReflectValue;
 use redox_scene::EntityGuid;
 
@@ -51,10 +49,7 @@ fn git(dir: &Path, args: &[&str]) {
 
 fn init_repo(root: &Path) {
     git(root, &["init", "-b", "main"]);
-    git(
-        root,
-        &["config", "user.email", "test@redox.local"],
-    );
+    git(root, &["config", "user.email", "test@redox.local"]);
     git(root, &["config", "user.name", "RedOx Test"]);
 }
 

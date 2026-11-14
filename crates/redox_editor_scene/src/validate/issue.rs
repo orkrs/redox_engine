@@ -91,7 +91,7 @@ pub struct ValidationIssue {
 
 impl ValidationIssue {
     /// Whether the issue is an error.
-    pub fn is_error(self) -> bool {
+    pub fn is_error(&self) -> bool {
         self.severity == Severity::Error
     }
 }

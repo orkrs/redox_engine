@@ -1,9 +1,7 @@
 //! Tests for GUID-level scene diff.
 
-use redox_editor_scene::{
-    SceneEntityChange, SceneFile, diff_scene_files,
-};
 use redox_editor_scene::format::SceneEntity;
+use redox_editor_scene::{SceneEntityChange, SceneFile, diff_scene_files};
 use redox_reflect::ReflectValue;
 use redox_scene::EntityGuid;
 
@@ -32,10 +30,7 @@ fn add_entity_reports_added() {
         entities: vec![entity_with_name(guid, "cube")],
     };
     let changes = diff_scene_files(&old, &new);
-    assert_eq!(
-        changes,
-        vec![SceneEntityChange::Added { guid }]
-    );
+    assert_eq!(changes, vec![SceneEntityChange::Added { guid }]);
 }
 
 #[test]

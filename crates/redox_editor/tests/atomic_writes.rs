@@ -9,10 +9,40 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Files whose raw writes are allowed, with the reason.
-const ALLOWED: [(&str, &str); 1] = [(
-    "packager.rs",
-    "build artifacts (bundles, reports) written to the package folder, not editor state",
-)];
+const ALLOWED: [(&str, &str); 8] = [
+    (
+        "packager.rs",
+        "build artifacts (bundles, reports) written to the package folder, not editor state",
+    ),
+    (
+        "thumbnail_service.rs",
+        "generated thumbnail cache files under the project cache folder",
+    ),
+    (
+        "cook.rs",
+        "headless cook JSON report next to the pak (renamed atomically with the pak)",
+    ),
+    (
+        "validate.rs",
+        "CI validation JSON report, not editable scene or project state",
+    ),
+    (
+        "benchmark.rs",
+        "debugger benchmark export files written on explicit user export",
+    ),
+    (
+        "console.rs",
+        "console log export files written on explicit user export",
+    ),
+    (
+        "profiler_panel.rs",
+        "dev-only profiler frame dump from the profiler panel",
+    ),
+    (
+        "tests.rs",
+        "build crate integration tests write temporary fixture files",
+    ),
+];
 
 /// Call patterns that bypass `write_atomic`.
 const FORBIDDEN: [&str; 2] = ["fs::write(", "File::create("];

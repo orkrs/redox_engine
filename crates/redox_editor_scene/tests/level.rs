@@ -20,10 +20,8 @@ impl TempDir {
             .duration_since(UNIX_EPOCH)
             .map(|elapsed| elapsed.as_nanos())
             .unwrap_or(0);
-        let path = std::env::temp_dir().join(format!(
-            "redox_level_{tag}_{}_{nanos}",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("redox_level_{tag}_{}_{nanos}", std::process::id()));
         fs::create_dir_all(&path).expect("create temp dir");
         Self(path)
     }
@@ -119,7 +117,10 @@ fn dirty_state_follows_transform_edits_and_resets_on_save() {
 
     let entity = world.spawn();
     world.add_component(entity, Transform::default());
-    assert!(level.is_dirty(&registry, &world), "spawning must dirty the level");
+    assert!(
+        level.is_dirty(&registry, &world),
+        "spawning must dirty the level"
+    );
 
     let file = dir.path().join("dirty.scene.ron");
     level
@@ -131,7 +132,10 @@ fn dirty_state_follows_transform_edits_and_resets_on_save() {
         .get_component_mut::<Transform>(entity)
         .expect("transform present")
         .translation = Vec3::new(3.0, 0.0, 0.0);
-    assert!(level.is_dirty(&registry, &world), "editing Transform must dirty the level");
+    assert!(
+        level.is_dirty(&registry, &world),
+        "editing Transform must dirty the level"
+    );
 
     level.save(&registry, &mut world).expect("save again");
     assert!(!level.is_dirty(&registry, &world));

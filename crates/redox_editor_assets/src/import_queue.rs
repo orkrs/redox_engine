@@ -138,12 +138,7 @@ impl ImportQueue {
     }
 
     /// Queues an import with per-asset settings stored in the sidecar.
-    pub fn submit_with_settings(
-        &self,
-        path: PathBuf,
-        guid: AssetGuid,
-        settings: String,
-    ) -> bool {
+    pub fn submit_with_settings(&self, path: PathBuf, guid: AssetGuid, settings: String) -> bool {
         let Some(importer) = self.importers.for_path(&path) else {
             return false;
         };

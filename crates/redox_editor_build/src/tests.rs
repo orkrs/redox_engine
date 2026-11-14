@@ -7,20 +7,20 @@ use redox_asset::AssetRegistry;
 use redox_ecs::World;
 use redox_editor_core::editor_only::EditorOnly;
 use redox_editor_core::project::{
-    BuildProfile, BuildTarget, ProjectContext, ProjectManifest, MANIFEST_FILE,
+    BuildProfile, BuildTarget, MANIFEST_FILE, ProjectContext, ProjectManifest,
 };
 use redox_editor_core::project_template::ProjectTemplate;
+use redox_editor_scene::register_scene_components;
 use redox_math::{Transform, Vec3};
 use redox_reflect::TypeRegistry;
 use redox_scene::Name;
 use redox_scene::components::EntityGuid;
-use redox_editor_scene::register_scene_components;
 
+use crate::InclusionReason;
 use crate::plan::build_cook_plan;
 use crate::service::BuildService;
 use crate::snapshot::BuildSnapshot;
-use crate::validate::{validate_project, ValidationSeverity};
-use crate::InclusionReason;
+use crate::validate::{ValidationSeverity, validate_project};
 
 fn temp(tag: &str) -> PathBuf {
     let nanos = std::time::SystemTime::now()
@@ -69,10 +69,20 @@ fn cook_plan_includes_shared_texture_and_skips_unused() {
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("assets/textures")).expect("assets");
     fs::create_dir_all(dir.join("scenes")).expect("scenes");
-    fs::write(dir.join("assets/textures/shared.png"), crate::test_support::MIN_PNG).expect("png");
-    fs::write(dir.join("assets/textures/unused.png"), crate::test_support::MIN_PNG).expect("png");
+    fs::write(
+        dir.join("assets/textures/shared.png"),
+        crate::test_support::MIN_PNG,
+    )
+    .expect("png");
+    fs::write(
+        dir.join("assets/textures/unused.png"),
+        crate::test_support::MIN_PNG,
+    )
+    .expect("png");
     let (registry, _) = AssetRegistry::scan(dir.join("assets")).expect("scan");
-    let shared = registry.guid_of("textures/shared.png").expect("shared guid");
+    let shared = registry
+        .guid_of("textures/shared.png")
+        .expect("shared guid");
     let shared_text = format!("{:032x}", shared.0);
     let scene = dir.join("scenes/main.scene.ron");
     fs::write(
@@ -117,7 +127,9 @@ fn cook_plan_includes_shared_texture_and_skips_unused() {
     let profile = BuildProfile::release_default();
     let plan = build_cook_plan(&dir, &registry, &profile, &scene).expect("plan");
     assert!(plan.assets.len() >= 1, "{:?}", plan.assets);
-    let shared = registry.guid_of("textures/shared.png").expect("shared guid");
+    let shared = registry
+        .guid_of("textures/shared.png")
+        .expect("shared guid");
     assert!(plan.contains(shared));
     let unused_guid = registry
         .guid_of("textures/unused.png")
@@ -132,12 +144,12 @@ fn editor_only_entity_is_absent_from_build_snapshot() {
     register_scene_components(&mut registry);
     let mut world = World::new();
     let e = world.spawn();
-    world.add_component(e, Name::new("Ship"));
+    world.add_component(e, Name("Ship".into()));
     world.add_component(e, Transform::from_translation(Vec3::ZERO));
     world.add_component(e, EntityGuid(1));
     let gizmo = world.spawn();
     world.add_component(gizmo, EditorOnly);
-    world.add_component(gizmo, Name::new("Gizmo"));
+    world.add_component(gizmo, Name("Gizmo".into()));
     let snap = BuildSnapshot::from_world(&registry, &world);
     assert_eq!(snap.entity_count(), 1);
     assert!(!BuildSnapshot::is_stripped(&world, e));
@@ -150,7 +162,11 @@ fn cook_report_lists_reason_per_guid() {
     let _ = fs::remove_dir_all(&dir);
     ProjectContext::create(&dir, "Pkg", ProjectTemplate::ThreeDStarter).expect("create project");
     fs::create_dir_all(dir.join("assets/tex")).expect("tex dir");
-    fs::write(dir.join("assets/tex/albedo.png"), crate::test_support::MIN_PNG).expect("png");
+    fs::write(
+        dir.join("assets/tex/albedo.png"),
+        crate::test_support::MIN_PNG,
+    )
+    .expect("png");
     let (registry, _) = AssetRegistry::scan(dir.join("assets")).expect("scan");
     let tex = registry.guid_of("tex/albedo.png").expect("tex guid");
     let tex_text = format!("{:032x}", tex.0);

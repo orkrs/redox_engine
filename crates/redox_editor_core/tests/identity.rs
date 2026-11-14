@@ -13,9 +13,13 @@ fn context() -> EditorContext {
 fn create_entity_gives_the_new_entity_a_guid() {
     let ctx = context();
 
-    assert!(ctx.commands.run(&ctx, "create_entity"));
+    assert!(ctx.commands.lock().run(&ctx, "create_entity"));
 
-    let entity = ctx.selection.lock().primary.expect("the new entity is selected");
+    let entity = ctx
+        .selection
+        .lock()
+        .primary
+        .expect("the new entity is selected");
     let world = ctx.world.lock();
     assert!(world.get_component::<EntityGuid>(entity).is_some());
 }
@@ -38,7 +42,7 @@ fn duplicate_gets_a_new_guid_different_from_the_source() {
         .copied()
         .expect("source guid");
 
-    assert!(ctx.commands.run(&ctx, "duplicate"));
+    assert!(ctx.commands.lock().run(&ctx, "duplicate"));
 
     let copy = ctx.selection.lock().primary.expect("the copy is selected");
     assert_ne!(copy, source);
@@ -50,7 +54,10 @@ fn duplicate_gets_a_new_guid_different_from_the_source() {
         .expect("copy guid");
     assert_ne!(copy_guid, source_guid);
     assert_eq!(
-        ctx.world.lock().get_component::<EntityGuid>(source).copied(),
+        ctx.world
+            .lock()
+            .get_component::<EntityGuid>(source)
+            .copied(),
         Some(source_guid),
         "the source keeps its guid"
     );

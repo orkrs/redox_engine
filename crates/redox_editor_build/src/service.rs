@@ -68,12 +68,10 @@ pub fn resolve_profile_for_cook(
         }
         return Ok(profile);
     }
-    let picked = resolve_profile(manifest, name.or_else(|| {
-        manifest
-            .build_profiles
-            .first()
-            .map(|p| p.name.as_str())
-    }))?;
+    let picked = resolve_profile(
+        manifest,
+        name.or_else(|| manifest.build_profiles.first().map(|p| p.name.as_str())),
+    )?;
     Ok(picked.clone())
 }
 
@@ -106,8 +104,8 @@ impl BuildService {
         let assets_root = root.join(project.manifest().assets_root.as_str());
         let (registry, _) =
             AssetRegistry::scan(&assets_root).map_err(|e| BuildError::Failed(e.to_string()))?;
-        let seed = seed_scene_path(root, project.manifest(), profile)
-            .map_err(BuildError::Failed)?;
+        let seed =
+            seed_scene_path(root, project.manifest(), profile).map_err(BuildError::Failed)?;
         build_cook_plan(root, &registry, profile, &seed).map_err(BuildError::Failed)
     }
 
@@ -124,8 +122,8 @@ impl BuildService {
         let assets_root = root.join(project.manifest().assets_root.as_str());
         let (registry, _) =
             AssetRegistry::scan(&assets_root).map_err(|e| BuildError::Failed(e.to_string()))?;
-        let seed = seed_scene_path(root, project.manifest(), profile)
-            .map_err(BuildError::Failed)?;
+        let seed =
+            seed_scene_path(root, project.manifest(), profile).map_err(BuildError::Failed)?;
         let plan = build_cook_plan(root, &registry, profile, &seed).map_err(BuildError::Failed)?;
 
         let runtime_entities = snapshot_runtime_entities(root, project.manifest(), &seed, profile);

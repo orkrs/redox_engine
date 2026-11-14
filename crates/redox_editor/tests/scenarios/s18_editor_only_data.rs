@@ -19,14 +19,17 @@ fn editor_only_entities_are_not_written_to_the_scene_file() {
     let dir = h.install_sample("sample_project");
     h.open_project(&dir).expect("the sample project opens");
     h.open_start_scene().expect("the main scene opens");
-    let before = saved_entity_count(
-        &String::from_utf8(h.read_file(MAIN)).expect("the scene file is text"),
-    );
+    let before =
+        saved_entity_count(&String::from_utf8(h.read_file(MAIN)).expect("the scene file is text"));
 
     assert!(before > 0, "the scene file lists its entities");
     h.spawn_editor_only();
     h.spawn_editor_only();
-    assert_eq!(h.editor_only_count(), 2, "two editor-only entities exist in the editor");
+    assert_eq!(
+        h.editor_only_count(),
+        2,
+        "two editor-only entities exist in the editor"
+    );
     h.rename(
         h.find_by_name("Ground").expect("Ground exists"),
         "Ground edited",
@@ -42,5 +45,9 @@ fn editor_only_entities_are_not_written_to_the_scene_file() {
     );
 
     let h = h.restart();
-    assert_eq!(h.editor_only_count(), 0, "no editor-only entities after restart");
+    assert_eq!(
+        h.editor_only_count(),
+        0,
+        "no editor-only entities after restart"
+    );
 }

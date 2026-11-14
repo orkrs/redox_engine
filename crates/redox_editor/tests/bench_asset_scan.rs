@@ -34,12 +34,14 @@ fn asset_service_numbers_for_1000_and_10000_empty_files() {
         let create_ms = millis(started);
 
         let started = Instant::now();
-        h.open_project(&dir).expect("the project opens with a first scan");
+        h.open_project(&dir)
+            .expect("the project opens with a first scan");
         let first_open_ms = millis(started);
         let counts = h.asset_counts();
 
         let started = Instant::now();
-        h.open_project(&dir).expect("the project opens a second time");
+        h.open_project(&dir)
+            .expect("the project opens a second time");
         let reopen_ms = millis(started);
 
         for index in 0..BATCH {

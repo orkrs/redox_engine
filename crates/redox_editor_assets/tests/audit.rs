@@ -1,10 +1,10 @@
 //! EDT-C2 audit tests.
 
+use redox_editor_assets::AssetService;
 use redox_editor_assets::{
     AuditConfig, ReferenceViewerModel, build_size_map, export_size_map_csv, find_duplicates,
     find_orphans, parse_size_map_csv,
 };
-use redox_editor_assets::AssetService;
 use redox_reflect::ReflectValue;
 use serde::Serialize;
 use std::fs;
@@ -46,11 +46,8 @@ struct TestEntity {
 const SCENE: &str = "scenes/main.scene.ron";
 
 fn scene_with_ref(guid: &str, path: &str) -> String {
-    let mesh = ReflectValue::asset_ref(
-        "MeshHandle",
-        Some(guid.to_string()),
-        Some(path.to_string()),
-    );
+    let mesh =
+        ReflectValue::asset_ref("MeshHandle", Some(guid.to_string()), Some(path.to_string()));
     let scene = TestScene {
         format_version: 1,
         name: "main".into(),
@@ -69,7 +66,7 @@ fn orphan_png_not_referenced_from_scenes() {
     write(&root.0, "used.png", b"x");
     write(&root.0, "extra.png", b"y");
     let service = AssetService::open(&root.0).expect("open");
-  let guid = service.guid_of("used.png").expect("guid");
+    let guid = service.guid_of("used.png").expect("guid");
     write(
         &root.0,
         SCENE,
@@ -101,7 +98,11 @@ fn size_map_children_sum_parent() {
     write(&root.0, "textures/b.png", &[0u8; 20]);
     let service = AssetService::open(&root.0).expect("open");
     let tree = build_size_map(service.registry());
-    let textures = tree.children.iter().find(|c| c.path == "textures").expect("textures");
+    let textures = tree
+        .children
+        .iter()
+        .find(|c| c.path == "textures")
+        .expect("textures");
     assert_eq!(textures.disk_bytes, 30);
     assert_eq!(tree.disk_bytes, 30);
 }

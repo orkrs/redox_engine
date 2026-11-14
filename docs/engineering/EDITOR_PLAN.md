@@ -2,7 +2,7 @@
 
 Дата: 2026-11-05. Основание: целевое ТЗ `RedOx_Editor_Full_Spec.md` (в корне репозитория, пока не в git; далее «ТЗ») и аудит кода редактора на коммите `4feb336`. Это **план**, а не ТЗ: здесь есть сверка с кодом, срезы работы, приёмка, оценки и порядок.
 
-Как читать: §1 коротко о выводах; §2 что уже есть (по коду); §3 решения, которые нужны от владельца; §4 правила плана; §5–§7 срезы по этапам A, B, C; §8 что отложено и при каких условиях; §9 тесты и агенты; §10 риски; §11 приёмка.
+Как читать: §1 коротко о выводах; §2 что уже есть (по коду; снимок аудита, не live-статус); §3 решения владельца; §4 правила плана; §5–§7 срезы A/B/C и таблицы спек (§5.1, §6.1, §7.1 → `docs/engineering/specs/EDT-*.md`); §8 отложено; §9 тесты и агенты; §10 риски; §11 приёмка. Hotfix ссылок после A: [EDT-A8](specs/EDT-A8.md).
 
 Важное ограничение аудита: код редактора прочитан, **сам редактор не запускался**. Статус «есть» означает «в коде есть реализация», а не «проверено в работе».
 
@@ -256,6 +256,21 @@ Step one frame, выбор стартовой сцены и аргументов
 
 **Итого этап B:** ≈39 агент-дней (диапазон 32–50). Приёмка по ТЗ §23: пункты 7, 8, 14, 15, 16.
 
+### 6.1 Спеки этапа B
+
+| Срез | Спека | Размер | Крейты | Зависит от |
+|---|---|---|---|---|
+| B1 | [EDT-B1](specs/EDT-B1.md) Outliner и иерархия | ≈5 дней | ecs, editor_core/scene/ui | A2, A3 |
+| B2 | [EDT-B2](specs/EDT-B2.md) компоненты и массовое редактирование | ≈3–4 дня | reflect, editor_core/ui, крейты компонентов | A3, A5 |
+| B3 | [EDT-B3](specs/EDT-B3.md) viewport = движок | ≈8 дней | editor_viewport/editor/ui, render | A8; AST/MAT/SKY |
+| B4 | [EDT-B4](specs/EDT-B4.md) импорт моделей/текстур, миниатюры | ≈5 дней | editor_assets/ui, asset | A6, A8; желательно B3 |
+| B5 | [EDT-B5](specs/EDT-B5.md) редактор материалов `.matgraph` | ≈8 дней | matgraph, editor_ui/assets/core, render | MAT-02/08, A3 |
+| B6 | [EDT-B6](specs/EDT-B6.md) PIE и отладка | ≈4 дня | editor_debugger/core/ui | A1, A3, A4 |
+| B7 | [EDT-B7](specs/EDT-B7.md) валидация сцены | ≈3 дня | editor_scene/assets/ui/core | A2, A6/A8, B1 |
+| B8 | [EDT-B8](specs/EDT-B8.md) CLI validate/import/sample | ≈3 дня | cook, editor, scene/assets | B7, A6, A2 |
+
+Порядок (из §9): B1∥B2; B6∥B7∥B8; B3/B4/B5 по готовности движка. Перед B3 желателен hotfix [EDT-A8](specs/EDT-A8.md) (ссылки на ассеты).
+
 ## 7. Этап C: pipeline и production-корректность (срезы C1–C6)
 
 | Срез | Содержание | Оценка | Приёмка |
@@ -268,6 +283,17 @@ Step one frame, выбор стартовой сцены и аргументов
 | C6 Plugin API | Манифест, регистрация панелей/команд/importers/validation, safe mode; сначала внутренние плагины, native-плагины с предупреждением | 6 дней | Пункты 17 |
 
 **Итого этап C:** ≈28 агент-дней (диапазон 22–36).
+
+### 7.1 Спеки этапа C
+
+| Срез | Спека | Размер | Крейты | Зависит от |
+|---|---|---|---|---|
+| C1 | [EDT-C1](specs/EDT-C1.md) Build/Cook профили, замыкание, strip editor-only | ≈5 дней | editor_build, cook, assets, ui, core | A2, A8, B7/B8 |
+| C2 | [EDT-C2](specs/EDT-C2.md) аудит ассетов, Size Map, export | ≈4 дня | editor_assets/ui, asset | A6, A8 |
+| C3 | [EDT-C3](specs/EDT-C3.md) CPU/GPU profiler, bench runner | ≈7 дней | debugger, ui, core, render | A1; желательно B3 |
+| C4 | [EDT-C4](specs/EDT-C4.md) CI headless | ≈3 дня | `.github`, scripts | B8, C1 |
+| C5 | [EDT-C5](specs/EDT-C5.md) source control для сцен | ≈3 дня | editor_scene/ui | A2, WorldGitTracker |
+| C6 | [EDT-C6](specs/EDT-C6.md) Plugin API и safe mode | ≈6 дней | editor_plugins/core/ui | A1 (скелет), D6 |
 
 ## 8. Отложено (этапы D–F) и условия начала
 
@@ -291,7 +317,7 @@ Step one frame, выбор стартовой сцены и аргументов
   3. A3 и A4;
   4. A6, затем A7;
   5. этап B: B1, B2 параллельно; B6, B7, B8 параллельно; B3, B4, B5 по мере готовности зависимостей движка.
-- **Спеки:** этап A: `EDT-A1`…`EDT-A7` написаны (§5.1, порядок раундов §5.2); спеки этапов B и C (`EDT-B1`…`EDT-C6`) пишутся по мере подхода этапа.
+- **Спеки:** этап A: `EDT-A1`…`EDT-A7` (§5.1); hotfix ссылок [EDT-A8](specs/EDT-A8.md); этапы B и C: `EDT-B1`…`EDT-B8` (§6.1), `EDT-C1`…`EDT-C6` (§7.1).
 
 ## 10. Риски
 
@@ -342,6 +368,8 @@ Step one frame, выбор стартовой сцены и аргументов
 - Пометить как вне ближайшего охвата: multi-user, Visual Scripting, Sequencer, remote debugging, онлайн Asset Library.
 - Проверить внешние ссылки и номер версии Unreal в §26: в ходе аудита они не проверялись.
 
-## Открытая проблема после среза A (записано, не решено)
+## Открытая проблема после среза A → hotfix
 
-**EDT-A-07: ссылки сцены на ассеты теряются.** `MeshHandle` и `MaterialHandle` в мире хранят индекс слота, а не GUID и путь. Загрузчик сцены только проверяет путь на `MissingAsset`, а сохранение пишет пустую ссылку. Пересохранение сцены стирает ссылки на ассеты. Три сценария A7 помечены `#[ignore]` и ждут исправления: `the_sample_asset_reference_keeps_its_guid`, `a_forced_delete_leaves_missing_references_that_are_still_in_the_data`, `renaming_and_moving_an_asset_keeps_references_in_open_and_closed_scenes`. Нужно решение владельца о месте хранения ссылок (например, компонент `AssetRefs { guid, path }` в `redox_scene`). Строка в `KNOWN_LIMITS.md`: EDT-A-07.
+**EDT-A-07: ссылки сцены на ассеты теряются.** `MeshHandle` и `MaterialHandle` в мире хранят индекс слота, а не GUID и путь. Загрузчик сцены только проверяет путь на `MissingAsset`, а сохранение пишет пустую ссылку. Пересохранение сцены стирает ссылки на ассеты. Три сценария A7 помечены `#[ignore]`.
+
+Спека фикса: [EDT-A8](specs/EDT-A8.md) (хранить `AssetRef { guid, path, kind }` рядом с handle; roundtrip; снять `#[ignore]`). Строка в `KNOWN_LIMITS.md`: EDT-A-07 — закрывается вместе с A8. Желательно до B3/B4/C1.

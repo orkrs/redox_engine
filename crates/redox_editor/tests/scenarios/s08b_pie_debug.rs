@@ -20,7 +20,10 @@ fn step_advances_frame_counter_without_touching_dirty_baseline() {
         steps = h.pie.frame_count;
     }
     assert_eq!(steps, 4);
-    assert!(h.is_dirty());
+    assert!(
+        !h.is_dirty(),
+        "PIE steps must not change the saved scene baseline"
+    );
     h.stop();
     assert!(!h.pie.running);
 }

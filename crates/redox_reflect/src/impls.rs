@@ -9,13 +9,12 @@ impl Reflect for Transform {
     }
 
     fn reflect_schema() -> ReflectSchema {
-        let transform_field = |name: &'static str, type_name: &'static str, meta: FieldMeta| {
-            ReflectField {
+        let transform_field =
+            |name: &'static str, type_name: &'static str, meta: FieldMeta| ReflectField {
                 name,
                 type_name,
                 meta,
-            }
-        };
+            };
         ReflectSchema {
             type_name: Self::type_name(),
             fields: vec![

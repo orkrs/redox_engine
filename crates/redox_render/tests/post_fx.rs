@@ -21,6 +21,7 @@ use redox_render::systems::RenderObject;
 const SIZE: u32 = 128;
 
 struct Rig {
+    _gpu: common::GpuTestLock,
     renderer: Renderer,
     target: wgpu::Texture,
     view: wgpu::TextureView,
@@ -31,6 +32,7 @@ struct Rig {
 }
 
 fn rig() -> Option<Rig> {
+    let _gpu = common::lock_gpu();
     let adapter = common::adapter()?;
     let mut renderer = common::renderer(&adapter, SIZE)?;
     renderer.enable_taa(true);
@@ -63,6 +65,7 @@ fn rig() -> Option<Rig> {
     ));
     lights.ambient = Vec3::splat(0.6);
     Some(Rig {
+        _gpu,
         renderer,
         target,
         view,

@@ -71,7 +71,7 @@ pub fn build_cook_plan(
                 queue.push_back((
                     child,
                     InclusionReason::ImportedBy {
-                        guid: format!("{guid:032x}"),
+                        guid: guid.to_string(),
                     },
                 ));
             }
@@ -92,12 +92,10 @@ fn resolve_to_guid(
     registry: &AssetRegistry,
     sref: &redox_editor_assets::SceneRef,
 ) -> Result<Option<AssetGuid>, String> {
-    match resolve_ref(
-        registry,
-        sref.guid.as_deref(),
-        sref.path.as_deref(),
-    ) {
-        RefResolution::Resolved { guid, .. } | RefResolution::Restored { guid, .. } => Ok(Some(guid)),
+    match resolve_ref(registry, sref.guid.as_deref(), sref.path.as_deref()) {
+        RefResolution::Resolved { guid, .. } | RefResolution::Restored { guid, .. } => {
+            Ok(Some(guid))
+        }
         RefResolution::Unset => Ok(None),
         RefResolution::Missing { .. } => Ok(None),
     }
@@ -144,7 +142,7 @@ fn force_debug_tree(registry: &AssetRegistry, reasons: &mut HashMap<AssetGuid, I
     for (path, guid) in registry.iter() {
         if path.starts_with("debug/") || path.contains("/debug/") {
             reasons
-                .entry(*guid)
+                .entry(guid)
                 .or_insert(InclusionReason::ProfileForced);
         }
     }

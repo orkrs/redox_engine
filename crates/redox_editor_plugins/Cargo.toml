@@ -19,3 +19,6 @@ editor-native-plugins = []
 [dependencies]
 redox_editor_core = { path = "../redox_editor_core" }
 redox_editor_assets = { path = "../redox_editor_assets" }
+
+[dev-dependencies]
+redox_reflect = { path = "../redox_reflect" }

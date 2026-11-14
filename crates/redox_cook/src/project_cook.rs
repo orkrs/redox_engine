@@ -45,10 +45,7 @@ pub fn run(job: &CookJob) -> Result<CookReport, String> {
     let project = ProjectContext::open(&job.root).map_err(|e| e.to_string())?;
     let service = BuildService;
     let profile = service
-        .resolve_active(
-            project.manifest(),
-            job.profile.as_deref(),
-        )
+        .resolve_active(project.manifest(), job.profile.as_deref())
         .map_err(|e| e.to_string())?;
     let out_dir = project.root().join(".redox");
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
@@ -61,11 +58,7 @@ pub fn run(job: &CookJob) -> Result<CookReport, String> {
         let text = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
         println!("{text}");
     } else {
-        println!(
-            "cooked {} assets into {}",
-            report.assets.len(),
-            report.pak
-        );
+        println!("cooked {} assets into {}", report.assets.len(), report.pak);
     }
     Ok(report)
 }
@@ -86,8 +79,8 @@ mod tests {
     fn cook_temp_project_writes_report() {
         let dir = std::env::temp_dir().join(format!("cook_cli_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let project = ProjectContext::create(&dir, "C", ProjectTemplate::ThreeDStarter)
-            .expect("create");
+        let project =
+            ProjectContext::create(&dir, "C", ProjectTemplate::ThreeDStarter).expect("create");
         let _ = project;
         run(&CookJob {
             root: dir.clone(),

@@ -9,7 +9,7 @@ mod snapshot;
 mod validate;
 
 pub use cook::{CookAssetEntry, CookReport, cook_pack};
-pub use plan::{build_cook_plan, seed_scene_path, CookPlan, InclusionReason};
+pub use plan::{CookPlan, InclusionReason, build_cook_plan, seed_scene_path};
 pub use service::{
     BuildError, BuildService, list_profiles, resolve_profile, resolve_profile_for_cook,
 };

@@ -1,7 +1,7 @@
 //! Maps editor [`ViewportShading`] to engine debug modes without fake surrogates.
 
-use redox_render::context::ShaderDebugVizMode;
 use redox_render::Renderer;
+use redox_render::context::ShaderDebugVizMode;
 
 use crate::viewport_mode::ViewportShading;
 

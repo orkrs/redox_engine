@@ -57,9 +57,10 @@ impl ImportPresetId {
 }
 
 /// How materials are imported from glTF.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum MaterialMode {
     /// Engine default shading.
+    #[default]
     Default,
     /// Metallic-roughness workflow emphasized.
     MetallicRoughness,

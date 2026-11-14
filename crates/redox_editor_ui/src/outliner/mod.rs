@@ -6,8 +6,8 @@ mod world;
 use std::collections::HashSet;
 
 use redox_ecs::World;
-use redox_editor_core::{EditorContext, Selection};
 use redox_editor_core::undo::UndoStack;
+use redox_editor_core::{EditorContext, Selection};
 use redox_editor_scene::guid_index::GuidIndex;
 use redox_editor_scene::{WorldGitTracker, WorldSession};
 use redox_reflect::TypeRegistry;
@@ -91,16 +91,7 @@ impl OutlinerPanel {
         if scene_mode {
             let mut index = GuidIndex::new();
             index.rebuild(world);
-            scene::show_scene(
-                ui,
-                self,
-                world,
-                registry,
-                selection,
-                undo,
-                core,
-                &index,
-            )
+            scene::show_scene(ui, self, world, registry, selection, undo, core, &index)
         } else if let Some(session) = session {
             world::show_world(ui, &self.filter, world, selection, session, git)
         } else {

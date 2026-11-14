@@ -1,5 +1,82 @@
 //! Shared GPU test setup (tests are skipped when no adapter exists).
+//!
+//! [`lock_gpu`] serializes every GPU integration test in the process and across parallel
+//! `cargo test` binaries via a temp-dir flock file. Without it, multiple renderers on the same
+//! adapter panic inside wgpu when tests run in parallel.
+
 #![allow(dead_code)]
+
+use std::fs::{File, OpenOptions};
+use std::path::PathBuf;
+use std::sync::Mutex;
+
+/// Holds the cross-process GPU test lock until dropped.
+pub struct GpuTestLock {
+    /// Present only for the outermost guard in this process (`flock` is not re-entrant).
+    _file: Option<File>,
+}
+
+static GPU_LOCK_DEPTH: Mutex<u32> = Mutex::new(0);
+
+fn lock_path() -> PathBuf {
+    std::env::temp_dir().join("redox_gpu_test.lock")
+}
+
+/// Serializes GPU tests (threads and separate test binaries).
+pub fn lock_gpu() -> GpuTestLock {
+    let mut depth = GPU_LOCK_DEPTH
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if *depth == 0 {
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(lock_path())
+            .expect("open gpu test lock");
+        flock_exclusive(&file);
+        *depth = 1;
+        GpuTestLock { _file: Some(file) }
+    } else {
+        *depth += 1;
+        GpuTestLock { _file: None }
+    }
+}
+
+impl Drop for GpuTestLock {
+    fn drop(&mut self) {
+        let mut depth = GPU_LOCK_DEPTH
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        assert!(*depth > 0, "GpuTestLock drop with zero depth");
+        *depth -= 1;
+        if *depth == 0 {
+            if let Some(file) = self._file.take() {
+                flock_unlock(&file);
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+fn flock_exclusive(file: &File) {
+    use std::os::unix::io::AsRawFd;
+    let fd = file.as_raw_fd();
+    let ret = unsafe { libc::flock(fd, libc::LOCK_EX) };
+    assert_eq!(ret, 0, "flock LOCK_EX failed: {}", std::io::Error::last_os_error());
+}
+
+#[cfg(unix)]
+fn flock_unlock(file: &File) {
+    use std::os::unix::io::AsRawFd;
+    let fd = file.as_raw_fd();
+    let _ = unsafe { libc::flock(fd, libc::LOCK_UN) };
+}
+
+#[cfg(not(unix))]
+fn flock_exclusive(_file: &File) {}
+
+#[cfg(not(unix))]
+fn flock_unlock(_file: &File) {}
 
 pub fn adapter() -> Option<wgpu::Adapter> {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());

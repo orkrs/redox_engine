@@ -28,7 +28,6 @@ ktx2 = "0.5"
 redox_render = { path = "../redox_render" }
 # World cells for `bake-hlod`.
 redox_scene = { path = "../redox_scene" }
-redox_editor_assets = { path = "../redox_editor_assets" }
 wgpu = { workspace = true, optional = true }
 pollster = { version = "1", optional = true }
 

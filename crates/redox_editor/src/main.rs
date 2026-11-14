@@ -43,18 +43,15 @@ fn main() -> ExitCode {
             eprintln!("{e}");
             std::process::exit(1);
         }
-        return;
+        return ExitCode::SUCCESS;
     }
     if let Some(project) = cli.bench_project.as_deref() {
-        let out = cli
-            .bench_out
-            .as_deref()
-            .unwrap_or("report.json");
+        let out = cli.bench_out.as_deref().unwrap_or("report.json");
         if let Err(e) = run_bench(project, cli.bench_frames, out) {
             eprintln!("{e}");
             std::process::exit(1);
         }
-        return;
+        return ExitCode::SUCCESS;
     }
 
     env_logger::init();

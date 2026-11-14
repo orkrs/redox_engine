@@ -36,7 +36,10 @@ fn a_scene_entity_with_every_component_roundtrips_through_the_registry() {
     let entity = world.spawn();
     world.add_component(entity, Name("sun".into()));
     world.add_component(entity, Tag("light".into()));
-    world.add_component(entity, Transform::from_translation(Vec3::new(1.0, 2.0, 3.0)));
+    world.add_component(
+        entity,
+        Transform::from_translation(Vec3::new(1.0, 2.0, 3.0)),
+    );
     world.add_component(
         entity,
         DirectionalLight::new(Vec3::new(0.0, 1.0, 0.0), Vec3::ONE, 1.0),

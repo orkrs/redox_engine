@@ -60,7 +60,7 @@ opt-level = 3
 
 
 [workspace.dependencies]
-glam = "0.33"
+glam = { version = "0.33", features = ["mint"] }
 winit = "0.30"
 wgpu = "30"
 rapier3d = "0.36"

@@ -69,7 +69,7 @@ pub fn cook_pack(
             .cloned()
             .unwrap_or(InclusionReason::ProfileForced);
         assets.push(CookAssetEntry {
-            guid: format!("{guid:032x}"),
+            guid: guid.to_string(),
             path: path.to_owned(),
             reason,
         });

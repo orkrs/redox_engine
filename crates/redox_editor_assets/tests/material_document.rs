@@ -67,10 +67,7 @@ fn matgraph_roundtrip_through_document() {
     doc.path = Some(path.clone());
     doc.save().expect("save valid graph");
 
-    let (loaded, _) = (
-        MaterialDocument::open(&path, None).expect("open"),
-        (),
-    );
+    let (loaded, _) = (MaterialDocument::open(&path, None).expect("open"), ());
     assert_eq!(loaded.graph, doc.graph);
     assert!(!loaded.is_dirty());
 }

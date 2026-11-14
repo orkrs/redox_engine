@@ -21,12 +21,7 @@ impl ReferenceViewerPanel {
     }
 
     /// Sets the asset shown in the viewer.
-    pub fn select(
-        &mut self,
-        guid: AssetGuid,
-        registry: &AssetRegistry,
-        index: &ReferenceIndex,
-    ) {
+    pub fn select(&mut self, guid: AssetGuid, registry: &AssetRegistry, index: &ReferenceIndex) {
         self.selected = Some(guid);
         self.model.select(guid, registry, index);
     }
@@ -45,9 +40,7 @@ impl ReferenceViewerPanel {
         for incoming in &view.incoming {
             ui.label(format!(
                 "{} · entity {:?} · {}",
-                incoming.scene,
-                incoming.entity,
-                incoming.component
+                incoming.scene, incoming.entity, incoming.component
             ));
         }
         ui.heading("Outgoing");

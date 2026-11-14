@@ -120,7 +120,10 @@ impl redox_reflect::Reflect for AttributeSet {
         value: &redox_reflect::ReflectValue,
     ) -> Result<(), redox_reflect::ReflectError> {
         let read = |name: &str, target: &mut f32| {
-            if let Some(v) = value.field(name).and_then(redox_reflect::ReflectValue::as_f32) {
+            if let Some(v) = value
+                .field(name)
+                .and_then(redox_reflect::ReflectValue::as_f32)
+            {
                 *target = v;
             }
         };

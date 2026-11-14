@@ -29,7 +29,6 @@ use redox_asset::guid::AssetStatus;
 use redox_ecs::hierarchy::{Parent, set_parent};
 use redox_ecs::{Entity, World};
 use redox_editor_assets::{AssetService, DeleteOutcome, RefResolution};
-use redox_editor_scene::ResolvedAssetRef;
 use redox_editor_core::EditorContext;
 use redox_editor_core::EditorLog;
 use redox_editor_core::autosave::{AutosavePolicy, AutosaveService, AutosaveSource, WriteMode};
@@ -42,6 +41,7 @@ use redox_editor_core::recovery::{
 use redox_editor_core::settings::EditorSettings;
 use redox_editor_core::undo::{UndoCommand, UndoStack};
 use redox_editor_debugger::PieSession;
+use redox_editor_scene::ResolvedAssetRef;
 use redox_editor_scene::guid_index::GuidIndex;
 use redox_editor_scene::{Level, LoadReport, SceneDocument, register_scene_components};
 use redox_math::{Transform, Vec3};
@@ -396,9 +396,13 @@ impl EditorHarness {
                 .save_as(&path, &registry, &mut world)
                 .map_err(|e| format!("{e:?}"));
         }
-        match redox_editor_core::save_level_if_allowed(&self.pie, level, &registry, &mut world) {
-            Ok(redox_editor_core::PieSaveBlock::Allowed) => Ok(()),
-            Ok(redox_editor_core::PieSaveBlock::BlockedByPie) => Err("save blocked during PIE".into()),
+        match redox_editor_debugger::pie_save::save_level_if_allowed(
+            &self.pie, level, &registry, &mut world,
+        ) {
+            Ok(redox_editor_debugger::pie_save::PieSaveBlock::Allowed) => Ok(()),
+            Ok(redox_editor_debugger::pie_save::PieSaveBlock::BlockedByPie) => {
+                Err("save blocked during PIE".into())
+            }
             Err(e) => Err(format!("{e:?}")),
         }
     }
@@ -446,7 +450,7 @@ impl EditorHarness {
 
     /// Runs the command `id` from the command registry. `false` for an unknown id.
     pub fn run(&self, id: &str) -> bool {
-        self.ctx.commands.run(&self.ctx, id)
+        self.ctx.commands.lock().run(&self.ctx, id)
     }
 
     /// Snapshot of every registered component of the world.
@@ -844,6 +848,17 @@ impl EditorHarness {
         std::fs::write(path, bytes).expect("the file is written");
     }
 
+    /// Writes an asset file and refreshes the asset registry when a project is open.
+    pub fn write_asset(&mut self, relative: &str, bytes: &[u8]) {
+        self.write_file(relative, bytes);
+        if let Some(assets) = self.assets.as_mut() {
+            for _ in 0..8 {
+                assets.tick();
+            }
+            let _ = assets.rescan();
+        }
+    }
+
     /// Changes the content of an asset by one appended byte, so the watcher sees a change.
     pub fn touch_asset(&self, relative: &str) {
         let path = self.project_dir().join(relative);
@@ -970,9 +985,12 @@ impl EditorHarness {
     /// Writes autosave settings into `editor_settings.ron`.
     pub fn save_autosave_policy(&self, policy: AutosavePolicy) -> Result<(), String> {
         std::fs::create_dir_all(self.config_dir()).map_err(|e| e.to_string())?;
-        EditorSettings { autosave: policy }
-            .save(&self.config_dir().join("editor_settings.ron"))
-            .map_err(|e| format!("{e:?}"))
+        EditorSettings {
+            autosave: policy,
+            ..EditorSettings::default()
+        }
+        .save(&self.config_dir().join("editor_settings.ron"))
+        .map_err(|e| format!("{e:?}"))
     }
 
     /// The autosave policy read from `editor_settings.ron` (default when the file is missing).

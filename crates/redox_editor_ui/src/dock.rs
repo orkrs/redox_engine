@@ -197,7 +197,7 @@ impl EditorDock {
             }
         } else if !visible && present {
             if let Some(path) = self.tree.find_tab(&Tab::HelloPlugin) {
-                self.tree[path.surface][path.node].remove_tab(Tab::HelloPlugin);
+                self.tree.remove_tab(path);
             }
         }
     }
@@ -460,9 +460,7 @@ impl TabViewer for TabViewerImpl<'_> {
                 if let Some(path) = self.ui_ctx.assets.lock().take_import_log_focus() {
                     shell.focus(path);
                 }
-                if let Some(retry) =
-                    shell.show(ui, service.import_log_mut())
-                {
+                if let Some(retry) = shell.show(ui, service.import_log_mut()) {
                     let _ = service.retry_import(&retry);
                 }
             }
@@ -486,10 +484,7 @@ impl TabViewer for TabViewerImpl<'_> {
                     ui.label("Assets are not loaded.");
                     return;
                 };
-                self.ui_ctx
-                    .audit
-                    .lock()
-                    .show(ui, service.registry());
+                self.ui_ctx.audit.lock().show(ui, service.registry());
             }
             Tab::Console => {
                 let mut commit_msg = self.ui_ctx.scene_commit_message.lock();
@@ -523,28 +518,22 @@ impl TabViewer for TabViewerImpl<'_> {
                                 session.sync_graph_from_view();
                             }
                         }
-                        MaterialPanelAction::Save => {
-                            match session.save() {
-                                Ok(path) => {
-                                    self.ui_ctx
-                                        .log(format!("[INFO] Saved material {path}"));
-                                }
-                                Err(err) => {
-                                    self.ui_ctx
-                                        .log(format!("[ERROR] Material save failed: {err}"));
-                                }
+                        MaterialPanelAction::Save => match session.save() {
+                            Ok(path) => {
+                                self.ui_ctx.log(format!("[INFO] Saved material {path}"));
                             }
-                        }
+                            Err(err) => {
+                                self.ui_ctx
+                                    .log(format!("[ERROR] Material save failed: {err}"));
+                            }
+                        },
                     }
                     let graph = crate::material_canvas::graph_from_view(&session.view);
                     let active = crate::material_canvas::focus_from_report(
                         &session.compile,
                         session.focused_node,
                     );
-                    self.ui_ctx
-                        .graph
-                        .lock()
-                        .load_material(graph, active);
+                    self.ui_ctx.graph.lock().load_material(graph, active);
                     *self.ui_ctx.material.lock() = Some(session);
                 }
                 let agent_e = self.ui_ctx.resolve_graph_agent_entity();
@@ -565,12 +554,7 @@ impl TabViewer for TabViewerImpl<'_> {
                     if let Some(mat) = session.as_mut() {
                         let (rect, response) =
                             ui.allocate_exact_size(ui.available_size(), egui::Sense::drag());
-                        graph.show_material_canvas(
-                            ui,
-                            rect,
-                            &response,
-                            &mut mat.view,
-                        );
+                        graph.show_material_canvas(ui, rect, &response, &mut mat.view);
                         mat.sync_graph_from_view();
                     } else {
                         graph.show(ui, None, None, None, None, dt);

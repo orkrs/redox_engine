@@ -9,8 +9,10 @@ struct TempRoot(PathBuf);
 
 impl TempRoot {
     fn new(name: &str) -> Self {
-        let dir =
-            std::env::temp_dir().join(format!("redox_import_settings_{name}_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "redox_import_settings_{name}_{}",
+            std::process::id()
+        ));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("temp");
         Self(dir)
@@ -55,6 +57,7 @@ fn reimport_after_touch_keeps_settings() {
     let before = service.per_asset_settings("a.png").expect("read");
     write(&root.0, "a.png", &png(4, 5));
     service.tick();
+    service.rescan().expect("rescan after touch");
     service.import("a.png");
     wait_idle(&mut service);
     let after = service.per_asset_settings("a.png").expect("read");
@@ -83,10 +86,14 @@ fn preset_change_marks_outdated() {
 }
 
 fn wait_idle(service: &mut AssetService) {
-    for _ in 0..1000 {
+    for _ in 0..10_000 {
         service.tick();
         if service.import_counts().importing == 0 {
-            break;
+            for _ in 0..16 {
+                service.tick();
+            }
+            return;
         }
     }
+    panic!("import queue did not become idle");
 }

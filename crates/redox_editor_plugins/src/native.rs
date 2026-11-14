@@ -30,7 +30,9 @@ impl std::fmt::Display for NativePluginError {
                     "native editor plugins are not enabled in this build (enable feature editor-native-plugins)"
                 )
             }
-            Self::NotImplemented(message) => write!(f, "native plugin loading is not implemented: {message}"),
+            Self::NotImplemented(message) => {
+                write!(f, "native plugin loading is not implemented: {message}")
+            }
         }
     }
 }

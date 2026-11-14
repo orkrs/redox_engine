@@ -78,7 +78,7 @@ pub struct ConsoleFilter {
 impl ConsoleFilter {
     /// Returns whether `entry` passes the filter.
     pub fn matches(&self, entry: &ConsoleEntry) -> bool {
-        if entry.level_weight() < self.min_level_weight() {
+        if entry.level.level_weight() < self.min_level_weight() {
             return false;
         }
         if let Some(cat) = &self.category
@@ -133,7 +133,10 @@ impl ConsoleModel {
     }
 
     /// Filtered entries.
-    pub fn filtered<'a>(&'a self, filter: &ConsoleFilter) -> impl Iterator<Item = &'a ConsoleEntry> {
+    pub fn filtered<'a>(
+        &'a self,
+        filter: &ConsoleFilter,
+    ) -> impl Iterator<Item = &'a ConsoleEntry> {
         self.entries.iter().filter(|e| filter.matches(e))
     }
 
@@ -160,12 +163,10 @@ impl ConsoleModel {
     }
 
     /// GUID from entry at `index` in the filtered view, if any.
-    pub fn filtered_guid_at(
-        &self,
-        filter: &ConsoleFilter,
-        index: usize,
-    ) -> Option<&str> {
-        self.filtered(filter).nth(index).and_then(|e| e.entity_guid.as_deref())
+    pub fn filtered_guid_at(&self, filter: &ConsoleFilter, index: usize) -> Option<&str> {
+        self.filtered(filter)
+            .nth(index)
+            .and_then(|e| e.entity_guid.as_deref())
     }
 }
 
@@ -221,9 +222,8 @@ mod tests {
 
     #[test]
     fn parse_extracts_guid_for_selection() {
-        let entry = ConsoleEntry::parse_line(
-            "[INFO] Selected entity 0123456789abcdef0123456789abcdef",
-        );
+        let entry =
+            ConsoleEntry::parse_line("[INFO] Selected entity 0123456789abcdef0123456789abcdef");
         assert_eq!(
             entry.entity_guid.as_deref(),
             Some("0123456789abcdef0123456789abcdef")

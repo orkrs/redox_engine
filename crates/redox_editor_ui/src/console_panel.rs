@@ -39,7 +39,8 @@ impl ConsolePanel {
                 if let Err(err) = model.export_filtered(&filter, path) {
                     core.log.error(format!("console export failed: {err}"));
                 } else {
-                    core.log.info(format!("console exported to {}", path.display()));
+                    core.log
+                        .info(format!("console exported to {}", path.display()));
                 }
             }
         });
@@ -51,9 +52,10 @@ impl ConsolePanel {
                 let world = core.world.lock();
                 let hits = search_runtime_entities(&world, &search);
                 if let Some(hit) = hits.first() {
-                    *ctx.runtime_highlight.lock() = redox_editor_debugger::RuntimeInspectorHighlight {
-                        entity: Some(hit.entity),
-                    };
+                    *ctx.runtime_highlight.lock() =
+                        redox_editor_debugger::RuntimeInspectorHighlight {
+                            entity: Some(hit.entity),
+                        };
                     *ctx.debug_flags.lock() = {
                         let mut flags = *ctx.debug_flags.lock();
                         flags.highlight_runtime_entity = Some(hit.entity.id());

@@ -1,14 +1,17 @@
 //! Applies [`ViewportRuntimeSettings`] to [`Renderer`].
 
-use redox_render::post::fog::FogSettings;
 use redox_render::Renderer;
 use redox_render::gi::probes::GiDebug;
+use redox_render::post::fog::FogSettings;
 use redox_render::sky::SkyMode;
 
 use redox_editor_core::viewport_prefs::{ViewportRuntimeSettings, ViewportToggleStatus};
 
 /// Pushes editor viewport toggles into the engine; returns overlay hints for unavailable paths.
-pub fn apply_viewport_runtime(renderer: &mut Renderer, cfg: &ViewportRuntimeSettings) -> ViewportToggleStatus {
+pub fn apply_viewport_runtime(
+    renderer: &mut Renderer,
+    cfg: &ViewportRuntimeSettings,
+) -> ViewportToggleStatus {
     let mut status = ViewportToggleStatus::default();
 
     if cfg.procedural_sky {

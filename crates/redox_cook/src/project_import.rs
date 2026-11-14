@@ -1,10 +1,12 @@
 //! `redox_cook import <project-root> [--path <file>]`
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 
-use redox_editor_assets::{AssetService, ImportEvent, ImportSettings};
+use redox_asset::guid::AssetStatus;
+use redox_editor_assets::{AssetService, ImportSettings};
 use redox_editor_core::project::ProjectContext;
 use serde::Serialize;
 
@@ -65,18 +67,18 @@ pub fn run(job: &ImportJob) -> Result<ImportCliReport, String> {
     settings.auto_import = false;
     let mut service = AssetService::open_with(&assets, settings).map_err(|e| e.to_string())?;
 
+    let mut touched = HashSet::new();
     if let Some(path) = &job.path {
-        queue_file(&mut service, project.root(), path)?;
+        let rel = queue_file(&mut service, project.root(), path)?;
+        touched.insert(rel);
     } else {
         let root = service.registry().root().to_path_buf();
-        walk_importable(&root, &root, &mut service)?;
+        walk_importable(&root, &root, &mut service, &mut touched)?;
     }
 
     let mut report = ImportCliReport::default();
     wait_until_idle(&mut service);
-    for event in collect_events(&mut service) {
-        record_event(&mut report, &service, event);
-    }
+    fill_report_from_registry(&service, &touched, &mut report);
     report.imported.sort();
     report.failed.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(report)
@@ -87,7 +89,11 @@ pub fn exit_code(report: &ImportCliReport) -> u8 {
     if report.failed.is_empty() { 0 } else { 1 }
 }
 
-fn queue_file(service: &mut AssetService, project_root: &Path, rel: &Path) -> Result<(), String> {
+fn queue_file(
+    service: &mut AssetService,
+    project_root: &Path,
+    rel: &Path,
+) -> Result<String, String> {
     let abs = if rel.is_absolute() {
         rel.to_path_buf()
     } else {
@@ -101,15 +107,20 @@ fn queue_file(service: &mut AssetService, project_root: &Path, rel: &Path) -> Re
     if !service.import(&rel) {
         return Err(format!("cannot queue import for {rel}"));
     }
-    Ok(())
+    Ok(rel)
 }
 
-fn walk_importable(root: &Path, here: &Path, service: &mut AssetService) -> Result<(), String> {
+fn walk_importable(
+    root: &Path,
+    here: &Path,
+    service: &mut AssetService,
+    touched: &mut HashSet<String>,
+) -> Result<(), String> {
     for entry in std::fs::read_dir(here).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
         if path.is_dir() {
-            walk_importable(root, &path, service)?;
+            walk_importable(root, &path, service, touched)?;
             continue;
         }
         if path.extension().and_then(|e| e.to_str()) == Some("meta") {
@@ -119,6 +130,7 @@ fn walk_importable(root: &Path, here: &Path, service: &mut AssetService) -> Resu
             .strip_prefix(root)
             .map_err(|_| "path outside assets root".to_string())?;
         let rel = rel.to_string_lossy().replace('\\', "/");
+        touched.insert(rel.clone());
         let _ = service.import(&rel);
     }
     Ok(())
@@ -135,43 +147,25 @@ fn wait_until_idle(service: &mut AssetService) {
     }
 }
 
-fn collect_events(service: &mut AssetService) -> Vec<ImportEvent> {
-    let mut events = Vec::new();
-    for _ in 0..20_000 {
-        let _ = service.tick();
-        events.extend(service.drain_import_events());
-        if service.import_counts().importing == 0 {
-            break;
+fn fill_report_from_registry(
+    service: &AssetService,
+    touched: &HashSet<String>,
+    report: &mut ImportCliReport,
+) {
+    for path in touched {
+        match service.registry().status(path.as_str()) {
+            Some(AssetStatus::Imported) => report.imported.push(path.to_string()),
+            Some(AssetStatus::Failed(message)) => report.failed.push(ImportFailEntry {
+                path: path.to_string(),
+                message: message.clone(),
+            }),
+            other => report.failed.push(ImportFailEntry {
+                path: path.to_string(),
+                message: other
+                    .map(|status| format!("{status:?}"))
+                    .unwrap_or_else(|| "asset is not registered".into()),
+            }),
         }
-        thread::sleep(Duration::from_millis(1));
-    }
-    events
-}
-
-fn record_event(report: &mut ImportCliReport, service: &AssetService, event: ImportEvent) {
-    match event {
-        ImportEvent::Finished { path, .. } => {
-            if let Ok(rel) = path.strip_prefix(service.registry().root()) {
-                report.imported.push(rel.to_string_lossy().into_owned());
-            }
-        }
-        ImportEvent::Failed { path, message, .. } => {
-            let rel = path
-                .strip_prefix(service.registry().root())
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_else(|_| path.display().to_string());
-            report.failed.push(ImportFailEntry {
-                path: rel,
-                message,
-            });
-        }
-        ImportEvent::Cancelled { path, .. } => {
-            report.failed.push(ImportFailEntry {
-                path: path.display().to_string(),
-                message: "cancelled".into(),
-            });
-        }
-        _ => {}
     }
 }
 

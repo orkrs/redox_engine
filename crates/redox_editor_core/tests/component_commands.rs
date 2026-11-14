@@ -3,8 +3,8 @@
 use redox_ecs::{Entity, World};
 use redox_editor_core::component_catalog::DependencyPromptAnswer;
 use redox_editor_core::component_commands::{
-    bulk_add_component, component_add, component_copy_values, component_remove,
-    record_component_transaction, ComponentAddResult,
+    ComponentAddResult, bulk_add_component, component_add, component_copy_values, component_remove,
+    record_component_transaction,
 };
 use redox_editor_core::inspector_model::InspectorModel;
 use redox_editor_core::{UndoCommand, UndoStack};
@@ -49,8 +49,7 @@ fn add_then_undo_removes_the_component() {
         "Marker",
         Some(DependencyPromptAnswer::Continue),
     )
-    .expect("add")
-    else {
+    .expect("add") else {
         panic!("expected ready add");
     };
     let mut undo = UndoStack::default();
@@ -67,12 +66,7 @@ fn remove_then_undo_restores_value() {
     let registry = registry();
     let mut world = World::new();
     let entity = spawn(&mut world);
-    world.add_component(
-        entity,
-        Marker {
-            weight: 2.5,
-        },
-    );
+    world.add_component(entity, Marker { weight: 2.5 });
     let before = registry
         .read_component(&world, entity, "Marker")
         .expect("marker");
@@ -101,12 +95,7 @@ fn copy_values_to_three_entities_is_one_transaction() {
     let registry = registry();
     let mut world = World::new();
     let source = spawn(&mut world);
-    world.add_component(
-        source,
-        Marker {
-            weight: 9.0,
-        },
-    );
+    world.add_component(source, Marker { weight: 9.0 });
     let mut targets = Vec::new();
     for w in [1.0_f32, 2.0, 3.0] {
         let e = spawn(&mut world);

@@ -7,9 +7,7 @@ use std::path::{Path, PathBuf};
 use redox_asset::guid::AssetStatus;
 use redox_asset::{AssetGuid, AssetRegistry, DependentRef};
 pub use redox_editor_assets::AssetKind;
-use redox_editor_assets::{
-    AssetAction, BrowserEntry, BrowserModel, StatusFilter, actions_for,
-};
+use redox_editor_assets::{AssetAction, BrowserEntry, BrowserModel, StatusFilter, actions_for};
 
 use crate::material_editor::MaterialOpenRequest;
 
@@ -264,10 +262,7 @@ impl AssetBrowserPanel {
                             let texture = ui.ctx().load_texture(
                                 format!("thumb_{}", entry.guid),
                                 egui::ColorImage::from_rgba_unmultiplied(
-                                    [
-                                        rgba.width() as usize,
-                                        rgba.height() as usize,
-                                    ],
+                                    [rgba.width() as usize, rgba.height() as usize],
                                     rgba.as_raw(),
                                 ),
                                 egui::TextureOptions::LINEAR,
@@ -427,7 +422,11 @@ impl AssetBrowserPanel {
         });
     }
 
-    fn show_selected_details(&mut self, ui: &mut egui::Ui, root: &Path) -> Option<AssetSpawnRequest> {
+    fn show_selected_details(
+        &mut self,
+        ui: &mut egui::Ui,
+        root: &Path,
+    ) -> Option<AssetSpawnRequest> {
         let entry = self.model.selected()?.clone();
         let mut spawn = None;
         ui.separator();
@@ -445,7 +444,10 @@ impl AssetBrowserPanel {
             self.ensure_gltf_meta(&abs);
             match self.meta_cache.get(&abs) {
                 Some(Ok(meta)) => {
-                    ui.label(format!("glTF: {} nodes · {} meshes", meta.nodes, meta.meshes));
+                    ui.label(format!(
+                        "glTF: {} nodes · {} meshes",
+                        meta.nodes, meta.meshes
+                    ));
                 }
                 Some(Err(err)) => {
                     ui.colored_label(
@@ -553,7 +555,9 @@ impl AssetBrowserPanel {
                             dep.component
                         ));
                     }
-                    ui.label("Undo is not available for this delete. The references become missing.");
+                    ui.label(
+                        "Undo is not available for this delete. The references become missing.",
+                    );
                     ui.horizontal(|ui| {
                         if ui.button("Delete anyway").clicked() {
                             answer = Some(true);
@@ -566,7 +570,8 @@ impl AssetBrowserPanel {
                 match answer {
                     None => Some(Dialog::ForceDelete { path, dependents }),
                     Some(true) => {
-                        self.requests.push(AssetRequest::Delete { path, force: true });
+                        self.requests
+                            .push(AssetRequest::Delete { path, force: true });
                         None
                     }
                     Some(false) => None,

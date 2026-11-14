@@ -33,7 +33,9 @@ fn scene_io_numbers_for_1000_10000_and_50000_entities() {
         let started = Instant::now();
         h.save().expect("the scene is saved");
         let save_ms = millis(started);
-        let file_bytes = std::fs::metadata(dir.join(SCENE)).map(|m| m.len()).unwrap_or(0);
+        let file_bytes = std::fs::metadata(dir.join(SCENE))
+            .map(|m| m.len())
+            .unwrap_or(0);
 
         let started = Instant::now();
         let snapshot = h.snapshot();

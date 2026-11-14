@@ -31,7 +31,10 @@ fn asset_refs_survive_ron() {
     let back: ReflectValue = ron::from_str(&text).expect("parse");
     let mut restored = AssetRefs::default();
     restored.apply(&back).expect("apply");
-    assert_eq!(restored.get("MeshHandle").map(|r| r.kind), Some(AssetKind::Mesh));
+    assert_eq!(
+        restored.get("MeshHandle").map(|r| r.kind),
+        Some(AssetKind::Mesh)
+    );
     assert_eq!(
         restored.get("MeshHandle").and_then(|r| r.guid.as_deref()),
         Some("00000000000000000000000000001002")
@@ -52,10 +55,7 @@ fn unknown_fields_on_asset_refs_are_ignored() {
                             "guid".into(),
                             ReflectValue::String("00000000000000000000000000009999".into()),
                         ),
-                        (
-                            "path".into(),
-                            ReflectValue::String("models/x.glb".into()),
-                        ),
+                        ("path".into(), ReflectValue::String("models/x.glb".into())),
                         ("kind".into(), ReflectValue::String("Mesh".into())),
                         ("future".into(), ReflectValue::I64(1)),
                     ],
@@ -100,6 +100,8 @@ fn asset_refs_restore_through_world_registry() {
     let mut loaded = World::new();
     registry.from_ron(&mut loaded, &text).expect("from_ron");
     let found = loaded.all_entities().next().expect("entity");
-    let saved = loaded.get_component::<AssetRefs>(found).expect("asset refs");
+    let saved = loaded
+        .get_component::<AssetRefs>(found)
+        .expect("asset refs");
     assert_eq!(saved, &refs);
 }

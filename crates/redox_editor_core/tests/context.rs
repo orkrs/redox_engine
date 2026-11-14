@@ -18,7 +18,8 @@ fn a_context_is_created_without_a_window() {
     let ctx = context();
 
     assert_eq!(ctx.world.lock().all_entities().count(), 0);
-    let ids = ctx.commands.ids();
+    let commands = ctx.commands.lock();
+    let ids = commands.ids();
     assert!(ids.contains(&"create_entity"));
     assert!(ids.contains(&"duplicate"));
     assert!(ids.contains(&"delete"));
@@ -28,7 +29,7 @@ fn a_context_is_created_without_a_window() {
 fn create_entity_adds_an_entity_with_a_transform_and_selects_it() {
     let ctx = context();
 
-    assert!(ctx.commands.run(&ctx, "create_entity"));
+    assert!(ctx.commands.lock().run(&ctx, "create_entity"));
 
     let entity = ctx
         .selection
@@ -58,7 +59,7 @@ fn duplicate_copies_the_transform_one_unit_along_x() {
     };
     ctx.selection.lock().set_primary(Some(source));
 
-    assert!(ctx.commands.run(&ctx, "duplicate"));
+    assert!(ctx.commands.lock().run(&ctx, "duplicate"));
 
     let copy = ctx.selection.lock().primary.expect("the copy is selected");
     assert!(copy != source);
@@ -73,14 +74,14 @@ fn duplicate_copies_the_transform_one_unit_along_x() {
 #[test]
 fn delete_removes_the_selected_entity_and_clears_the_selection() {
     let ctx = context();
-    assert!(ctx.commands.run(&ctx, "create_entity"));
+    assert!(ctx.commands.lock().run(&ctx, "create_entity"));
     let entity = ctx
         .selection
         .lock()
         .primary
         .expect("the new entity is selected");
 
-    assert!(ctx.commands.run(&ctx, "delete"));
+    assert!(ctx.commands.lock().run(&ctx, "delete"));
 
     assert_eq!(ctx.world.lock().all_entities().count(), 0);
     assert!(
@@ -98,7 +99,7 @@ fn delete_removes_the_selected_entity_and_clears_the_selection() {
 fn an_unknown_command_is_logged_and_reported() {
     let ctx = context();
 
-    assert!(!ctx.commands.run(&ctx, "no_such_command"));
+    assert!(!ctx.commands.lock().run(&ctx, "no_such_command"));
 
     assert!(
         ctx.log

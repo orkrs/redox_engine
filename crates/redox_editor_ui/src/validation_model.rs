@@ -1,12 +1,13 @@
 //! Headless Issues panel model (EDT-B7 step 3): filtering and actions without egui.
 
-use redox_editor_assets::{AssetRegistry, ReferenceIndex};
+use redox_asset::AssetRegistry;
+use redox_ecs::World;
+use redox_editor_assets::ReferenceIndex;
 use redox_editor_scene::validate::{
-    apply_issue_action, validate_level, IssueUserAction, Severity, ValidateLevelOptions,
-    ValidationIssue, ValidationReport, ValidationSettings,
+    IssueUserAction, Severity, ValidateLevelOptions, ValidationIssue, ValidationReport,
+    ValidationSettings, apply_issue_action, validate_level,
 };
 use redox_editor_scene::{Level, LoadReport};
-use redox_ecs::World;
 use redox_reflect::TypeRegistry;
 use std::path::Path;
 

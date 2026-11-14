@@ -355,9 +355,7 @@ impl TypeRegistry {
             .get(type_name)
             .ok_or_else(|| ReflectError::msg(format!("unregistered type {type_name}")))?;
         if (reg.has)(&*world, entity) {
-            return Err(ReflectError::msg(format!(
-                "entity already has {type_name}"
-            )));
+            return Err(ReflectError::msg(format!("entity already has {type_name}")));
         }
         let value = (reg.default)();
         (reg.insert)(world, entity, &value)
@@ -425,7 +423,9 @@ impl TypeRegistry {
         if let Some(reg) = self.by_name.get_mut(type_name) {
             reg.read = read;
         }
-        if let (Some(id), Some(reg)) = (type_id, self.by_id.get_mut(&id)) {
+        if let Some(id) = type_id
+            && let Some(reg) = self.by_id.get_mut(&id)
+        {
             reg.read = read;
         }
     }

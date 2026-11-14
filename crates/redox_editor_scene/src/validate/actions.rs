@@ -1,9 +1,9 @@
 //! Fix, Select and Open actions on validation issues.
 
-use redox_ecs::hierarchy::detach;
-use redox_ecs::{Parent, World};
+use redox_ecs::hierarchy::{Children, Parent};
+use redox_ecs::{Entity, World};
 use redox_editor_core::guid::GuidResolver;
-use redox_editor_core::undo::{capture_entity, UndoCommand, UndoError, UndoStack};
+use redox_editor_core::undo::{UndoCommand, UndoError, UndoStack, capture_entity};
 use redox_math::Transform;
 use redox_reflect::TypeRegistry;
 use redox_render::Camera;
@@ -34,21 +34,20 @@ pub fn apply_fix(
     match fix {
         ValidationFix::AddDefaultCamera => {
             undo.begin("Add default camera");
-            let entity = world.spawn();
+            let entity = world.spawn(); // undo: tx
             let guid = EntityGuid::new_random();
-            world.add_component(entity, guid);
-            world.add_component(entity, Transform::default());
-            world.add_component(entity, Camera::default());
-            world.add_component(entity, Name("Camera".into()));
+            world.add_component(entity, guid); // undo: tx
+            world.add_component(entity, Transform::default()); // undo: tx
+            world.add_component(entity, Camera::default()); // undo: tx
+            world.add_component(entity, Name("Camera".into())); // undo: tx
             let snapshot = capture_entity(world, entity, registry);
             undo.push(UndoCommand::Spawn { guid, snapshot });
             undo.commit();
             Ok(())
         }
         ValidationFix::Unparent { entity } => {
-            let child = GuidResolver::resolve(world, *entity).ok_or(UndoError::EntityNotFound(
-                *entity,
-            ))?;
+            let child =
+                GuidResolver::resolve(world, *entity).ok_or(UndoError::EntityNotFound(*entity))?;
             let old_parent = world
                 .get_component::<Parent>(child)
                 .and_then(|parent| GuidResolver::guid_of(world, parent.0));
@@ -57,7 +56,7 @@ pub fn apply_fix(
                 .copied()
                 .unwrap_or_default();
             undo.begin("Break hierarchy cycle");
-            detach(world, child);
+            detach_parent(world, child);
             undo.push(UndoCommand::Reparent {
                 child: *entity,
                 old_parent,
@@ -105,6 +104,17 @@ pub fn apply_issue_action(
                 Ok(ValidationActionResult::Noop)
             }
         }
+    }
+}
+
+fn detach_parent(world: &mut World, child: Entity) {
+    let Some(Parent(old)) = world.get_component::<Parent>(child).copied() else {
+        return;
+    };
+    world.remove_component::<Parent>(child); // undo: tx
+    if let Some(mut kids) = world.get_component::<Children>(old).cloned() {
+        kids.list.retain(|entity| *entity != child);
+        world.add_component(old, kids); // undo: tx
     }
 }
 

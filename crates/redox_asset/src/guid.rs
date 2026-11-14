@@ -516,10 +516,7 @@ impl AssetRegistry {
 
     /// References recorded for one scene path.
     pub fn scene_refs(&self, scene: &str) -> &[DependentRef] {
-        self.scene_refs
-            .get(scene)
-            .map(Vec::as_slice)
-            .unwrap_or(&[])
+        self.scene_refs.get(scene).map(Vec::as_slice).unwrap_or(&[])
     }
 
     /// Applies one file-system event incrementally and reports what changed.

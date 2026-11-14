@@ -16,8 +16,7 @@ pub struct AuditJob {
 
 /// Runs the audit and optionally prints JSON.
 pub fn run(job: &AuditJob) -> Result<String, String> {
-    let (registry, _) =
-        AssetRegistry::scan(job.assets_dir.clone()).map_err(|e| e.to_string())?;
+    let (registry, _) = AssetRegistry::scan(job.assets_dir.clone()).map_err(|e| e.to_string())?;
     let report = run_audit(&registry, &AuditConfig::default());
     let text = export_audit_json(&report);
     if job.json {

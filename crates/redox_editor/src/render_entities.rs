@@ -36,7 +36,7 @@ pub fn collect_viewport_draws(world: &World) -> Vec<ViewportDrawItem> {
 /// Merges scene [`AssetRefs`] when spawning from the asset browser.
 pub fn stamp_mesh_ref(world: &mut World, entity: redox_ecs::Entity, path: &std::path::Path) {
     if world.get_component::<AssetRefs>(entity).is_none() {
-        world.add_component(entity, AssetRefs::default());
+        world.add_component(entity, AssetRefs::default()); // undo: tx
     }
     let rel = path
         .file_name()

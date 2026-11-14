@@ -456,6 +456,7 @@ where
         orders: &[SystemOrder],
         timings: Option<&mut Vec<SystemTiming>>,
     ) {
+        let mut timings = timings;
         let record = |idx: usize, start: Instant, timings: &mut Vec<SystemTiming>| {
             let name = orders
                 .get(idx)
@@ -480,13 +481,15 @@ where
                         context,
                         stage,
                         orders,
-                        timings,
+                        timings.as_mut().map(|slot| &mut **slot),
                     );
                 }
                 if let SystemSlot::Sequential(func) = &mut slots[idx] {
                     let start = timings.is_some().then(Instant::now);
                     func(world, context);
-                    if let (Some(start), Some(out)) = (start, timings) {
+                    if let Some(start) = start
+                        && let Some(out) = timings.as_mut()
+                    {
                         record(idx, start, out);
                     }
                 }
@@ -510,13 +513,15 @@ where
                         context,
                         stage,
                         orders,
-                        timings,
+                        timings.as_mut().map(|slot| &mut **slot),
                     );
                 }
                 if let SystemSlot::Parallel { func, .. } = &slots[idx] {
                     let start = timings.is_some().then(Instant::now);
                     func(world, &*context);
-                    if let (Some(start), Some(out)) = (start, timings) {
+                    if let Some(start) = start
+                        && let Some(out) = timings.as_mut()
+                    {
                         record(idx, start, out);
                     }
                 }
@@ -531,7 +536,7 @@ where
                 context,
                 stage,
                 orders,
-                timings,
+                timings.as_mut().map(|slot| &mut **slot),
             );
         }
     }
@@ -545,6 +550,7 @@ where
         orders: &[SystemOrder],
         timings: Option<&mut Vec<SystemTiming>>,
     ) {
+        let mut timings = timings;
         let metas: Vec<SystemMeta> = batch.iter().map(|(m, _)| m.clone()).collect();
         let indices: Vec<usize> = batch.iter().map(|(_, i)| *i).collect();
         batch.clear();
@@ -558,12 +564,14 @@ where
                     SystemSlot::Sequential(_) => continue,
                 };
                 func(world, context);
-                if let (Some(start), Some(out)) = (start, timings) {
+                if let Some(start) = start
+                    && let Some(out) = timings.as_mut()
+                {
                     let name = orders
                         .get(slot_idx)
                         .and_then(|o| o.label.map(str::to_owned))
                         .unwrap_or_else(|| format!("#{}", slot_idx));
-                    out.push(SystemTiming {
+                    (*out).push(SystemTiming {
                         stage,
                         name,
                         duration_ns: start.elapsed().as_nanos() as u64,
@@ -592,7 +600,7 @@ where
         for stage in stages_in_order {
             if let Some(systems) = self.systems.get_mut(&stage) {
                 let orders = self.orders.get(&stage).map(Vec::as_slice).unwrap_or(&[]);
-                let timings = collect_timings.then(|| &mut local_timings);
+                let mut timings = collect_timings.then(|| &mut local_timings);
                 if stage == Stage::PhysicsSync {
                     let mut steps = 0u32;
                     while steps < MAX_FIXED_STEPS {
@@ -608,7 +616,7 @@ where
                             context,
                             stage,
                             orders,
-                            timings,
+                            timings.as_mut().map(|slot| &mut **slot),
                         );
                         crate::commands::flush_commands(world);
                         world
@@ -633,7 +641,7 @@ where
                         context,
                         stage,
                         orders,
-                        timings,
+                        timings.as_mut().map(|slot| &mut **slot),
                     );
                     crate::commands::flush_commands(world);
                 }
@@ -784,10 +792,12 @@ mod tests {
         let mut ctx = Vec::new();
         dispatcher.run(&mut world, &mut ctx);
         assert_eq!(dispatcher.frame_system_timings().len(), 2);
-        assert!(dispatcher
-            .frame_system_timings()
-            .iter()
-            .any(|t| t.name == "a"));
+        assert!(
+            dispatcher
+                .frame_system_timings()
+                .iter()
+                .any(|t| t.name == "a")
+        );
     }
 
     #[test]

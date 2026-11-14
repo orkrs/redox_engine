@@ -1,8 +1,8 @@
 //! Add, remove and copy component values as one undo transaction each.
 
 use redox_ecs::{Entity, World};
-use redox_reflect::meta::FieldError;
 use redox_reflect::TypeRegistry;
+use redox_reflect::meta::FieldError;
 
 use crate::component_catalog::{
     DependencyPromptAnswer, DependencyPromptOutcome, DependencyWarning, dependency_warning_for_add,

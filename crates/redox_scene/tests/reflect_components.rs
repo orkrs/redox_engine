@@ -38,7 +38,8 @@ fn unknown_fields_are_ignored_by_name_and_tag() {
         ],
     };
     let mut name = Name::default();
-    name.apply(&value).expect("apply must not fail on extra fields");
+    name.apply(&value)
+        .expect("apply must not fail on extra fields");
     assert_eq!(name, Name("door".into()));
 
     let tag_value = ReflectValue::Struct {
@@ -47,7 +48,11 @@ fn unknown_fields_are_ignored_by_name_and_tag() {
     };
     let mut tag = Tag("keep".into());
     tag.apply(&tag_value).expect("apply");
-    assert_eq!(tag, Tag("keep".into()), "a value without the field leaves it unchanged");
+    assert_eq!(
+        tag,
+        Tag("keep".into()),
+        "a value without the field leaves it unchanged"
+    );
 }
 
 #[test]
@@ -73,10 +78,7 @@ fn name_and_tag_are_restored_through_the_registry() {
     let mut restored = World::new();
     registry.from_ron(&mut restored, &text).expect("from_ron");
 
-    let found = restored
-        .all_entities()
-        .next()
-        .expect("one restored entity");
+    let found = restored.all_entities().next().expect("one restored entity");
     assert_eq!(
         restored.get_component::<Name>(found),
         Some(&Name("crate".into()))

@@ -42,12 +42,11 @@ pub fn run_sample(root: &Path, frames: u32) -> u8 {
     let mut world = World::new();
     match SceneDocument::open_with_assets(&scene_path, &registry, &mut world, Some(&assets)) {
         Ok((_doc, report)) => {
-            if report.warnings.iter().any(|w| {
-                matches!(
-                    w,
-                    redox_editor_scene::LoadWarning::MissingAsset { .. }
-                )
-            }) {
+            if report
+                .warnings
+                .iter()
+                .any(|w| matches!(w, redox_editor_scene::LoadWarning::MissingAsset { .. }))
+            {
                 return 1;
             }
         }

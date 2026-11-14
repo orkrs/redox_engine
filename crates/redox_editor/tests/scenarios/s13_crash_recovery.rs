@@ -24,11 +24,19 @@ fn crashed_session() -> (
     h.open_start_scene().expect("the main scene opens");
     let original = h.read_file(MAIN);
     let ground = h.find_by_name("Ground").expect("Ground exists");
-    h.rename(ground, "Ground edited").expect("Ground is renamed");
+    h.rename(ground, "Ground edited")
+        .expect("Ground is renamed");
     h.advance_clock(AUTOSAVE_DUE_SECS);
     h.tick();
-    assert!(!h.autosave_files().is_empty(), "autosave ran after the interval");
-    assert_eq!(h.read_file(MAIN), original, "autosave did not touch the original");
+    assert!(
+        !h.autosave_files().is_empty(),
+        "autosave ran after the interval"
+    );
+    assert_eq!(
+        h.read_file(MAIN),
+        original,
+        "autosave did not touch the original"
+    );
     let edited = h.snapshot();
     let crashed = h.crash();
     (crashed, dir, edited, original)
@@ -43,13 +51,18 @@ fn an_unsaved_scene_is_offered_after_a_crash_and_accepting_restores_it() {
         "the crash left the session lock"
     );
 
-    h.open_project(&dir).expect("the project opens after the crash");
+    h.open_project(&dir)
+        .expect("the project opens after the crash");
     assert!(h.recovery_offer().is_some(), "a RecoveryOffer is shown");
 
     h.accept_recovery().expect("the offer is accepted");
     assert_eq!(h.snapshot(), edited, "the state equals the last autosave");
     assert!(h.is_dirty(), "the recovered state is dirty");
-    assert_eq!(h.read_file(MAIN), original, "the original file is still untouched");
+    assert_eq!(
+        h.read_file(MAIN),
+        original,
+        "the original file is still untouched"
+    );
 }
 
 #[test]
@@ -57,14 +70,25 @@ fn declining_the_offer_moves_the_autosaves_to_discarded() {
     let (mut h, dir, _edited, original) = crashed_session();
     h.advance_clock(STALE_AFTER_CRASH_SECS);
 
-    h.open_project(&dir).expect("the project opens after the crash");
+    h.open_project(&dir)
+        .expect("the project opens after the crash");
     assert!(h.recovery_offer().is_some(), "a RecoveryOffer is shown");
 
     h.discard_recovery().expect("the offer is declined");
-    assert!(h.autosave_files().is_empty(), "autosaves left the working folder");
-    assert!(!h.discarded_files().is_empty(), "autosaves are kept in discarded/");
+    assert!(
+        h.autosave_files().is_empty(),
+        "autosaves left the working folder"
+    );
+    assert!(
+        !h.discarded_files().is_empty(),
+        "autosaves are kept in discarded/"
+    );
     assert!(h.recovery_offer().is_none());
-    assert_eq!(h.read_file(MAIN), original, "the original file is still untouched");
+    assert_eq!(
+        h.read_file(MAIN),
+        original,
+        "the original file is still untouched"
+    );
 }
 
 #[test]
@@ -74,13 +98,18 @@ fn a_clean_close_leaves_no_lock_and_no_autosave() {
     h.open_project(&dir).expect("the sample project opens");
     h.open_start_scene().expect("the main scene opens");
     let ground = h.find_by_name("Ground").expect("Ground exists");
-    h.rename(ground, "Ground edited").expect("Ground is renamed");
+    h.rename(ground, "Ground edited")
+        .expect("Ground is renamed");
     h.advance_clock(AUTOSAVE_DUE_SECS);
     h.tick();
-    h.save().expect("the scene is saved before the normal close");
+    h.save()
+        .expect("the scene is saved before the normal close");
 
     let mut h = h.restart();
-    assert!(!dir.join(".redox/session.lock").exists(), "no lock after a clean close");
+    assert!(
+        !dir.join(".redox/session.lock").exists(),
+        "no lock after a clean close"
+    );
     assert!(
         crate::common::list_files(&dir.join(".redox/autosave"), false)
             .iter()

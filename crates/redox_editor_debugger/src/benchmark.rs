@@ -53,9 +53,7 @@ impl BenchReport {
         for i in 0..frames {
             let ms = 16.0 + (i as f32 * 0.01);
             profiler.push_ms(ms);
-            let cpu = CpuTimeline {
-                spans: vec![],
-            };
+            let cpu = CpuTimeline { spans: vec![] };
             samples.push(BenchFrameSample {
                 index: i,
                 frame_ms: ms,

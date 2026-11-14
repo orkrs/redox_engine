@@ -275,10 +275,7 @@ impl BrowserModel {
     }
 
     /// Attaches thumbnail paths from the cache service.
-    pub fn apply_thumbnails(
-        &mut self,
-        thumbs: &crate::thumbnail_service::ThumbnailService,
-    ) {
+    pub fn apply_thumbnails(&mut self, thumbs: &crate::thumbnail_service::ThumbnailService) {
         for entry in &mut self.entries {
             match thumbs.lookup(entry.guid, entry.kind) {
                 crate::thumbnail_service::ThumbnailOutcome::Cached(path) => {

@@ -43,12 +43,9 @@ pub fn surface_snap_translation(
     physics: Option<&mut PhysicsContext>,
     exclude: &[Entity],
 ) -> Vec3 {
+    let had_physics = physics.is_some();
     let (snapped, _) = place_on_surface(target, half_height, physics, exclude);
-    if physics.is_some() {
-        snapped
-    } else {
-        target
-    }
+    if had_physics { snapped } else { target }
 }
 
 /// Finds the closest vertex among `candidates` to `world_point` within `radius`.
@@ -67,7 +64,7 @@ pub fn snap_to_nearest_vertex(world_point: Vec3, candidates: &[Vec3], radius: f3
 
 /// Final translation for a gizmo drag after snap mode.
 pub fn apply_snap_to_translation(
-    gizmo: &GizmoState,
+    _gizmo: &GizmoState,
     snap: GizmoSnapSettings,
     raw: Vec3,
     entity: Transform,
@@ -79,8 +76,9 @@ pub fn apply_snap_to_translation(
         GizmoSnapMode::Grid => raw,
         GizmoSnapMode::Surface => {
             let base = entity.translation + raw;
+            let had_physics = physics.is_some();
             let snapped = surface_snap_translation(base, 0.5, physics, exclude);
-            if physics.is_some() {
+            if had_physics {
                 snapped - entity.translation
             } else {
                 Vec3::ZERO

@@ -3,7 +3,7 @@
 //! Uses [`redox_asset::load_scene_from_path`] (AST-01 loader). Materials use
 //! factor colours plus embedded RGBA8 images from the same load when present.
 
-use redox_asset::{GltfMaterialData, GltfMeshData, GltfSceneData, load_scene_from_path};
+use redox_asset::{GltfMeshData, GltfSceneData, load_scene_from_path};
 use redox_math::{Aabb, Vec3};
 use redox_render::{Material, Mesh, Renderer, mesh::Vertex, mesh::tangent};
 use redox_scene::AssetRef;
@@ -161,11 +161,7 @@ fn resolve_mesh_path(assets_root: Option<&Path>, item: &ViewportDrawItem) -> Opt
 
 fn load_and_upload(renderer: &mut Renderer, path: &Path) -> Result<ResolvedViewportMesh, String> {
     let scene = load_scene_from_path(path).map_err(|e| e.to_string())?;
-    let mesh_idx = scene
-        .nodes
-        .iter()
-        .find_map(|n| n.mesh_index)
-        .unwrap_or(0);
+    let mesh_idx = scene.nodes.iter().find_map(|n| n.mesh_index).unwrap_or(0);
     let mesh_data = scene
         .meshes
         .get(mesh_idx)
@@ -196,10 +192,13 @@ pub fn gltf_mesh_to_render_mesh(data: &GltfMeshData) -> Mesh {
     } else {
         vec![[0.0, 0.0]; n_verts]
     };
-    let tangents = if data.tangents.len() == n_verts {
+    let tangents: Vec<[f32; 3]> = if data.tangents.len() == n_verts {
         data.tangents.iter().map(|t| [t[0], t[1], t[2]]).collect()
     } else {
         tangent::compute_tangents(&data.positions, &normals, &uvs, &data.indices)
+            .into_iter()
+            .map(|t| [t[0], t[1], t[2]])
+            .collect()
     };
 
     let vertices: Vec<Vertex> = (0..n_verts)

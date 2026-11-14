@@ -3,8 +3,8 @@
 use std::collections::VecDeque;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use redox_asset::AssetGuid;
@@ -74,7 +74,14 @@ impl ThumbnailService {
     }
 
     /// Enqueues a thumbnail when the cache misses.
-    pub fn request(&mut self, guid: AssetGuid, path: impl Into<String>, kind: AssetKind, abs: PathBuf) {
+    pub fn request(
+        &mut self,
+        guid: AssetGuid,
+        path: impl Into<String>,
+        kind: AssetKind,
+        abs: PathBuf,
+    ) {
+        let path = path.into();
         if kind == AssetKind::Mesh {
             return;
         }
@@ -84,13 +91,13 @@ impl ThumbnailService {
         if self
             .queue
             .iter()
-            .any(|job| job.guid == guid || job.path == path.as_ref())
+            .any(|job| job.guid == guid || job.path == path)
         {
             return;
         }
         self.queue.push_back(ThumbnailJob {
             guid,
-            path: path.into(),
+            path,
             kind,
             abs,
         });
@@ -130,6 +137,7 @@ impl ThumbnailService {
     pub fn lookup(&self, guid: AssetGuid, kind: AssetKind) -> ThumbnailOutcome {
         match kind {
             AssetKind::Mesh => ThumbnailOutcome::MeshDeferred,
+            AssetKind::Material => ThumbnailOutcome::Unsupported,
             AssetKind::Texture | AssetKind::Other => {
                 let path = self.cache_path(guid);
                 if path.is_file() {

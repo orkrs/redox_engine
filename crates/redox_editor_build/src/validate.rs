@@ -6,10 +6,10 @@
 
 use std::path::Path;
 
-use redox_asset::{AssetRegistry, AssetGuid};
+use redox_asset::{AssetGuid, AssetRegistry};
 use redox_ecs::World;
 use redox_editor_assets::reference_index::{ReferenceIndex, scene_asset_refs};
-use redox_editor_core::project::{ProjectContext, ProjectError, ProjectWarning, MANIFEST_FILE};
+use redox_editor_core::project::{MANIFEST_FILE, ProjectContext, ProjectError, ProjectWarning};
 use redox_editor_scene::{LoadWarning, SceneDocument, register_scene_components};
 use redox_reflect::TypeRegistry;
 use ron;
@@ -93,7 +93,41 @@ pub fn validate_project(root: &Path) -> Result<ValidationReport, ProjectError> {
         collect_scene_load_issues(&mut report, &scene, Some(assets_root.as_path()));
     }
 
+    append_scene_rules(&mut report, root);
+
     Ok(report)
+}
+
+/// Scene rules from EDT-B7 (missing parents, camera, bounds, …) share this report.
+fn append_scene_rules(report: &mut ValidationReport, root: &Path) {
+    match redox_editor_scene::validate_project(root) {
+        Ok(scene) => {
+            for issue in scene.issues {
+                let severity = match issue.severity {
+                    redox_editor_scene::Severity::Error => ValidationSeverity::Error,
+                    redox_editor_scene::Severity::Warning | redox_editor_scene::Severity::Info => {
+                        ValidationSeverity::Warn
+                    }
+                };
+                report.issues.push(ValidationIssue {
+                    rule: issue.rule.id().to_string(),
+                    severity,
+                    path: issue.scene_path.or(issue.asset_path),
+                    guid: issue.entity.map(|entity| entity.to_string()),
+                    message: issue.message,
+                });
+            }
+        }
+        Err(err) => {
+            report.issues.push(ValidationIssue {
+                rule: "SceneValidation".into(),
+                severity: ValidationSeverity::Error,
+                path: None,
+                guid: None,
+                message: err.to_string(),
+            });
+        }
+    }
 }
 
 fn push_project_warning(report: &mut ValidationReport, warning: &ProjectWarning) {
@@ -158,7 +192,7 @@ fn collect_reference_issues(
         report.issues.push(ValidationIssue {
             rule: "UnreadableScene".into(),
             severity: ValidationSeverity::Error,
-            path: Some(err),
+            path: Some(err.to_string()),
             guid: None,
             message: "scene could not be indexed".into(),
         });
@@ -193,10 +227,7 @@ fn collect_reference_issues(
                             severity: ValidationSeverity::Error,
                             path: sref.path.clone(),
                             guid: sref.guid.clone(),
-                            message: format!(
-                                "unresolved reference in {}",
-                                relpath_display(&scene)
-                            ),
+                            message: format!("unresolved reference in {}", relpath_display(&scene)),
                         });
                     }
                 }
@@ -239,7 +270,10 @@ fn push_load_warnings(report: &mut ValidationReport, load: &redox_editor_scene::
                     message: format!("unknown component {type_name}"),
                 });
             }
-            LoadWarning::MissingParent { entity, parent_guid } => {
+            LoadWarning::MissingParent {
+                entity,
+                parent_guid,
+            } => {
                 report.issues.push(ValidationIssue {
                     rule: "MissingParent".into(),
                     severity: ValidationSeverity::Warn,
@@ -301,5 +335,5 @@ pub fn validate_manifest_only(root: &Path) -> Result<(), ProjectError> {
 
 /// Formats a GUID for JSON issues.
 pub fn guid_text(guid: AssetGuid) -> String {
-    format!("{guid:032x}")
+    guid.to_string()
 }

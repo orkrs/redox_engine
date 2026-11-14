@@ -1,6 +1,6 @@
 //! Asset audit: reference viewer, orphans, duplicates, size map (EDT-C2).
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::path::Path;
 
@@ -46,7 +46,7 @@ pub struct OutgoingReference {
 }
 
 /// Reference graph for one selected asset (EDT-C2 step 1).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReferenceView {
     /// Selected asset.
     pub guid: AssetGuid,
@@ -56,6 +56,17 @@ pub struct ReferenceView {
     pub incoming: Vec<IncomingReference>,
     /// Asset → asset uses (scene files only in this slice).
     pub outgoing: Vec<OutgoingReference>,
+}
+
+impl Default for ReferenceView {
+    fn default() -> Self {
+        Self {
+            guid: AssetGuid(0),
+            path: None,
+            incoming: Vec::new(),
+            outgoing: Vec::new(),
+        }
+    }
 }
 
 /// UI-free reference viewer model.
@@ -72,12 +83,7 @@ impl ReferenceViewerModel {
     }
 
     /// Selects a guid and rebuilds the view.
-    pub fn select(
-        &mut self,
-        guid: AssetGuid,
-        registry: &AssetRegistry,
-        index: &ReferenceIndex,
-    ) {
+    pub fn select(&mut self, guid: AssetGuid, registry: &AssetRegistry, index: &ReferenceIndex) {
         self.selected = Some(guid);
         self.view = build_reference_view(guid, registry, index);
     }
@@ -139,7 +145,7 @@ pub fn find_orphans(registry: &AssetRegistry, config: &AuditConfig) -> Vec<Strin
     let used = referenced_guids(registry, config);
     registry
         .iter()
-        .filter(|(path, guid)| !is_scene_path(path))
+        .filter(|(path, _guid)| !is_scene_path(path))
         .filter(|(_, guid)| !used.contains(guid) && !config.force_keep.contains(guid))
         .map(|(path, _)| path.to_owned())
         .collect()
@@ -193,7 +199,7 @@ pub fn find_duplicates(registry: &AssetRegistry) -> Vec<DuplicateGroup> {
 }
 
 /// One node in the folder size tree.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SizeMapNode {
     /// Folder path relative to the assets root (`""` for root).
     pub path: String,
@@ -234,10 +240,10 @@ fn insert_size(node: &mut SizeMapNode, rel_path: &str, bytes: u64, vram: Option<
     let Some((folder, rest)) = rel_path.split_once('/') else {
         return;
     };
-    let child = node
+    let idx = node
         .children
-        .iter_mut()
-        .find(|c| c.path == folder)
+        .iter()
+        .position(|child| child.path == folder)
         .unwrap_or_else(|| {
             node.children.push(SizeMapNode {
                 path: folder.to_owned(),
@@ -245,9 +251,9 @@ fn insert_size(node: &mut SizeMapNode, rel_path: &str, bytes: u64, vram: Option<
                 vram_bytes: Some(0),
                 children: Vec::new(),
             });
-            node.children.last_mut().expect("just pushed")
+            node.children.len() - 1
         });
-    insert_size(child, rest, bytes, vram);
+    insert_size(&mut node.children[idx], rest, bytes, vram);
 }
 
 fn rollup_vram(node: &mut SizeMapNode) {

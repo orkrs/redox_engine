@@ -42,8 +42,10 @@ impl PluginManagerWindow {
     ) -> bool {
         let mut saved = false;
         if host.safe_mode_active {
-            egui::TopBottomPanel::top("plugin_safe_mode_banner")
-                .frame(egui::Frame::none().fill(egui::Color32::from_rgb(120, 40, 40)))
+            egui::Window::new("plugin_safe_mode_banner")
+                .title_bar(false)
+                .anchor(egui::Align2::CENTER_TOP, [0.0, 0.0])
+                .frame(egui::Frame::NONE.fill(egui::Color32::from_rgb(120, 40, 40)))
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         let message = host
@@ -72,7 +74,9 @@ impl PluginManagerWindow {
                 ui.label("Built-in plugins (in-process). Native .dll loading is off by default.");
                 if ui.button("Check native loader stub").clicked() {
                     match load_native_plugin(std::path::Path::new("plugin.dll")) {
-                        Ok(_) => editor.log.info("[plugins] native stub returned Ok".to_string()),
+                        Ok(_) => editor
+                            .log
+                            .info("[plugins] native stub returned Ok".to_string()),
                         Err(err) => {
                             editor.log.warn(format!("[plugins] native: {err}"));
                             self.native_warning_shown = true;
@@ -95,7 +99,7 @@ impl PluginManagerWindow {
                 for name in catalog {
                     let enabled = self.draft_plugins.iter().any(|p| p == &name);
                     let mut check = enabled;
-                    if ui.checkbox(&mut check, name).changed() {
+                    if ui.checkbox(&mut check, name.clone()).changed() {
                         if check {
                             if !self.draft_plugins.iter().any(|p| p == &name) {
                                 self.draft_plugins.push(name);
@@ -122,7 +126,9 @@ impl PluginManagerWindow {
             if let Some(project) = project {
                 project.manifest_mut().plugins = self.draft_plugins.clone();
                 if let Err(err) = project.save_manifest() {
-                    editor.log.error(format!("cannot save project plugins: {err}"));
+                    editor
+                        .log
+                        .error(format!("cannot save project plugins: {err}"));
                 } else {
                     saved = true;
                 }

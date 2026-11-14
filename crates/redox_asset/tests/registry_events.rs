@@ -10,10 +10,8 @@ struct TempRoot(PathBuf);
 
 impl TempRoot {
     fn new(name: &str) -> Self {
-        let dir = std::env::temp_dir().join(format!(
-            "redox_asset_events_{name}_{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("redox_asset_events_{name}_{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("create temp root");
         Self(dir)

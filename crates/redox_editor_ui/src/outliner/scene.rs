@@ -8,10 +8,12 @@ use redox_editor_core::guid::GuidResolver;
 use redox_editor_core::undo::UndoStack;
 use redox_editor_scene::guid_index::GuidIndex;
 use redox_editor_scene::outliner_model::{
-    FlatRow, OutlinerFilter, OUTLINER_ROW_HEIGHT, SelectionModifiers, build, flatten,
+    FlatRow, OUTLINER_ROW_HEIGHT, OutlinerFilter, SelectionModifiers, build, flatten,
     invert_selection, select_children, select_range, visible_row_range,
 };
-use redox_editor_scene::outliner_ops::{apply_lock, apply_visibility, isolate, reparent as reparent_undo};
+use redox_editor_scene::outliner_ops::{
+    apply_lock, apply_visibility, isolate, reparent as reparent_undo,
+};
 use redox_reflect::TypeRegistry;
 use redox_scene::EntityGuid;
 
@@ -165,7 +167,9 @@ fn draw_row(
                 }
             }
             response.context_menu(|ui| {
-                scene_context_menu(ui, row.guid, entity, core, index, selection, model, flat, actions);
+                scene_context_menu(
+                    ui, row.guid, entity, core, index, selection, model, flat, actions,
+                );
             });
             response.dnd_set_drag_payload(OutlinerDragPayload(row.guid));
             if let Some(payload) = response.dnd_release_payload::<OutlinerDragPayload>() {
@@ -211,12 +215,12 @@ fn scene_context_menu(
     }
     if ui.button("Duplicate").clicked() {
         core.selection.lock().set_primary(Some(entity));
-        let _ = core.commands.run(core, "duplicate");
+        let _ = core.commands.lock().run(core, "duplicate");
         ui.close();
     }
     if ui.button("Delete").clicked() {
         core.selection.lock().set_primary(Some(entity));
-        let _ = core.commands.run(core, "delete");
+        let _ = core.commands.lock().run(core, "delete");
         ui.close();
     }
     ui.separator();
@@ -290,7 +294,5 @@ fn panel_begin_rename(core: &EditorContext, guid: EntityGuid) {
                 .map(|n| n.0.clone())
         })
         .unwrap_or_default();
-    core.status
-        .lock()
-        .replace(format!("Rename entity {name} in the Inspector (F2)"));
+    *core.status.lock() = format!("Rename entity {name} in the Inspector (F2)");
 }

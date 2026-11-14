@@ -88,7 +88,10 @@ fn describe(world: &World, registry: &TypeRegistry) -> HashMap<EntityGuid, Descr
         let Some(guid) = world.get_component::<EntityGuid>(entity).copied() else {
             continue;
         };
-        let components = registry.snapshot_entity(world, entity);
+        let mut components = registry.snapshot_entity(world, entity);
+        components.retain(|value| {
+            matches!(value, ReflectValue::Struct { type_name, .. } if type_name != "AssetRefs")
+        });
         let parent = world
             .get_component::<Parent>(entity)
             .and_then(|parent| world.get_component::<EntityGuid>(parent.0).copied());
