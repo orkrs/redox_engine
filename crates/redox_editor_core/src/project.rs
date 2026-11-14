@@ -28,11 +28,55 @@ pub const RECENT_LIMIT: usize = 10;
 /// Version of this editor core, written into new and migrated manifests.
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Build profile placeholder. The list stays empty until the build slice (C1) fills it.
+/// Target kind of a build profile.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BuildProfileStub {
-    /// Profile name.
+#[serde(rename_all = "snake_case")]
+pub enum BuildTarget {
+    /// Runtime `.pak` archive for the game.
+    #[default]
+    Pak,
+    /// Dry metadata only (reserved for future exporters).
+    Metadata,
+}
+
+fn default_build_target() -> BuildTarget {
+    BuildTarget::Pak
+}
+
+/// One shipping profile stored in `project.ron` (`build_profiles`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BuildProfile {
+    /// Profile name (unique within the project).
     pub name: String,
+    /// What the cook step produces.
+    #[serde(default = "default_build_target")]
+    pub target: BuildTarget,
+    /// LZ4-compress pack entries where that helps.
+    #[serde(default = "default_compress")]
+    pub compress: bool,
+    /// Include everything under `assets/debug/` even when not referenced.
+    #[serde(default)]
+    pub include_debug_assets: bool,
+    /// Scene that seeds the dependency closure; defaults to [`ProjectManifest::start_scene`].
+    #[serde(default)]
+    pub scene: Option<String>,
+}
+
+fn default_compress() -> bool {
+    true
+}
+
+impl BuildProfile {
+    /// A sensible default profile for new projects.
+    pub fn release_default() -> Self {
+        Self {
+            name: "release".to_string(),
+            target: BuildTarget::Pak,
+            compress: true,
+            include_debug_assets: false,
+            scene: None,
+        }
+    }
 }
 
 /// Contents of `project.ron`.
@@ -55,7 +99,7 @@ pub struct ProjectManifest {
     pub plugins: Vec<String>,
     /// Build profiles of the project.
     #[serde(default)]
-    pub build_profiles: Vec<BuildProfileStub>,
+    pub build_profiles: Vec<BuildProfile>,
     /// Creation time, UTC, `YYYY-MM-DDTHH:MM:SSZ`.
     pub created: String,
     /// Time of the last opening, UTC, `YYYY-MM-DDTHH:MM:SSZ`.
