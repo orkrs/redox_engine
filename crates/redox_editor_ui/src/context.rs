@@ -3,7 +3,10 @@
 use parking_lot::Mutex;
 use redox_editor_core::EditorContext;
 use redox_editor_core::builtin_commands::record_spawn;
-use redox_editor_debugger::{FrameProfiler, PieSession, TimeTravelBuffer};
+use redox_editor_debugger::{
+    ConsoleFilter, FrameProfiler, PieSession, RuntimeInspectorHighlight, RuntimeSearchQuery,
+    TimeTravelBuffer,
+};
 use redox_editor_scene::{WorldGitTracker, WorldSession};
 use redox_editor_viewport::{
     EditorCamera, GizmoState, ViewportDebugFlags, ViewportLayout, ViewportShading,
@@ -76,6 +79,12 @@ pub struct EditorUiCtx {
     pub frame_ms: Mutex<f32>,
     /// Integrator may overwrite with real GPU memory stats; shown in Viewport toolbar.
     pub vram_label: Mutex<String>,
+    /// Console tab filter state.
+    pub console_filter: Mutex<ConsoleFilter>,
+    /// Runtime inspector search box.
+    pub runtime_search: Mutex<RuntimeSearchQuery>,
+    /// Viewport highlight driven by runtime inspector.
+    pub runtime_highlight: Mutex<RuntimeInspectorHighlight>,
 }
 
 impl EditorUiCtx {
@@ -116,6 +125,9 @@ impl EditorUiCtx {
             fps: Mutex::new(0.0),
             frame_ms: Mutex::new(0.0),
             vram_label: Mutex::new("VRAM: n/a".into()),
+            console_filter: Mutex::new(ConsoleFilter::default()),
+            runtime_search: Mutex::new(RuntimeSearchQuery::default()),
+            runtime_highlight: Mutex::new(RuntimeInspectorHighlight::default()),
         }
     }
 

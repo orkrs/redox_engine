@@ -87,6 +87,8 @@ pub struct ViewportDebugFlags {
     pub show_overdraw: bool,
     /// Draw bounding boxes.
     pub show_aabbs: bool,
+    /// Runtime-inspector selection outline during PIE (entity id).
+    pub highlight_runtime_entity: Option<u32>,
 }
 
 impl ViewportDebugFlags {

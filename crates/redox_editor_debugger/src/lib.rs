@@ -10,6 +10,10 @@ pub mod pie_settings;
 pub mod pie_prepare;
 /// Standalone play launch plan (no subprocess from the library).
 pub mod standalone;
+/// Console filtering and export model.
+pub mod console;
+/// Runtime entity search during PIE.
+pub mod runtime_inspector;
 /// Rolling frame-time profiler.
 pub mod profiler;
 /// Ring buffer of world snapshots for scrubbing back in time.
@@ -19,5 +23,9 @@ pub use pie::{PieRunMode, PieSession};
 pub use pie_settings::{PieArgs, PieSettings};
 pub use pie_prepare::{PieSceneLoad, prepare_pie_world};
 pub use standalone::{StandalonePlan, plan_standalone};
+pub use console::{ConsoleEntry, ConsoleFilter, ConsoleModel, LogLevel};
+pub use runtime_inspector::{
+    RuntimeInspectorHighlight, RuntimeSearchHit, RuntimeSearchQuery, search_runtime_entities,
+};
 pub use profiler::FrameProfiler;
 pub use time_travel::TimeTravelBuffer;
