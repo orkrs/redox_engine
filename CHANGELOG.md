@@ -1,14 +1,139 @@
 # Changelog
 
-## Unreleased
+Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versioned.
 
-### Editor — EDT-B6 (PIE / debugging)
+## [Unreleased]
 
-- PIE step frame, Simulate mode, start scene / args, console filters, runtime entity search.
-- Save blocked during PIE; standalone plan via `redox_editor --play` stub.
-- Toolbar Step / Standalone; scenarios `s08b_pie_debug`.
+### Added
+- Editor (EDT-B6): PIE step/simulate, start scene and args, console filters, runtime search, save guard during PIE, `--play` standalone stub, scenarios `s08b_pie_debug`.
+- Editor (EDT-C3): optional dispatcher CPU spans, profiler CPU/GPU panel with honest `n/a` GPU ms, frame JSON export, `redox_editor --bench` JSON runner; see `docs/BENCHMARKS.md` (Editor benchmark CLI).
+- Editor (EDT-A7, stage A acceptance): test handle `EditorHarness` (`redox_editor/tests/common`) that drives the editor without a window, with replaceable time and test builders; sample projects `sample_project` and `sample_project_broken` as text data; scenario tests by TZ §23 (project and scene round trips, undo/redo with a seeded 1 000-operation stress, asset rename and references, PIE isolation, import failure, crash recovery, broken project, layout fallback, editor-only data); ignored measurements for scene I/O and the asset service. Numbers and the manual smoke test are pending the coordinator.
+- Render (GI-02 steps 1–5): surface cards. Captured on the CPU per static object (six axis faces, `gi/card_capture.rs`, two-texel dilation), laid out in a 2048² atlas with an object table (`gi/card_atlas.rs`), lit each frame in a quarter of the rows by `gi_card_light.wgsl` (sun with SDF shadows, eight nearest points, previous-frame probes), and read by the probe trace at hit points (object id volume in `GlobalSdf`, depth tolerance 0.06 of the AABB, three faces; fallback to the GI-01 path). `Renderer::set_gi_cards`, `set_gi_cards_enabled`. Ignored benchmark `tests/gi_cards_bench.rs`; numbers pending.
+- Material graphs (MAT-03 steps 1–3, `redox_matgraph`): texture nodes (`Texture2d`, `TextureSample`, `NormalMap`, `Triplanar`), math and logic nodes (`Abs` … `If`, `Remap`, `Fresnel`, `Split`/`Merge`), value, gradient and Worley noise in 2D and 3D (`noise` module, WGSL helpers emitted by the generator), custom WGSL node (`custom` module: naga-checked body with line numbers, no bindings, no `enable`, 4 KiB limit), `try_eval` (refuses custom nodes), `warnings()` (more than 16 texture samples). `HeightBlend`, `NormalFromHeight` and the WPO output are not in this step.
+- Render (GI-01 steps 5b and 6): probe bounce term (last frame's irradiance at hit points, albedo / pi), probe relocation out of geometry (`gi_relocate.wgsl`, storage binding 24), `Renderer::set_gi_enabled` and `set_gi_quality(GiQuality::{Off, Low, Medium, High})`, sun-move hysteresis 0.9, `Renderer::set_gi_debug(GiDebug)` overlays, ignored benchmark `tests/gi_bench.rs`. The old DDGI scaffold (`gi/ddgi.rs`, `gi/ddgi_gpu.rs`, `shaders/ddgi_trace.wgsl`, `Renderer::ddgi_gpu`, `DdgiProbe`/`DdgiProbeGrid`) is removed; the frame pass `ddgi_fill` is `gi_update`.
+- Scripting (SCR-02): new `no_std` crate `redox_script_sdk` (`input`, `output`, `emit`, `command`, `system_command`, `raycast`, `raycast_entity`, `find_by_name`, `find_by_tag`, `position_of`, `overlap_sphere`, `overlap_box`, `get_value_of`, `nav_path`, `script!` macro); example `examples/coins.rs` (wasm32 cdylib); test `redox_script/tests/sdk_example.rs`; guide `docs/SCRIPTING_GUIDE.md`.
+- Scripting (SCR-04 tails): `ScriptInactive` entities are hidden from script name/tag/position/value lookups, and rays and overlaps pass through them; `move_character_controllers` skips them. Test `a_switched_off_entity_is_not_found_by_name`.
+- Render (RND-09 step 2): debug builds record the textures each frame pass hands to the GPU (`FrameState::touch`) and compare them with the frame graph (`Renderer::frame_usage_mismatches`, `CompiledGraph::{pass_by_name, texture_by_name}`); release builds compile the check out. Passes report their bind-group reads too, the declarations in `frame_graph.rs` follow the code, and `frame_graph_runtime` runs without `#[ignore]` (not run in this step: the cargo check only). Imports `hiz_prev` and `prev_depth` model last frame's Hi-Z and depth. The transient allocator and pass migration (RND-09 steps 3-4) are not done; the aliasing measurement gives 0 % (see `docs/BENCHMARKS.md`).
+- Render (RND-10 step 1): `Renderer::debug_skip_object_velocity` (hidden test switch) skips the object-velocity pass; `debug_object_velocity_draws` counts its draws; `tests/velocity_cost.rs` (ignored benchmark, prints the merge verdict; not yet run).
+- Scripting (host API v2, `redox_script`): world queries `raycast_entity`, `find_by_name`, `find_by_tag`, `position_of`, `overlap_sphere`, `overlap_box`, `get_value_of`, `nav_path` on both backends, under the new permissions `query`, `entity_values`, `nav`; `ApiPermissions::v1_only()`; `sys.`-prefixed commands gated by `commands_system`. Scene components `Name` and `Tag`. Example `tests/guard.wat`. `redox_core::script_world`: `WorldQueries` over the physics and navigation resources, `ScriptPrefabs`, `ScriptValues`, `ScriptInactive` and `run_script_update` (applies `sys.` commands after each call). System registration in `redox_core::plugin` is pending.
+- Audio (AUD-07): `redox_audio::validate` checks a cue library before the game runs (missing files, empty variants, volume and pitch ranges, identical file sets, parse errors); `redox_audio::analyze` measures a clip (peak, RMS, BS.1770 loudness, clipping, loop seam, mono detection); `redox_cook audio-check` reports them for a folder, with `--json`; `examples/audio_lab` runs the cue self-test and the cue check without a window. Authoring guide: `docs/AUDIO_AUTHORING.md`.
+- Animation (ANM-04): graph-to-glTF binding (`redox_anim::graph_binding`: `ClipRole`, `bind_clips`, `required_bones`, `validate_binding`); Courier plays the Foxfire fox by default (`--procedural-rig` for the old humanoid); `SkinningMode` (`Auto`/`Cpu`/`Gpu`) with `choose_skinning_mode`, provisional GPU thresholds, `threshold_bench` (ignored test).
+- Virtual geometry (VG-02): GPU traversal of cluster DAGs (`dag_gpu::DagTraversal`, `shaders/vg_dag_traverse.wgsl`) with the CPU `cut` as reference, Hi-Z rejects retested after the pyramid is rebuilt, and `VGSystem::{register_dag_asset, spawn_dag_instance, record_dag_traverse, record_dag_phase2, draw_dag_vis_indirect}`. The renderer does not call the DAG path yet; instance culling and seeding stay on the CPU.
+- HLOD (VG-04): `redox_scene::kinds` (`ActorKindTable` in `actor_kinds.ron`, maps actor `kind` to mesh, scale, colour and `hlod` flag); `redox_cook bake-hlod <world.bin> <out> [--triangles N] [--kinds file]` writes one `<x>_<y>.hlod` per cell from the glTF meshes of the table; `redox_core::hlod_system` (`HlodRuntime`, `hlod_system`, `apply_hlod_to_render_objects`) cross-fades cells between detail objects and proxy. `redox_render::hlod_gpu` uploads a proxy as a mesh and flat material, and `hlod_frame` draws it at `HlodRuntime::proxy_opacity` (one call per frame, after render extraction). `redox_cook` now depends on `redox_render` unconditionally.
+- HLOD (VG-04, wave 8): `redox_core::hlod_load::HlodPlugin` loads the `<x>_<y>.hlod` proxies next to `world.bin` at render setup (`AppBuilder::on_render_setup`); HLOD stays off without proxies or `actor_kinds.ron`. `hlod_frame_system` runs on `Stage::Render` behind `HlodSettings`; cells without a proxy do not fade. Bake takes glTF `COLOR_0` times the material base colour (`HlodInput::vertex_colors`); the GPU proxy vertex still has no colour. `hlod_measure` also prints renderer `FrameCpuTimings` when a GPU is present.
+- Audio: `SpatialAudioEmitter` is played through one kira spatial track per entity with occlusion-scaled volume (`emitter_playback_system`); adaptive music layers driven by one control value (`AdaptiveMusic`, `play_adaptive_music`, `set_music_control`).
+- Animation/Render: morph targets - glTF import, weights in clips, CPU (`deform_morphed_into`) and GPU skinning, `SkinnedMeshBinding::set_morph_weights`.
+- Render: SSR (`set_ssr`, material roughness through a second output of the normal prepass), height fog with sun in-scatter (`set_fog`), additive blend mode, clear coat and anisotropy (`Material::coat`, `::anisotropy`), wrap lighting for SSS (`Material::subsurface`), `material_surface` shader function (`MaterialInstance`), `ShadowClass` and reliable moved-caster detection for virtual shadow pages.
+- Virtual geometry: cluster DAG built in the cook step (`build_cluster_dag`, CPU `cut`, no cracks), page plan, `.rvg` format and LRU page pool; HLOD proxies and the cell LOD state machine (`hlod`).
+- New crate `redox_matgraph`: material graph (RON), validation, IR with constant folding and common-subexpression sharing, WGSL generation validated by naga.
+- Material graphs (MAT-02 steps 4-6): `redox_matgraph::{compile_variant, MatGraphWatcher}` (variant compilation and polling hot reload of `.matgraph` files); `redox_render::matgraph_cache::MaterialShaderCache` (one naga-checked shader module per variant key, broken graphs keep the previous module). `Renderer::set_material_graph` binds a graph to a material slot; the forward PBR pass draws such slots with their variant (parameters in bind group 4). Graph slots also get variants for the depth prepass and the shadow atlas (alpha cut-out below 0.5 opacity; time reads 0 there), and for the alpha and additive transparent passes (`redox_render::matgraph_passes::GraphPass`). Slots without a graph keep the default pipelines. The disk cache file `.wgsl` carries a header (cache version, format, graph source hash, body hash); a file is reused only when all match, otherwise it is regenerated. `MaterialGraphHotReload` (`update` once per frame) rebuilds a slot when its `.matgraph` file changes and keeps the old graph on errors. VSM depth pages and the directional path do not draw graph slots yet.
+- New crate `redox_nav`: tiled navmesh bake (rerecast), `.nav` format, `NavWorld` paths/links/queue/blockers and local avoidance (landmass), ECS agents and `NavPlugin`; `redox_cook bake-navmesh` and `bake-hlod`.
+- Specs: 24 step-by-step specs in `docs/engineering/specs` (wave seven), measured gates recorded in `docs/engineering/BACKLOG.md`.
+- Physics: character controller with accumulating gravity, `jump()`, autostep/slope/ground-snap settings (`CharacterSettings`) and moving-platform carry; walking on kinematic platforms fixed; ECS `Joint`/`JointLink`; `CombineRule` for friction/restitution; sound rays ignore sensors.
+- Render: skinned-mesh tangents (data, glTF import, CPU and GPU), `MemoryCategory::Buffers` accounting, `last_frame_cpu_timings`, `Renderer::try_new`/`RendererError`, optional motion blur and depth of field (`set_motion_blur`, `set_depth_of_field`).
+- Script: `ScriptRuntime::reload`, `ScriptWatcher`. Audio: `register_music_file` (streamed from disk), per-source occlusion by wall count (no global low-pass).
+- Render (A1): per-object motion vectors for TAA (`ObjectVelocityPass`, `FrameView::with_object_ids`); moving objects no longer smear.
+- Physics (B3): contact events (`ContactEvent`, enter/exit with point, normal, impulse; opt-in per entity) and `PhysicsMaterial` (friction, restitution). Known deviation: sensors keep `COLLISION_EVENTS` even with contact events off.
+- Audio (B8, first part): data-driven `SoundCue` (variants without repeats, volume/pitch ranges, cooldown), `CueLibrary` from RON, `AudioContext::play_cue`. Music streaming is not done; `priority` is stored but unused.
+- Scripting (B6): `redox_script` crate, WASM runtime on `wasmi` with fuel, memory cap, import permissions and per-instance disable; optional `wasmtime` backend. Measurements in ADR 0006.
+- Docs: ADR 0006 (WASM runtime), ADR 0007 (navigation).
+- Physics (B4, B2): joints (fixed, hinge, slider, ball, spring, rope, break force) and `cast_shape_all`, `overlap_point`, `closest_point`.
+- Render (A3): GPU skinning compute pass (`SkinnedMeshBinding::update_gpu`, `Renderer::read_mesh_vertex_bytes`); `skinned_demo` uses it.
+- Scripting (B7a): host API `get_f32`/`set_f32`/`emit_event` with `ApiPermissions`, module loading from a folder or `.pak`.
+- Audio (B8): `MusicDirector` (equal-power crossfade, not yet wired to kira) and `VoiceBudget`; `AudioContext::play_cue` now honours cue priorities through the voice budget (`set_cue_voice_limit`, `set_cue_voice_seconds`).
+- Render (A2): CPU instancing - frame objects are grouped by (mesh, material) and neighbours merged into instanced draws (`Renderer::forward_draw_calls`).
+- Render (A4): `MemoryBudget` accounting by category (pure structure, not yet wired).
+- Physics (B1): `LayerConfig` (RON layer names and collision matrix) and `CollisionLayers` as an ECS component synced by `sync_to_physics`.
+- Physics (B3): opt-in `stay` contact reports (`ContactStay`, `set_contact_stay`, `drain_contact_stays`).
+- Physics (B4): joints break by torque too (`JointDesc::break_torque`).
+- Courier (B9): best time and language saved, gamepad control, synthesised sound cues.
+- Tests: host API v1a runs on the `wasmtime` backend as well.
+- Render (A3): `SkinnedMeshBinding::update_gpu_batch` - many meshes skinned in one command buffer and one submit (100 characters: 11.1 -> 1.6 ms in the dev profile).
+- Scripting (B7b): host function `raycast` through the `WorldQueries` trait (`ScriptRuntime::set_world_queries`, permission `api.world`, 64 queries per call); a coin collector written in WASM as a test.
+- Physics (B4): joint limits (`JointDesc::limits`) and velocity motors (`JointMotor`); (B3) `set_contact_impulse_threshold` drops soft `Enter` events and their `Exit`; the `stay` opt-in is forgotten when a body is removed.
+- Audio (B8): `AudioContext::{play_music, stop_music, update_music, set_music_crossfade}`; `VoiceBudget::{release, ids, set_max_voices}`; stolen cue voices are stopped.
+- Render (A4): `texture_size_bytes`, `MemoryBudget::{over_budget_categories, report}`.
+- Examples: Foxfire (`cargo run --example foxrun -p redox_core --release`), an action game with a glTF fox, glowing gems and wisps; Courier settings model (`settings.rs`, not yet in the menu).
 
-### Editor — EDT-C3 (profiler / benchmarks)
+- Render (A4): `Renderer::{memory_usage, memory_report, set_memory_limit}` computed from live resources; F5 memory overlay in Courier and Foxfire.
+- Physics (B2, B4): `ConvexHull` with `cast_convex`/`overlap_convex`; generic joints (`JointKind::Generic`, `JointAxes`).
+- Scripting (B7c): `raycast_many`, `emit_command` (`ScriptCommand`, `take_commands`), `ScriptRuntime::set_inputs`; Courier coin pickup runs as a WASM module.
+- Audio (B8): streaming music through kira (`register_music`, looped streaming voices on the Music bus, `KiraMusicVoice`, `MusicVoices`).
+- Courier (B9): settings screen (volume and effect switches, saved between runs).
+- Render (PST-03): motion blur spreads beyond object edges. Velocity tile maxima (20×20, 3×3 neighbourhood) in `post/motion_blur_tiles.rs` and `shaders/motion_blur_tiles.wgsl`; `MotionBlurSettings::spread_beyond_edges` (off by default; off leaves the frame unchanged).
+- Networking (NET-01): new crate `redox_net` with the `Transport` seam, a deterministic `LoopbackWire` (latency, jitter, loss, duplication), `NetServer`/`NetClient` with a 16-player limit, reliable and ordered channel, deduplicated unreliable channel, newest-wins snapshots, `Message` codec (u16 id + postcard) and a server tick estimator; decision in ADR 0008 (proposed). No UDP adapter, `NetPlugin` or example yet.
+- Render (GI-01, steps 1-3): octahedral mapping (`gi::oct`), analytic box scene and sphere tracing (`gi::sdf_ref`, `cornell_box`), CPU path-tracing reference (`gi::reference`), toroidal probe cascade (`gi::cascade`), global SDF volume on CPU and GPU (`sdf::global`, `sdf::global_gpu`, background rebuild via `Renderer::set_gi_static_geometry` / `set_gi_static_bricks`), probe ray trace (`gi::trace::GiTracer`, `shaders/gi_trace.wgsl`). Not yet wired into the frame; the DDGI path is unchanged.
+- Networking (NET-01): new crate `redox_net` with the `Transport` seam, a deterministic `LoopbackWire` (latency, jitter, loss, duplication), `NetServer`/`NetClient` with a 16-player limit, reliable and ordered channel, deduplicated unreliable channel, newest-wins snapshots, `Message` codec (u16 id + postcard) and a server tick estimator; decision in ADR 0008 (proposed). `UdpTransport` (`std::net::UdpSocket`, non-blocking, handshake and RTT pings); `redox_core::NetPlugin` (`NetMode::{Off, Server, Client, ListenServer}`) and example `net_chat --selftest`. Compiled and tested by the coordinator only after merge.
 
-- Optional dispatcher CPU spans; profiler CPU/GPU panel; frame JSON export.
-- `redox_editor --bench` JSON benchmark runner.
+### Removed
+- Old examples `showcase`, `prism_vault`, `ball_score`, `shadow_lab` (kept: `skinned_demo`, `dino_runner`, `dino_game`).
+- Cascaded shadow maps (CSM): `shadow/csm.rs`, cascade buffers/bindings and shader branches.
+  Directional shadows are VSM-only. The `shadow_probe` example (a CSM probe) was deleted.
+
+### Fixed
+- Render: point-light glow was cut by flat planes that moved with the camera and far lights did not show. The cluster `cluster_info` uniform (near, far, depth_scale) used by the fragment shader was written only at start-up and on resize, while the light-culling slice bounds followed the camera's near and far, so lights landed in the wrong depth slices. The uniform now follows the camera (`cluster_depth_info` test).
+- Input: mouse Back and Forward buttons are separate `MouseButton` variants (they both collapsed into `Other(0)`).
+- Physics: joint `break_force` was understated by the number of solver substeps (4x); it is now a real force in newtons.
+- Physics: the character carry on a moving platform read the platform's collider pose, which Rapier refreshes only inside the step, so the character lagged the platform by one tick; it now reads the body pose (`a_platform_turn_is_carried_in_the_same_tick`). The remaining ~4-5 % proportional loss of a platform turn is still open (PHY-06).
+- Ragdoll: activating a character no longer throws the figure up. Its own collider stayed enabled inside the new bodies and pushed them out; it is now disabled while ragdolled (`PhysicsContext::set_entity_colliders_enabled`) and re-enabled on exit. Test `ragdoll_activation` (rise of the centre of mass at most 0.1 m in 2 s). Not run: cause is a hypothesis (PHY-07).
+- Render: after a window resize the tone-mapping bind groups (plain and TAA paths) kept sampling the bloom texture of the old size, so the last bloom stayed on screen forever; they are rebuilt against the new bloom chain (`resize_bloom` test).
+- Render: meshes added through the asset flow used the raw vertex layout while the pipelines read the compressed one (invisible meshes); asset-flow materials sampled the legacy texture list instead of the handle pool.
+- UI: every egui-based app (all examples except `skinned_demo`, and the editor) panicked at start since the egui 0.36 upgrade
+  (`TexturesDelta` dropped unhandled); the deltas are now cleared after they are applied (`redox_ui`, editor).
+- `dino_game` drew with a non-multisampled pass against MSAA pipelines (wgpu validation error); it now renders through `FrameView`.
+- ECS: `World::remove_component` now drops the removed value; `Column::replace` is panic-safe
+  and `add_component` no longer double-drops when an old value's destructor panics.
+- ECS: aliasing `&mut` in `Query::iter_mut`, duplicate component types in `spawn_bundle`,
+  ZST alignment (found by the unsafe audit).
+- Render (RFL-01): a reflection probe capture left the renderer's temporal state changed (TAA frame counter, history and previous depth, VSM screen-shadow history, VSM clipmap, page feedback, object motion), so frames after a capture differed from frames without one. The capture now saves and restores that state (`renderer::capture_state`). Not run in this session (no cargo, per the task); the bitwise test `the_frame_after_a_capture_equals_the_frame_without_one` is unverified.
+
+### Changed
+- winit: the closure event loop now runs through `ApplicationHandler` (`redox_core::window::RunClosure`);
+  the eight file-wide `#![allow(deprecated)]` are gone (three narrow `create_window` opt-outs remain).
+- `PakWriter` format is version 2 (per-entry raw size and codec); archives written by the first version are rejected.
+- `ActionBinding` has new variants (`PadButton`, `PadAxis`); `ActionMap::evaluate` keeps its signature, `evaluate_with` takes all devices.
+- `ReadOnlyQueryData` is now an `unsafe trait`.
+- Minimum supported Rust version is 1.88 (verified with `cargo check --workspace`).
+- Line endings normalized to LF (`.gitattributes`).
+- Large files split: editor `main.rs`, `viewport.rs`, `frame.rs`, VG `runtime.rs`, `vsm_clipmap.rs`, `prism_vault`.
+- Render: TSR path for `render_scale < 1` (PST-07): `post/tsr.rs` (jitter phases `ceil(8/scale²)`, LOD bias, sharpening, `1/scale` history scale), negative material LOD bias via `textureSampleBias`, wider TAA clip window and depth threshold when upscaling; native frames unchanged. Tests in `tests/tsr.rs`.
+
+### Added
+- Physics: `CollisionLayers` (membership and filter bit masks), `set_collider_layers`, `PhysicsContext::cast_shape` (sphere, capsule, box sweeps), `overlap_shape` and `overlap_any`, with entity exclusion and layer masks in the queries.
+- Tests: coverage of `redox_math` (`matrix`, `quat`, `transform` now 100 %) and `redox_input` (`state` 90 %, `mouse` 97 %, `gamepad` 93 %). A suspected input bug is recorded as an ignored test: winit `Back` and `Forward` mouse buttons both become `Other(0)`.
+- Animation graph (`redox_anim::graph`): parameters and triggers, state machines with timed cross-fades and exit times, 1D blend trees with phase sync, masked layers, root motion, state-enter events; serde-friendly data.
+- Game UI toolkit (`redox_ui::game`): widget tree with layout (column, row, stack, anchors, fill/fit), virtual 1920x1080 scale with safe area, localisation with fallback and plural forms (incl. Russian), focus navigation, screen stack, egui painter.
+- Example `courier`: third-person prototype using all of the above plus a pak-loaded level and streamed KTX2 textures.
+- Tests: golden frames for IBL from KTX2 and for a converged streamed texture; third-party KTX2/BasisLZ check (`REDOX_THIRD_PARTY_KTX2`).
+- Textures: Basis Universal (UASTC, ETC1S/BasisLZ) in `.basis` and KTX2 with BC7/RGBA8 target choice; `redox_cook texture`, `texture-info`, `bake-ibl`, `pack --textures`; IBL from baked KTX2 cubes (`IBLResource::from_ktx2/export_ktx2`); cube/array bind layouts.
+- Assets: priority task queue with cancel and a worker pool, range reads (`AssetSource::size/read_range`), `StreamedTexture`, uncompressed `.pak` entries.
+- Render: `TextureStreamer` (floor mips first, mip choice from on-screen size, promotion/demotion with GPU copy, memory budget, hysteresis); the editor asset panel shows KTX2/Basis headers.
+- KTX2: Zstandard supercompression, cube maps, 2D arrays and cube arrays, RGBA16F; `Ktx2Texture` now has `layers`/`faces` (`new_2d` for plain images), `to_ktx2_bytes`; `redox_asset::testing::Ktx2Builder`; `redox_cook texture-info`; `Texture::from_ktx2` keeps the texture shape (`Texture::view_dimension`).
+- Render: the frame now runs from the compiled frame graph (`frame_pass_order`): `render_frame_into` is split into one method per pass and executed in graph order (golden frames unchanged).
+- Render: `ShaderHotReload` (editor and `AppBuilder` with the `shader-hot-reload` feature) validates edited shaders and rebuilds 13 pass groups, now including tone mapping and the VG raster passes; verified by editing a real shader file under a running renderer.
+- Assets/Render: KTX2 textures flow through `AssetManager` (built-in loader, previously the built-in loaders had no storage inserters and never delivered results), `sync_ktx2_textures_to_render` and `MaterialData::with_*_ktx2`.
+- Render: `Renderer::reload_shaders` rebuilds the passes behind edited shaders without a restart (11 passes; tone mapping and VG passes excluded); `Texture::from_ktx2` uploads KTX2/BCn textures with their stored mips.
+- Core: application states (`State`, `NextState`, `AppBuilder::add_state/on_enter/on_exit`, `in_state`); `SharedCommands` flushed by the dispatcher between stages.
+- ECS: component hooks `World::on_add` / `World::on_remove` (spawn, add, remove, despawn).
+- Asset: `retain`/`release` ownership with unloading, `add_dependency` and `status_with_dependencies`, loading through a `.pak`/folder source, per-frame completion budget, KTX2/BCn loader, LZ4 compression in `.pak`; `redox_cook pack --compress --incremental`.
+- Scene: binary `world.bin` (`world_bin`: postcard, cell index, checksums, OFPA conversion).
+- Input: gamepads (`GamepadsState`, gilrs backend, `PadButton`/`PadAxis` bindings), text entry with IME (`TextInput`), layered `InputContexts`; the app polls pads and toggles the platform IME.
+- Render: `pipeline_cache` (on-disk Vulkan pipeline cache, saved when the renderer drops); `frame_graph` declares the frame as a `RenderGraph` and a test keeps it in sync with `renderer/frame.rs`.
+- Benchmarks: animation (`redox_anim`) and virtual-geometry build (`redox_render`); `missing_docs` also in `redox_render`, `redox_editor_core`, `redox_editor_ui`.
+- Docs: `PROJECT_MAP.md`, `ARCHITECTURE_REALITY.md`, `PROGRESS.md` rewritten against the current code.
+- Scene: `SaveManager` (crash-safe, versioned save slots with migrations and backups).
+- Input: runtime rebinding (`ActionMap::rebind`, conflicts, RON persistence, `Rebinder` capture).
+- Asset: `AssetGuid` + `.meta` sidecars + `AssetRegistry`; `.pak` archives (`PakWriter`/`PakReader`) and `AssetSource` (`DirSource`, `PakSource`); new `redox_cook` CLI (scan/pack/list/verify).
+- Render: `render_graph` compiler (ordering, culling, lifetimes, texture aliasing, DOT dump); not yet used by the renderer.
+- ECS: `Query::par_for_each_mut` (parallel mutable iteration), `World::with_commands`.
+- Core: system ordering (`SystemOrder` before/after labels, cycle detection) and `add_system_if` run conditions.
+- Reflect: `#[derive(Reflect)]` (`redox_reflect_derive`) and the `FieldValue` trait.
+- `missing_docs` enforced for math, input, ui, ecs, asset, core, reflect, physics, audio, vfx, anim, gameplay, scene; `clippy::unwrap_used` for library code.
+- Integration tests for vfx, gameplay, scene, reflect, math, physics; ECS benchmarks (`docs/BENCHMARKS.md`).
+- ECS: `Commands` / `CommandQueue` (deferred spawn, despawn, insert, remove, resources; ids reserved immediately); one-element bundles.
+- Dependencies: wgpu 30, naga 30, winit 0.30, egui 0.36 (dock 0.21, plot 0.37), rapier3d 0.36, kira 0.12, glam 0.33; toolchain 1.96, MSRV 1.95; thiserror 2, image 0.25, ron 0.12, notify 8, git2 0.21, rand 0.10, pollster 1, flume 0.12, hashbrown 0.17.
+- CI: MSRV, Miri (ECS), docs (`-D warnings`), file-size check, weekly schedule; Dependabot.
+- Tests: ECS ownership/drop tests, proptest model test, editor CLI tests.
+- Render: render graph gains access kinds, buffers, usage-flag checks (`MissingUsage`), self-dependency errors (`read_write` marker), barrier plan, critical path, usage verification (`UsageLog`) and `CompiledGraph::report`; the frame's TAA history pass now declares `read_write`. Not yet used by the renderer (transient pool and pass migration pending).
+- Render: RND-08 step 4: deforming casters (`RenderObject::deforms`, `pose_version` from `SkinnedMeshBinding::pose_version`) refresh their VSM pages every frame their pose changes, against last frame bounds; a paused animation leaves its pages alone.
+- Render: froxel fog volume (PST-06 step 3): `set_fog_froxel`, 160x90x64 grid with VSM sun shadows, inject/integrate compute passes and a composite that replaces the analytic fog; not run on GPU yet.
