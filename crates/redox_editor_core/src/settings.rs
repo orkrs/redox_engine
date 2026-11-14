@@ -2,6 +2,7 @@
 
 use crate::autosave::AutosavePolicy;
 use crate::log::EditorLog;
+use crate::viewport_prefs::ViewportRuntimeSettings;
 use redox_scene::ofpa::write_atomic;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -17,6 +18,8 @@ pub const SETTINGS_FILE: &str = "editor_settings.ron";
 pub struct EditorSettings {
     /// Autosave switch, interval and number of kept snapshots.
     pub autosave: AutosavePolicy,
+    /// Viewport sky / GI / fog / overlay toggles (EDT-B3).
+    pub viewport: ViewportRuntimeSettings,
 }
 
 impl EditorSettings {
@@ -56,6 +59,7 @@ impl EditorSettings {
     pub fn clamped(self) -> Self {
         Self {
             autosave: self.autosave.clamped(),
+            viewport: self.viewport,
         }
     }
 }
