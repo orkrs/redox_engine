@@ -6,7 +6,12 @@ use std::collections::HashSet;
 
 use egui::{Color32, Id, Ui};
 use redox_ecs::{Entity, World};
-use redox_editor_core::inspector_model::{InspectorModel, Row, RowValue, addable_types};
+use redox_editor_core::component_catalog::{ComponentCatalog, DependencyPromptAnswer};
+use redox_editor_core::component_commands::{
+    component_add, component_copy_values, component_remove, record_component_transaction,
+    ComponentAddResult,
+};
+use redox_editor_core::inspector_model::{InspectorModel, Row, RowValue};
 use redox_editor_core::{EditorLog, UndoCommand, UndoStack};
 use redox_gameplay::AttributeSet;
 use redox_reflect::meta::FieldError;
@@ -18,6 +23,8 @@ struct PanelState {
     filter: String,
     show_advanced: bool,
     add_filter: String,
+    /// Component type waiting for a dependency prompt answer.
+    pending_add: Option<(&'static str, DependencyPromptAnswer)>,
 }
 
 /// What the user asked for on one row this frame.
@@ -114,10 +121,43 @@ fn draw(
             .id_salt(section.component.as_str())
             .default_open(true)
             .show(ui, |ui| {
-                if ui.small_button("Reset component").clicked() {
-                    let result = model.reset_component(registry, world_ref, &section.component);
-                    push_result(&mut pending, log, result);
-                }
+                ui.horizontal(|ui| {
+                    if ui.small_button("Reset component").clicked() {
+                        let result =
+                            model.reset_component(registry, world_ref, &section.component);
+                        push_result(&mut pending, log, result);
+                    }
+                    if ui.small_button("Remove").clicked() {
+                        match component_remove(registry, world_ref, entities, &section.component) {
+                            Ok(outcome) => {
+                                for warning in &outcome.warnings {
+                                    log.warn(warning);
+                                }
+                                pending.extend(outcome.commands);
+                            }
+                            Err(error) => log.warn(format!("Remove: {error}")),
+                        }
+                    }
+                    if entities.len() > 1
+                        && ui
+                            .small_button("Copy from primary")
+                            .on_hover_text("Copy this component's values from the primary entity")
+                            .clicked()
+                    {
+                        let primary = entities[0];
+                        let targets = &entities[1..];
+                        match component_copy_values(
+                            registry,
+                            world_ref,
+                            primary,
+                            targets,
+                            &section.component,
+                        ) {
+                            Ok(commands) => pending.extend(commands),
+                            Err(error) => log.warn(format!("Copy: {error}")),
+                        }
+                    }
+                });
                 for row in &section.rows {
                     let first = first_value(&model, registry, world_ref, row);
                     let action = draw_row(ui, row, first);
@@ -146,26 +186,70 @@ fn draw(
     let mut add_request: Option<&'static str> = None;
     ui.menu_button("➕ Add Component", |ui| {
         ui.text_edit_singleline(&mut state.add_filter);
-        for addable in addable_types(registry, world_ref, entities, &state.add_filter, false) {
+        for addable in
+            ComponentCatalog::addable(registry, world_ref, entities, &state.add_filter, false)
+        {
             let label = match addable.category {
                 Some(category) => format!("{} ({category})", addable.type_name),
                 None => addable.type_name.to_string(),
             };
-            if ui.button(label).clicked() {
+            let button = if let Some(tip) = addable.tooltip {
+                ui.button(label).on_hover_text(tip)
+            } else {
+                ui.button(label)
+            };
+            if button.clicked() {
                 add_request = Some(addable.type_name);
                 ui.close();
             }
         }
     });
-    if let Some(component) = add_request {
-        match model.add_component(registry, world_ref, component) {
-            // undo: n/a
-            Ok(outcome) => {
-                for note in &outcome.notes {
+    if let Some((component, answer)) = state.pending_add.take() {
+        match component_add(registry, world_ref, entities, component, Some(answer)) {
+            Ok(ComponentAddResult::Ready {
+                commands,
+                notes,
+                warnings,
+            }) => {
+                for line in &warnings {
+                    log.warn(line);
+                }
+                for note in &notes {
                     log.info(note);
                 }
-                pending.extend(outcome.commands);
+                pending.extend(commands);
             }
+            Ok(ComponentAddResult::NeedsPrompt(_)) | Ok(ComponentAddResult::Cancelled) => {}
+            Err(error) => log.warn(format!("Add Component: {error}")),
+        }
+    } else if let Some(component) = add_request {
+        match component_add(registry, world_ref, entities, component, None) {
+            Ok(ComponentAddResult::Ready {
+                commands,
+                notes,
+                warnings,
+            }) => {
+                for line in &warnings {
+                    log.warn(line);
+                }
+                for note in &notes {
+                    log.info(note);
+                }
+                pending.extend(commands);
+            }
+            Ok(ComponentAddResult::NeedsPrompt(warning)) => {
+                log.warn(&warning.message);
+                ui.horizontal(|ui| {
+                    if ui.button("Continue").clicked() {
+                        state.pending_add =
+                            Some((component, DependencyPromptAnswer::Continue));
+                    }
+                    if ui.button("Cancel").clicked() {
+                        state.pending_add = Some((component, DependencyPromptAnswer::Cancel));
+                    }
+                });
+            }
+            Ok(ComponentAddResult::Cancelled) => {}
             Err(error) => log.warn(format!("Add Component: {error}")),
         }
     }
@@ -279,15 +363,5 @@ fn commit(
     undo: &mut UndoStack,
     commands: Vec<UndoCommand>,
 ) {
-    if commands.is_empty() {
-        return;
-    }
-    for command in &commands {
-        let _ = command.apply(world, registry);
-    }
-    let entry = match <[UndoCommand; 1]>::try_from(commands) {
-        Ok([single]) => single,
-        Err(commands) => UndoCommand::Batch(commands),
-    };
-    undo.push(entry);
+    let _ = record_component_transaction(undo, registry, world, "Inspector", commands);
 }
