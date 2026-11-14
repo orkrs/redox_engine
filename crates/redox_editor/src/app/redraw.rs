@@ -2,9 +2,11 @@
 //! egui pass and presentation.
 
 use super::EditorApp;
-use crate::commands::{collect_transforms, resolve_entity};
+use crate::commands::resolve_entity;
+use crate::render_entities::collect_viewport_draws;
 use crate::render_host::{RenderHost, SharedGpu};
 use redox_editor_core::builtin_commands::record_spawn;
+use redox_editor_core::settings::{EditorSettings, SETTINGS_FILE};
 use redox_editor_scene::WorldSession;
 use redox_editor_ui::{AssetKind, EditorMeshProxy, OutlinerAction, egui_to_viewport_coords};
 use redox_editor_viewport::{
@@ -22,17 +24,30 @@ impl EditorApp {
         self.tick_autosave();
         self.sync_assets();
         self.handle_timetravel_status();
+        self.handle_viewport_requests();
         self.ensure_gpu();
         self.handle_world_status_requests();
         self.handle_outliner_actions();
 
-        let entities = collect_transforms(&self.core.world.lock());
+        let draws = collect_viewport_draws(&self.core.world.lock());
+        let entities: Vec<(u32, Transform)> = draws
+            .iter()
+            .map(|d| (d.entity_id, d.transform))
+            .collect();
         let selected_id = self.core.selection.lock().primary.map(|e| e.id());
         let shading = *self.ui_ctx.shading.lock();
         let layout = *self.ui_ctx.layout.lock();
+        if let Some(host) = self.render_host.as_mut() {
+            host.runtime = self.settings.viewport;
+        }
 
         self.resize_viewport_target();
-        self.render_viewport(&entities, selected_id, shading, layout);
+        self.render_viewport(&draws, &entities, selected_id, shading, layout);
+        if let Some(host) = &self.render_host {
+            if host.runtime.show_stats_overlay {
+                *self.ui_ctx.vram_label.lock() = host.last_stats.lines().join(" | ");
+            }
+        }
         let full_output = self.build_ui();
         self.pick_on_click(&entities);
         {
@@ -157,6 +172,41 @@ impl EditorApp {
         }
     }
 
+    fn handle_viewport_requests(&mut self) {
+        let status = self.ui_ctx.core.status.lock().clone();
+        if status == "viewport_screenshot" {
+            let path = std::env::temp_dir().join(format!(
+                "redox_viewport_{}.png",
+                std::process::id()
+            ));
+            let msg = match self.render_host.as_ref() {
+                Some(host) => match host.screenshot_to_png(&path) {
+                    Ok(()) => format!("[INFO] Viewport saved to {}", path.display()),
+                    Err(err) => format!("[ERR] Screenshot failed: {err}"),
+                },
+                None => "[ERR] Screenshot: renderer not ready".into(),
+            };
+            self.ui_ctx.log(msg);
+            self.ui_ctx.core.status.lock().clear();
+        } else if let Some(field) = status.strip_prefix("viewport_toggle:") {
+            let mut v = self.settings.viewport;
+            match field {
+                "procedural_sky" => v.procedural_sky = !v.procedural_sky,
+                "gi_enabled" => v.gi_enabled = !v.gi_enabled,
+                "fog_enabled" => v.fog_enabled = !v.fog_enabled,
+                "sdf_debug" => v.sdf_debug = !v.sdf_debug,
+                _ => {}
+            }
+            self.settings.viewport = v;
+            let _ = self
+                .settings
+                .save(std::path::Path::new(SETTINGS_FILE));
+            self.ui_ctx
+                .log(format!("[INFO] Viewport setting updated: {field}"));
+            self.ui_ctx.core.status.lock().clear();
+        }
+    }
+
     fn handle_timetravel_status(&mut self) {
         {
             let status = self.ui_ctx.core.status.lock().clone();
@@ -199,6 +249,7 @@ impl EditorApp {
             self.egui_renderer = Some(renderer);
             self.lines_pass = Some(lp);
             self.viewport_tex_id = Some(tex_id);
+            host.runtime = self.settings.viewport;
             self.render_host = Some(host);
             self.shared_gpu = Some(boot.shared);
             self.ui_ctx.log(
@@ -384,6 +435,7 @@ impl EditorApp {
 
     fn render_viewport(
         &mut self,
+        draws: &[redox_editor_viewport::ViewportDrawItem],
         entities: &[(u32, Transform)],
         selected_id: Option<u32>,
         shading: ViewportShading,
@@ -391,14 +443,19 @@ impl EditorApp {
     ) {
         if let Some(host) = self.render_host.as_mut() {
             let cam = self.camera.lock().clone();
+            let assets_root = Some(std::path::Path::new("assets"));
+            let plan = redox_editor_viewport::ViewportShadingPlan::resolve(shading);
+            let fps = *self.ui_ctx.fps.lock();
+            let cpu_ms = *self.ui_ctx.frame_ms.lock();
             match layout {
                 ViewportLayout::Quad => {
-                    host.render_quad(&cam, entities, selected_id, shading);
+                    host.render_quad(&cam, draws, selected_id, shading, assets_root);
                 }
                 ViewportLayout::Single => {
-                    host.render(&cam, entities, selected_id, shading);
+                    host.render(&cam, draws, selected_id, shading, assets_root);
                 }
             }
+            host.record_stats(fps, cpu_ms, &plan);
             if let Some(lp) = self.lines_pass.as_ref()
                 && layout == ViewportLayout::Single
             {
@@ -421,6 +478,7 @@ impl EditorApp {
                     .map(|s| s.manifest.cell_size)
                     .unwrap_or(16.0);
                 let mut overlay = build_editor_overlay_lines(gizmo_origin, cell_size);
+                overlay.extend(host.wireframe_overlay.clone());
                 if *self.ui_ctx.show_git_ghosts.lock() {
                     let ghosts = self.ui_ctx.git.lock().ghosts.clone();
                     let w = self.core.world.lock();

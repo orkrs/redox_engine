@@ -80,6 +80,34 @@ impl Default for CommandPalette {
                 label: "> Shading: Wireframe".into(),
             },
             Command {
+                id: "shading_roughness".into(),
+                label: "> Shading: Roughness".into(),
+            },
+            Command {
+                id: "shading_depth".into(),
+                label: "> Shading: Depth".into(),
+            },
+            Command {
+                id: "viewport_screenshot".into(),
+                label: "> Viewport Screenshot".into(),
+            },
+            Command {
+                id: "viewport_toggle_sky".into(),
+                label: "> Toggle Procedural Sky".into(),
+            },
+            Command {
+                id: "viewport_toggle_gi".into(),
+                label: "> Toggle GI".into(),
+            },
+            Command {
+                id: "viewport_toggle_fog".into(),
+                label: "> Toggle Fog".into(),
+            },
+            Command {
+                id: "viewport_toggle_sdf_debug".into(),
+                label: "> Toggle SDF Debug".into(),
+            },
+            Command {
                 id: "material_save".into(),
                 label: "> Save Material".into(),
             },

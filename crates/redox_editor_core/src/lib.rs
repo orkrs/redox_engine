@@ -42,6 +42,8 @@ pub mod recovery;
 pub mod selection;
 /// Editor preferences in `editor_settings.ron`.
 pub mod settings;
+/// Viewport runtime toggles (sky, GI, fog) serialized in settings.
+pub mod viewport_prefs;
 /// Undo and redo commands.
 pub mod undo;
 

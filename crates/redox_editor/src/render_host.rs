@@ -16,13 +16,17 @@
 //!   `VirtualMesh` entities in the editor world).
 //! - GI / SDF shadow bricks: GPU objects exist; editor does not seed probes/bricks.
 //! - IBL: dummy environment (no HDR load); skybox off.
-//! - ViewportShading Unlit / Normals / Wireframe: Lit PBR only (selection tint).
-//! - Streaming GpuRegistry assets beyond procedural cubes.
+//! - Mesh path: glTF via [`ViewportMeshCache`]; proxy cube only when asset missing.
+//! - Shading modes report **unavailable** when the engine has no debug view (no cube hacks).
 
-use redox_editor_viewport::{EditorCamera, EditorViewport, ViewportShading, quad_pane_cameras};
+use redox_editor_viewport::{
+    EditorCamera, EditorViewport, ViewportDrawItem, ViewportMeshCache, ViewportRuntimeSettings,
+    ViewportShading, ViewportShadingPlan, ViewportStatsOverlay, apply_shading_plan,
+    apply_viewport_runtime, mesh_wireframe_lines, quad_pane_cameras, screenshot_texture_to_png,
+};
 use redox_math::{Mat4, Transform, Vec3};
-use redox_render::context::ShaderDebugVizMode;
 use redox_render::{Material, RenderObject, Renderer, mesh::primitive::create_cube};
+use std::path::Path;
 use std::sync::Arc;
 use winit::window::Window;
 
@@ -142,6 +146,14 @@ pub struct RenderHost {
     /// Half-res pane RTTs for quad layout (Top/Front/Right/Persp).
     pane_views: Option<[EditorViewport; 4]>,
     object_scratch: Vec<RenderObject>,
+    /// glTF / scene-ref uploads for real mesh draw.
+    pub mesh_cache: ViewportMeshCache,
+    /// Sky / GI / fog toggles (mirrors [`EditorSettings::viewport`]).
+    pub runtime: ViewportRuntimeSettings,
+    /// Latest overlay stats for the View menu strip.
+    pub last_stats: ViewportStatsOverlay,
+    /// Wireframe edge overlay for the current frame (Lit + wire mode).
+    pub wireframe_overlay: Vec<(Vec3, Vec3, [f32; 4])>,
     /// Rebuilds the passes of WGSL files edited while the editor runs (`shader-hot-reload`).
     #[cfg(feature = "shader-hot-reload")]
     shader_hot_reload: redox_render::renderer::ShaderHotReload,
@@ -222,9 +234,48 @@ impl RenderHost {
             height,
             pane_views,
             object_scratch: Vec::new(),
+            mesh_cache: ViewportMeshCache::new(),
+            runtime: ViewportRuntimeSettings::default(),
+            last_stats: ViewportStatsOverlay::default(),
+            wireframe_overlay: Vec::new(),
             #[cfg(feature = "shader-hot-reload")]
             shader_hot_reload: redox_render::renderer::ShaderHotReload::new(),
         }
+    }
+
+    /// Writes the current viewport colour target to `path` (blocking readback).
+    pub fn screenshot_to_png(&self, path: &Path) -> Result<(), String> {
+        let renderer = self.renderer.as_ref().ok_or("no renderer")?;
+        screenshot_texture_to_png(
+            &renderer.device,
+            &renderer.queue,
+            &self.viewport.color_tex,
+            self.width,
+            self.height,
+            path,
+        )
+    }
+
+    /// Refreshes [`Self::last_stats`] from editor timing inputs.
+    pub fn record_stats(&mut self, fps: f32, cpu_ms: f32, plan: &ViewportShadingPlan) {
+        let gpu_ms = self
+            .renderer
+            .as_ref()
+            .and_then(|r| {
+                if r.gpu_profiler.is_enabled() && r.gpu_profiler.total_ms() > 0.0 {
+                    Some(r.gpu_profiler.total_ms())
+                } else {
+                    None
+                }
+            });
+        self.last_stats = ViewportStatsOverlay {
+            fps,
+            cpu_frame_ms: cpu_ms,
+            gpu_frame_ms: gpu_ms,
+            shading_line: plan.overlay_label(),
+            missing_mesh_count: self.mesh_cache.missing_entities().len(),
+            toggle_hints: Vec::new(),
+        };
     }
 
     /// Logs compile errors for shaders saved since the last poll. Pipelines keep using the
@@ -282,9 +333,10 @@ impl RenderHost {
     pub fn render(
         &mut self,
         camera: &EditorCamera,
-        entities: &[(u32, Transform)],
+        draws: &[ViewportDrawItem],
         selected_id: Option<u32>,
         shading: ViewportShading,
+        assets_root: Option<&Path>,
     ) {
         #[cfg(feature = "shader-hot-reload")]
         self.poll_shader_edits();
@@ -293,30 +345,45 @@ impl RenderHost {
             return;
         };
 
+        let toggle_hints = apply_viewport_runtime(renderer, &self.runtime);
         apply_editor_camera(renderer, camera);
-        apply_shading(renderer, shading);
+        let plan = ViewportShadingPlan::resolve(shading);
+        apply_shading_plan(renderer, &plan);
+        self.mesh_cache.clear_missing();
+        self.wireframe_overlay.clear();
         self.object_scratch.clear();
         push_ground(&mut self.object_scratch, self.cube_mesh, self.ground_mat);
-        push_entities(
+        push_draw_items(
+            renderer,
+            &mut self.mesh_cache,
+            assets_root,
             &mut self.object_scratch,
-            entities,
+            draws,
             selected_id,
             self.cube_mesh,
             self.default_mat,
             self.selected_mat,
+            &plan,
+            &mut self.wireframe_overlay,
         );
 
         let _ = renderer.render_frame_into(&self.object_scratch, self.viewport.color_view());
         clear_viewport_depth_for_overlay(renderer, &self.viewport);
+        self.last_stats.toggle_hints = toggle_hints
+            .overlay_lines()
+            .into_iter()
+            .map(str::to_string)
+            .collect();
     }
 
     /// Quad layout: same engine path per pane (half-res), blit into viewport.
     pub fn render_quad(
         &mut self,
         camera: &EditorCamera,
-        entities: &[(u32, Transform)],
+        draws: &[ViewportDrawItem],
         selected_id: Option<u32>,
         shading: ViewportShading,
+        assets_root: Option<&Path>,
     ) {
         let (tw, th) = (self.width.max(1), self.height.max(1));
         let hw = (tw / 2).max(1);
@@ -326,14 +393,28 @@ impl RenderHost {
 
         self.object_scratch.clear();
         push_ground(&mut self.object_scratch, self.cube_mesh, self.ground_mat);
-        push_entities(
-            &mut self.object_scratch,
-            entities,
-            selected_id,
-            self.cube_mesh,
-            self.default_mat,
-            self.selected_mat,
-        );
+        let plan = ViewportShadingPlan::resolve(shading);
+        {
+            let Some(renderer) = self.renderer.as_mut() else {
+                return;
+            };
+            let _ = apply_viewport_runtime(renderer, &self.runtime);
+            self.mesh_cache.clear_missing();
+            self.wireframe_overlay.clear();
+            push_draw_items(
+                renderer,
+                &mut self.mesh_cache,
+                assets_root,
+                &mut self.object_scratch,
+                draws,
+                selected_id,
+                self.cube_mesh,
+                self.default_mat,
+                self.selected_mat,
+                &plan,
+                &mut self.wireframe_overlay,
+            );
+        }
         let objects = self.object_scratch.clone();
 
         {
@@ -349,7 +430,7 @@ impl RenderHost {
                 renderer.resize(hw, hh);
             }
 
-            apply_shading(renderer, shading);
+            apply_shading_plan(renderer, &plan);
 
             for (i, cam) in cams.iter().enumerate() {
                 apply_editor_camera(renderer, cam);
@@ -479,16 +560,6 @@ fn apply_editor_camera(renderer: &mut Renderer, camera: &EditorCamera) {
     renderer.update_camera_buffer();
 }
 
-fn apply_shading(renderer: &mut Renderer, shading: ViewportShading) {
-    let mode = match shading {
-        ViewportShading::Lit | ViewportShading::Unlit | ViewportShading::Wireframe => {
-            ShaderDebugVizMode::None
-        }
-        ViewportShading::Normals => ShaderDebugVizMode::ShadowSources,
-    };
-    renderer.update_shader_debug_buffer(mode);
-}
-
 fn push_ground(out: &mut Vec<RenderObject>, mesh: usize, mat: usize) {
     let model = Mat4::from_scale_rotation_translation(
         Vec3::new(64.0, 0.1, 64.0),
@@ -509,32 +580,60 @@ fn push_ground(out: &mut Vec<RenderObject>, mesh: usize, mat: usize) {
     });
 }
 
-fn push_entities(
+fn push_draw_items(
+    renderer: &mut Renderer,
+    cache: &mut ViewportMeshCache,
+    assets_root: Option<&Path>,
     out: &mut Vec<RenderObject>,
-    entities: &[(u32, Transform)],
+    draws: &[ViewportDrawItem],
     selected_id: Option<u32>,
-    mesh: usize,
+    proxy_mesh: usize,
     default_mat: usize,
     selected_mat: usize,
+    plan: &ViewportShadingPlan,
+    wire_lines: &mut Vec<(Vec3, Vec3, [f32; 4])>,
 ) {
-    for (id, t) in entities {
-        let model = t.matrix();
-        let mat = if selected_id == Some(*id) {
-            selected_mat
+    let wire_color = [0.35, 0.95, 1.0, 1.0];
+    for item in draws {
+        let model = item.transform.matrix();
+        let has_path = item.mesh_path.is_some() || item.mesh_ref.is_some();
+        let resolved = if has_path {
+            cache.resolve(renderer, assets_root, item)
         } else {
-            default_mat
+            None
         };
-        let local = redox_math::Aabb::from_center_size(Vec3::ZERO, Vec3::splat(0.5));
+        let (mesh_index, material_index, bounds) = if let Some(r) = resolved {
+            if plan.wireframe_overlay {
+                wire_lines.extend(mesh_wireframe_lines(&r.cpu_mesh, model, wire_color));
+            }
+            (
+                r.mesh_slot,
+                if selected_id == Some(item.entity_id) {
+                    selected_mat
+                } else {
+                    r.material_slot
+                },
+                r.local_bounds.transform(model),
+            )
+        } else {
+            let mat = if selected_id == Some(item.entity_id) {
+                selected_mat
+            } else {
+                default_mat
+            };
+            let local = redox_math::Aabb::from_center_size(Vec3::ZERO, Vec3::splat(0.5));
+            (proxy_mesh, mat, local.transform(model))
+        };
         out.push(RenderObject {
-            id: out.len() as u32,
+            id: item.entity_id,
             shadow_class: redox_render::shadow::ShadowClass::Auto,
             deforms: false,
             pose_version: 0,
             model_matrix: model,
             color: [1.0, 1.0, 1.0, 1.0],
-            mesh_index: mesh,
-            material_index: mat,
-            bounds: local.transform(model),
+            mesh_index,
+            material_index,
+            bounds,
         });
     }
 }

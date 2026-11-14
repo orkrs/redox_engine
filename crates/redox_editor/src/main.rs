@@ -3,6 +3,7 @@
 mod app;
 mod cli;
 mod commands;
+mod render_entities;
 mod render_host;
 
 use cli::{HELP_TEXT, parse_cli, run_bake};

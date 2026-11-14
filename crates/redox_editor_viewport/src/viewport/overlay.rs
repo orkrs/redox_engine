@@ -46,6 +46,30 @@ pub fn build_editor_overlay_lines(
     lines
 }
 
+/// Triangle edge wireframe for a resolved mesh instance.
+pub fn mesh_wireframe_lines(
+    mesh: &redox_render::Mesh,
+    model: redox_math::Mat4,
+    color: [f32; 4],
+) -> Vec<(Vec3, Vec3, [f32; 4])> {
+    use redox_math::Vec3;
+    let mut out = Vec::new();
+    for tri in mesh.indices.chunks_exact(3) {
+        let world = |i: u32| -> Vec3 {
+            let v = &mesh.vertices[i as usize];
+            let p = model * Vec3::new(v.position[0], v.position[1], v.position[2]).extend(1.0);
+            p.truncate()
+        };
+        let a = world(tri[0]);
+        let b = world(tri[1]);
+        let c = world(tri[2]);
+        out.push((a, b, color));
+        out.push((b, c, color));
+        out.push((c, a, color));
+    }
+    out
+}
+
 /// Wireframe unit cube (ghost / git old position).
 pub fn ghost_cube_lines(center: Vec3, color: [f32; 4]) -> Vec<(Vec3, Vec3, [f32; 4])> {
     let h = 0.5;

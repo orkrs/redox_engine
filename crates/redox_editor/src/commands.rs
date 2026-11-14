@@ -102,6 +102,30 @@ pub(crate) fn run_command(ui_ctx: &EditorUiCtx, dock: &mut EditorDock, id: &str)
             *ui_ctx.shading.lock() = ViewportShading::Wireframe;
             ui_ctx.log("[INFO] Shading: Wireframe");
         }
+        "shading_roughness" => {
+            *ui_ctx.shading.lock() = ViewportShading::Roughness;
+            ui_ctx.log("[INFO] Shading: Roughness");
+        }
+        "shading_depth" => {
+            *ui_ctx.shading.lock() = ViewportShading::Depth;
+            ui_ctx.log("[INFO] Shading: Depth");
+        }
+        "viewport_screenshot" => {
+            *ui_ctx.core.status.lock() = "viewport_screenshot".into();
+            ui_ctx.log("[INFO] Viewport screenshot queued");
+        }
+        "viewport_toggle_sky" => {
+            *ui_ctx.core.status.lock() = "viewport_toggle:procedural_sky".into();
+        }
+        "viewport_toggle_gi" => {
+            *ui_ctx.core.status.lock() = "viewport_toggle:gi_enabled".into();
+        }
+        "viewport_toggle_fog" => {
+            *ui_ctx.core.status.lock() = "viewport_toggle:fog_enabled".into();
+        }
+        "viewport_toggle_sdf_debug" => {
+            *ui_ctx.core.status.lock() = "viewport_toggle:sdf_debug".into();
+        }
         "align_surface" => {
             if let Some(e) = ui_ctx.core.selection.lock().primary {
                 *ui_ctx.core.status.lock() = format!("snap:{}", e.id());

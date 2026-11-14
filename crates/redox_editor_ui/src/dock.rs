@@ -305,6 +305,8 @@ impl TabViewer for TabViewerImpl<'_> {
                             ViewportShading::Unlit,
                             ViewportShading::Normals,
                             ViewportShading::Wireframe,
+                            ViewportShading::Roughness,
+                            ViewportShading::Depth,
                         ] {
                             if ui
                                 .selectable_label(*shading == mode, mode.label())
@@ -336,6 +338,10 @@ impl TabViewer for TabViewerImpl<'_> {
                         ui.checkbox(&mut dbg.show_aabbs, "AABBs (F7)");
                     }
                     self.ui_ctx.brush.lock().show_toolbar(ui);
+                    if ui.button("Screenshot").clicked() {
+                        *self.ui_ctx.core.status.lock() = "viewport_screenshot".into();
+                    }
+                    ui.label("View toggles (palette): Sky / GI / Fog / SDF");
                     let cam = self.ui_ctx.camera.lock();
                     ui.label(format!("Cam {:.0}×", cam.speed / 8.0));
                     ui.separator();
