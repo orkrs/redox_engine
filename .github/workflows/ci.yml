@@ -32,6 +32,46 @@ jobs:
       - name: docs/CRATES.md up to date
         run: python scripts/gen_crates_doc.py --check
 
+  # EDT-C4 step 2 — headless editor path (validate → import → cook).
+  # Gated: `redox_cook validate`, `import`, and `cook` land with EDT-B8 / EDT-C1.
+  # Coordinator: set `if: true` (or drop the condition) after those slices merge.
+  editor-pipeline:
+    name: editor-pipeline
+    if: false
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      SAMPLE_PROJECT: crates/redox_editor/tests/data/sample_project
+      SAMPLE_BROKEN: crates/redox_editor/tests/data/sample_project_broken
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: Swatinem/rust-cache@v2
+      - name: sample_project validate (expect success)
+        run: cargo run -p redox_cook -- validate "${{ env.SAMPLE_PROJECT }}" --json "${{ env.SAMPLE_PROJECT }}/validate.json"
+      - name: sample_project import
+        run: cargo run -p redox_cook -- import "${{ env.SAMPLE_PROJECT }}"
+      - name: sample_project cook (profile default)
+        run: cargo run -p redox_cook -- cook "${{ env.SAMPLE_PROJECT }}" --profile default --json "${{ env.SAMPLE_PROJECT }}/cook_report.json"
+      - name: sample_project_broken validate (expect failure)
+        shell: pwsh
+        run: |
+          cargo run -p redox_cook -- validate $env:SAMPLE_BROKEN --json "$env:SAMPLE_BROKEN/validate.json"
+          if ($LASTEXITCODE -eq 0) {
+            Write-Error "expected non-zero exit from validate on broken sample"
+            exit 1
+          }
+          exit 0
+      - name: upload editor reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: editor-pipeline-reports
+          path: |
+            crates/redox_editor/tests/data/sample_project/validate.json
+            crates/redox_editor/tests/data/sample_project/cook_report.json
+            crates/redox_editor/tests/data/sample_project_broken/validate.json
+
   msrv:
     runs-on: windows-latest
     steps:
