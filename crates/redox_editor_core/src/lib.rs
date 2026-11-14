@@ -44,5 +44,7 @@ pub use context::EditorContext;
 pub use editor_only::{EditorOnly, editor_only_entities};
 pub use guid::GuidResolver;
 pub use log::EditorLog;
+pub use project::{ProjectOpenOptions, ProjectWarning};
 pub use selection::{Selection, Visibility};
+pub use settings::{EditorSettings, PluginEditorSettings};
 pub use undo::{Clock, SystemClock, UndoCommand, UndoEntry, UndoError, UndoHotkey, UndoStack};

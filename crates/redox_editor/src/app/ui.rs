@@ -1,7 +1,7 @@
 //! egui layout: menu bar, status bar, dock and command palette.
 
 use super::EditorApp;
-use crate::commands::{focus_selection, run_command};
+use crate::commands::focus_selection;
 use redox_editor_core::EditorContext;
 use redox_editor_core::autosave::AutosavePolicy;
 use redox_editor_core::file_commands::FileRequest;
@@ -42,6 +42,7 @@ impl EditorApp {
         let ui_ctx_ref = self.ui_ctx.clone();
         let mut recovery_answer: Option<RecoveryAnswer> = None;
         let mut preferences_answer: Option<AutosavePolicy> = None;
+        let mut plugins_saved = false;
         let mut report_actions: Vec<ReportAction> = Vec::new();
         let output = self.egui_ctx.run_ui(raw_input, |ui| {
             let ctx = ui.ctx().clone();
@@ -129,13 +130,13 @@ impl EditorApp {
                     });
                     ui.menu_button("Entity", |ui| {
                         if ui.button("Create Empty Ctrl+Shift+N").clicked() {
-                            run_command(&ui_ctx_ref, &mut self.dock, "create_entity");
+                            self.run_editor_command("create_entity");
                         }
                         if ui.button("Duplicate Ctrl+D").clicked() {
-                            run_command(&ui_ctx_ref, &mut self.dock, "duplicate");
+                            self.run_editor_command("duplicate");
                         }
                         if ui.button("Delete").clicked() {
-                            run_command(&ui_ctx_ref, &mut self.dock, "delete");
+                            self.run_editor_command("delete");
                         }
                     });
                     ui.menu_button("World", |ui| {
@@ -186,18 +187,30 @@ impl EditorApp {
                             *l = l.toggle();
                         }
                         if ui.button("Reset Layout").clicked() {
-                            run_command(&ui_ctx_ref, &mut self.dock, "reset_layout");
+                            self.run_editor_command("reset_layout");
                         }
                     });
                     ui.menu_button("Build", |ui| {
                         if ui.button("Bake Meshlets").clicked() {
-                            run_command(&ui_ctx_ref, &mut self.dock, "bake_meshlets");
+                            self.run_editor_command("bake_meshlets");
                         }
                         if ui.button("Write Bake Report").clicked() {
-                            run_command(&ui_ctx_ref, &mut self.dock, "bake_report");
+                            self.run_editor_command("bake_report");
                         }
                         if ui.button("Spawn StateTree Agent").clicked() {
-                            run_command(&ui_ctx_ref, &mut self.dock, "spawn_agent");
+                            self.run_editor_command("spawn_agent");
+                        }
+                    });
+                    ui.menu_button("Project", |ui| {
+                        if ui.button("Plugins…").clicked() {
+                            if let Some(project) = self.files.project() {
+                                self.plugin_manager.open_for_project(
+                                    project,
+                                    self.settings.plugins,
+                                );
+                            } else {
+                                ui_ctx_ref.log("[WARN] Open a project to edit plugins");
+                            }
                         }
                     });
                     ui.menu_button("Help", |ui| {
@@ -213,7 +226,7 @@ impl EditorApp {
                         drop(pie);
 
                         if ui.button("⏹").clicked() {
-                            run_command(&ui_ctx_ref, &mut self.dock, "pie_stop");
+                            self.run_editor_command("pie_stop");
                         }
                         if ui.button("⏸").clicked() {
                             let mut pie = ui_ctx_ref.pie.lock();
@@ -233,7 +246,7 @@ impl EditorApp {
                             "▶ Play"
                         };
                         if ui.button(play_label).clicked() {
-                            run_command(&ui_ctx_ref, &mut self.dock, "pie_play");
+                            self.run_editor_command("pie_play");
                         }
                         ui.separator();
                         let sel = self.core.selection.lock().primary.map(|e| e.id());
@@ -311,10 +324,23 @@ impl EditorApp {
             });
 
             self.files.handle_requests(&self.core);
+            self.sync_project_plugins();
             if let Some(title) = self.files.take_title_change(&self.core) {
                 self.window.set_title(&title);
             }
             self.files.show_windows(ctx, &self.core);
+            plugins_saved = self.plugin_manager.show(
+                ctx,
+                &mut self.plugin_host,
+                self.files.project_mut(),
+                &self.core,
+                &mut self.core.commands,
+                &mut self.settings.plugins,
+            );
+            if plugins_saved {
+                self.ui_ctx.core.commands = self.core.commands.clone();
+                self.sync_project_plugins();
+            }
 
             self.dock.show_with_ui(
                 ui,
@@ -333,7 +359,7 @@ impl EditorApp {
             }
 
             if let Some(cmd) = ui_ctx_ref.palette.lock().show(ctx) {
-                run_command(&ui_ctx_ref, &mut self.dock, &cmd);
+                self.run_editor_command(&cmd);
             }
             recovery_answer = self.recovery.show(ctx);
             preferences_answer = self.preferences.show(ctx);

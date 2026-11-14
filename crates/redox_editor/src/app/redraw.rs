@@ -256,6 +256,9 @@ impl EditorApp {
                         .refresh_from_world(&self.core.world.lock());
                 }
                 self.ui_ctx.core.status.lock().clear();
+            } else if status == "hello.greet" {
+                self.run_editor_command("hello.greet");
+                self.ui_ctx.core.status.lock().clear();
             }
         }
     }

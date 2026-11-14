@@ -11,7 +11,8 @@ use redox_editor_core::file_commands::{FileRequest, FileRequestQueue};
 use redox_editor_core::file_state::{
     self, PendingAction, PromptAnswer, PromptOutcome, SaveTarget,
 };
-use redox_editor_core::project::{ProjectContext, RECENT_FILE, RecentProjects};
+use redox_editor_core::project::{ProjectContext, ProjectOpenOptions, RECENT_FILE, RecentProjects};
+use redox_editor_plugins::BUILTIN_PLUGIN_NAMES;
 use redox_editor_core::project_template::ProjectTemplate;
 use redox_editor_core::autosave::AutosaveSource;
 use redox_editor_scene::{Level, LoadReport};
@@ -104,6 +105,11 @@ impl FileMenu {
     /// The project that is open, if any.
     pub fn project(&self) -> Option<&ProjectContext> {
         self.project.as_ref()
+    }
+
+    /// Mutable project context for plugin settings UI.
+    pub fn project_mut(&mut self) -> Option<&mut ProjectContext> {
+        self.project.as_mut()
     }
 
     /// Draws the File menu items. Each item queues a request; the recent-project list opens a
@@ -354,7 +360,14 @@ impl FileMenu {
     }
 
     fn open_project(&mut self, root: &Path, ctx: &EditorContext) -> Result<(), String> {
-        let mut project = ProjectContext::open(root).map_err(|err| err.to_string())?;
+        let options = ProjectOpenOptions {
+            loadable_plugins: BUILTIN_PLUGIN_NAMES
+                .iter()
+                .map(|name| (*name).to_string())
+                .collect(),
+        };
+        let mut project = ProjectContext::open_with_options(root, options)
+            .map_err(|err| err.to_string())?;
         project.mark_opened().map_err(|err| err.to_string())?;
         self.adopt_project(project, ctx);
         Ok(())

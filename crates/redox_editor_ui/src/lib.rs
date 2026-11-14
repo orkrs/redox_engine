@@ -31,6 +31,10 @@ pub mod profiler_panel;
 pub mod undo_history;
 /// Crash-recovery prompt and the Preferences window.
 pub mod recovery_dialog;
+/// Hello plugin dock tab.
+pub mod hello_panel;
+/// Project plugin list and safe mode UI.
+pub mod plugin_manager;
 
 pub use asset_browser::{AssetKind, AssetRequest, AssetSpawnRequest, EditorMeshProxy};
 pub use asset_report::{AssetReportPanel, ReportAction, has_problems};
@@ -40,6 +44,8 @@ pub use dock::{EditorDock, Tab};
 pub use input_adapters::{egui_to_viewport_coords, undo_hotkey};
 pub use outliner::OutlinerAction;
 pub use packager::{BakeReport, BakeStatus, PackagerPanel};
+pub use hello_panel::HelloPanel;
+pub use plugin_manager::PluginManagerWindow;
 pub use recovery_dialog::{
     PreferencesWindow, RecoveryAnswer, RecoveryDialog, RecoveryPrompt, format_hhmm,
 };
