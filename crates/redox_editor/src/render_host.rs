@@ -15,20 +15,47 @@
 //! - Virtual Geometry meshlet path: constructed with the engine but unused (no
 //!   `VirtualMesh` entities in the editor world).
 //! - GI / SDF shadow bricks: GPU objects exist; editor does not seed probes/bricks.
-//! - IBL: dummy environment (no HDR load); skybox off.
+//! - IBL: loads project HDR / baked `.redox/ibl` when present; otherwise dummy + overlay.
 //! - Mesh path: glTF via [`ViewportMeshCache`]; proxy cube only when asset missing.
+//! - VG: meshlet bakes register on [`VGSystem`] via [`Self::register_meshlet_bake`].
 //! - Shading modes report **unavailable** when the engine has no debug view (no cube hacks).
 
+use redox_asset::{AssetLoader, Ktx2Loader};
+use redox_editor_ui::MeshletBakeOutcome;
 use redox_editor_viewport::{
     EditorCamera, EditorViewport, ViewportDrawItem, ViewportMeshCache, ViewportRuntimeSettings,
     ViewportShading, ViewportShadingPlan, ViewportStatsOverlay, apply_shading_plan,
     apply_viewport_runtime, mesh_wireframe_lines, quad_pane_cameras, screenshot_texture_to_png,
+    vg_supported,
 };
 use redox_math::{Mat4, Transform, Vec3};
-use redox_render::{Material, RenderObject, Renderer, mesh::primitive::create_cube};
-use std::path::Path;
+use redox_render::{
+    Material, RenderObject, Renderer,
+    mesh::primitive::create_cube,
+    resource::ibl::IBLResource,
+    resource::texture::Texture,
+    virtual_geometry::{
+        VGAssetId, VGInstanceHandle,
+        cache as vg_cache,
+    },
+};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use winit::window::Window;
+
+const IBL_KTX2_FILES: [&str; 4] = [
+    "environment.ktx2",
+    "irradiance.ktx2",
+    "prefiltered.ktx2",
+    "brdf_lut.ktx2",
+];
+
+struct VgBakeRecord {
+    asset_id: VGAssetId,
+    instance: VGInstanceHandle,
+    entity_id: Option<u32>,
+}
 
 /// Adapter features required by the engine HDR MSAA / Sharp AA path.
 pub fn engine_required_features(adapter: &wgpu::Adapter) -> wgpu::Features {
@@ -154,9 +181,13 @@ pub struct RenderHost {
     pub last_stats: ViewportStatsOverlay,
     /// Wireframe edge overlay for the current frame (Lit + wire mode).
     pub wireframe_overlay: Vec<(Vec3, Vec3, [f32; 4])>,
+    vg_adapter_ok: bool,
+    project_ibl_attempted: bool,
+    vg_bakes: HashMap<u64, VgBakeRecord>,
     /// Rebuilds the passes of WGSL files edited while the editor runs (`shader-hot-reload`).
     #[cfg(feature = "shader-hot-reload")]
     shader_hot_reload: redox_render::renderer::ShaderHotReload,
+    /// Material editor preview (MAT-10).
     pub material_preview: Option<crate::material_preview_host::MaterialPreviewRig>,
 }
 
@@ -242,9 +273,115 @@ impl RenderHost {
             runtime: ViewportRuntimeSettings::default(),
             last_stats: ViewportStatsOverlay::default(),
             wireframe_overlay: Vec::new(),
+            vg_adapter_ok: vg_supported(adapter),
+            project_ibl_attempted: false,
+            vg_bakes: HashMap::new(),
             #[cfg(feature = "shader-hot-reload")]
             shader_hot_reload: redox_render::renderer::ShaderHotReload::new(),
             material_preview,
+        }
+    }
+
+    /// Registers a CPU meshlet bake on the viewport [`VGSystem`] (idempotent per cache key).
+    pub fn register_meshlet_bake(
+        &mut self,
+        outcome: &MeshletBakeOutcome,
+        transform: Mat4,
+        entity_id: Option<u32>,
+    ) -> String {
+        let Some(renderer) = self.renderer.as_mut() else {
+            return "gpu_register: FAIL no renderer".into();
+        };
+        let Some(vg) = renderer.vg_system.as_mut() else {
+            return "gpu_register: FAIL no VGSystem".into();
+        };
+        if let Some(existing) = self.vg_bakes.get(&outcome.cache_key) {
+            return format!("gpu_register: ok {}", existing.asset_id.0);
+        }
+        let Some(data) = vg_cache::load_cached(outcome.cache_key) else {
+            return "gpu_register: FAIL cache missing".into();
+        };
+        let Some(id) = vg.register_asset(data, &renderer.queue) else {
+            return "gpu_register: FAIL register_asset".into();
+        };
+        let transform_cols = transform.to_cols_array_2d();
+        let Some(handle) = vg.spawn_instance(id, transform_cols) else {
+            return "gpu_register: FAIL spawn_instance".into();
+        };
+        self.vg_bakes.insert(
+            outcome.cache_key,
+            VgBakeRecord {
+                asset_id: id,
+                instance: handle,
+                entity_id,
+            },
+        );
+        format!("gpu_register: ok {}", id.0)
+    }
+
+    fn sync_vg_instance_transforms(&mut self, draws: &[ViewportDrawItem]) {
+        let Some(renderer) = self.renderer.as_mut() else {
+            return;
+        };
+        let Some(vg) = renderer.vg_system.as_mut() else {
+            return;
+        };
+        for record in self.vg_bakes.values() {
+            let Some(entity_id) = record.entity_id else {
+                continue;
+            };
+            let Some(item) = draws.iter().find(|d| d.entity_id == entity_id) else {
+                continue;
+            };
+            let transform = item.transform.matrix().to_cols_array_2d();
+            vg.update_instance_transform(record.instance, transform);
+        }
+    }
+
+    fn ensure_project_ibl(&mut self, project_root: Option<&Path>, assets_root: Option<&Path>) {
+        if self.project_ibl_attempted {
+            return;
+        }
+        self.project_ibl_attempted = true;
+        let Some(renderer) = self.renderer.as_mut() else {
+            return;
+        };
+        if !renderer.ibl_resource.is_dummy() {
+            renderer.set_skybox(true);
+            return;
+        }
+        if let Some(root) = project_root {
+            let baked = root.join(".redox").join("ibl");
+            if try_load_ibl_ktx2(renderer, &baked) {
+                renderer.set_skybox(true);
+                log::info!("RenderHost: IBL from {}", baked.display());
+                return;
+            }
+        }
+        if let Some(assets) = assets_root {
+            for hdr in [assets.join("sky.hdr"), assets.join("skybox.hdr")] {
+                if try_load_ibl_hdr(renderer, &hdr) {
+                    log::info!("RenderHost: IBL from HDR {}", hdr.display());
+                    return;
+                }
+            }
+        }
+        if let Some(root) = project_root {
+            let assets = root.join("assets");
+            for hdr in [
+                assets.join("sky.hdr"),
+                assets.join("skybox.hdr"),
+                root.join("sky.hdr"),
+            ] {
+                if try_load_ibl_hdr(renderer, &hdr) {
+                    log::info!("RenderHost: IBL from HDR {}", hdr.display());
+                    return;
+                }
+            }
+        }
+        let dev = PathBuf::from("assets/foxrun/sky.hdr");
+        if dev.is_file() && try_load_ibl_hdr(renderer, &dev) {
+            log::info!("RenderHost: IBL from dev fallback {}", dev.display());
         }
     }
 
@@ -339,6 +476,7 @@ impl RenderHost {
         selected_id: Option<u32>,
         shading: ViewportShading,
         assets_root: Option<&Path>,
+        project_root: Option<&Path>,
     ) {
         #[cfg(feature = "shader-hot-reload")]
         self.poll_shader_edits();
@@ -347,7 +485,9 @@ impl RenderHost {
             return;
         };
 
-        let toggle_hints = apply_viewport_runtime(renderer, &self.runtime);
+        self.ensure_project_ibl(project_root, assets_root);
+        self.sync_vg_instance_transforms(draws);
+        let toggle_hints = apply_viewport_runtime(renderer, &self.runtime, self.vg_adapter_ok);
         apply_editor_camera(renderer, camera);
         let plan = ViewportShadingPlan::resolve(shading);
         apply_shading_plan(renderer, &plan);
@@ -386,6 +526,7 @@ impl RenderHost {
         selected_id: Option<u32>,
         shading: ViewportShading,
         assets_root: Option<&Path>,
+        project_root: Option<&Path>,
     ) {
         let (tw, th) = (self.width.max(1), self.height.max(1));
         let hw = (tw / 2).max(1);
@@ -400,7 +541,8 @@ impl RenderHost {
             let Some(renderer) = self.renderer.as_mut() else {
                 return;
             };
-            let _ = apply_viewport_runtime(renderer, &self.runtime);
+            self.ensure_project_ibl(project_root, assets_root);
+            let _ = apply_viewport_runtime(renderer, &self.runtime, self.vg_adapter_ok);
             self.mesh_cache.clear_missing();
             self.wireframe_overlay.clear();
             push_draw_items(
@@ -508,6 +650,44 @@ impl RenderHost {
         }
         queue.submit(Some(encoder.finish()));
     }
+}
+
+fn try_load_ibl_ktx2(renderer: &mut Renderer, dir: &Path) -> bool {
+    let paths: Vec<PathBuf> = IBL_KTX2_FILES.iter().map(|name| dir.join(name)).collect();
+    if !paths.iter().all(|p| p.is_file()) {
+        return false;
+    }
+    let load = |path: &Path, label: &str| -> Option<Texture> {
+        let bytes = std::fs::read(path).ok()?;
+        let ktx = Ktx2Loader::default().load(&bytes).ok()?;
+        Texture::from_ktx2(&renderer.device, &renderer.queue, &ktx, label)
+    };
+    let env = load(&paths[0], "ibl_env")?;
+    let irr = load(&paths[1], "ibl_irr")?;
+    let pre = load(&paths[2], "ibl_pre")?;
+    let lut = load(&paths[3], "ibl_lut")?;
+    match IBLResource::from_ktx2(env, irr, pre, lut) {
+        Ok(resource) => {
+            renderer.set_ibl_resource(resource);
+            true
+        }
+        Err(err) => {
+            log::warn!("RenderHost: IBL KTX2 load failed: {err}");
+            false
+        }
+    }
+}
+
+fn try_load_ibl_hdr(renderer: &mut Renderer, hdr: &Path) -> bool {
+    let Ok(bytes) = std::fs::read(hdr) else {
+        return false;
+    };
+    let Ok(texture) = Texture::from_hdr_bytes(&renderer.device, &renderer.queue, &bytes, "sky") else {
+        return false;
+    };
+    renderer.set_environment(&texture);
+    renderer.set_skybox(true);
+    true
 }
 
 fn make_pane_views(device: &wgpu::Device, width: u32, height: u32) -> [EditorViewport; 4] {

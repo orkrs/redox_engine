@@ -28,7 +28,7 @@ impl Default for ViewportRuntimeSettings {
             fog_enabled: false,
             sdf_debug: false,
             show_stats_overlay: true,
-            vg_enabled: false,
+            vg_enabled: true,
         }
     }
 }
@@ -44,6 +44,8 @@ pub struct ViewportToggleStatus {
     pub fog: &'static str,
     /// Overlay for SDF debug surrogate.
     pub sdf_debug: &'static str,
+    /// Overlay when VG was requested but the adapter cannot run it.
+    pub vg: &'static str,
 }
 
 impl ViewportToggleStatus {
@@ -61,6 +63,9 @@ impl ViewportToggleStatus {
         }
         if !self.sdf_debug.is_empty() {
             out.push(self.sdf_debug);
+        }
+        if !self.vg.is_empty() {
+            out.push(self.vg);
         }
         out
     }

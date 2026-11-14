@@ -62,7 +62,7 @@ pub use import_log_panel::ImportLogPanel;
 pub use input_adapters::{egui_to_viewport_coords, undo_hotkey};
 pub use material_editor::{MaterialEditorSession, MaterialOpenRequest};
 pub use outliner::OutlinerAction;
-pub use packager::{BakeReport, BakeStatus, PackagerPanel};
+pub use packager::{BakeReport, BakeStatus, MeshletBakeOutcome, PackagerPanel};
 pub use plugin_manager::PluginManagerWindow;
 pub use recovery_dialog::{
     PreferencesWindow, RecoveryAnswer, RecoveryDialog, RecoveryPrompt, format_hhmm,

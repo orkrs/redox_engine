@@ -109,6 +109,7 @@ struct SdfSceneGpu {
 @group(2) @binding(2) var t_normal: texture_2d<f32>;
 @group(2) @binding(3) var t_mr: texture_2d<f32>;
 @group(2) @binding(4) var s_mat: sampler;
+@group(2) @binding(5) var t_lightmap: texture_2d<f32>;
 
 // ── Group 3: Instances ──────────────────────────────────────────────────
 @group(3) @binding(0) var<storage, read> models: array<Model>;
@@ -153,6 +154,7 @@ struct ShaderDebugUniform {
     frame_index: u32,
     ibl_enabled: u32,
     gtao_enabled: u32,
+    lightmap_enabled: u32,
     lod_bias: f32,
 };
 
@@ -162,8 +164,9 @@ struct VertexOutput {
     @location(1) world_normal: vec3<f32>,
     @location(2) world_tangent: vec3<f32>,
     @location(3) uv:           vec2<f32>,
-    @location(4) instance_color: vec4<f32>,
-    @location(5) shadow_pos:     vec4<f32>,
+    @location(4) uv2:          vec2<f32>,
+    @location(5) instance_color: vec4<f32>,
+    @location(6) shadow_pos:     vec4<f32>,
 };
 
 @vertex
@@ -184,6 +187,7 @@ fn vs_main(in: CompressedVertIn, @builtin(instance_index) instance_idx: u32) -> 
     out.world_normal = n;
     out.world_tangent = t * decode_tangent_sign(in.pos_q);
     out.uv = in.uv;
+    out.uv2 = in.uv2;
     out.instance_color = mdl.color;
     out.shadow_pos = light_u.shadow_view_proj * world_pos;
     return out;
@@ -983,6 +987,22 @@ fn fs_main(in: VertexOutput, @builtin(front_facing) front_facing: bool) -> @loca
     if (shader_debug.debug_viz_mode == 5u) {
         return vec4<f32>(gi_visibility_debug(in.world_pos, n), 1.0);
     }
+    if (shader_debug.debug_viz_mode == 6u) {
+        return vec4<f32>(n * 0.5 + 0.5, 1.0);
+    }
+    if (shader_debug.debug_viz_mode == 7u) {
+        return vec4<f32>(roughness, roughness, roughness, 1.0);
+    }
+    if (shader_debug.debug_viz_mode == 8u) {
+        let view_pos = camera.view * vec4<f32>(in.world_pos, 1.0);
+        let view_z = max(-view_pos.z, cluster_info.near);
+        let t = (view_z - cluster_info.near)
+            / max(cluster_info.far - cluster_info.near, 1.0e-4);
+        return vec4<f32>(t, t, t, 1.0);
+    }
+    if (shader_debug.debug_viz_mode == 9u) {
+        return vec4<f32>(albedo, 1.0);
+    }
 
     // --- DEBUG VISUALIZATION OVERLAY ---
     if (shader_debug.debug_viz_mode == 1u) {
@@ -1184,7 +1204,12 @@ fn fs_main(in: VertexOutput, @builtin(front_facing) front_facing: bool) -> @loca
     // Combine IBL with the GI diffuse bounce (bent normal) — single ambient source.
     // Constant ambient (light_u.ambient.xyz) is small 0.02×albedo fallback when IBL/GI missing, not triple.
     let gi_diffuse = gi_irradiance(in.world_pos, bent_n, v);
-    let ambient_base = (w_base * (kD_ibl * diffuse_ibl + specular_ibl) + substrate_ibl + gi_diffuse * albedo / PI + light_u.ambient.xyz * albedo) * ambient_factor * ao;
+    var lm_irr = vec3<f32>(0.0);
+    if ((material.flags & MAT_FLAG_LIGHTMAP) != 0u && shader_debug.lightmap_enabled != 0u) {
+        let lm = textureSample(t_lightmap, s_mat, in.uv2);
+        lm_irr = lm.rgb * lm.a;
+    }
+    let ambient_base = (w_base * (kD_ibl * diffuse_ibl + specular_ibl) + substrate_ibl + gi_diffuse * albedo / PI + lm_irr * albedo / PI + light_u.ambient.xyz * albedo) * ambient_factor * ao;
     // MAT-04: the clearcoat attenuates the base ambient and adds its own reflection.
     var ambient = ambient_base;
     if ((material.flags & MAT_FLAG_COAT) != 0u && shader_debug.ibl_enabled != 0u) {

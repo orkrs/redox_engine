@@ -48,38 +48,30 @@ impl ViewportShadingPlan {
             },
             ViewportShading::Unlit => Self {
                 requested,
-                effective: ViewportShading::Lit,
-                status: ShadingAvailability::Unavailable {
-                    reason: "engine has no Unlit forward override (no LightingMode::Unlit)",
-                },
-                debug_mode: ShaderDebugVizMode::None,
+                effective: ViewportShading::Unlit,
+                status: ShadingAvailability::Available,
+                debug_mode: ShaderDebugVizMode::UnlitAlbedo,
                 wireframe_overlay: false,
             },
             ViewportShading::Normals => Self {
                 requested,
-                effective: ViewportShading::Lit,
-                status: ShadingAvailability::Unavailable {
-                    reason: "ShaderDebugVizMode has no world-normal view (only cluster/shadow GI)",
-                },
-                debug_mode: ShaderDebugVizMode::None,
+                effective: ViewportShading::Normals,
+                status: ShadingAvailability::Available,
+                debug_mode: ShaderDebugVizMode::WorldNormal,
                 wireframe_overlay: false,
             },
             ViewportShading::Roughness => Self {
                 requested,
-                effective: ViewportShading::Lit,
-                status: ShadingAvailability::Unavailable {
-                    reason: "no roughness debug view in pbr.wgsl",
-                },
-                debug_mode: ShaderDebugVizMode::None,
+                effective: ViewportShading::Roughness,
+                status: ShadingAvailability::Available,
+                debug_mode: ShaderDebugVizMode::Roughness,
                 wireframe_overlay: false,
             },
             ViewportShading::Depth => Self {
                 requested,
-                effective: ViewportShading::Lit,
-                status: ShadingAvailability::Unavailable {
-                    reason: "depth view requires prepass export API (not exposed on Renderer)",
-                },
-                debug_mode: ShaderDebugVizMode::None,
+                effective: ViewportShading::Depth,
+                status: ShadingAvailability::Available,
+                debug_mode: ShaderDebugVizMode::ViewDepth,
                 wireframe_overlay: false,
             },
         }
