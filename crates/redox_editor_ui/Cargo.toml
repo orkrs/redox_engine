@@ -18,6 +18,7 @@ redox_editor_scene = { path = "../redox_editor_scene" }
 redox_editor_assets = { path = "../redox_editor_assets" }
 redox_editor_build = { path = "../redox_editor_build" }
 redox_editor_debugger = { path = "../redox_editor_debugger" }
+redox_editor_plugins = { path = "../redox_editor_plugins" }
 redox_ecs = { path = "../redox_ecs" }
 redox_reflect = { path = "../redox_reflect" }
 redox_math = { path = "../redox_math" }

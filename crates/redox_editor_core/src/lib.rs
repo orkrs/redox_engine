@@ -55,6 +55,7 @@ pub use editor_only::{EditorOnly, editor_only_entities};
 pub use markers::{EditorFolder, Locked};
 pub use guid::GuidResolver;
 pub use log::EditorLog;
+pub use project::{ProjectOpenOptions, ProjectWarning};
 pub use selection::{Selection, Visibility};
 pub use component_catalog::{
     AddableType, CatalogEntry, ComponentCatalog, DependencyPromptAnswer, DependencyPromptOutcome,
@@ -65,4 +66,5 @@ pub use component_commands::{
     component_copy_values, component_remove, record_component_transaction,
 };
 pub use pie_settings::{PieArgs, PieSettings};
+pub use settings::{EditorSettings, PluginEditorSettings};
 pub use undo::{Clock, SystemClock, UndoCommand, UndoEntry, UndoError, UndoHotkey, UndoStack};

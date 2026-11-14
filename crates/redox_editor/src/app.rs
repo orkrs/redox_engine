@@ -1,7 +1,7 @@
 //! The editor application: owns all editor state and reacts to winit events.
 
 use crate::cli::CliArgs;
-use crate::commands::{focus_selection, run_command};
+use crate::commands::focus_selection;
 use crate::render_host::{RenderHost, SharedGpu};
 use parking_lot::Mutex;
 use rapier3d::prelude::{ColliderBuilder, RigidBodyBuilder};
@@ -13,9 +13,11 @@ use redox_editor_core::settings::{EditorSettings, SETTINGS_FILE};
 use redox_editor_scene::WorldSession;
 use redox_editor_ui::asset_report::AssetReportPanel;
 use redox_editor_ui::file_menu::FileMenu;
+use redox_editor_plugins::PluginHost;
 use redox_editor_ui::profiler_panel::ProfilerPanel;
 use redox_editor_ui::{
-    EditorDock, EditorUiCtx, PreferencesWindow, RecoveryDialog, egui_to_viewport_coords,
+    EditorDock, EditorUiCtx, PluginManagerWindow, PreferencesWindow, RecoveryDialog,
+    egui_to_viewport_coords,
 };
 use redox_editor_viewport::{
     EditorCamera, GizmoMode, GizmoState, ViewportLinesPass, ViewportShading,
@@ -30,6 +32,7 @@ use std::time::Instant;
 mod assets;
 mod autosave;
 mod material;
+mod plugins;
 mod redraw;
 mod ui;
 
@@ -70,6 +73,8 @@ pub(crate) struct EditorApp {
     assets: Option<AssetService>,
     asset_report: AssetReportPanel,
     last_asset_refresh: Instant,
+    plugin_host: PluginHost,
+    plugin_manager: PluginManagerWindow,
 }
 
 impl EditorApp {
@@ -239,6 +244,8 @@ impl EditorApp {
             assets: asset_service,
             asset_report,
             last_asset_refresh: Instant::now(),
+            plugin_host: PluginHost::new(),
+            plugin_manager: PluginManagerWindow::default(),
         }
     }
 
@@ -486,7 +493,7 @@ impl EditorApp {
             }
             winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::Delete) => {
                 if pressed && !self.egui_ctx.egui_wants_keyboard_input() {
-                    run_command(&self.ui_ctx, &mut self.dock, "delete");
+                    self.run_editor_command("delete");
                 }
             }
             winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyF) => {
@@ -496,7 +503,7 @@ impl EditorApp {
             }
             winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::End) => {
                 if pressed && !self.egui_ctx.egui_wants_keyboard_input() {
-                    run_command(&self.ui_ctx, &mut self.dock, "align_surface");
+                    self.run_editor_command("align_surface");
                 }
             }
             winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyB) => {

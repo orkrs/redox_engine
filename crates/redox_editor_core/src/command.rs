@@ -38,6 +38,13 @@ impl CommandRegistry {
         }
     }
 
+    /// Removes the command with identifier `id`, if present.
+    pub fn unregister(&mut self, id: &str) {
+        if let Some(index) = self.commands.iter().position(|known| known.id() == id) {
+            self.commands.remove(index);
+        }
+    }
+
     /// Returns the command with identifier `id`, if registered.
     pub fn get(&self, id: &str) -> Option<&Arc<dyn EditorCommand>> {
         self.commands.iter().find(|command| command.id() == id)

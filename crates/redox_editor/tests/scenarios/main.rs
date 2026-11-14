@@ -22,5 +22,6 @@ mod s12_import_failure;
 mod s13_crash_recovery;
 mod s14_broken_project;
 mod s16_layout_fallback;
+mod s17_plugins;
 mod s18_editor_only_data;
 mod s19_outliner_hidden_persist;

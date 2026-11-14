@@ -45,6 +45,10 @@ pub mod validation_panel;
 /// Crash-recovery prompt and the Preferences window.
 pub mod recovery_dialog;
 pub mod reference_panel;
+/// Hello plugin dock tab.
+pub mod hello_panel;
+/// Project plugin list and safe mode UI.
+pub mod plugin_manager;
 
 pub use asset_browser::{AssetKind, AssetRequest, AssetSpawnRequest, EditorMeshProxy};
 pub use audit_panel::AuditPanel;
@@ -59,6 +63,8 @@ pub use input_adapters::{egui_to_viewport_coords, undo_hotkey};
 pub use material_editor::{MaterialEditorSession, MaterialOpenRequest};
 pub use outliner::OutlinerAction;
 pub use packager::{BakeReport, BakeStatus, PackagerPanel};
+pub use hello_panel::HelloPanel;
+pub use plugin_manager::PluginManagerWindow;
 pub use recovery_dialog::{
     PreferencesWindow, RecoveryAnswer, RecoveryDialog, RecoveryPrompt, format_hhmm,
 };

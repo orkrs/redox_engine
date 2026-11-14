@@ -1,7 +1,9 @@
 //! Editor commands (palette / menu / hotkeys) and small world helpers.
 
 use redox_ecs::{Entity, World};
-use redox_editor_debugger::{plan_standalone, prepare_pie_world, PieRunMode};
+use redox_editor_core::CommandRegistry;
+use redox_editor_debugger::{PieRunMode, plan_standalone, prepare_pie_world};
+use redox_editor_plugins::PluginHost;
 use redox_editor_ui::{EditorDock, EditorUiCtx};
 use redox_editor_viewport::ViewportShading;
 use redox_math::{Transform, Vec3};
@@ -46,9 +48,22 @@ pub(crate) fn focus_selection(ui_ctx: &EditorUiCtx) {
 
 /// Runs the command `id`. Commands registered in `EditorContext` run first; the remaining
 /// identifiers need viewport, debugger or dock state and are handled here.
-pub(crate) fn run_command(ui_ctx: &EditorUiCtx, dock: &mut EditorDock, id: &str) {
-    if ui_ctx.core.commands.contains(id) {
-        ui_ctx.core.commands.run(&ui_ctx.core, id);
+pub(crate) fn run_command(
+    ui_ctx: &EditorUiCtx,
+    dock: &mut EditorDock,
+    plugin_host: Option<&mut PluginHost>,
+    commands: &mut CommandRegistry,
+    isolate_plugin_panics: bool,
+    id: &str,
+) {
+    if commands.contains(id) {
+        if isolate_plugin_panics {
+            if let Some(host) = plugin_host.filter(|host| host.owns_command(id)) {
+                host.run_command(commands, &ui_ctx.core, id);
+                return;
+            }
+        }
+        commands.run(&ui_ctx.core, id);
         return;
     }
     match id {

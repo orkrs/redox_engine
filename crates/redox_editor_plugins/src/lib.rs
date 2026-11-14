@@ -1,41 +1,174 @@
-//! Plugin manifest and API types of RedOx Studio. Skeleton: there is no plugin loader yet
-//! (plugins are deferred, see `docs/engineering/EDITOR_PLAN.md` D6).
+//! In-process editor plugin host for RedOx Studio.
 
 #![warn(missing_docs)]
 
-/// Version of the plugin API a manifest was written for.
-pub const PLUGIN_API_VERSION: u32 = 1;
+mod builtin;
+mod host;
+mod manifest;
+mod native;
+mod plugin;
+mod registry;
+mod validation;
 
-/// Description of a plugin as listed in a project's manifest.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PluginManifest {
-    /// Unique plugin name.
-    pub name: String,
-    /// Plugin version text.
-    pub version: String,
-    /// Plugin API version the plugin was built for.
-    pub api_version: u32,
-}
-
-impl PluginManifest {
-    /// Creates a manifest for the current API version.
-    pub fn new(name: impl Into<String>, version: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            version: version.into(),
-            api_version: PLUGIN_API_VERSION,
-        }
-    }
-}
+pub use builtin::{
+    HelloPlugin, HELLO_COMMAND_ID, HELLO_PANEL_ID, HELLO_PLUGIN_NAME, builtin_plugins, is_builtin,
+};
+pub use host::{PluginHost, PluginLoadError};
+pub use manifest::{PluginManifest, PLUGIN_API_VERSION};
+pub use native::{NativePluginError, NativePluginHandle, NATIVE_PLUGIN_ENTRY, load_native_plugin};
+pub use plugin::{EditorPlugin, BUILTIN_PLUGIN_NAMES};
+pub use registry::{PanelRegistration, PluginRegistry};
+pub use validation::{EditorValidationRule, ValidationIssue, ValidationSeverity};
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use redox_editor_core::{CommandRegistry, EditorCommand, EditorContext, EditorLog};
+    use redox_reflect::TypeRegistry;
+    use std::sync::Arc;
+
+    struct MockCommand;
+
+    impl EditorCommand for MockCommand {
+        fn id(&self) -> &str {
+            "mock.ping"
+        }
+
+        fn label(&self) -> &str {
+            "> Mock"
+        }
+
+        fn execute(&self, _ctx: &EditorContext) {}
+    }
+
+    struct MockPlugin;
+
+    impl EditorPlugin for MockPlugin {
+        fn name(&self) -> &str {
+            "mock"
+        }
+
+        fn register(&self, registry: &mut PluginRegistry) {
+            registry.register_command(MockCommand);
+        }
+    }
+
+    struct BadApiPlugin;
+
+    impl EditorPlugin for BadApiPlugin {
+        fn name(&self) -> &str {
+            "bad_api"
+        }
+
+        fn api_version(&self) -> u32 {
+            PLUGIN_API_VERSION + 1
+        }
+
+        fn register(&self, _registry: &mut PluginRegistry) {}
+    }
+
+    struct PanicRegisterPlugin;
+
+    impl EditorPlugin for PanicRegisterPlugin {
+        fn name(&self) -> &str {
+            "panic_register"
+        }
+
+        fn register(&self, _registry: &mut PluginRegistry) {
+            panic!("register boom");
+        }
+    }
+
+    struct PanicRunCommand;
+
+    impl EditorPlugin for PanicRunCommand {
+        fn name(&self) -> &str {
+            "panic_run"
+        }
+
+        fn register(&self, registry: &mut PluginRegistry) {
+            registry.register_command(PanicRunCommandImpl);
+        }
+    }
+
+    struct PanicRunCommandImpl;
+
+    impl EditorCommand for PanicRunCommandImpl {
+        fn id(&self) -> &str {
+            "panic.run"
+        }
+
+        fn label(&self) -> &str {
+            "> Panic"
+        }
+
+        fn execute(&self, _ctx: &EditorContext) {
+            panic!("execute boom");
+        }
+    }
+
+    fn test_host_with(extra: Vec<Arc<dyn EditorPlugin>>) -> PluginHost {
+        PluginHost::new().with_extra_builtins(extra)
+    }
+
+    fn ctx() -> EditorContext {
+        EditorContext::new(TypeRegistry::new())
+    }
 
     #[test]
-    fn a_manifest_carries_the_current_api_version() {
-        let m = PluginManifest::new("demo", "0.1.0");
-        assert_eq!(m.api_version, PLUGIN_API_VERSION);
-        assert_eq!(m.name, "demo");
+    fn mock_plugin_registers_command() {
+        let mut host = test_host_with(vec![Arc::new(MockPlugin)]);
+        let mut commands = CommandRegistry::new();
+        let log = EditorLog::new();
+        host.apply_project_plugins(&["mock".to_string()], &mut commands, &log);
+        assert!(commands.contains("mock.ping"));
+    }
+
+    #[test]
+    fn wrong_api_version_rejected() {
+        let mut host = test_host_with(vec![Arc::new(BadApiPlugin)]);
+        let mut commands = CommandRegistry::new();
+        let log = EditorLog::new();
+        let err = host
+            .set_enabled("bad_api", true, &mut commands, &log)
+            .expect_err("incompatible api");
+        assert!(matches!(err, PluginLoadError::IncompatibleApi { .. }));
+        assert!(!commands.contains("mock.ping"));
+    }
+
+    #[test]
+    fn enable_disable_hello_plugin_changes_command_registry_ids() {
+        let mut host = PluginHost::new();
+        let mut commands = CommandRegistry::new();
+        let log = EditorLog::new();
+        host.set_enabled(HELLO_PLUGIN_NAME, true, &mut commands, &log)
+            .expect("enable hello");
+        assert!(commands.ids().contains(&HELLO_COMMAND_ID));
+        host.set_enabled(HELLO_PLUGIN_NAME, false, &mut commands, &log)
+            .expect("disable hello");
+        assert!(!commands.contains(HELLO_COMMAND_ID));
+    }
+
+    #[test]
+    fn panicking_plugin_does_not_crash_host_command_absent_after_disable() {
+        let mut host = test_host_with(vec![Arc::new(PanicRunCommand)]);
+        let mut commands = CommandRegistry::new();
+        let log = EditorLog::new();
+        host.apply_project_plugins(&["panic_run".to_string()], &mut commands, &log);
+        assert!(commands.contains("panic.run"));
+        let mut editor = ctx();
+        assert!(!host.run_command(&mut commands, &editor, "panic.run"));
+        assert!(!commands.contains("panic.run"));
+        assert!(host.safe_mode_active);
+    }
+
+    #[test]
+    fn panicking_register_disables_plugin_without_crashing_host() {
+        let mut host = test_host_with(vec![Arc::new(PanicRegisterPlugin)]);
+        let mut commands = CommandRegistry::new();
+        let log = EditorLog::new();
+        host.apply_project_plugins(&["panic_register".to_string()], &mut commands, &log);
+        assert!(host.is_disabled_by_safe_mode("panic_register"));
+        assert!(host.safe_mode_active);
     }
 }

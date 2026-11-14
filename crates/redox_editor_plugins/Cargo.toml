@@ -11,5 +11,11 @@ workspace = true
 [lib]
 path = "src/lib.rs"
 
-[dependencies]
+[features]
+default = []
+# Native cdylib loading (ABI stub; dlopen not enabled by default — see `native.rs`).
+editor-native-plugins = []
 
+[dependencies]
+redox_editor_core = { path = "../redox_editor_core" }
+redox_editor_assets = { path = "../redox_editor_assets" }

@@ -45,6 +45,8 @@ pub enum Tab {
     ReferenceViewer,
     /// Asset audit and size map export.
     AssetAudit,
+    /// Built-in Hello plugin panel (shown when the hello plugin is enabled).
+    HelloPlugin,
 }
 
 impl std::fmt::Display for Tab {
@@ -64,6 +66,7 @@ impl std::fmt::Display for Tab {
             Tab::ImportLog => write!(f, "Import Log"),
             Tab::ReferenceViewer => write!(f, "References"),
             Tab::AssetAudit => write!(f, "Asset Audit"),
+            Tab::HelloPlugin => write!(f, "Hello Plugin"),
         }
     }
 }
@@ -181,6 +184,22 @@ impl EditorDock {
     /// Restores the default layout.
     pub fn reset_layout(&mut self) {
         self.tree = Self::default_tree();
+    }
+
+    /// Adds or removes the Hello plugin tab depending on `visible`.
+    pub fn set_hello_plugin_tab(&mut self, visible: bool) {
+        let present = self.tree.find_tab(&Tab::HelloPlugin).is_some();
+        if visible && !present {
+            if let Some(path) = self.tree.find_tab(&Tab::Console) {
+                self.tree[path.surface][path.node].append_tab(Tab::HelloPlugin);
+            } else {
+                self.tree.push_to_first_leaf(Tab::HelloPlugin);
+            }
+        } else if !visible && present {
+            if let Some(path) = self.tree.find_tab(&Tab::HelloPlugin) {
+                self.tree[path.surface][path.node].remove_tab(Tab::HelloPlugin);
+            }
+        }
     }
 
     /// Merge-add any `REQUIRED_TABS` missing from a loaded layout (e.g. Packager/Profiler).
@@ -652,6 +671,13 @@ impl TabViewer for TabViewerImpl<'_> {
                 );
                 if refresh {
                     *self.ui_ctx.core.status.lock() = "validation_refresh".into();
+                }
+            }
+            Tab::HelloPlugin => {
+                ui.heading("Hello Plugin");
+                ui.label("This tab is registered by the in-process `hello` plugin.");
+                if ui.button("Run hello.greet").clicked() {
+                    *self.ui_ctx.core.status.lock() = "hello.greet".into();
                 }
             }
         }
