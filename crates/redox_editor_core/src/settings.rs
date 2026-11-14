@@ -11,12 +11,30 @@ use std::path::Path;
 /// File name of the settings, in the working directory next to `editor_layout.ron`.
 pub const SETTINGS_FILE: &str = "editor_settings.ron";
 
+/// Plugin-related editor preferences.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PluginEditorSettings {
+    /// When true, a plugin panic disables that plugin instead of aborting the editor.
+    pub isolate_plugin_panics: bool,
+}
+
+impl Default for PluginEditorSettings {
+    fn default() -> Self {
+        Self {
+            isolate_plugin_panics: true,
+        }
+    }
+}
+
 /// Editor preferences. Missing fields take their defaults.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct EditorSettings {
     /// Autosave switch, interval and number of kept snapshots.
     pub autosave: AutosavePolicy,
+    /// Plugin safe mode and related toggles.
+    pub plugins: PluginEditorSettings,
 }
 
 impl EditorSettings {
@@ -56,6 +74,7 @@ impl EditorSettings {
     pub fn clamped(self) -> Self {
         Self {
             autosave: self.autosave.clamped(),
+            plugins: self.plugins,
         }
     }
 }
