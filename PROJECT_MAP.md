@@ -14,7 +14,7 @@
 | `scripts/` | `check_file_sizes.py` (лимиты размера файлов), `gen_crates_doc.py` |
 | `assets/`, `worlds/arena/` | тестовые ассеты и мир в формате OFPA |
 | `rust-toolchain.toml`, `rustfmt.toml`, `clippy.toml`, `deny.toml` | инструментарий (Rust 1.96, MSRV 1.95) |
-| `.github/` | файлы CI и шаблоны; CI на GitHub **ни разу не запускался** и пока отложен |
+| `.github/workflows/ci.yml` | CI: job **engine** (fmt/clippy/test/docs scripts), **editor-pipeline** (gated), **golden-gpu** (только `workflow_dispatch`); см. `CONTRIBUTING.md` |
 
 ## Стек (Cargo.toml → `[workspace.dependencies]`)
 
