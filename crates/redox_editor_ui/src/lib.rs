@@ -4,6 +4,7 @@
 
 /// Asset browser panel.
 pub mod asset_browser;
+pub mod audit_panel;
 /// Diagnostics window for the report of opening an assets root.
 pub mod asset_report;
 /// Brush tool panel.
@@ -17,6 +18,8 @@ pub mod dock;
 pub mod git_overlay;
 /// File menu, unsaved-changes prompt, path dialogs and load report.
 pub mod file_menu;
+pub mod import_dialog_panel;
+pub mod import_log_panel;
 /// egui adapters over the egui-free editor logic.
 pub mod input_adapters;
 /// Component inspector.
@@ -31,8 +34,13 @@ pub mod profiler_panel;
 pub mod undo_history;
 /// Crash-recovery prompt and the Preferences window.
 pub mod recovery_dialog;
+pub mod reference_panel;
 
 pub use asset_browser::{AssetKind, AssetRequest, AssetSpawnRequest, EditorMeshProxy};
+pub use audit_panel::AuditPanel;
+pub use import_dialog_panel::ImportDialogPanel;
+pub use import_log_panel::ImportLogPanel;
+pub use reference_panel::ReferenceViewerPanel;
 pub use asset_report::{AssetReportPanel, ReportAction, has_problems};
 pub use brush_panel::BrushPanel;
 pub use context::EditorUiCtx;
