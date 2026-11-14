@@ -20,6 +20,8 @@ pub mod file_commands;
 pub mod file_state;
 /// Marker for entities that exist only inside the editor.
 pub mod editor_only;
+/// Folder, lock and related scene markers used by the outliner.
+pub mod markers;
 /// Lookup of entities by their stable GUID.
 pub mod guid;
 /// Inspector state without egui: rows, sections, filtering and the edit commands they produce.
@@ -42,6 +44,7 @@ pub mod undo;
 pub use command::{CommandRegistry, EditorCommand};
 pub use context::EditorContext;
 pub use editor_only::{EditorOnly, editor_only_entities};
+pub use markers::{EditorFolder, Locked};
 pub use guid::GuidResolver;
 pub use log::EditorLog;
 pub use selection::{Selection, Visibility};
