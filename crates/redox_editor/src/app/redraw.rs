@@ -309,6 +309,31 @@ impl EditorApp {
                             }
                         }
                     }
+                    OutlinerAction::FocusScene(guid) => {
+                        let world = self.core.world.lock();
+                        let entity = world.all_entities().find(|e| {
+                            world
+                                .get_component::<redox_scene::EntityGuid>(*e)
+                                .is_some_and(|g| *g == guid)
+                        });
+                        drop(world);
+                        if let Some(entity) = entity {
+                            if let Some(t) = self
+                                .core
+                                .world
+                                .lock()
+                                .get_component::<Transform>(entity)
+                                .copied()
+                            {
+                                self.camera.lock().focus_on(
+                                    redox_math::Aabb::from_center_size(
+                                        t.translation,
+                                        Vec3::splat(2.0),
+                                    ),
+                                );
+                            }
+                        }
+                    }
                     OutlinerAction::RevertActor { cell, id } => {
                         let reverted = self.ui_ctx.git.lock().revert_actor(cell.x, cell.y, &id);
                         if let Some(session) = self.ui_ctx.world_session.lock().as_mut() {
