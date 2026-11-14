@@ -23,7 +23,14 @@
 
 ## Коммиты
 
-(заполняется после `git commit` — см. ниже в «Git log».)
+| Шаг | SHA | Сообщение |
+|---|---|---|
+| 1 | `435ca3c` | feat: editor plugin host and registry API — EDT-C6 step 1 |
+| 2 | `52ced70` | feat: hello built-in plugin and project.ron enable list — EDT-C6 step 2 |
+| 3 | `6f7dc39` | feat: safe mode settings for plugin panic isolation — EDT-C6 step 3 |
+| 4 | `d12caee` | feat: editor-native-plugins feature with documented dlopen stub — EDT-C6 step 4 |
+| 5 | `7612ea0` | feat: Project Plugins UI and editor startup wiring — EDT-C6 step 5 |
+| отчёт | `8ae0a26` | docs: EDT-C6 coordinator report |
 
 ## Файлы
 
@@ -87,5 +94,10 @@ cargo test -p redox_editor --test scenarios s17
 ## Git log
 
 ```text
-(после коммитов)
+8ae0a26 docs: EDT-C6 coordinator report
+7612ea0 feat: Project Plugins UI and editor startup wiring — EDT-C6 step 5
+d12caee feat: editor-native-plugins feature with documented dlopen stub — EDT-C6 step 4
+6f7dc39 feat: safe mode settings for plugin panic isolation — EDT-C6 step 3
+52ced70 feat: hello built-in plugin and project.ron enable list — EDT-C6 step 2
+435ca3c feat: editor plugin host and registry API — EDT-C6 step 1
 ```
