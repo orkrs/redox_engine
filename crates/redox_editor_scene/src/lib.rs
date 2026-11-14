@@ -18,6 +18,8 @@ pub mod level;
 pub mod world_session;
 /// Scene hierarchy for the outliner (no UI).
 pub mod outliner_model;
+/// Undoable outliner operations.
+pub mod outliner_ops;
 
 pub use document::{LoadReport, LoadWarning, SceneDocument, SceneError, refresh_ref_paths};
 pub use format::SCENE_FORMAT_VERSION;
@@ -30,3 +32,4 @@ pub use outliner_model::{
     VisibleRows, build, flatten, invert_selection, select_children, select_range,
     toggle_select, visible_row_range, SelectionModifiers,
 };
+pub use outliner_ops::{apply_lock, apply_visibility, isolate, is_hidden, is_locked, is_pickable, reparent};
