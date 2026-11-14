@@ -18,7 +18,16 @@ redox_math = { path = "../redox_math" }
 redox_reflect = { path = "../redox_reflect" }
 redox_physics = { path = "../redox_physics" }
 redox_render = { path = "../redox_render" }
+redox_asset = { path = "../redox_asset" }
+redox_scene = { path = "../redox_scene" }
+serde = { workspace = true }
+image = { workspace = true }
 wgpu = { workspace = true }
 flume = { workspace = true }
 bytemuck = { workspace = true }
 log = { workspace = true }
+
+[dev-dependencies]
+redox_asset = { path = "../redox_asset" }
+redox_editor_core = { path = "../redox_editor_core" }
+ron = { workspace = true }
