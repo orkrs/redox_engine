@@ -2,6 +2,7 @@
 
 use crate::autosave::AutosavePolicy;
 use crate::log::EditorLog;
+use crate::pie_settings::PieSettings;
 use crate::viewport_prefs::ViewportRuntimeSettings;
 use redox_scene::ofpa::write_atomic;
 use serde::{Deserialize, Serialize};
@@ -13,13 +14,15 @@ use std::path::Path;
 pub const SETTINGS_FILE: &str = "editor_settings.ron";
 
 /// Editor preferences. Missing fields take their defaults.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct EditorSettings {
     /// Autosave switch, interval and number of kept snapshots.
     pub autosave: AutosavePolicy,
     /// Viewport sky / GI / fog / overlay toggles (EDT-B3).
     pub viewport: ViewportRuntimeSettings,
+    /// Play-in-editor start scene and arguments.
+    pub pie: PieSettings,
 }
 
 impl EditorSettings {
@@ -60,6 +63,7 @@ impl EditorSettings {
         Self {
             autosave: self.autosave.clamped(),
             viewport: self.viewport,
+            pie: self.pie,
         }
     }
 }

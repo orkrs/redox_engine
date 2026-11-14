@@ -42,6 +42,8 @@ pub mod recovery;
 pub mod selection;
 /// Editor preferences in `editor_settings.ron`.
 pub mod settings;
+/// PIE start scene and arguments stored with editor settings.
+pub mod pie_settings;
 /// Viewport runtime toggles (sky, GI, fog) serialized in settings.
 pub mod viewport_prefs;
 /// Undo and redo commands.
@@ -62,4 +64,5 @@ pub use component_commands::{
     ComponentAddResult, bulk_add_component, component_add, component_add_and_record,
     component_copy_values, component_remove, record_component_transaction,
 };
+pub use pie_settings::{PieArgs, PieSettings};
 pub use undo::{Clock, SystemClock, UndoCommand, UndoEntry, UndoError, UndoHotkey, UndoStack};

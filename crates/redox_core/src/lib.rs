@@ -51,7 +51,9 @@ pub mod window;
 pub use app::AppBuilder;
 pub use commands::{SharedCommands, flush_commands};
 pub use config::{EngineConfig, LightingMode};
-pub use dispatcher::{Dispatcher, Stage, SystemMeta, access_compatible, parallel_layers};
+pub use dispatcher::{
+    Dispatcher, Stage, SystemMeta, SystemTiming, access_compatible, parallel_layers,
+};
 pub use material_graph::{GraphBinding, MaterialGraphBindings, MaterialGraphPlugin};
 pub use net_plugin::{NetMode, NetPlugin};
 pub use plugin::{

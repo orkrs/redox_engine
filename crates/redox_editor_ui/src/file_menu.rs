@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 
 use redox_ecs::World;
 use redox_editor_core::EditorContext;
+use redox_editor_debugger::pie_save::{PieSaveBlock, save_level_if_allowed};
+use redox_editor_debugger::PieSession;
 use redox_editor_core::UndoStack;
 use redox_editor_core::file_commands::{FileRequest, FileRequestQueue};
 use redox_editor_core::file_state::{
@@ -71,6 +73,8 @@ pub struct FileMenu {
     last_load_report: LoadReport,
     quit_requested: bool,
     shown_title: String,
+    /// When true, Save is disabled (PIE running).
+    pie_blocks_save: bool,
 }
 
 impl FileMenu {
@@ -92,6 +96,7 @@ impl FileMenu {
             last_load_report: LoadReport::default(),
             quit_requested: false,
             shown_title: String::new(),
+            pie_blocks_save: false,
         }
     }
 
@@ -137,6 +142,11 @@ impl FileMenu {
         blocks_pie(report, settings)
     }
 
+    /// Updates whether PIE blocks Save (call once per frame from the host).
+    pub fn set_pie_blocks_save(&mut self, pie: &PieSession) {
+        self.pie_blocks_save = pie.blocks_persistent_save();
+    }
+
     /// Queues `request` for the next [`Self::handle_requests`].
     pub fn push_request(&self, request: FileRequest) {
         self.queue.push(request);
@@ -157,7 +167,11 @@ impl FileMenu {
     /// Draws the File menu items. Each item queues a request; the recent-project list opens a
     /// path dialog filled with the chosen folder.
     pub fn show_items(&mut self, ui: &mut egui::Ui) {
-        let availability = file_state::availability(self.level.is_some());
+        let mut availability = file_state::availability(self.level.is_some());
+        if self.pie_blocks_save {
+            availability.save = false;
+            availability.save_as = false;
+        }
         if ui.button("New Level").clicked() {
             self.queue.push(FileRequest::NewLevel);
         }
@@ -206,7 +220,7 @@ impl FileMenu {
     }
 
     /// Runs the requests queued since the last call.
-    pub fn handle_requests(&mut self, ctx: &EditorContext) {
+    pub fn handle_requests(&mut self, ctx: &EditorContext, pie: &PieSession) {
         for request in self.queue.take_all() {
             match request {
                 FileRequest::NewLevel => self.gated(PendingAction::NewLevel, ctx),
@@ -215,7 +229,7 @@ impl FileMenu {
                 FileRequest::NewProject => self.gated(PendingAction::NewProject, ctx),
                 FileRequest::OpenProject => self.gated(PendingAction::OpenProject, ctx),
                 FileRequest::Save => {
-                    self.save_level(ctx);
+                    self.save_level(ctx, pie);
                 }
                 FileRequest::SaveAs => self.save_as_request(ctx),
             }
@@ -257,8 +271,8 @@ impl FileMenu {
     }
 
     /// Draws the open dialogs: the unsaved-changes prompt, the path dialog and the load report.
-    pub fn show_windows(&mut self, egui_ctx: &egui::Context, ctx: &EditorContext) {
-        self.show_prompt(egui_ctx, ctx);
+    pub fn show_windows(&mut self, egui_ctx: &egui::Context, ctx: &EditorContext, pie: &PieSession) {
+        self.show_prompt(egui_ctx, ctx, pie);
         self.show_path_dialog(egui_ctx, ctx);
         self.show_report(egui_ctx);
     }
@@ -286,7 +300,7 @@ impl FileMenu {
         }
     }
 
-    fn answer_prompt(&mut self, answer: PromptAnswer, ctx: &EditorContext) {
+    fn answer_prompt(&mut self, answer: PromptAnswer, ctx: &EditorContext, pie: &PieSession) {
         let Some(action) = self.prompt.take() else {
             return;
         };
@@ -294,7 +308,7 @@ impl FileMenu {
             PromptOutcome::Abort => {}
             PromptOutcome::Continue => self.perform(action, ctx),
             PromptOutcome::SaveThenContinue => {
-                if self.save_level(ctx) {
+                if self.save_level(ctx, pie) {
                     self.perform(action, ctx);
                 }
             }
@@ -320,7 +334,11 @@ impl FileMenu {
 
     /// Saves the level to its path. Returns `true` when the level was written. A level without
     /// a path opens the Save As dialog instead and returns `false`.
-    fn save_level(&mut self, ctx: &EditorContext) -> bool {
+    fn save_level(&mut self, ctx: &EditorContext, pie: &PieSession) -> bool {
+        if pie.blocks_persistent_save() {
+            ctx.log.warn("save disabled while PIE is running");
+            return false;
+        }
         let Some(has_path) = self.level.as_ref().map(|level| level.path().is_some()) else {
             ctx.log.warn("no level is open");
             return false;
@@ -346,10 +364,14 @@ impl FileMenu {
         }
         let mut world = ctx.world.lock();
         let registry = ctx.registry.lock();
-        match level.save(&registry, &mut world) {
-            Ok(()) => {
+        match save_level_if_allowed(pie, level, &registry, &mut world) {
+            Ok(PieSaveBlock::Allowed) => {
                 ctx.log.info(format!("saved {}", level.title()));
                 true
+            }
+            Ok(PieSaveBlock::BlockedByPie) => {
+                ctx.log.warn("save blocked during PIE");
+                false
             }
             Err(err) => {
                 ctx.log.error(format!("save failed: {err}"));
@@ -504,7 +526,7 @@ impl FileMenu {
         }
     }
 
-    fn show_prompt(&mut self, egui_ctx: &egui::Context, ctx: &EditorContext) {
+    fn show_prompt(&mut self, egui_ctx: &egui::Context, ctx: &EditorContext, pie: &PieSession) {
         let Some(action) = self.prompt else {
             return;
         };
@@ -531,7 +553,7 @@ impl FileMenu {
                 });
             });
         if let Some(answer) = answer {
-            self.answer_prompt(answer, ctx);
+            self.answer_prompt(answer, ctx, pie);
         }
     }
 

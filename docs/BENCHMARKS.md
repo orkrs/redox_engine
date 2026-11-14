@@ -250,3 +250,12 @@ cargo test -p redox_editor_scene outliner_model::tests::bench_build_50k_entities
 |---|---|
 | Построение `OutlinerModel`, 50k | |
 | Плоский список + виртуальное окно 800 px | |
+## Редактор: `--bench` (EDT-C3)
+
+**Замер: координатор.** Агент пишет JSON со схемой `BenchReport`; живой GPU заполняет `gpu_name`, драйвер и реальные кадры.
+
+```text
+redox_editor --bench <project_dir> --frames N --out report.json
+```
+
+Без wgpu timestamp queries длительности проходов в Profiler — **n/a** (см. `docs/KNOWN_LIMITS.md`).

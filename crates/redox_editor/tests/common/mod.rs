@@ -389,13 +389,18 @@ impl EditorHarness {
         let registry = self.ctx.registry.lock();
         if level.path().is_none() {
             let path = self.pending_path.clone().ok_or("the scene has no file")?;
+            if self.pie.blocks_persistent_save() {
+                return Err("save blocked during PIE".into());
+            }
             return level
                 .save_as(&path, &registry, &mut world)
                 .map_err(|e| format!("{e:?}"));
         }
-        level
-            .save(&registry, &mut world)
-            .map_err(|e| format!("{e:?}"))
+        match redox_editor_core::save_level_if_allowed(&self.pie, level, &registry, &mut world) {
+            Ok(redox_editor_core::PieSaveBlock::Allowed) => Ok(()),
+            Ok(redox_editor_core::PieSaveBlock::BlockedByPie) => Err("save blocked during PIE".into()),
+            Err(e) => Err(format!("{e:?}")),
+        }
     }
 
     /// Whether the open level has unsaved changes.

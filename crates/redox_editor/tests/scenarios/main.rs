@@ -17,6 +17,7 @@ mod s05_asset_rename;
 mod s06_references;
 mod s07_material_editor;
 mod s08_pie_isolation;
+mod s08b_pie_debug;
 mod s12_import_failure;
 mod s13_crash_recovery;
 mod s14_broken_project;

@@ -33,6 +33,8 @@ pub mod outliner;
 pub mod packager;
 /// Frame profiler panel.
 pub mod profiler_panel;
+/// Console panel with filters.
+pub mod console_panel;
 /// Undo history panel.
 pub mod undo_history;
 /// Issues / validation panel model without egui.

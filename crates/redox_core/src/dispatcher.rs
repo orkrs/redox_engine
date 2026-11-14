@@ -7,6 +7,7 @@
 use std::any::TypeId;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
+use std::time::Instant;
 
 use rayon::prelude::*;
 use redox_ecs::World;
@@ -18,6 +19,17 @@ use crate::time::Time;
 /// Prevents the spiral of death: a slow frame cannot queue unbounded physics
 /// work that makes the next frame slower still.
 pub const MAX_FIXED_STEPS: u32 = 5;
+
+/// CPU time attributed to one dispatcher system invocation in a frame.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SystemTiming {
+    /// Pipeline stage the system ran in.
+    pub stage: Stage,
+    /// System label or synthetic name.
+    pub name: String,
+    /// Wall time in nanoseconds.
+    pub duration_ns: u64,
+}
 
 /// Stages defining the execution order of systems.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -219,6 +231,9 @@ pub struct Dispatcher<Context> {
     order_dirty: bool,
     /// Per-frame maintenance hooks (e.g. `Events::update` for registered event types).
     frame_end_hooks: Vec<Box<dyn FnMut(&mut World)>>,
+    /// Optional per-system CPU timings for the current frame (default off).
+    system_timing_enabled: bool,
+    frame_system_timings: Vec<SystemTiming>,
 }
 
 /// Returns true when two parallel systems may run concurrently.
@@ -294,7 +309,32 @@ where
             orders: HashMap::new(),
             order_dirty: false,
             frame_end_hooks: Vec::new(),
+            system_timing_enabled: false,
+            frame_system_timings: Vec::new(),
         }
+    }
+
+    /// Enables or disables per-system CPU spans for the next frames (default off).
+    pub fn set_system_timing_enabled(&mut self, enabled: bool) {
+        self.system_timing_enabled = enabled;
+        if !enabled {
+            self.frame_system_timings.clear();
+        }
+    }
+
+    /// Whether CPU spans are recorded.
+    pub fn system_timing_enabled(&self) -> bool {
+        self.system_timing_enabled
+    }
+
+    /// Timings collected for the current or most recently completed frame.
+    pub fn frame_system_timings(&self) -> &[SystemTiming] {
+        &self.frame_system_timings
+    }
+
+    /// Takes timings after the editor has read them.
+    pub fn take_frame_system_timings(&mut self) -> Vec<SystemTiming> {
+        std::mem::take(&mut self.frame_system_timings)
     }
 
     /// Registers a sequential system (default, preserves existing behaviour).
@@ -412,17 +452,43 @@ where
         slots: &mut [SystemSlot<Context>],
         world: &mut World,
         context: &mut Context,
+        stage: Stage,
+        orders: &[SystemOrder],
+        timings: Option<&mut Vec<SystemTiming>>,
     ) {
+        let record = |idx: usize, start: Instant, timings: &mut Vec<SystemTiming>| {
+            let name = orders
+                .get(idx)
+                .and_then(|o| o.label.map(str::to_owned))
+                .unwrap_or_else(|| format!("#{idx}"));
+            timings.push(SystemTiming {
+                stage,
+                name,
+                duration_ns: start.elapsed().as_nanos() as u64,
+            });
+        };
         let mut parallel_batch: Vec<(SystemMeta, usize)> = Vec::new();
 
         for idx in 0..slots.len() {
             let is_sequential = matches!(slots[idx], SystemSlot::Sequential(_));
             if is_sequential {
                 if !parallel_batch.is_empty() {
-                    Self::flush_parallel_batch(&mut parallel_batch, slots, world, context);
+                    Self::flush_parallel_batch(
+                        &mut parallel_batch,
+                        slots,
+                        world,
+                        context,
+                        stage,
+                        orders,
+                        timings,
+                    );
                 }
                 if let SystemSlot::Sequential(func) = &mut slots[idx] {
+                    let start = timings.is_some().then(Instant::now);
                     func(world, context);
+                    if let (Some(start), Some(out)) = (start, timings) {
+                        record(idx, start, out);
+                    }
                 }
                 continue;
             }
@@ -437,16 +503,36 @@ where
                 }
             } else {
                 if !parallel_batch.is_empty() {
-                    Self::flush_parallel_batch(&mut parallel_batch, slots, world, context);
+                    Self::flush_parallel_batch(
+                        &mut parallel_batch,
+                        slots,
+                        world,
+                        context,
+                        stage,
+                        orders,
+                        timings,
+                    );
                 }
                 if let SystemSlot::Parallel { func, .. } = &slots[idx] {
+                    let start = timings.is_some().then(Instant::now);
                     func(world, &*context);
+                    if let (Some(start), Some(out)) = (start, timings) {
+                        record(idx, start, out);
+                    }
                 }
             }
         }
 
         if !parallel_batch.is_empty() {
-            Self::flush_parallel_batch(&mut parallel_batch, slots, world, context);
+            Self::flush_parallel_batch(
+                &mut parallel_batch,
+                slots,
+                world,
+                context,
+                stage,
+                orders,
+                timings,
+            );
         }
     }
 
@@ -455,23 +541,35 @@ where
         slots: &[SystemSlot<Context>],
         world: &World,
         context: &Context,
+        stage: Stage,
+        orders: &[SystemOrder],
+        timings: Option<&mut Vec<SystemTiming>>,
     ) {
         let metas: Vec<SystemMeta> = batch.iter().map(|(m, _)| m.clone()).collect();
         let indices: Vec<usize> = batch.iter().map(|(_, i)| *i).collect();
         batch.clear();
 
         for layer in parallel_layers(&metas) {
-            let funcs: Vec<Arc<dyn Fn(&World, &Context) + Send + Sync>> = layer
-                .iter()
-                .map(|&layer_pos| {
-                    let slot_idx = indices[layer_pos];
-                    match &slots[slot_idx] {
-                        SystemSlot::Parallel { func, .. } => Arc::clone(func),
-                        SystemSlot::Sequential(_) => unreachable!("parallel batch slot"),
-                    }
-                })
-                .collect();
-            funcs.par_iter().for_each(|func| func(world, context));
+            for &layer_pos in &layer {
+                let slot_idx = indices[layer_pos];
+                let start = timings.is_some().then(Instant::now);
+                let func = match &slots[slot_idx] {
+                    SystemSlot::Parallel { func, .. } => func,
+                    SystemSlot::Sequential(_) => continue,
+                };
+                func(world, context);
+                if let (Some(start), Some(out)) = (start, timings) {
+                    let name = orders
+                        .get(slot_idx)
+                        .and_then(|o| o.label.map(str::to_owned))
+                        .unwrap_or_else(|| format!("#{}", slot_idx));
+                    out.push(SystemTiming {
+                        stage,
+                        name,
+                        duration_ns: start.elapsed().as_nanos() as u64,
+                    });
+                }
+            }
         }
     }
 
@@ -479,6 +577,8 @@ where
     pub fn run(&mut self, world: &mut World, context: &mut Context) {
         self.resolve_orders();
         world.begin_frame();
+        let mut local_timings = Vec::new();
+        let collect_timings = self.system_timing_enabled;
 
         let stages_in_order = [
             Stage::Input,
@@ -491,6 +591,8 @@ where
 
         for stage in stages_in_order {
             if let Some(systems) = self.systems.get_mut(&stage) {
+                let orders = self.orders.get(&stage).map(Vec::as_slice).unwrap_or(&[]);
+                let timings = collect_timings.then(|| &mut local_timings);
                 if stage == Stage::PhysicsSync {
                     let mut steps = 0u32;
                     while steps < MAX_FIXED_STEPS {
@@ -500,7 +602,14 @@ where
                         if !should_step {
                             break;
                         }
-                        Self::run_stage_parallel(systems, world, context);
+                        Self::run_stage_parallel(
+                            systems,
+                            world,
+                            context,
+                            stage,
+                            orders,
+                            timings,
+                        );
                         crate::commands::flush_commands(world);
                         world
                             .get_resource_mut::<Time>()
@@ -518,7 +627,14 @@ where
                         time.update_alpha();
                     }
                 } else {
-                    Self::run_stage_parallel(systems, world, context);
+                    Self::run_stage_parallel(
+                        systems,
+                        world,
+                        context,
+                        stage,
+                        orders,
+                        timings,
+                    );
                     crate::commands::flush_commands(world);
                 }
             }
@@ -526,6 +642,9 @@ where
 
         for hook in self.frame_end_hooks.iter_mut() {
             hook(world);
+        }
+        if collect_timings {
+            self.frame_system_timings = local_timings;
         }
     }
 }
@@ -653,6 +772,31 @@ mod tests {
         let layers = parallel_layers(&metas);
         assert_eq!(layers.len(), 1);
         assert_eq!(layers[0].len(), 3);
+    }
+
+    #[test]
+    fn system_timing_records_each_dummy_system() {
+        let mut dispatcher: Dispatcher<Vec<&'static str>> = Dispatcher::new();
+        dispatcher.add_system_ordered(Stage::Update, labelled("a"), |_, _| {});
+        dispatcher.add_system_ordered(Stage::Update, labelled("b"), |_, _| {});
+        dispatcher.set_system_timing_enabled(true);
+        let mut world = World::new();
+        let mut ctx = Vec::new();
+        dispatcher.run(&mut world, &mut ctx);
+        assert_eq!(dispatcher.frame_system_timings().len(), 2);
+        assert!(dispatcher
+            .frame_system_timings()
+            .iter()
+            .any(|t| t.name == "a"));
+    }
+
+    #[test]
+    fn system_timing_default_off_yields_empty() {
+        let mut dispatcher: Dispatcher<()> = Dispatcher::new();
+        dispatcher.add_system(Stage::Update, |_, ()| {});
+        let mut world = World::new();
+        dispatcher.run(&mut world, &mut ());
+        assert!(dispatcher.frame_system_timings().is_empty());
     }
 
     #[test]

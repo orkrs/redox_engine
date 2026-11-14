@@ -215,6 +215,12 @@ impl EditorApp {
                         if ui.button("⏹").clicked() {
                             run_command(&ui_ctx_ref, &mut self.dock, "pie_stop");
                         }
+                        if ui.button("⏭ Step").clicked() {
+                            run_command(&ui_ctx_ref, &mut self.dock, "pie_step");
+                        }
+                        if ui.button("Standalone").clicked() {
+                            run_command(&ui_ctx_ref, &mut self.dock, "pie_standalone");
+                        }
                         if ui.button("⏸").clicked() {
                             let mut pie = ui_ctx_ref.pie.lock();
                             if pie.running {
@@ -310,11 +316,18 @@ impl EditorApp {
                 });
             });
 
-            self.files.handle_requests(&self.core);
+            {
+                let pie = ui_ctx_ref.pie.lock();
+                self.files.set_pie_blocks_save(&pie);
+                self.files.handle_requests(&self.core, &pie);
+            }
             if let Some(title) = self.files.take_title_change(&self.core) {
                 self.window.set_title(&title);
             }
-            self.files.show_windows(ctx, &self.core);
+            {
+                let pie = ui_ctx_ref.pie.lock();
+                self.files.show_windows(ctx, &self.core, &pie);
+            }
 
             self.dock.show_with_ui(
                 ui,

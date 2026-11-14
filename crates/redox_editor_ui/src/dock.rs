@@ -477,13 +477,7 @@ impl TabViewer for TabViewerImpl<'_> {
                     *self.ui_ctx.core.status.lock() = "git_refresh".into();
                 }
                 ui.separator();
-                egui::ScrollArea::vertical()
-                    .stick_to_bottom(true)
-                    .show(ui, |ui| {
-                        for line in self.ui_ctx.core.log.lines() {
-                            ui.monospace(line.as_str());
-                        }
-                    });
+                crate::console_panel::ConsolePanel::show(ui, &self.ui_ctx, &self.ui_ctx.core);
             }
             Tab::Graph => {
                 if let Some(mut session) = self.ui_ctx.material.lock().take() {
@@ -618,7 +612,12 @@ impl TabViewer for TabViewerImpl<'_> {
                 }
             }
             Tab::Profiler => {
-                ProfilerPanel::show(ui, &self.ui_ctx.profiler.lock());
+                ProfilerPanel::show(
+                    ui,
+                    &self.ui_ctx.profiler.lock(),
+                    &self.ui_ctx.cpu_timeline.lock(),
+                    &self.ui_ctx.gpu_passes.lock(),
+                );
             }
             Tab::Packager => {
                 self.ui_ctx.packager.lock().show(ui);

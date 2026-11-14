@@ -12,9 +12,18 @@ workspace = true
 path = "src/lib.rs"
 
 [dependencies]
+redox_core = { path = "../redox_core" }
+redox_editor_core = { path = "../redox_editor_core" }
 redox_ecs = { path = "../redox_ecs" }
+redox_editor_scene = { path = "../redox_editor_scene" }
+redox_math = { path = "../redox_math" }
 redox_reflect = { path = "../redox_reflect" }
+redox_scene = { path = "../redox_scene" }
 log = { workspace = true }
+serde = { workspace = true }
+serde_json = "1"
+ron = { workspace = true }
+redox_render = { path = "../redox_render" }
 
 [dev-dependencies]
 redox_math = { path = "../redox_math" }
