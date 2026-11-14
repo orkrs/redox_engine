@@ -39,6 +39,10 @@ pub struct BakeStatus {
 pub struct PackagerPanel {
     /// Root directory of the world.
     pub world_root: String,
+    /// Optional editor project root for `redox_editor_build::BuildService::cook`.
+    pub project_root: String,
+    /// Build profile name for project cook (default `release`).
+    pub cook_profile: String,
     /// Name of the exported package.
     pub package_name: String,
     /// Report of the last bake.
@@ -60,9 +64,37 @@ impl PackagerPanel {
             .to_string();
         Self {
             world_root,
+            project_root: String::new(),
+            cook_profile: "release".into(),
             package_name,
             ..Default::default()
         }
+    }
+
+    /// Runs project cook through [`BuildService`] (no UI logic beyond I/O paths).
+    pub fn cook_project(&self) -> anyhow::Result<String> {
+        if self.project_root.is_empty() {
+            anyhow::bail!("set project root before cooking");
+        }
+        let project = redox_editor_core::project::ProjectContext::open(&self.project_root)?;
+        let service = redox_editor_build::BuildService;
+        let profile = service
+            .resolve_active(
+                project.manifest(),
+                Some(self.cook_profile.as_str()),
+            )
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let out_dir = project.root().join(".redox");
+        std::fs::create_dir_all(&out_dir)?;
+        let pak = out_dir.join(format!("{}.pak", profile.name));
+        let report = out_dir.join("cook_report.json");
+        let cooked = service.cook(&project, &profile, &pak, &report)?;
+        Ok(format!(
+            "cooked {} assets → {} (report {})",
+            cooked.assets.len(),
+            pak.display(),
+            report.display()
+        ))
     }
 
     /// Draws the panel.
@@ -74,6 +106,14 @@ impl PackagerPanel {
         ui.horizontal(|ui| {
             ui.label("World root");
             ui.text_edit_singleline(&mut self.world_root);
+        });
+        ui.horizontal(|ui| {
+            ui.label("Project root");
+            ui.text_edit_singleline(&mut self.project_root);
+        });
+        ui.horizontal(|ui| {
+            ui.label("Cook profile");
+            ui.text_edit_singleline(&mut self.cook_profile);
         });
         ui.horizontal(|ui| {
             ui.label("Package name");
@@ -129,6 +169,12 @@ impl PackagerPanel {
                 match self.export_package() {
                     Ok(msg) => self.status = msg,
                     Err(e) => self.status = format!("Export failed: {e}"),
+                }
+            }
+            if ui.button("Cook project").clicked() {
+                match self.cook_project() {
+                    Ok(msg) => self.status = msg,
+                    Err(e) => self.status = format!("Cook failed: {e}"),
                 }
             }
         });

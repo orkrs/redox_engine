@@ -301,7 +301,7 @@ fn read_model(path: &Path) -> Result<SceneFileModel, ReferenceError> {
 }
 
 /// Lists the asset references of one scene file (components only).
-fn scan_scene(path: &Path) -> Result<Vec<SceneRef>, ReferenceError> {
+pub fn scene_asset_refs(path: &Path) -> Result<Vec<SceneRef>, ReferenceError> {
     let model = read_model(path)?;
     let mut refs = Vec::new();
     for entity in &model.entities {
@@ -412,7 +412,7 @@ impl ReferenceIndex {
             self.remove_scene(registry, scene);
             return Ok(());
         }
-        let refs = scan_scene(&path)?;
+        let refs = scene_asset_refs(&path)?;
         let dependents: Vec<DependentRef> = refs
             .iter()
             .filter_map(|sref| {

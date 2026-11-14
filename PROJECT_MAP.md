@@ -36,7 +36,8 @@ postcard 1 · lz4_flex 0.14 · ktx2 0.5 · gilrs 0.11. Версии egui 0.37 и
 | Virtual Geometry | `redox_render/src/virtual_geometry/`, `shaders/vg*.wgsl` |
 | Кэш пайплайнов на диске (Vulkan) | `redox_render/src/pipeline_cache.rs` |
 | Ассеты: GUID, `.pak`, счётчики ссылок, зависимости | `redox_asset/src/{guid,pak,manager}.rs` |
-| Упаковка ассетов (CLI) | `redox_cook` (`scan`, `pack --compress --incremental`, `list`, `verify`) |
+| Упаковка ассетов (CLI) | `redox_cook` (`scan`, `pack`, `validate`, `import`, `cook`, `list`, `verify`) |
+| Сборка проекта (cook) | `redox_editor_build` (`validate_project`, `BuildService::cook`) |
 | Ввод: действия, контексты, геймпады, текст/IME | `redox_input/src/{action,context,gamepad,text,rebind}.rs` |
 | Мир и сохранения | `redox_scene/src/{ofpa,world_bin,save,partition,pcg}.rs` |
 | Анимация | `redox_anim/src/{skeleton,animator,skinning,ik}.rs` |

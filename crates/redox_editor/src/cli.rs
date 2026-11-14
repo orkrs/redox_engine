@@ -2,7 +2,7 @@
 
 pub(crate) const DEFAULT_WORLD_ROOT: &str = "worlds/arena";
 
-pub(crate) const HELP_TEXT: &str = "RedOx Studio Editor\n  --help            Show this help\n  --bake            Bake meshlets + SDF and write a report (headless, then exit)\n  --play <project>  Headless PIE host for standalone play (stub; no window)\n  --bench <project> --frames N --out FILE   Write benchmark JSON (headless)\n  --world <path>    World root (default worlds/arena)";
+pub(crate) const HELP_TEXT: &str = "RedOx Studio Editor\n  --help                  Show this help\n  --bake                  Bake meshlets + SDF and write a report (headless, then exit)\n  --play <project>        Headless PIE host for standalone play (stub; no window)\n  --bench <project> --frames N --out FILE   Write benchmark JSON (headless)\n  --world <path>          World root (default worlds/arena)\n  --validate-project <root>  Validate project.ron, assets and start scene; exit 0 on success\n  --run-sample <root>     Validate and load the start scene (add --frames N; GPU stepping is not wired)";
 
 /// Parsed command line. `--world <path>` selects the world root.
 #[derive(Debug)]
@@ -18,6 +18,9 @@ pub(crate) struct CliArgs {
     /// Output path for `--bench`.
     pub(crate) bench_out: Option<String>,
     pub(crate) world_root: String,
+    pub(crate) validate_project: Option<String>,
+    pub(crate) run_sample: Option<String>,
+    pub(crate) sample_frames: u32,
 }
 
 pub(crate) fn parse_cli(args: &[String]) -> Result<CliArgs, String> {
@@ -29,6 +32,9 @@ pub(crate) fn parse_cli(args: &[String]) -> Result<CliArgs, String> {
         bench_frames: 120,
         bench_out: None,
         world_root: DEFAULT_WORLD_ROOT.to_string(),
+        validate_project: None,
+        run_sample: None,
+        sample_frames: 0,
     };
     let mut iter = args.iter().skip(1);
     while let Some(arg) = iter.next() {
@@ -69,6 +75,28 @@ pub(crate) fn parse_cli(args: &[String]) -> Result<CliArgs, String> {
                     .next()
                     .ok_or_else(|| "--world requires a path".to_string())?
                     .clone();
+            }
+            "--validate-project" => {
+                cli.validate_project = Some(
+                    iter.next()
+                        .ok_or_else(|| "--validate-project requires a path".to_string())?
+                        .clone(),
+                );
+            }
+            "--run-sample" => {
+                cli.run_sample = Some(
+                    iter.next()
+                        .ok_or_else(|| "--run-sample requires a path".to_string())?
+                        .clone(),
+                );
+            }
+            "--frames" => {
+                let text = iter
+                    .next()
+                    .ok_or_else(|| "--frames requires a number".to_string())?;
+                cli.sample_frames = text
+                    .parse()
+                    .map_err(|_| format!("invalid --frames value: {text}"))?;
             }
             other => return Err(format!("unknown argument: {other}")),
         }

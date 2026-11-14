@@ -468,6 +468,11 @@ impl AssetService {
         self.queue.cancel(&abs)
     }
 
+    /// Drains import queue events since the last call (headless CLI).
+    pub fn drain_import_events(&self) -> Vec<ImportEvent> {
+        self.queue.drain_events()
+    }
+
     /// Queues an import for every outdated asset (never imported, or changed since). Returns the
     /// number of jobs added.
     pub fn queue_outdated(&mut self) -> usize {
