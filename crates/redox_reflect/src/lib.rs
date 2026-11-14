@@ -418,6 +418,18 @@ impl TypeRegistry {
         self.by_name.keys().copied()
     }
 
+    /// Replaces the read hook of a registered type (for example merging side storage into the
+    /// reflected value).
+    pub fn override_read(&mut self, type_name: &'static str, read: ReadFn) {
+        let type_id = self.by_name.get(type_name).map(|r| r.type_id);
+        if let Some(reg) = self.by_name.get_mut(type_name) {
+            reg.read = read;
+        }
+        if let (Some(id), Some(reg)) = (type_id, self.by_id.get_mut(&id)) {
+            reg.read = read;
+        }
+    }
+
     /// Creates (or overwrites) a component on `entity` from a struct value; the type must be registered.
     pub fn insert_component(
         &self,

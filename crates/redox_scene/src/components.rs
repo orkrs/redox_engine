@@ -182,8 +182,31 @@ impl Reflect for ParentRef {
     }
 }
 
+/// Coarse kind of an asset reference, derived from the handle component name.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AssetKind {
+    /// The component name is not a known handle type.
+    #[default]
+    Unknown,
+    /// `MeshHandle`.
+    Mesh,
+    /// `MaterialHandle` (textures and materials share this handle today).
+    Material,
+}
+
+impl AssetKind {
+    /// Maps a registered handle component name to a kind.
+    pub fn from_component(component: &str) -> Self {
+        match component {
+            "MeshHandle" => Self::Mesh,
+            "MaterialHandle" => Self::Material,
+            _ => Self::Unknown,
+        }
+    }
+}
+
 /// One saved asset reference of a component: the GUID is the source of truth, the path a hint.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AssetRef {
     /// Reflected type name of the handle component (`MeshHandle`, `MaterialHandle`).
     pub component: String,
@@ -191,6 +214,17 @@ pub struct AssetRef {
     pub guid: Option<String>,
     /// Path hint relative to the assets root. `None` when unset.
     pub path: Option<String>,
+    /// Kind of the referenced asset (for viewport binding and diagnostics).
+    pub kind: AssetKind,
+}
+
+impl fmt::Display for AssetRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.guid.as_deref() {
+            Some(guid) => write!(f, "{guid}"),
+            None => write!(f, "(unset)"),
+        }
+    }
 }
 
 /// The asset references of an entity, kept in the world next to the render handles.
@@ -212,6 +246,7 @@ impl AssetRefs {
             component: component.to_owned(),
             guid,
             path,
+            kind: AssetKind::from_component(component),
         };
         match self.0.iter_mut().find(|r| r.component == component) {
             Some(existing) => *existing = entry,
@@ -247,6 +282,15 @@ impl Reflect for AssetRefs {
                 let ReflectValue::Struct { type_name, .. } = item else {
                     return None;
                 };
+                let kind = item
+                    .field("kind")
+                    .and_then(ReflectValue::as_string)
+                    .map(|text| match text {
+                        "Mesh" => AssetKind::Mesh,
+                        "Material" => AssetKind::Material,
+                        _ => AssetKind::Unknown,
+                    })
+                    .unwrap_or_else(|| AssetKind::from_component(type_name));
                 Some(AssetRef {
                     component: type_name.clone(),
                     guid: item
@@ -254,6 +298,7 @@ impl Reflect for AssetRefs {
                         .and_then(ReflectValue::as_string)
                         .map(str::to_owned),
                     path: item.as_handle_path().flatten(),
+                    kind,
                 })
             })
             .collect();
