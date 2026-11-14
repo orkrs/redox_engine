@@ -25,6 +25,10 @@ pub enum ViewportShading {
     Normals = 2,
     /// Real edge/line geometry (not a fragment fresnel hack).
     Wireframe = 3,
+    /// G-buffer roughness (when engine exposes it).
+    Roughness = 4,
+    /// Depth buffer visualisation.
+    Depth = 5,
 }
 
 impl ViewportShading {
@@ -46,6 +50,8 @@ impl ViewportShading {
             Self::Unlit => "Unlit (F2)",
             Self::Normals => "Normals (F3)",
             Self::Wireframe => "Wire (F4)",
+            Self::Roughness => "Roughness",
+            Self::Depth => "Depth",
         }
     }
 
