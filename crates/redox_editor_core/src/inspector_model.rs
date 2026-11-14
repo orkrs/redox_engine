@@ -15,7 +15,8 @@ use redox_reflect::{ReflectSchema, ReflectValue, TypeRegistry};
 
 use crate::undo::UndoCommand;
 
-pub use components::{AddOutcome, AddableType, RemoveOutcome, addable_types};
+pub use components::{AddOutcome, RemoveOutcome};
+pub use crate::component_catalog::{AddableType, addable_types};
 pub use edit::{copy_component, paste_component_values};
 
 /// The value a row shows: one value that all selected entities share, or a mixed state.
