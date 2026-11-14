@@ -36,6 +36,8 @@ pub mod recovery;
 pub mod selection;
 /// Editor preferences in `editor_settings.ron`.
 pub mod settings;
+/// Block persistent saves during PIE.
+pub mod pie_save;
 /// Undo and redo commands.
 pub mod undo;
 
@@ -45,4 +47,5 @@ pub use editor_only::{EditorOnly, editor_only_entities};
 pub use guid::GuidResolver;
 pub use log::EditorLog;
 pub use selection::{Selection, Visibility};
+pub use pie_save::{PieSaveBlock, mark_saved_if_allowed, save_guard, save_level_if_allowed};
 pub use undo::{Clock, SystemClock, UndoCommand, UndoEntry, UndoError, UndoHotkey, UndoStack};

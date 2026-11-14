@@ -1,6 +1,7 @@
 //! Editor commands (palette / menu / hotkeys) and small world helpers.
 
 use redox_ecs::{Entity, World};
+use redox_editor_debugger::{plan_standalone, prepare_pie_world, PieRunMode};
 use redox_editor_ui::{EditorDock, EditorUiCtx};
 use redox_editor_viewport::ViewportShading;
 use redox_math::{Transform, Vec3};
@@ -58,13 +59,56 @@ pub(crate) fn run_command(ui_ctx: &EditorUiCtx, dock: &mut EditorDock, id: &str)
         }
         "pie_play" => {
             let mut pie = ui_ctx.pie.lock();
-            let world = ui_ctx.core.world.lock();
+            let mut world = ui_ctx.core.world.lock();
             let registry = ui_ctx.core.registry.lock();
             if pie.running && pie.paused {
                 pie.resume();
             } else if !pie.running {
-                pie.start(&world, &registry);
+                let settings = redox_editor_core::settings::EditorSettings::default().pie;
+                prepare_pie_world(&settings, None, &registry, &mut world);
+                pie.start_with_mode(&world, &registry, PieRunMode::Play);
                 ui_ctx.log("[INFO] PIE started");
+            }
+        }
+        "pie_simulate" => {
+            let mut pie = ui_ctx.pie.lock();
+            let world = ui_ctx.core.world.lock();
+            let registry = ui_ctx.core.registry.lock();
+            if !pie.running {
+                pie.start_with_mode(&world, &registry, PieRunMode::Simulate);
+                ui_ctx.log("[INFO] PIE simulate started");
+            }
+        }
+        "pie_step" => {
+            let mut pie = ui_ctx.pie.lock();
+            let mut world = ui_ctx.core.world.lock();
+            let registry = ui_ctx.core.registry.lock();
+            if !pie.running {
+                pie.start_with_mode(&world, &registry, PieRunMode::Simulate);
+            }
+            pie.step(&mut world, &registry, &mut |_, _| {});
+            ui_ctx.log(format!("[INFO] PIE step (frame {})", pie.frame_count));
+        }
+        "pie_standalone" => {
+            let project = ui_ctx
+                .core
+                .status
+                .lock()
+                .strip_prefix("project:")
+                .map(str::to_owned)
+                .unwrap_or_else(|| ".".into());
+            let plan = plan_standalone(std::path::Path::new(&project), None);
+            match plan {
+                redox_editor_debugger::StandalonePlan::EditorPlayHost { project } => {
+                    ui_ctx.log(format!(
+                        "[INFO] Standalone: redox_editor --play {}",
+                        project.display()
+                    ));
+                    *ui_ctx.core.status.lock() = format!("standalone:{}", project.display());
+                }
+                redox_editor_debugger::StandalonePlan::Unavailable(reason) => {
+                    ui_ctx.log(format!("[WARN] Standalone unavailable: {reason}"));
+                }
             }
         }
         "pie_stop" => {

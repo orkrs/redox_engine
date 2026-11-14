@@ -310,11 +310,18 @@ impl EditorApp {
                 });
             });
 
-            self.files.handle_requests(&self.core);
+            {
+                let pie = ui_ctx_ref.pie.lock();
+                self.files.set_pie_blocks_save(&pie);
+                self.files.handle_requests(&self.core, &pie);
+            }
             if let Some(title) = self.files.take_title_change(&self.core) {
                 self.window.set_title(&title);
             }
-            self.files.show_windows(ctx, &self.core);
+            {
+                let pie = ui_ctx_ref.pie.lock();
+                self.files.show_windows(ctx, &self.core, &pie);
+            }
 
             self.dock.show_with_ui(
                 ui,

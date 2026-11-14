@@ -2,13 +2,15 @@
 
 pub(crate) const DEFAULT_WORLD_ROOT: &str = "worlds/arena";
 
-pub(crate) const HELP_TEXT: &str = "RedOx Studio Editor\n  --help            Show this help\n  --bake            Bake meshlets + SDF and write a report (headless, then exit)\n  --world <path>    World root (default worlds/arena)";
+pub(crate) const HELP_TEXT: &str = "RedOx Studio Editor\n  --help            Show this help\n  --bake            Bake meshlets + SDF and write a report (headless, then exit)\n  --play <project>  Headless PIE host for standalone play (stub; no window)\n  --world <path>    World root (default worlds/arena)";
 
 /// Parsed command line. `--world <path>` selects the world root.
 #[derive(Debug)]
 pub(crate) struct CliArgs {
     pub(crate) help: bool,
     pub(crate) bake: bool,
+    /// Project directory for `--play` standalone host.
+    pub(crate) play_project: Option<String>,
     pub(crate) world_root: String,
 }
 
@@ -16,6 +18,7 @@ pub(crate) fn parse_cli(args: &[String]) -> Result<CliArgs, String> {
     let mut cli = CliArgs {
         help: false,
         bake: false,
+        play_project: None,
         world_root: DEFAULT_WORLD_ROOT.to_string(),
     };
     let mut iter = args.iter().skip(1);
@@ -23,6 +26,13 @@ pub(crate) fn parse_cli(args: &[String]) -> Result<CliArgs, String> {
         match arg.as_str() {
             "--help" | "-h" => cli.help = true,
             "--bake" => cli.bake = true,
+            "--play" => {
+                cli.play_project = Some(
+                    iter.next()
+                        .ok_or_else(|| "--play requires a project path".to_string())?
+                        .clone(),
+                );
+            }
             "--world" => {
                 cli.world_root = iter
                     .next()
@@ -58,6 +68,19 @@ pub(crate) fn run_bake(world_root: &str) -> Result<(), String> {
     } else {
         Ok(())
     }
+}
+
+/// Headless PIE host stub for standalone play (no game binary in-tree).
+pub(crate) fn run_play_host(project: &str) -> Result<(), String> {
+    let path = std::path::Path::new(project);
+    if !path.is_dir() {
+        return Err(format!("{} is not a project directory", path.display()));
+    }
+    println!(
+        "[play] standalone host stub: would run PIE on {} (coordinator wires real loop)",
+        path.display()
+    );
+    Ok(())
 }
 
 #[cfg(test)]
