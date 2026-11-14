@@ -5,6 +5,12 @@ on:
   pull_request:
   schedule:
     - cron: "0 5 * * 1" # weekly: advisories change without code changes
+  workflow_dispatch:
+    inputs:
+      run_golden:
+        description: Run GPU golden frame check (Vulkan; optional self-hosted runner)
+        type: boolean
+        default: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -71,6 +77,19 @@ jobs:
             crates/redox_editor/tests/data/sample_project/validate.json
             crates/redox_editor/tests/data/sample_project/cook_report.json
             crates/redox_editor/tests/data/sample_project_broken/validate.json
+
+  # EDT-C4 step 3 — GPU golden frames; never required on PR (workflow_dispatch only).
+  golden-gpu:
+    name: golden-gpu
+    if: github.event_name == 'workflow_dispatch' && inputs.run_golden == true
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: Swatinem/rust-cache@v2
+      - name: golden frames (skinned_demo)
+        run: pwsh -File scripts/ci_golden.ps1
 
   msrv:
     runs-on: windows-latest
