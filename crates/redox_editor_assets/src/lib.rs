@@ -5,21 +5,42 @@
 
 #![warn(missing_docs)]
 
+pub mod audit;
 pub mod browser_model;
 pub mod import;
+pub mod import_dialog;
+pub mod import_log;
 pub mod import_queue;
+pub mod import_settings;
 pub mod reference_index;
 pub mod service;
+pub mod thumbnail_service;
 
 pub use browser_model::{
     AssetAction, AssetKind, BrowserEntry, BrowserFilter, BrowserModel, StatusFilter, actions_for,
 };
 
+pub use audit::{
+    AuditConfig, AuditReport, DuplicateGroup, IncomingReference, OutgoingReference, ReferenceView,
+    ReferenceViewerModel, SizeMapCsvRow, SizeMapNode, build_reference_view, build_size_map,
+    export_audit_json, export_size_map_csv, export_size_map_json, find_duplicates, find_orphans,
+    parse_size_map_csv, run_audit,
+};
 pub use import::{
     AssetImporter, CancelToken, GltfValidateImporter, ImportError, ImportJob, ImportOutput,
     ImportReport, ImporterRegistry, TextureHeader, TextureProbeImporter, probe_texture_header,
 };
+pub use import_dialog::{
+    ImportDialogJob, ImportDialogModel, ImportDialogPhase, ImportDialogRow, ImportPreview,
+};
+pub use import_log::{ImportLogEntry, ImportLogFilter, ImportLogModel, ImportLogStatus};
+pub use import_settings::{
+    ImportPresetFile, ImportPresetId, ImportPresetLibrary, MaterialMode, PerAssetImportSettings,
+    PresetEntry, SETTINGS_SCHEMA, default_for_kind, parse_settings_blob, read_per_asset_settings,
+    settings_blob, settings_for_preset, settings_fingerprint, write_per_asset_settings,
+};
 pub use import_queue::{ImportEvent, ImportQueue, MAX_IMPORT_WORKERS, default_worker_count};
+pub use thumbnail_service::{ThumbnailJob, ThumbnailOutcome, ThumbnailService};
 pub use reference_index::{
     MissingRef, RefEdit, RefResolution, ReferenceError, ReferenceIndex, SceneRef, is_scene_path,
     resolve_ref,
