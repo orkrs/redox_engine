@@ -215,6 +215,12 @@ impl EditorApp {
                         if ui.button("⏹").clicked() {
                             run_command(&ui_ctx_ref, &mut self.dock, "pie_stop");
                         }
+                        if ui.button("⏭ Step").clicked() {
+                            run_command(&ui_ctx_ref, &mut self.dock, "pie_step");
+                        }
+                        if ui.button("Standalone").clicked() {
+                            run_command(&ui_ctx_ref, &mut self.dock, "pie_standalone");
+                        }
                         if ui.button("⏸").clicked() {
                             let mut pie = ui_ctx_ref.pie.lock();
                             if pie.running {

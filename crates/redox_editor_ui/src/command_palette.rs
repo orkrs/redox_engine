@@ -64,6 +64,18 @@ impl Default for CommandPalette {
                 label: "> Stop (PIE)".into(),
             },
             Command {
+                id: "pie_step".into(),
+                label: "> Step Frame (PIE)".into(),
+            },
+            Command {
+                id: "pie_standalone".into(),
+                label: "> Standalone Play".into(),
+            },
+            Command {
+                id: "pie_simulate".into(),
+                label: "> Simulate (PIE)".into(),
+            },
+            Command {
                 id: "shading_lit".into(),
                 label: "> Shading: Lit".into(),
             },
