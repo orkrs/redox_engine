@@ -6,9 +6,17 @@ use redox_editor_viewport::{
 };
 use redox_math::Transform;
 #[test]
-fn shading_unlit_is_marked_unavailable() {
-    let plan = ViewportShadingPlan::resolve(ViewportShading::Unlit);
-    assert!(plan.overlay_label().contains("unavailable"));
+fn unavailable_reasons_are_gone_for_the_four_modes() {
+    for mode in [
+        ViewportShading::Unlit,
+        ViewportShading::Normals,
+        ViewportShading::Roughness,
+        ViewportShading::Depth,
+    ] {
+        let plan = ViewportShadingPlan::resolve(mode);
+        assert_eq!(plan.status, redox_editor_viewport::ShadingAvailability::Available);
+        assert!(!plan.overlay_label().contains("unavailable"));
+    }
 }
 
 #[test]

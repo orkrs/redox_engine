@@ -51,7 +51,7 @@ pub use viewport::{
 pub use viewport_mode::{
     QUAD_ORTHO_HALF, QuadPane, ViewportDebugFlags, ViewportLayout, ViewportShading,
 };
-pub use viewport_runtime::apply_viewport_runtime;
+pub use viewport_runtime::{apply_viewport_runtime, vg_supported};
 pub use viewport_screenshot::{read_rgba8_texture, screenshot_texture_to_png, write_viewport_png};
 pub use viewport_settings::{ViewportRuntimeSettings, ViewportToggleStatus};
 pub use viewport_stats::ViewportStatsOverlay;

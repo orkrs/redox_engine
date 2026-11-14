@@ -57,3 +57,4 @@ bytemuck = { workspace = true }
 redox_asset = { path = "../redox_asset" }
 redox_editor_assets = { path = "../redox_editor_assets" }
 redox_matgraph = { path = "../redox_matgraph" }
+image = { workspace = true }

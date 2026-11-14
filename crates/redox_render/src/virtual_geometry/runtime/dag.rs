@@ -187,6 +187,7 @@ impl VGSystem {
                 material_slot,
             },
         );
+        self.config.dag_traverse = true;
         Some(id)
     }
 

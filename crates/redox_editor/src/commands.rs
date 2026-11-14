@@ -141,7 +141,7 @@ pub(crate) fn run_command(
             ui_ctx.log("[INFO] PIE stopped — world restored");
         }
         "bake_meshlets" => {
-            ui_ctx.log("[WARN] Bake Meshlets not wired yet — use Packager for OFPA report")
+            *ui_ctx.core.status.lock() = "bake_meshlets".into();
         }
         "bake_report" => *ui_ctx.core.status.lock() = "bake_report".into(),
         "spawn_agent" => ui_ctx.spawn_demo_agent(),

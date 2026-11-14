@@ -141,6 +141,62 @@ fn differing_pixels(a: &[u8], b: &[u8]) -> usize {
 }
 
 #[test]
+fn a_dag_asset_enables_traversal() {
+    let _guard = lock();
+    let Some(adapter) = common::adapter() else {
+        return;
+    };
+    let Some(mut renderer) = common::renderer(&adapter, 64) else {
+        return;
+    };
+    renderer.init_virtual_geometry(VGConfig::default());
+    assert!(!renderer.vg_system.as_ref().unwrap().config.dag_traverse);
+    let material = renderer.add_material(Material::solid(Vec3::ONE));
+    let mesh = create_sphere(1.0, 16);
+    let asset = build_vg_dag_asset(&mesh, &DagParams::default(), material as u32).expect("dag");
+    let vg = renderer.vg_system.as_mut().expect("vg");
+    assert!(vg
+        .register_dag_asset(asset, &renderer.queue)
+        .is_some());
+    assert!(vg.config.dag_traverse);
+}
+
+#[test]
+fn a_flat_meshlet_asset_leaves_traversal_off() {
+    let _guard = lock();
+    let Some(adapter) = common::adapter() else {
+        return;
+    };
+    let Some(mut renderer) = common::renderer(&adapter, 64) else {
+        return;
+    };
+    renderer.init_virtual_geometry(VGConfig::default());
+    let mesh = create_sphere(1.0, 16);
+    let lod = redox_render::virtual_geometry::LodChainConfig::default();
+    let data = redox_render::virtual_geometry::build_vg_asset(&mesh, &lod, 0);
+    let vg = renderer.vg_system.as_mut().expect("vg");
+    assert!(vg.register_asset(data, &renderer.queue).is_some());
+    assert!(!vg.config.dag_traverse);
+}
+
+#[test]
+fn a_spawned_dag_instance_is_drawn() {
+    let (Some(empty), Some(with)) = (frame(None), frame(Some(Vec3::ZERO))) else {
+        return;
+    };
+    let covered = differing_pixels(&empty, &with);
+    assert!(covered > 100, "DAG instance should cover pixels, got {covered}");
+}
+
+#[test]
+fn no_dag_instance_skips_the_pass() {
+    let Some(empty) = frame_with(None, Path::DagOffDefault) else {
+        return;
+    };
+    assert!(!empty.is_empty());
+}
+
+#[test]
 fn a_dag_sphere_in_front_of_the_camera_is_drawn() {
     let (Some(empty), Some(with)) = (frame(None), frame(Some(Vec3::ZERO))) else {
         return;

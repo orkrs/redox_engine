@@ -2,8 +2,9 @@
 
 use std::path::{Path, PathBuf};
 
+use redox_asset::load_scene_from_path;
 use redox_math::Vec3;
-use redox_render::mesh::primitive::create_cube;
+use redox_render::mesh::Mesh;
 use redox_render::sdf::{SdfBrick, SdfBrickAtlas, bake_mesh};
 use redox_render::virtual_geometry::{LodChainConfig, build_vg_asset, cache as vg_cache};
 use redox_scene::{
@@ -23,6 +24,21 @@ pub struct BakeReport {
     pub report_path: PathBuf,
     /// Lines of the report.
     pub lines: Vec<String>,
+}
+
+/// Outcome of a CPU meshlet bake (GPU registration happens in `redox_editor::RenderHost`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MeshletBakeOutcome {
+    /// Disk cache key.
+    pub cache_key: u64,
+    /// `.cache/vg/{cache_key:016x}.rmesh`
+    pub cache_path: PathBuf,
+    /// glTF or mesh source that was clustered.
+    pub source: PathBuf,
+    /// Number of meshlets in the asset.
+    pub meshlet_count: usize,
+    /// `gpu_register: ok <id>` or a failure reason for the report file.
+    pub gpu_register_line: String,
 }
 
 /// Status of the CPU bakes.
@@ -151,10 +167,7 @@ impl PackagerPanel {
 
         ui.horizontal(|ui| {
             if ui.button("Bake Meshlets").clicked() {
-                match self.bake_meshlets() {
-                    Ok(msg) => self.status = msg,
-                    Err(e) => self.status = format!("Meshlet bake failed: {e}"),
-                }
+                self.status = "queue_bake_meshlets".into();
             }
             if ui.button("Bake SDF").clicked() {
                 match self.bake_sdf() {
@@ -218,13 +231,40 @@ impl PackagerPanel {
         Ok(msg)
     }
 
-    /// CPU meshlet bake via [`build_vg_asset`] + disk cache. GPU register needs Renderer.
+    /// CPU meshlet bake via [`build_vg_asset`] + disk cache. Pass mesh glTF paths; empty → error.
     pub fn bake_meshlets(&mut self) -> anyhow::Result<String> {
-        let mesh = create_cube();
+        self.bake_meshlets_from_paths(&[])
+    }
+
+    /// Bakes the first resolvable mesh in `sources` (OFPA has no mesh paths — use asset browser glTF).
+    pub fn bake_meshlets_from_paths(
+        &mut self,
+        sources: &[PathBuf],
+    ) -> anyhow::Result<MeshletBakeOutcome> {
+        if sources.is_empty() {
+            anyhow::bail!("no mesh selected — pick a glTF in the asset browser (OFPA actors have no mesh paths)");
+        }
+        let source = sources
+            .iter()
+            .find(|p| p.is_file())
+            .ok_or_else(|| anyhow::anyhow!("no readable mesh file in selection"))?;
+        let mesh = load_mesh_for_vg(source)?;
+        self.bake_meshlets_from_mesh(&mesh, source.clone())
+    }
+
+    /// CPU bake from an in-memory mesh (tests and procedural sources).
+    pub fn bake_meshlets_from_mesh(
+        &mut self,
+        mesh: &Mesh,
+        source: PathBuf,
+    ) -> anyhow::Result<MeshletBakeOutcome> {
         let lod = LodChainConfig::default();
-        let key = vg_cache::cache_key(&mesh, &lod, 0);
-        let asset = build_vg_asset(&mesh, &lod, 0);
+        let key = vg_cache::cache_key(mesh, &lod, 0);
+        let asset = build_vg_asset(mesh, &lod, 0);
         let meshlet_count = asset.meshlets.len();
+        if meshlet_count == 0 {
+            anyhow::bail!("build_vg_asset produced zero meshlets for {}", source.display());
+        }
         let tri_count = asset.triangle_count();
         vg_cache::store_cached(key, &asset);
 
@@ -233,29 +273,65 @@ impl PackagerPanel {
             .join(format!("{key:016x}.rmesh"));
         let report_path = PathBuf::from(".cache/bake_meshlets.txt");
         std::fs::create_dir_all(".cache")?;
+        let gpu_register_line =
+            "gpu_register: pending RenderHost (run editor with viewport GPU)".to_string();
         let body = format!(
             "# Meshlet Bake\n\
              generated_at: {}\n\
-             source: procedural unit cube (OFPA actors have no mesh paths)\napi: redox_render::virtual_geometry::build_vg_asset\n\
+             source: {}\n\
+             api: redox_render::virtual_geometry::build_vg_asset\n\
              cache_api: redox_render::virtual_geometry::cache::store_cached\n\
              cache_key: {key:016x}\n\
              cache_path: {}\n\
              meshlets: {meshlet_count}\n\
              triangles: {tri_count}\n\
              lod_levels: {}\n\
-             gpu_register: FAIL needs VGSystem + wgpu Device/Queue (RenderHost)\n",
+             {gpu_register_line}\n",
             unix_timestamp(),
+            source.display(),
             cache_path.display(),
             lod.levels.len(),
         );
         std::fs::write(&report_path, &body)?;
 
         let msg = format!(
-            "Meshlets OK: {meshlet_count} → {} (GPU register deferred)",
+            "Meshlets OK: {meshlet_count} from {} → {}",
+            source.display(),
             cache_path.display()
         );
-        self.bake_status.meshlets = msg.clone();
-        Ok(msg)
+        self.bake_status.meshlets = msg;
+        Ok(MeshletBakeOutcome {
+            cache_key: key,
+            cache_path,
+            source,
+            meshlet_count,
+            gpu_register_line,
+        })
+    }
+
+    /// Updates the bake report after GPU registration.
+    pub fn finalize_meshlet_gpu_register(&mut self, outcome: &MeshletBakeOutcome) -> anyhow::Result<()> {
+        let report_path = PathBuf::from(".cache/bake_meshlets.txt");
+        if report_path.is_file() {
+            let mut body = std::fs::read_to_string(&report_path)?;
+            if let Some(line) = body.lines().find(|l| l.starts_with("gpu_register:")) {
+                body = body.replace(line, &outcome.gpu_register_line);
+            } else {
+                body.push_str(&outcome.gpu_register_line);
+                body.push('\n');
+            }
+            std::fs::write(&report_path, body)?;
+        }
+        if !outcome.gpu_register_line.contains("ok") {
+            return Ok(());
+        }
+        self.bake_status.meshlets = format!(
+            "Meshlets OK: {} → {} ({})",
+            outcome.meshlet_count,
+            outcome.cache_path.display(),
+            outcome.gpu_register_line.trim()
+        );
+        Ok(())
     }
 
     /// CPU SDF bake via [`bake_mesh`]. GPU atlas upload needs Renderer.
@@ -545,6 +621,17 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> anyhow::Result<()> {
 }
 
 /// Build timestamp as `unix:<seconds>` (no chrono dependency).
+/// Loads the first mesh primitive from a glTF/GLB path for meshlet clustering.
+pub fn load_mesh_for_vg(path: &Path) -> anyhow::Result<Mesh> {
+    let scene = load_scene_from_path(path)?;
+    let mesh_idx = scene.nodes.iter().find_map(|n| n.mesh_index).unwrap_or(0);
+    let data = scene
+        .meshes
+        .get(mesh_idx)
+        .ok_or_else(|| anyhow::anyhow!("{path:?} has no meshes"))?;
+    Ok(redox_editor_viewport::gltf_mesh_to_render_mesh(data))
+}
+
 fn unix_timestamp() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let secs = SystemTime::now()

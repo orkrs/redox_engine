@@ -5,6 +5,8 @@ mod cli;
 mod commands;
 mod headless;
 mod render_entities;
+mod meshlet_bake;
+mod material_preview_host;
 mod render_host;
 
 use cli::{HELP_TEXT, parse_cli, run_bake, run_bench, run_play_host};

@@ -14,7 +14,7 @@ use redox_editor_viewport::{
     ghost_cube_lines, ghost_move_line, pick_in_quad_pane, pick_unit_cubes, place_on_surface,
     scatter_poses,
 };
-use redox_math::{Transform, Vec3};
+use redox_math::{Mat4, Transform, Vec3};
 use std::time::Instant;
 
 impl EditorApp {
@@ -40,6 +40,7 @@ impl EditorApp {
         }
 
         self.resize_viewport_target();
+        self.sync_material_preview_gpu();
         self.render_viewport(&draws, &entities, selected_id, shading, layout);
         if let Some(host) = &self.render_host {
             if host.runtime.show_stats_overlay {
@@ -172,7 +173,13 @@ impl EditorApp {
 
     fn handle_viewport_requests(&mut self) {
         let status = self.ui_ctx.core.status.lock().clone();
-        if status == "viewport_screenshot" {
+        if status == "bake_meshlets" {
+            self.handle_meshlet_bake();
+            self.ui_ctx.core.status.lock().clear();
+        } else if self.ui_ctx.packager.lock().status == "queue_bake_meshlets" {
+            self.ui_ctx.packager.lock().status.clear();
+            self.handle_meshlet_bake();
+        } else if status == "viewport_screenshot" {
             let path =
                 std::env::temp_dir().join(format!("redox_viewport_{}.png", std::process::id()));
             let msg = match self.render_host.as_ref() {
@@ -198,6 +205,57 @@ impl EditorApp {
             self.ui_ctx
                 .log(format!("[INFO] Viewport setting updated: {field}"));
             self.ui_ctx.core.status.lock().clear();
+        }
+    }
+
+    fn handle_meshlet_bake(&mut self) {
+        let assets_root = self
+            .files
+            .project()
+            .map(|p| p.root().join(p.manifest().assets_root.as_str()));
+        let sources =
+            crate::meshlet_bake::collect_meshlet_bake_sources(&self.ui_ctx, assets_root.as_deref());
+        let entity_id = self
+            .ui_ctx
+            .core
+            .selection
+            .lock()
+            .primary
+            .map(|e| e.id());
+        let transform = {
+            let world = self.core.world.lock();
+            entity_id
+                .and_then(|id| {
+                    world
+                        .all_entities()
+                        .find(|e| e.id() == id)
+                        .and_then(|e| world.get_component::<Transform>(e).copied())
+                })
+                .map(|t| t.matrix())
+                .unwrap_or(Mat4::IDENTITY)
+        };
+        let mut packager = self.ui_ctx.packager.lock();
+        match packager.bake_meshlets_from_paths(&sources) {
+            Err(e) => {
+                let msg = format!("Meshlet bake failed: {e:#}");
+                packager.status = msg.clone();
+                self.ui_ctx.log(format!("[ERR] {msg}"));
+            }
+            Ok(mut outcome) => {
+                if let Some(host) = self.render_host.as_mut() {
+                    outcome.gpu_register_line =
+                        host.register_meshlet_bake(&outcome, transform, entity_id);
+                    let _ = packager.finalize_meshlet_gpu_register(&outcome);
+                }
+                let msg = format!(
+                    "[INFO] Bake meshlets: {} from {} → {} ({})",
+                    outcome.meshlet_count,
+                    outcome.source.display(),
+                    outcome.cache_path.display(),
+                    outcome.gpu_register_line
+                );
+                self.ui_ctx.log(msg);
+            }
         }
     }
 
@@ -434,6 +492,43 @@ impl EditorApp {
     }
 
     /// Resize the RTT to last frame's dock viewport rect; re-register the egui texture.
+    fn sync_material_preview_gpu(&mut self) {
+        let session_snapshot = self.ui_ctx.material.lock().clone();
+        if let Some(host) = self.render_host.as_mut() {
+            host.sync_material_preview(
+                session_snapshot.as_ref(),
+                &mut self.material_graph_registry,
+            );
+            if let (Some(view), Some(renderer)) = (
+                host.material_preview_view(),
+                host.renderer.as_ref(),
+            ) {
+                let device = &renderer.device;
+                if self.material_preview_tex_id.is_none() {
+                    if let Some(egui) = self.egui_renderer.as_mut() {
+                        self.material_preview_tex_id = Some(renderer.register_native_texture(
+                            device,
+                            view,
+                            wgpu::FilterMode::Linear,
+                        ));
+                    }
+                }
+                if let Some(id) = self.material_preview_tex_id {
+                    *self.ui_ctx.material_preview_tex.lock() = Some(id);
+                }
+            }
+            if let Some(session) = session_snapshot.as_ref() {
+                crate::material_preview_host::register_open_material(
+                    &mut self.material_graph_registry,
+                    session,
+                );
+                if let Some(renderer) = host.renderer.as_mut() {
+                    renderer.register_material_graphs_by_id(self.material_graph_registry.as_map());
+                }
+            }
+        }
+    }
+
     fn resize_viewport_target(&mut self) {
         let renderer = self
             .egui_renderer
@@ -468,16 +563,37 @@ impl EditorApp {
     ) {
         if let Some(host) = self.render_host.as_mut() {
             let cam = self.camera.lock().clone();
-            let assets_root = Some(std::path::Path::new("assets"));
+            let (project_root, assets_root) = self
+                .files
+                .project()
+                .map(|p| {
+                    let assets = p.root().join(p.manifest().assets_root.as_str());
+                    (Some(p.root().to_path_buf()), Some(assets))
+                })
+                .unwrap_or((None, Some(std::path::PathBuf::from("assets"))));
             let plan = redox_editor_viewport::ViewportShadingPlan::resolve(shading);
             let fps = *self.ui_ctx.fps.lock();
             let cpu_ms = *self.ui_ctx.frame_ms.lock();
             match layout {
                 ViewportLayout::Quad => {
-                    host.render_quad(&cam, draws, selected_id, shading, assets_root);
+                    host.render_quad(
+                        &cam,
+                        draws,
+                        selected_id,
+                        shading,
+                        assets_root.as_deref(),
+                        project_root.as_deref(),
+                    );
                 }
                 ViewportLayout::Single => {
-                    host.render(&cam, draws, selected_id, shading, assets_root);
+                    host.render(
+                        &cam,
+                        draws,
+                        selected_id,
+                        shading,
+                        assets_root.as_deref(),
+                        project_root.as_deref(),
+                    );
                 }
             }
             host.record_stats(fps, cpu_ms, &plan);
