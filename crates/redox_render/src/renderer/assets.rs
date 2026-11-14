@@ -159,7 +159,8 @@ impl Renderer {
         }
         let idx = self
             .registry
-            .push_legacy_material(material, buffer, bind_group);
+            .push_legacy_material(material.clone(), buffer, bind_group);
+        self.ensure_instance_slots(idx, &material);
         if keeps_classic_path && let Some(vg) = self.vg_system.as_mut() {
             vg.mark_alpha_tested_material(idx as u32);
         }
@@ -376,6 +377,7 @@ impl Renderer {
             ..Material::solid(data.base_color)
         };
         let idx = self.add_material_impl(material, true);
+        self.apply_instance_from_material_data(idx, data.graph, data.graph_params.clone());
         self.material_blend_flags[idx] = data.blend;
         self.registry.link_material_index(handle.id(), idx);
         Some(idx)

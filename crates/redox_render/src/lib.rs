@@ -21,6 +21,7 @@ pub mod hlod;
 pub mod hlod_gpu;
 pub mod light;
 pub mod material;
+mod material_instance;
 /// Shader modules of material graph variants (MAT-02 step 5).
 pub mod matgraph_cache;
 pub mod matgraph_passes;

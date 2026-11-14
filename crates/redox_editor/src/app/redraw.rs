@@ -40,6 +40,7 @@ impl EditorApp {
         }
 
         self.resize_viewport_target();
+        self.sync_material_preview_gpu();
         self.render_viewport(&draws, &entities, selected_id, shading, layout);
         if let Some(host) = &self.render_host {
             if host.runtime.show_stats_overlay {
@@ -434,6 +435,38 @@ impl EditorApp {
     }
 
     /// Resize the RTT to last frame's dock viewport rect; re-register the egui texture.
+    fn sync_material_preview_gpu(&mut self) {
+        let session_snapshot = self.ui_ctx.material.lock().clone();
+        if let Some(host) = self.render_host.as_mut() {
+            host.sync_material_preview(session_snapshot.as_ref(), &mut self.material_graph_registry);
+            if let (Some(view), Some(gpu_renderer), Some(engine)) = (
+                host.material_preview_view(),
+                self.egui_renderer.as_mut(),
+                host.renderer.as_ref(),
+            ) {
+                if self.material_preview_tex_id.is_none() {
+                    self.material_preview_tex_id = Some(gpu_renderer.register_native_texture(
+                        &engine.device,
+                        view,
+                        wgpu::FilterMode::Linear,
+                    ));
+                }
+                if let Some(id) = self.material_preview_tex_id {
+                    *self.ui_ctx.material_preview_tex.lock() = Some(id);
+                }
+            }
+            if let Some(session) = session_snapshot.as_ref() {
+                crate::material_preview_host::register_open_material(
+                    &mut self.material_graph_registry,
+                    session,
+                );
+                if let Some(renderer) = host.renderer.as_mut() {
+                    renderer.register_material_graphs_by_id(self.material_graph_registry.as_map());
+                }
+            }
+        }
+    }
+
     fn resize_viewport_target(&mut self) {
         let renderer = self
             .egui_renderer

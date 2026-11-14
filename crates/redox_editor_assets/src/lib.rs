@@ -15,6 +15,7 @@ pub mod import_settings;
 pub mod mat_graph_view;
 pub mod material_compile;
 pub mod material_document;
+pub mod material_graph_registry;
 pub mod material_preview;
 pub mod reference_index;
 pub mod service;
@@ -26,6 +27,7 @@ pub use browser_model::{
 pub use mat_graph_view::{ConnectError, MatGraphUndo, MatGraphView, NodeLayout};
 pub use material_compile::{CompileMessage, CompileReport};
 pub use material_document::{CompiledMaterial, MaterialDocument, MaterialError, compile_for_save};
+pub use material_graph_registry::{MaterialGraphRegistry, graph_id_for_guid};
 pub use material_preview::{
     MaterialPreviewSettings, PreviewLighting, PreviewMesh, SimplePreviewLight,
 };

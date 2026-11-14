@@ -82,6 +82,8 @@ pub struct MaterialData {
     pub alpha_test: bool,
     /// Screen-space refraction (glass, water); `None` = off.
     pub refraction: Option<crate::material::Refraction>,
+    pub graph: Option<crate::material::MaterialGraphId>,
+    pub graph_params: Vec<[f32; 4]>,
 }
 
 impl MaterialData {
@@ -100,6 +102,8 @@ impl MaterialData {
             sheen: 0.0,
             alpha_test: false,
             refraction: None,
+            graph: None,
+            graph_params: Vec::new(),
         }
     }
 

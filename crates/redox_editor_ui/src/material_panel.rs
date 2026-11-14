@@ -10,7 +10,11 @@ pub struct MaterialPanel;
 
 impl MaterialPanel {
     /// Draws compile errors, params, preview toggles and read-only WGSL.
-    pub fn show(ui: &mut egui::Ui, session: &mut MaterialEditorSession) -> MaterialPanelAction {
+    pub fn show(
+        ui: &mut egui::Ui,
+        session: &mut MaterialEditorSession,
+        preview_tex: Option<egui::TextureId>,
+    ) -> MaterialPanelAction {
         let mut action = MaterialPanelAction::None;
         ui.horizontal(|ui| {
             ui.heading(session.title());
@@ -47,6 +51,9 @@ impl MaterialPanel {
                         "Viewport IBL (B3)",
                     );
                 });
+            if let Some(tex) = preview_tex {
+                ui.image(egui::load::SizedTexture::new(tex, egui::vec2(128.0, 128.0)));
+            }
         });
         ui.collapsing("Errors", |ui| {
             if session.compile.errors.is_empty() {

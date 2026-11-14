@@ -5,7 +5,7 @@ use crate::commands::focus_selection;
 use crate::render_host::{RenderHost, SharedGpu};
 use parking_lot::Mutex;
 use rapier3d::prelude::{ColliderBuilder, RigidBodyBuilder};
-use redox_editor_assets::AssetService;
+use redox_editor_assets::{AssetService, MaterialGraphRegistry};
 use redox_editor_core::EditorContext;
 use redox_editor_core::autosave::AutosaveService;
 use redox_editor_core::file_commands::{FileRequestQueue, register_file_commands};
@@ -75,6 +75,8 @@ pub(crate) struct EditorApp {
     last_asset_refresh: Instant,
     plugin_host: PluginHost,
     plugin_manager: PluginManagerWindow,
+    material_graph_registry: MaterialGraphRegistry,
+    material_preview_tex_id: Option<egui::TextureId>,
 }
 
 impl EditorApp {
@@ -246,6 +248,8 @@ impl EditorApp {
             last_asset_refresh: Instant::now(),
             plugin_host: PluginHost::new(),
             plugin_manager: PluginManagerWindow::default(),
+            material_graph_registry: MaterialGraphRegistry::new(),
+            material_preview_tex_id: None,
         }
     }
 

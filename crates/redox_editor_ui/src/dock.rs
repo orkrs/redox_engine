@@ -510,7 +510,8 @@ impl TabViewer for TabViewerImpl<'_> {
             Tab::Graph => {
                 if let Some(mut session) = self.ui_ctx.material.lock().take() {
                     use crate::material_panel::{MaterialPanel, MaterialPanelAction};
-                    match MaterialPanel::show(ui, &mut session) {
+                    let preview_tex = *self.ui_ctx.material_preview_tex.lock();
+                    match MaterialPanel::show(ui, &mut session, preview_tex) {
                         MaterialPanelAction::None | MaterialPanelAction::FocusNode => {}
                         MaterialPanelAction::Undo => {
                             if let Some(prev) = session.view.undo.undo(&session.view.graph) {

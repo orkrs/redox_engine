@@ -10,7 +10,7 @@ use redox_render::Renderer;
 use redox_render::camera::Camera;
 use redox_render::frame::FrameView;
 use redox_render::light::{DirectionalLight, LightScene};
-use redox_render::material::Material;
+use redox_render::material::{Material, MaterialGraphId, MaterialInstance};
 use redox_render::matgraph_passes::GraphPass;
 use redox_render::mesh::primitive::create_cube;
 use redox_render::resource::ibl::read_texture_ktx2;
@@ -536,4 +536,51 @@ fn an_unchanged_graph_file_does_nothing() {
         0,
         "no graph was applied"
     );
+}
+
+#[test]
+fn an_instance_without_a_graph_uses_the_plain_material() {
+    let Some(mut rig) = rig() else { return; };
+    let mesh = rig.renderer.upload_mesh(&create_cube());
+    let material = rig.renderer.add_material(Material::solid(Vec3::new(0.2, 0.8, 0.3)));
+    rig.renderer.set_material_graph(material, &colour_graph([1.0, 0.0, 0.0]), &[]).unwrap();
+    let base = rig.renderer.material_instance(material).unwrap().material.clone();
+    rig.renderer.set_material_instance_slot(material, MaterialInstance::new(base), Vec::new());
+    rig.renderer.sync_material_instances();
+    assert!(rig.renderer.matgraphs.binding(material).is_none());
+}
+
+#[test]
+fn an_instance_with_a_graph_binds_that_graph() {
+    let Some(mut rig) = rig() else { return; };
+    let material = rig.renderer.add_material(Material::solid(Vec3::ONE));
+    let id = MaterialGraphId(24);
+    rig.renderer.register_material_graph(id, colour_graph([0.0, 0.0, 1.0]));
+    let base = rig.renderer.material_instance(material).unwrap().material.clone();
+    rig.renderer.set_material_instance_slot(material, MaterialInstance::with_graph(base, id), Vec::new());
+    rig.renderer.sync_material_instances();
+    assert!(rig.renderer.matgraphs.binding(material).is_some());
+}
+
+#[test]
+fn a_missing_graph_id_keeps_the_previous_binding() {
+    let Some(mut rig) = rig() else { return; };
+    let material = rig.renderer.add_material(Material::solid(Vec3::ONE));
+    rig.renderer.set_material_graph(material, &colour_graph([0.0, 1.0, 0.0]), &[]).unwrap();
+    let base = rig.renderer.material_instance(material).unwrap().material.clone();
+    rig.renderer.set_material_instance_slot(material, MaterialInstance::with_graph(base, MaterialGraphId(9_999)), Vec::new());
+    rig.renderer.sync_material_instances();
+    assert!(rig.renderer.matgraphs.binding(material).is_some());
+}
+
+#[test]
+fn a_graph_instance_has_a_vsm_depth_pipeline() {
+    let Some(mut rig) = rig() else { return; };
+    let material = rig.renderer.add_material(Material::solid(Vec3::ONE));
+    let id = MaterialGraphId(31);
+    rig.renderer.register_material_graph(id, colour_graph([0.9, 0.1, 0.1]));
+    let base = rig.renderer.material_instance(material).unwrap().material.clone();
+    rig.renderer.set_material_instance_slot(material, MaterialInstance::with_graph(base, id), Vec::new());
+    rig.renderer.sync_material_instances();
+    assert!(rig.renderer.matgraphs.pass_binding(material, GraphPass::VsmDepth).is_some());
 }

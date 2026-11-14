@@ -154,6 +154,11 @@ pub struct Renderer {
     pub pbr_pass: PbrPass,
     /// Graph-driven material slots of the forward pass (MAT-02).
     pub matgraphs: crate::matgraph_cache::MaterialGraphs,
+    material_instances: Vec<crate::material::MaterialInstance>,
+    material_graph_params: Vec<Vec<[f32; 4]>>,
+    registered_graphs:
+        std::collections::HashMap<crate::material::MaterialGraphId, redox_matgraph::MaterialGraph>,
+    unknown_graph_logged: std::collections::HashSet<crate::material::MaterialGraphId>,
     /// Shadow depth pass.
     pub shadow_pass: ShadowPass,
     /// Pass that renders normals and depth.

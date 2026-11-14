@@ -96,6 +96,13 @@ impl MaterialInstance {
             material,
         }
     }
+
+    pub fn with_graph(material: Material, graph: MaterialGraphId) -> Self {
+        Self {
+            graph: Some(graph),
+            material,
+        }
+    }
 }
 
 /// GPU material uniform — must stay 16-byte aligned (wgpu validation is fatal).

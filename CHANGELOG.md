@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Not yet versio
 ## [Unreleased]
 
 ### Added
+- Render / editor (MAT-10): `sync_material_instances`, `MaterialGraphRegistry`, editor material preview on `RenderHost`; tests in `matgraph_draw` and `material_preview_gpu`.
 - Editor (EDT-A8): scene asset references persist through save/load via `AssetRefs` (`redox_scene`) beside runtime handles; registry-aware scene open (`ResolvedAssetRef`, `SceneDocument::open_with_resolver`); merged handle reads in `register_scene_components`; `bind_render_handles` for viewport binding after import; A7 reference/rename scenarios un-ignored; EDT-A-07 narrowed in `KNOWN_LIMITS.md`. Coordinator must run `cargo test -p redox_scene -p redox_editor_scene -p redox_editor --test scenarios`.
 - Editor (EDT-B5): material graph authoring — `MaterialDocument` (save only when `redox_matgraph` validates and emits), `MatGraphView` with snapshot undo, Material mode on `NodeCanvas`, compile error list with node focus, asset browser Open/double-click on `.matgraph`, palette `material_save`, scenario `s07` (TZ §23.7); ignored GPU preview test `material_preview_gpu`.
 - Editor (EDT-B4): per-asset import settings and presets in `.meta`, import dialog model/UI, texture thumbnails under `.redox/thumbs`, import log model and dock tab, browser actions `Show in log` and thumbnail swatches; scenario `s04_import_preview` (TZ §23.4); mesh thumbnails deferred (EDT-B3).
