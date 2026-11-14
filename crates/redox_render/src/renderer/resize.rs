@@ -361,6 +361,7 @@ impl Renderer {
             },
         );
         self.rebuild_sharp_bind_groups();
+        self.rebuild_transient_pool();
 
         log::info!("Resized to {}×{}", new_width, new_height);
     }

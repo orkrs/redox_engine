@@ -18,11 +18,29 @@ fn target(width: u32, height: u32, format: F) -> TextureDesc {
         height,
         format,
         usage: U::RENDER_ATTACHMENT | U::TEXTURE_BINDING,
+        sample_count: 1,
+        mip_level_count: 1,
     }
 }
 
-/// Declares the frame for a render target of `width` x `height`.
+/// Which optional passes and transients are part of the frame (RND-12 step 2).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct FrameFeatures {
+    /// Height / froxel fog in the post chain.
+    pub fog: bool,
+}
+
+/// Declares the frame for a render target of `width` x `height` (default features).
 pub fn frame_graph(width: u32, height: u32) -> RenderGraph {
+    frame_graph_with_features(width, height, FrameFeatures::default())
+}
+
+/// Declares the frame for `width` x `height` with the given enabled effects.
+pub fn frame_graph_with_features(
+    width: u32,
+    height: u32,
+    features: FrameFeatures,
+) -> RenderGraph {
     let (w, h) = (width.max(1), height.max(1));
     let mut g = RenderGraph::new();
 
@@ -50,9 +68,9 @@ pub fn frame_graph(width: u32, height: u32) -> RenderGraph {
     // Per-frame transients.
     let clusters = g.create_texture("vg_clusters", target(w, h, F::R32Uint));
     let depth = g.create_texture("depth", target(w, h, F::Depth32Float));
-    let normals = g.create_texture("normals", target(w, h, F::Rgba8Unorm));
+    let normals = g.create_texture("normals", target(w, h, F::Rgba16Float));
     let hiz = g.create_texture("hiz", target(w, h, F::R32Float));
-    let ao = g.create_texture("ao", target(w, h, F::R8Unorm));
+    let ao = g.create_texture("ao", target(w, h, F::Rgba16Float));
     let hdr = g.create_texture("hdr_color", target(w, h, F::Rgba16Float));
 
     g.add_pass("shadow_passes", |p| {
@@ -117,6 +135,17 @@ pub fn frame_graph(width: u32, height: u32) -> RenderGraph {
     g.add_pass("scatter_light", |p| {
         p.read(depth).read(clusters).read_write(hdr);
     });
+    if features.fog {
+        let fog_scratch = g.create_texture("fog_scratch", target(w, h, F::Rgba16Float));
+        g.add_pass("fog", |p| {
+            p.read(hdr).read(depth).write(fog_scratch);
+        });
+    } else {
+        // Fog off: omit the transient so the compiler does not reserve a slot.
+        g.add_pass("fog", |p| {
+            p.read(hdr).read(depth).side_effects();
+        });
+    }
     // TAA, bloom and tonemap read HDR; the velocity pass reads the depth and TAA reads last
     // frame's depth (`prev_depth`). The velocity, LDR and SMAA steps are intermediates of this
     // pass (written and read inside it, hence read_write).
@@ -141,10 +170,39 @@ pub fn frame_graph(width: u32, height: u32) -> RenderGraph {
 /// Human-readable report of the compiled frame for the given target size (passes, resources,
 /// slots, culled passes and access changes). See [`crate::render_graph::CompiledGraph::report`].
 pub fn frame_graph_report(width: u32, height: u32) -> String {
-    frame_graph(width, height)
+    frame_graph_report_with_features(width, height, FrameFeatures::default())
+}
+
+/// Like [`frame_graph_report`] with explicit features and aliasing savings.
+pub fn frame_graph_report_with_features(
+    width: u32,
+    height: u32,
+    features: FrameFeatures,
+) -> String {
+    let compiled = frame_graph_with_features(width, height, features)
         .compile()
-        .expect("the frame graph is valid (checked by tests)")
-        .report()
+        .expect("the frame graph is valid (checked by tests)");
+    let logical = compiled.logical_transient_bytes();
+    let mut out = compiled.report();
+    let physical = compiled
+        .slot_plan()
+        .iter()
+        .map(|e| {
+            let bpp = e.desc.format.block_copy_size(None).unwrap_or(4);
+            crate::memory_budget::texture_size_bytes(
+                e.desc.width,
+                e.desc.height,
+                bpp,
+                e.desc.mip_level_count.max(1),
+            )
+        })
+        .sum::<u64>();
+    let saved = logical.saturating_sub(physical);
+    let _ = std::fmt::Write::write_fmt(
+        &mut out,
+        format_args!("\naliased_saved_bytes: {saved}\n"),
+    );
+    out
 }
 
 /// Names of the frame's passes in execution order, taken from the compiled [`frame_graph`].

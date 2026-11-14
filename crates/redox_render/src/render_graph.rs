@@ -40,6 +40,10 @@ pub struct TextureDesc {
     pub format: wgpu::TextureFormat,
     /// Usages the texture needs.
     pub usage: TextureUsages,
+    /// MSAA sample count (1 when not multisampled).
+    pub sample_count: u32,
+    /// Mip levels (at least 1).
+    pub mip_level_count: u32,
 }
 
 /// Size and usage of a buffer.
@@ -131,6 +135,8 @@ struct Pass {
     writes: Vec<(u32, Access)>,
     /// Resources this pass reads and writes on purpose (see [`PassBuilder::read_write`]).
     read_writes: Vec<u32>,
+    /// Textures written only in part of their area (never aliased with another logical texture).
+    partial_writes: Vec<u32>,
     side_effects: bool,
 }
 
@@ -195,6 +201,12 @@ impl PassBuilder<'_> {
     pub fn side_effects(&mut self) -> &mut Self {
         self.pass.side_effects = true;
         self
+    }
+
+    /// The pass writes only part of `tex`; the compiler gives it a dedicated physical slot.
+    pub fn write_partial(&mut self, tex: TexHandle) -> &mut Self {
+        self.pass.partial_writes.push(tex.0);
+        self.write(tex)
     }
 }
 
@@ -381,7 +393,14 @@ impl RenderGraph {
         let live = self.live_passes(&deps);
         let order = self.topological_order(&deps, &live);
         let lifetimes = self.lifetimes(&order);
-        let (physical, slot_count) = self.assign_slots(&lifetimes);
+        let partial: BTreeSet<u32> = self
+            .passes
+            .iter()
+            .flat_map(|p| p.partial_writes.iter().copied())
+            .collect();
+        let (physical, slot_count) = self.assign_slots(&lifetimes, &required_usage, &partial);
+        let slot_plan = self.build_slot_plan(&physical, &required_usage);
+        let transient_descs = self.logical_transient_descs(&physical, &required_usage);
         let barrier_plan = self.barrier_plan(&order);
         let critical_path_len = critical_path_len(&order, &deps, &live);
         let culled = (0..self.passes.len())
@@ -404,6 +423,8 @@ impl RenderGraph {
             lifetimes,
             physical,
             slot_count,
+            slot_plan,
+            transient_descs,
             required_usage,
             required_buffer_usage,
             barrier_plan,
@@ -595,7 +616,12 @@ impl RenderGraph {
 
     /// Greedy slot assignment: reuse a slot whose previous tenant is already dead and
     /// whose descriptor matches. Only owned textures are assigned.
-    fn assign_slots(&self, lifetimes: &[Option<(usize, usize)>]) -> (Vec<Option<usize>>, usize) {
+    fn assign_slots(
+        &self,
+        lifetimes: &[Option<(usize, usize)>],
+        required_usage: &[TextureUsages],
+        partial: &BTreeSet<u32>,
+    ) -> (Vec<Option<usize>>, usize) {
         let res_count = self.resources.len();
         let mut by_first: Vec<usize> = (0..res_count)
             .filter(|&r| !self.resources[r].imported && lifetimes[r].is_some())
@@ -606,9 +632,15 @@ impl RenderGraph {
         let mut physical: Vec<Option<usize>> = vec![None; res_count];
         for r in by_first {
             let (first, last) = lifetimes[r].unwrap_or((0, 0));
-            let Kind::Texture(desc) = self.resources[r].kind else {
+            let Kind::Texture(mut desc) = self.resources[r].kind else {
                 continue;
             };
+            desc.usage = required_usage[r];
+            if partial.contains(&(r as u32)) {
+                slots.push((desc, last));
+                physical[r] = Some(slots.len() - 1);
+                continue;
+            }
             let reuse = slots
                 .iter()
                 .position(|(d, free_after)| *d == desc && *free_after < first);
@@ -625,6 +657,64 @@ impl RenderGraph {
             physical[r] = Some(slot);
         }
         (physical, slots.len())
+    }
+
+    fn build_slot_plan(
+        &self,
+        physical: &[Option<usize>],
+        required_usage: &[TextureUsages],
+    ) -> Vec<SlotPlanEntry> {
+        let slot_count = physical.iter().flatten().copied().max().map_or(0, |m| m + 1);
+        let mut plan = vec![
+            SlotPlanEntry {
+                desc: TextureDesc {
+                    width: 1,
+                    height: 1,
+                    format: wgpu::TextureFormat::R8Unorm,
+                    usage: TextureUsages::empty(),
+                    sample_count: 1,
+                    mip_level_count: 1,
+                },
+                users: Vec::new(),
+            };
+            slot_count
+        ];
+        for (r, res) in self.resources.iter().enumerate() {
+            let Some(slot) = physical[r] else {
+                continue;
+            };
+            let Kind::Texture(mut desc) = res.kind else {
+                continue;
+            };
+            desc.usage = required_usage[r];
+            let entry = &mut plan[slot];
+            if entry.users.is_empty() {
+                entry.desc = desc;
+            } else {
+                entry.desc.usage |= desc.usage;
+            }
+            entry.users.push(res.name);
+        }
+        plan
+    }
+
+    fn logical_transient_descs(
+        &self,
+        physical: &[Option<usize>],
+        required_usage: &[TextureUsages],
+    ) -> Vec<(TextureDesc, &'static str)> {
+        let mut out = Vec::new();
+        for (r, res) in self.resources.iter().enumerate() {
+            if res.imported || physical[r].is_none() {
+                continue;
+            }
+            let Kind::Texture(mut desc) = res.kind else {
+                continue;
+            };
+            desc.usage = required_usage[r];
+            out.push((desc, res.name));
+        }
+        out
     }
 
     /// Access changes between live passes, in execution order. A pass is entered with the
@@ -677,6 +767,15 @@ fn critical_path_len(order: &[PassId], deps: &[BTreeSet<usize>], live: &[bool]) 
 }
 
 /// Result of [`RenderGraph::compile`].
+/// Physical slot the transient pool must allocate for one aliasing group.
+#[derive(Clone, Debug)]
+pub struct SlotPlanEntry {
+    /// Combined descriptor (sizes, format, merged usage).
+    pub desc: TextureDesc,
+    /// Logical texture names that share this slot.
+    pub users: Vec<&'static str>,
+}
+
 #[derive(Clone, Debug)]
 pub struct CompiledGraph {
     /// Live passes in execution order.
@@ -691,6 +790,10 @@ pub struct CompiledGraph {
     pub physical: Vec<Option<usize>>,
     /// Number of physical textures that must be allocated for the transient ones.
     pub slot_count: usize,
+    /// One entry per physical slot (empty when there are no transients).
+    slot_plan: Vec<SlotPlanEntry>,
+    /// Owned transient textures with their fully-resolved descriptors.
+    transient_descs: Vec<(TextureDesc, &'static str)>,
     /// Usage flags each texture needs, by resource index (empty for buffers).
     required_usage: Vec<TextureUsages>,
     /// Usage flags each buffer needs, by resource index (empty for textures).
@@ -707,6 +810,33 @@ pub struct CompiledGraph {
 }
 
 impl CompiledGraph {
+    /// Plan of physical slots (for [`crate::transient_pool::TransientPool`].
+    pub fn slot_plan(&self) -> &[SlotPlanEntry] {
+        &self.slot_plan
+    }
+
+    /// Owned transient textures and their descriptors.
+    pub fn logical_transients(&self) -> &[(TextureDesc, &'static str)] {
+        &self.transient_descs
+    }
+
+    /// Sum of byte sizes of every owned transient texture (one size per logical texture).
+    pub fn logical_transient_bytes(&self) -> u64 {
+        use crate::memory_budget::texture_size_bytes;
+        self.transient_descs
+            .iter()
+            .map(|(desc, _)| {
+                let bpp = desc.format.block_copy_size(None).unwrap_or(4);
+                texture_size_bytes(
+                    desc.width,
+                    desc.height,
+                    bpp,
+                    desc.mip_level_count.max(1),
+                )
+            })
+            .sum()
+    }
+
     /// Physical slot of a transient texture.
     pub fn slot_of(&self, tex: TexHandle) -> Option<usize> {
         self.physical.get(tex.0 as usize).copied().flatten()
@@ -872,6 +1002,8 @@ mod tests {
             height: w,
             format: wgpu::TextureFormat::Rgba16Float,
             usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            sample_count: 1,
+            mip_level_count: 1,
         }
     }
 

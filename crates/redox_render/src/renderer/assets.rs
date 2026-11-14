@@ -1,11 +1,36 @@
 //! Mesh / texture / material upload and asset-handle lookup.
 
 use super::*;
+use crate::memory_budget::MemoryCategory;
 use crate::mesh::Vertex;
 
+/// Upload rejected because the category memory limit would be exceeded.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UploadRejected {
+    /// Category that ran out of budget.
+    pub category: MemoryCategory,
+}
+
 impl Renderer {
-    /// Uploads a CPU [`Mesh`] to the GPU and returns its slot index.
-    pub fn upload_mesh(&mut self, mesh: &Mesh) -> usize {
+    pub fn mesh_upload_bytes(mesh: &Mesh, compressed: bool) -> u64 {
+        let vertex_bytes = if compressed {
+            compress_vertices(&mesh.vertices, &mesh.aabb).len() as u64
+        } else {
+            (mesh.vertices.len() * std::mem::size_of::<Vertex>()) as u64
+        };
+        let index_bytes = mesh.indices.len() as u64 * 4;
+        vertex_bytes + index_bytes
+    }
+
+    /// Uploads a CPU [`Mesh`] when it fits the memory budget.
+    pub fn try_upload_mesh(&mut self, mesh: &Mesh) -> Result<usize, UploadRejected> {
+        let bytes = Self::mesh_upload_bytes(mesh, self.use_compressed_vertices);
+        if !self.memory_would_fit(MemoryCategory::Meshes, bytes) {
+            self.log_memory_reject(MemoryCategory::Meshes, "mesh upload");
+            return Err(UploadRejected {
+                category: MemoryCategory::Meshes,
+            });
+        }
         let vertex_bytes: Vec<u8> = if self.use_compressed_vertices {
             let compressed = compress_vertices(&mesh.vertices, &mesh.aabb);
             bytemuck::cast_slice(&compressed).to_vec()
@@ -18,12 +43,17 @@ impl Renderer {
             "mesh_ib",
             bytemuck::cast_slice(&mesh.indices),
         );
-        self.registry.insert_mesh_slot(GpuMesh {
+        Ok(self.registry.insert_mesh_slot(GpuMesh {
             vertex_buffer: vb,
             index_buffer: ib,
             index_count: mesh.index_count(),
             local_bounds: mesh.aabb,
-        })
+        }))
+    }
+
+    /// Uploads a CPU [`Mesh`] to the GPU and returns its slot index (`usize::MAX` on budget rejection).
+    pub fn upload_mesh(&mut self, mesh: &Mesh) -> usize {
+        self.try_upload_mesh(mesh).unwrap_or(usize::MAX)
     }
 
     /// Overwrites the vertices of an uploaded mesh in place (skinning, morphing).
@@ -200,23 +230,51 @@ impl Renderer {
         self.vg_bind_groups_dirty = true;
     }
 
-    /// Uploads a texture from raw bytes and returns its index.
-    pub fn upload_texture(
+    /// Uploads a texture when it fits the memory budget.
+    pub fn try_upload_texture(
         &mut self,
         bytes: &[u8],
         label: &str,
-    ) -> Result<usize, image::ImageError> {
+    ) -> Result<usize, UploadRejected> {
+        let img = image::load_from_memory(bytes).map_err(|_| UploadRejected {
+            category: MemoryCategory::Textures,
+        })?;
+        let incoming = crate::memory_budget::texture_size_bytes(img.width(), img.height(), 4, 1);
+        if !self.memory_would_fit(MemoryCategory::Textures, incoming) {
+            self.log_memory_reject(MemoryCategory::Textures, "texture upload");
+            return Err(UploadRejected {
+                category: MemoryCategory::Textures,
+            });
+        }
         let tex = Texture::from_bytes(
             &self.device,
             &self.queue,
             bytes,
             label,
             wgpu::TextureFormat::Rgba8UnormSrgb,
-        )?;
+        )
+        .map_err(|_| UploadRejected {
+            category: MemoryCategory::Textures,
+        })?;
         let bg = self
             .shared_layouts
             .create_texture_bind_group(&self.device, &tex);
         Ok(self.registry.push_legacy_texture(tex, bg))
+    }
+
+    /// Uploads a texture from raw bytes and returns its index.
+    pub fn upload_texture(
+        &mut self,
+        bytes: &[u8],
+        label: &str,
+    ) -> Result<usize, image::ImageError> {
+        match self.try_upload_texture(bytes, label) {
+            Ok(i) => Ok(i),
+            Err(UploadRejected { .. }) => Err(image::ImageError::IoError(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "texture upload rejected by memory budget",
+            ))),
+        }
     }
 
     /// Uploads a texture with specific format (e.g. for normals/MR).
@@ -259,6 +317,11 @@ impl Renderer {
     pub fn add_mesh_from_asset(&mut self, handle: Handle<MeshData>, mesh: &Mesh) -> Option<usize> {
         if self.registry.has_mesh(handle.id()) {
             return self.registry.mesh_index_for(handle.id());
+        }
+        let bytes = Self::mesh_upload_bytes(mesh, self.use_compressed_vertices);
+        if !self.memory_would_fit(MemoryCategory::Meshes, bytes) {
+            self.log_memory_reject(MemoryCategory::Meshes, "mesh asset upload");
+            return None;
         }
         let gpu_mesh = {
             // Same vertex encoding as `upload_mesh`: the pipelines expect the compressed
