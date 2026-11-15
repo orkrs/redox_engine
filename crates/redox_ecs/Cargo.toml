@@ -27,7 +27,7 @@ parking_lot = "0.12" # Быстрые мьютексы
 [dev-dependencies]
 trybuild = "1"
 proptest = "1"
-criterion = { version = "0.7", default-features = false, features = ["cargo_bench_support"] }
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
 
 [[bench]]
 name = "world"
