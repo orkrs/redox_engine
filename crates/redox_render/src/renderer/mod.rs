@@ -13,6 +13,10 @@ mod draw;
 mod error;
 mod frame;
 pub use frame::FrameCpuTimings;
+mod frame_debug;
+pub use frame_debug::FrameDebugView;
+mod frame_probe;
+pub use frame_probe::ChainReport;
 mod gi_scene;
 mod helpers;
 mod init;
@@ -471,6 +475,8 @@ pub struct Renderer {
     transient_pool: crate::transient_pool::TransientPool,
     /// Last compiled frame graph used by the pool (for reports and savings).
     compiled_frame_graph: crate::render_graph::CompiledGraph,
+    /// Optional overlay of HDR / depth / normals / post. Off unless `REDOX_FRAME_DEBUG` is set.
+    frame_debug: frame_debug::FrameDebugState,
     /// Ping-pong history texture 0.
     pub taa_history_tex: [wgpu::Texture; 2],
     /// Views into the ping-pong history textures.

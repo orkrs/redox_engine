@@ -550,6 +550,16 @@ pub(crate) struct PostFx {
 }
 
 impl PostFx {
+    /// Effect target `index` (0 or 1), the image the chain last wrote.
+    pub(crate) fn output_view(&self, index: usize) -> &wgpu::TextureView {
+        &self.views[index]
+    }
+
+    /// Effect target textures (ping-pong pair). Both include `COPY_SRC`.
+    pub(crate) fn target_textures(&self) -> &[wgpu::Texture; 2] {
+        &self._textures
+    }
+
     /// Creates the effect targets and passes for a `width` x `height` output.
     pub(crate) fn new(
         device: &wgpu::Device,
@@ -732,7 +742,9 @@ fn create_targets(
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: FX_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());

@@ -1033,6 +1033,7 @@ impl Renderer {
             compiled_frame_graph: crate::frame_graph::frame_graph(1, 1)
                 .compile()
                 .expect("frame graph valid"),
+            frame_debug: crate::renderer::frame_debug::FrameDebugState::from_env(),
         };
         renderer.rebuild_transient_pool();
         renderer

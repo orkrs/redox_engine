@@ -273,6 +273,11 @@ impl Renderer {
         self.taa_history_read_idx = history_write_idx;
         self.taa_prev_vp_unjittered = unjittered_vp;
         self.taa_frame_count += 1;
+        let post = match fx_out {
+            Some(i) => self.post_fx.output_view(i).clone(),
+            None => self.taa_history_view[history_write_idx].clone(),
+        };
+        self.paint_frame_debug(encoder, surface_view, &post);
     }
 
     fn hdr_after_post_fx(&self, fx_out: Option<usize>) -> &wgpu::TextureView {
@@ -388,6 +393,8 @@ impl Renderer {
         }
 
         self.taa_prev_vp_unjittered = unjittered_vp;
+        let post = self.hdr_after_post_fx(fx_out).clone();
+        self.paint_frame_debug(encoder, surface_view, &post);
     }
 
     fn record_standard_post(
@@ -409,30 +416,34 @@ impl Renderer {
         let hdr_src = self.hdr_after_post_fx(fx_out);
         self.record_bloom_chain(encoder, hdr_src);
 
-        let tone_bg = match fx_out {
-            Some(i) => &self.post_fx.tone_bgs[i],
-            None => &self.tone_mapping_bind_group,
-        };
-        let mut post_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("tone_mapping_pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                depth_slice: None,
-                view: surface_view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-        post_pass.set_pipeline(&self.tone_mapping_pipeline);
-        post_pass.set_bind_group(0, tone_bg, &[]);
-        post_pass.draw(0..3, 0..1);
+        {
+            let tone_bg = match fx_out {
+                Some(i) => &self.post_fx.tone_bgs[i],
+                None => &self.tone_mapping_bind_group,
+            };
+            let mut post_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("tone_mapping_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
+                    view: surface_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            post_pass.set_pipeline(&self.tone_mapping_pipeline);
+            post_pass.set_bind_group(0, tone_bg, &[]);
+            post_pass.draw(0..3, 0..1);
+        }
 
         self.taa_prev_vp_unjittered = unjittered_vp;
+        let post = self.hdr_after_post_fx(fx_out).clone();
+        self.paint_frame_debug(encoder, surface_view, &post);
     }
 }

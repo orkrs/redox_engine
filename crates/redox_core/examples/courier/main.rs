@@ -14,12 +14,14 @@
 //! menu focus, B / Start pauses. The best time and the language are saved between runs.
 //!
 //! Run: `cargo run --example courier -p redox_core --release` (add `-- --procedural-rig` for the old
-//! humanoid)
+//! humanoid). Renderer experiments: `--tsr` / `--tsr-scale 0.67` / `REDOX_TSR_SCALE=0.67` (TAA +
+//! temporal upscaling), `--vg` (ground and crates on the VG DAG path).
 //! Tests (game rules, rig, screens): `cargo test --example courier -p redox_core`
 
 // Demo code: panicking on setup failure is acceptable here.
 #![allow(clippy::unwrap_used)]
 
+mod experiments;
 mod fox_rig;
 mod game;
 mod mem_overlay;
@@ -219,35 +221,43 @@ impl Scene {
 
     /// Objects to draw plus a stable id per object (ground 1, hero 2, crates 100+, coins 1000+),
     /// so the renderer follows each object's motion even when coins vanish from the list.
-    fn objects(&self, r: &Renderer, world: &World, time: f32) -> (Vec<RenderObject>, Vec<u64>) {
+    fn objects(
+        &self,
+        r: &Renderer,
+        world: &World,
+        time: f32,
+        draw_static_classic: bool,
+    ) -> (Vec<RenderObject>, Vec<u64>) {
         let half = world.level.half;
         let mut out = Vec::new();
         let mut ids: Vec<u64> = Vec::new();
-        let ground = Mat4::from_scale_rotation_translation(
-            Vec3::new(half * 2.0, 0.25, half * 2.0),
-            Quat::IDENTITY,
-            Vec3::new(0.0, -0.125, 0.0),
-        );
-        out.push(object(
-            r,
-            ground,
-            self.cube,
-            self.ground.material(self.solid_ground),
-        ));
-        ids.push(1);
-        for (i, c) in world.level.crates.iter().enumerate() {
-            let model = Mat4::from_scale_rotation_translation(
-                Vec3::splat(c.half * 2.0),
+        if draw_static_classic {
+            let ground = Mat4::from_scale_rotation_translation(
+                Vec3::new(half * 2.0, 0.25, half * 2.0),
                 Quat::IDENTITY,
-                Vec3::new(c.x, c.half, c.z),
+                Vec3::new(0.0, -0.125, 0.0),
             );
             out.push(object(
                 r,
-                model,
+                ground,
                 self.cube,
-                self.crate_tex.material(self.solid_crate),
+                self.ground.material(self.solid_ground),
             ));
-            ids.push(100 + i as u64);
+            ids.push(1);
+            for (i, c) in world.level.crates.iter().enumerate() {
+                let model = Mat4::from_scale_rotation_translation(
+                    Vec3::splat(c.half * 2.0),
+                    Quat::IDENTITY,
+                    Vec3::new(c.x, c.half, c.z),
+                );
+                out.push(object(
+                    r,
+                    model,
+                    self.cube,
+                    self.crate_tex.material(self.solid_crate),
+                ));
+                ids.push(100 + i as u64);
+            }
         }
         for (i, ((x, z), taken)) in world.level.coins.iter().zip(&world.taken).enumerate() {
             if *taken {
@@ -356,6 +366,10 @@ fn act(
 }
 
 fn main() {
+    let _ = env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("info,wgpu_core=warn,naga=warn,winit=info"),
+    )
+    .try_init();
     let pak_path = std::env::temp_dir().join("courier_assets.pak");
     world_assets::build_pak(&pak_path).expect("write the asset pack");
     let source: Arc<dyn AssetSource> = Arc::new(PakSource::open(&pak_path).expect("open the pack"));
@@ -363,6 +377,7 @@ fn main() {
         String::from_utf8(source.read(world_assets::LEVEL).expect("level in the pack")).unwrap();
     let level = game::parse_level(&level_text).expect("valid level");
 
+    let exp_flags = experiments::ExperimentFlags::from_args();
     let config = EngineConfig {
         window_title: "RedOx — Courier".to_string(),
         ..Default::default()
@@ -372,7 +387,11 @@ fn main() {
         window.clone(),
         config.wgpu_present_mode(),
     ));
-    ctx.set_render_scale(config.render_scale);
+    if exp_flags.tsr {
+        experiments::apply_tsr(&mut ctx, &exp_flags);
+    } else {
+        ctx.set_render_scale(config.render_scale);
+    }
     ctx.set_ssao_enabled(true);
     ctx.bloom_enabled = true;
     ctx.set_exposure(0.9);
@@ -404,6 +423,20 @@ fn main() {
         character.scale,
     );
     let mut world = World::new(level.clone(), &model.skeleton, character.graph.clone());
+
+    let vg_world = exp_flags.vg_world.then(|| {
+        experiments::VgWorld::install(
+            &mut ctx,
+            level.half,
+            &level.crates,
+            scene.solid_ground as u32,
+            scene.solid_crate as u32,
+        )
+    });
+    if exp_flags.vg_world && vg_world.is_none() {
+        log::warn!("--vg requested but VG setup failed; falling back to classic meshes");
+    }
+    let draw_static_classic = !experiments::skip_classic_static(&exp_flags) || vg_world.is_none();
 
     let mut ui_ctx = UiContext::new(&window, ctx.device(), ctx.surface_format());
     ui_ctx.show_debug = false;
@@ -475,6 +508,10 @@ fn main() {
                                 }
                                 KeyCode::Tab => nav = Some(Direction::Next),
                                 KeyCode::F5 => memory_overlay.toggle(),
+                                KeyCode::F8 => {
+                                    let view = ctx.cycle_frame_debug_view();
+                                    log::info!("frame debug: {view:?}");
+                                }
                                 KeyCode::F1 | KeyCode::F2 | KeyCode::F3 | KeyCode::F4 => {
                                     // Debug switches for hunting rendering artefacts.
                                     match code {
@@ -594,7 +631,12 @@ fn main() {
                         let (pos, rot) = camera_pose(&world, orbit);
                         ctx.camera_uniform.update(&camera, pos, rot);
                         ctx.update_camera_buffer();
-                        let (objects, object_ids) = scene.objects(&ctx, &world, time);
+                        let (objects, object_ids) =
+                            scene.objects(&ctx, &world, time, draw_static_classic);
+                        if vg_world.is_some() {
+                            experiments::VgWorld::prepare_frame(&mut ctx);
+                            experiments::maybe_log_vg_stats(&ctx, ctx.taa_frame_count);
+                        }
                         streamer.update_from_scene(&ctx, &objects);
                         streamer.update(&mut ctx, &mut assets);
 

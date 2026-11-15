@@ -61,6 +61,8 @@ pub const TAA_WGSL: &str = include_str!("../../shaders/taa.wgsl");
 pub const MOTION_BLUR_TILES_WGSL: &str = include_str!("../../shaders/motion_blur_tiles.wgsl");
 /// Source of `msaa_resolve.wgsl`.
 pub const MSAA_RESOLVE_WGSL: &str = include_str!("../../shaders/msaa_resolve.wgsl");
+/// Source of `frame_debug.wgsl`: quadrant view of HDR, depth, normals and post.
+pub const FRAME_DEBUG_WGSL: &str = include_str!("../../shaders/frame_debug.wgsl");
 /// Source of `tone_mapping.wgsl`.
 pub const TONE_MAPPING_WGSL: &str = include_str!("../../shaders/tone_mapping.wgsl");
 /// Source of `equirect_to_cube.wgsl`.
@@ -205,6 +207,7 @@ const EMBEDDED: &[(&str, &str, &str)] = &[
         MOTION_BLUR_TILES_WGSL,
     ),
     ("msaa_resolve", "msaa_resolve.wgsl", MSAA_RESOLVE_WGSL),
+    ("frame_debug", "frame_debug.wgsl", FRAME_DEBUG_WGSL),
     ("tone_mapping", "tone_mapping.wgsl", TONE_MAPPING_WGSL),
     (
         "equirect_to_cube",
@@ -497,6 +500,7 @@ mod tests {
             ("taa", super::TAA_WGSL),
             ("motion_blur_tiles", super::MOTION_BLUR_TILES_WGSL),
             ("msaa_resolve", super::MSAA_RESOLVE_WGSL),
+            ("frame_debug", super::FRAME_DEBUG_WGSL),
             ("tone_mapping", super::TONE_MAPPING_WGSL),
             ("debug_lines", super::DEBUG_LINES_WGSL),
             ("vg_resolve", super::VG_RESOLVE_WGSL),
