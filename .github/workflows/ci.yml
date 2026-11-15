@@ -22,7 +22,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: rustfmt, clippy
@@ -50,7 +50,7 @@ jobs:
       SAMPLE_PROJECT: crates/redox_editor/tests/data/sample_project
       SAMPLE_BROKEN: crates/redox_editor/tests/data/sample_project_broken
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.96.0
       - uses: Swatinem/rust-cache@v2
       - name: sample_project validate (expect success)
@@ -85,7 +85,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.96.0
       - uses: Swatinem/rust-cache@v2
       - name: golden frames (skinned_demo)
@@ -94,7 +94,7 @@ jobs:
   msrv:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.95.0
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace
@@ -102,7 +102,7 @@ jobs:
   miri:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: miri
@@ -116,7 +116,7 @@ jobs:
   docs:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.96.0
       - uses: Swatinem/rust-cache@v2
       - run: cargo doc --workspace --no-deps
@@ -126,5 +126,5 @@ jobs:
   deny:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
