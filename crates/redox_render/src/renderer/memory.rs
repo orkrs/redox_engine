@@ -41,7 +41,7 @@ impl Renderer {
     }
 
     pub(crate) fn log_memory_reject(&self, category: MemoryCategory, detail: &str) {
-        let mut warned = self.memory_reject_warned.borrow_mut();
+        let mut warned = self.memory_reject_warned.lock();
         if warned.insert(category) {
             log::warn!(
                 "memory budget rejected {detail} in category `{}`",
@@ -57,7 +57,7 @@ impl Renderer {
     /// textures, virtual geometry from its big buffers, `Other` from the render targets, and
     /// `Buffers` from the renderer's persistent uniform and storage buffers.
     pub fn memory_usage(&self) -> MemoryBudget {
-        self.memory_reject_warned.borrow_mut().clear();
+        self.memory_reject_warned.lock().clear();
         self.memory_usage_inner()
     }
 

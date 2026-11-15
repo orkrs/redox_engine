@@ -1,9 +1,9 @@
 use redox_math::Vec3;
 
-use crate::light::{DirectionalLight, LightScene};
+use crate::light::LightScene;
 use crate::mesh::Mesh;
 
-use super::uv::{DEFAULT_METERS_PER_TEXEL, reject_mesh_without_uv2, MeshUv2Error};
+use super::uv::{DEFAULT_METERS_PER_TEXEL, MeshUv2Error, reject_mesh_without_uv2};
 
 pub const BAKE_RAYS: u32 = 8;
 
@@ -62,14 +62,26 @@ impl LightmapBaker {
             return Err(LightmapBakeError::EmptyMesh);
         }
         let mut pixels = vec![0u16; (width * height * 4) as usize];
-        let dir = (-scene.lights.directional.direction).normalize_or_zero();
         for y in 0..height {
             for x in 0..width {
-                let uv = [(x as f32 + 0.5) / width as f32, (y as f32 + 0.5) / height as f32];
+                let uv = [
+                    (x as f32 + 0.5) / width as f32,
+                    (y as f32 + 0.5) / height as f32,
+                ];
                 let hit = sample(mesh, uv);
-                let (r, g, b, a) = if let Some(n) = hit {
-                    let ndotl = n.dot(dir).max(0.0);
-                    (ndotl, ndotl * 0.9, ndotl * 0.8, 1.0)
+                let (r, g, b, a) = if let Some(hit) = hit {
+                    let to_light = scene.lights.directional.direction.normalize_or_zero();
+                    let mut ndotl = hit.normal.dot(to_light).max(0.0);
+                    let origin = hit.position + hit.normal * 0.05;
+                    if ndotl > 0.0 && scene_blocks(origin, to_light, scene.meshes) {
+                        ndotl = 0.0;
+                    }
+                    (
+                        ndotl,
+                        ndotl * 0.9,
+                        ndotl * 0.8,
+                        if ndotl > 0.0 { 1.0 } else { 0.0 },
+                    )
                 } else {
                     (0.0, 0.0, 0.0, 0.0)
                 };
@@ -87,7 +99,12 @@ impl LightmapBaker {
     }
 }
 
-fn sample(mesh: &Mesh, uv: [f32; 2]) -> Option<Vec3> {
+struct SurfaceHit {
+    position: Vec3,
+    normal: Vec3,
+}
+
+fn sample(mesh: &Mesh, uv: [f32; 2]) -> Option<SurfaceHit> {
     for tri in mesh.indices.chunks_exact(3) {
         let (a, b, c) = (
             &mesh.vertices[tri[0] as usize],
@@ -101,10 +118,54 @@ fn sample(mesh: &Mesh, uv: [f32; 2]) -> Option<Vec3> {
                 a.normal[2] * w0 + b.normal[2] * w1 + c.normal[2] * w2,
             )
             .normalize_or_zero();
-            return Some(n);
+            let position = Vec3::from_array(a.position) * w0
+                + Vec3::from_array(b.position) * w1
+                + Vec3::from_array(c.position) * w2;
+            return Some(SurfaceHit {
+                position,
+                normal: n,
+            });
         }
     }
     None
+}
+
+fn scene_blocks(origin: Vec3, to_light: Vec3, meshes: &[Mesh]) -> bool {
+    meshes
+        .iter()
+        .any(|mesh| ray_hits_mesh(origin, to_light, mesh))
+}
+
+fn ray_hits_mesh(origin: Vec3, dir: Vec3, mesh: &Mesh) -> bool {
+    mesh.indices.chunks_exact(3).any(|tri| {
+        let a = Vec3::from_array(mesh.vertices[tri[0] as usize].position);
+        let b = Vec3::from_array(mesh.vertices[tri[1] as usize].position);
+        let c = Vec3::from_array(mesh.vertices[tri[2] as usize].position);
+        ray_hits_triangle(origin, dir, a, b, c)
+    })
+}
+
+fn ray_hits_triangle(origin: Vec3, dir: Vec3, a: Vec3, b: Vec3, c: Vec3) -> bool {
+    let edge1 = b - a;
+    let edge2 = c - a;
+    let p = dir.cross(edge2);
+    let det = edge1.dot(p);
+    if det.abs() < 1e-6 {
+        return false;
+    }
+    let inv = 1.0 / det;
+    let tvec = origin - a;
+    let u = tvec.dot(p) * inv;
+    if !(0.0..=1.0).contains(&u) {
+        return false;
+    }
+    let q = tvec.cross(edge1);
+    let v = dir.dot(q) * inv;
+    if v < 0.0 || u + v > 1.0 {
+        return false;
+    }
+    let t = edge2.dot(q) * inv;
+    t > 1e-4
 }
 
 fn bary(a: [f32; 2], b: [f32; 2], c: [f32; 2], p: [f32; 2]) -> Option<(f32, f32, f32)> {
@@ -124,6 +185,7 @@ fn bary(a: [f32; 2], b: [f32; 2], c: [f32; 2], p: [f32; 2]) -> Option<(f32, f32,
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::light::DirectionalLight;
     use crate::mesh::Vertex;
 
     #[test]
@@ -131,24 +193,24 @@ mod tests {
         let mesh = Mesh::new(
             vec![
                 Vertex {
-                    position: [0.0; 3],
+                    position: [0.0, 0.0, 0.0],
                     normal: [0.0, 1.0, 0.0],
                     uv: [0.0, 0.0],
-                    uv2: [0.5, 0.5],
+                    uv2: [0.0, 0.0],
                     tangent: [1.0, 0.0, 0.0],
                 },
                 Vertex {
                     position: [1.0, 0.0, 0.0],
                     normal: [0.0, 1.0, 0.0],
-                    uv: [0.0, 0.0],
-                    uv2: [0.6, 0.4],
+                    uv: [1.0, 0.0],
+                    uv2: [1.0, 0.0],
                     tangent: [1.0, 0.0, 0.0],
                 },
                 Vertex {
                     position: [0.0, 0.0, 1.0],
                     normal: [0.0, 1.0, 0.0],
-                    uv: [0.0, 0.0],
-                    uv2: [0.4, 0.6],
+                    uv: [0.0, 1.0],
+                    uv2: [0.0, 1.0],
                     tangent: [1.0, 0.0, 0.0],
                 },
             ],
@@ -156,35 +218,98 @@ mod tests {
         );
         let scene = LightmapScene {
             meshes: &[mesh.clone()],
-            lights: &LightScene::new(DirectionalLight::new(Vec3::new(0.1, -1.0, 0.0), Vec3::ONE, 2.0)),
+            lights: &LightScene::new(DirectionalLight::new(
+                Vec3::new(0.1, 1.0, 0.0),
+                Vec3::ONE,
+                2.0,
+            )),
         };
         let img = LightmapBaker::default()
             .bake_mesh(&mesh, &scene, 4, 4)
             .unwrap();
-        assert!(img.pixels.iter().any(|&h| half::f16::from_bits(h).to_f32() > 0.1));
+        assert!(
+            img.pixels
+                .iter()
+                .any(|&h| half::f16::from_bits(h).to_f32() > 0.1)
+        );
     }
 
     #[test]
     fn a_texel_behind_a_wall_is_dark() {
-        let mesh = Mesh::new(
-            vec![Vertex {
-                position: [0.0; 3],
-                normal: [0.0, 1.0, 0.0],
-                uv: [0.0, 0.0],
-                uv2: [0.5, 0.5],
-                tangent: [1.0, 0.0, 0.0],
-            }],
-            vec![0, 0, 0],
+        let floor = Mesh::new(
+            vec![
+                Vertex {
+                    position: [0.0, 0.0, 0.0],
+                    normal: [0.0, 1.0, 0.0],
+                    uv: [0.0, 0.0],
+                    uv2: [0.0, 0.0],
+                    tangent: [1.0, 0.0, 0.0],
+                },
+                Vertex {
+                    position: [1.0, 0.0, 0.0],
+                    normal: [0.0, 1.0, 0.0],
+                    uv: [1.0, 0.0],
+                    uv2: [1.0, 0.0],
+                    tangent: [1.0, 0.0, 0.0],
+                },
+                Vertex {
+                    position: [0.0, 0.0, 1.0],
+                    normal: [0.0, 1.0, 0.0],
+                    uv: [0.0, 1.0],
+                    uv2: [0.0, 1.0],
+                    tangent: [1.0, 0.0, 0.0],
+                },
+            ],
+            vec![0, 1, 2],
         );
-        let scene = LightmapScene {
+        let wall = Mesh::new(
+            vec![
+                Vertex {
+                    position: [0.0, 1.0, 0.0],
+                    normal: [0.0, -1.0, 0.0],
+                    uv: [0.0, 0.0],
+                    uv2: [0.0, 0.0],
+                    tangent: [1.0, 0.0, 0.0],
+                },
+                Vertex {
+                    position: [1.0, 1.0, 0.0],
+                    normal: [0.0, -1.0, 0.0],
+                    uv: [1.0, 0.0],
+                    uv2: [1.0, 0.0],
+                    tangent: [1.0, 0.0, 0.0],
+                },
+                Vertex {
+                    position: [0.0, 1.0, 1.0],
+                    normal: [0.0, -1.0, 0.0],
+                    uv: [0.0, 1.0],
+                    uv2: [0.0, 1.0],
+                    tangent: [1.0, 0.0, 0.0],
+                },
+            ],
+            vec![0, 1, 2],
+        );
+        let lights = LightScene::new(DirectionalLight::new(Vec3::Y, Vec3::ONE, 1.0));
+        let open = LightmapScene {
             meshes: &[],
-            lights: &LightScene::new(DirectionalLight::new(Vec3::Y, Vec3::ONE, 1.0)),
+            lights: &lights,
         };
-        assert!(LightmapBaker::default()
-            .bake_mesh(&mesh, &scene, 2, 2)
-            .unwrap()
-            .pixels[0]
-            > 0);
+        let blocked = LightmapScene {
+            meshes: std::slice::from_ref(&wall),
+            lights: &lights,
+        };
+        let baker = LightmapBaker::default();
+        let lit = baker.bake_mesh(&floor, &open, 2, 2).unwrap();
+        let dark = baker.bake_mesh(&floor, &blocked, 2, 2).unwrap();
+        assert!(
+            lit.pixels
+                .iter()
+                .any(|&h| half::f16::from_bits(h).to_f32() > 0.1)
+        );
+        assert!(
+            dark.pixels
+                .iter()
+                .all(|&h| half::f16::from_bits(h).to_f32() < 0.02)
+        );
     }
 
     #[test]
@@ -239,7 +364,11 @@ mod tests {
         );
         let scene = LightmapScene {
             meshes: &[mesh.clone()],
-            lights: &LightScene::new(DirectionalLight::new(Vec3::new(0.2, -1.0, 0.0), Vec3::ONE, 1.0)),
+            lights: &LightScene::new(DirectionalLight::new(
+                Vec3::new(0.2, -1.0, 0.0),
+                Vec3::ONE,
+                1.0,
+            )),
         };
         let baker = LightmapBaker::default();
         let a = baker.bake_mesh(&mesh, &scene, 8, 8).unwrap();

@@ -27,9 +27,10 @@ struct MaterialHead {
     flags: u32,
     sheen: f32,
 };
+const MAT_LAYER_ALBEDO: u32 = 0u;
 @group(1) @binding(0) var<uniform> material: MaterialHead;
-@group(1) @binding(1) var t_albedo: texture_2d<f32>;
-@group(1) @binding(4) var s_material: sampler;
+@group(1) @binding(1) var t_mat_layers: texture_2d_array<f32>;
+@group(1) @binding(2) var s_material: sampler;
 
 struct VertexOutput {
     @builtin(position) clip_pos: vec4<f32>,
@@ -59,7 +60,7 @@ fn vs_main(
 fn fs_main(in: VertexOutput) -> @location(0) f32 {
     var alpha = in.alpha;
     if ((material.flags & 1u) != 0u) {
-        alpha = alpha * textureSampleLevel(t_albedo, s_material, in.uv, 0.0).a;
+        alpha = alpha * textureSampleLevel(t_mat_layers, s_material, in.uv, MAT_LAYER_ALBEDO, 0.0).a;
     }
     if (alpha < 0.5) {
         discard;

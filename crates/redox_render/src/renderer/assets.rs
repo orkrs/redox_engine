@@ -122,47 +122,66 @@ impl Renderer {
         self.add_material_impl(material, false)
     }
 
-    /// Texture view for a material slot: from the handle-based pool when the material came
-    /// from the asset flow, otherwise from the legacy list.
-    fn material_texture_view(
-        &self,
-        index: Option<usize>,
-        from_pool: bool,
-    ) -> Option<&wgpu::TextureView> {
-        let idx = index?;
-        if from_pool {
-            self.registry.texture_at(idx).map(|slot| &slot.texture.view)
-        } else {
-            self.registry.legacy_texture(idx).map(|t| &t.view)
-        }
+    fn build_material_layer_texture(&self, material: &Material, from_pool: bool) -> wgpu::Texture {
+        let white = self
+            .registry
+            .legacy_texture(0)
+            .expect("fallback texture index 0");
+        let albedo = match material.texture_index {
+            Some(i) if from_pool => self
+                .registry
+                .texture_at(i)
+                .map(|s| &s.texture)
+                .unwrap_or(white),
+            Some(i) => self.registry.legacy_texture(i).unwrap_or(white),
+            None => white,
+        };
+        let normal = match material.normal_texture_index {
+            Some(i) if from_pool => self
+                .registry
+                .texture_at(i)
+                .map(|s| &s.texture)
+                .unwrap_or(&self.fallback_normal),
+            Some(i) => self
+                .registry
+                .legacy_texture(i)
+                .unwrap_or(&self.fallback_normal),
+            None => &self.fallback_normal,
+        };
+        let mr = match material.mr_texture_index {
+            Some(i) if from_pool => self
+                .registry
+                .texture_at(i)
+                .map(|s| &s.texture)
+                .unwrap_or(&self.fallback_mr),
+            Some(i) => self.registry.legacy_texture(i).unwrap_or(&self.fallback_mr),
+            None => &self.fallback_mr,
+        };
+        let lightmap = &self.fallback_lightmap;
+        crate::material_layers::build_material_layer_array(
+            &self.device,
+            &self.queue,
+            albedo,
+            normal,
+            mr,
+            lightmap,
+            "material_layers",
+        )
     }
 
     fn build_material_bind_group(
         &self,
-        material: &Material,
         buffer: &wgpu::Buffer,
-        from_pool: bool,
+        layer_texture: &wgpu::Texture,
     ) -> wgpu::BindGroup {
-        let albedo_view = self
-            .material_texture_view(material.texture_index, from_pool)
-            .unwrap_or_else(|| {
-                self.registry
-                    .legacy_texture(0)
-                    .map(|t| &t.view)
-                    .expect("fallback texture")
-            });
-        let normal_view = self
-            .material_texture_view(material.normal_texture_index, from_pool)
-            .unwrap_or(&self.fallback_normal_view);
-        let mr_view = self
-            .material_texture_view(material.mr_texture_index, from_pool)
-            .unwrap_or(&self.fallback_mr_view);
+        let layers_view = crate::material_layers::material_layer_array_view(
+            layer_texture,
+            "material_layers_bg_view",
+        );
         self.pbr_pass.create_material_bind_group(
             &self.device,
             buffer,
-            albedo_view,
-            normal_view,
-            mr_view,
+            &layers_view,
             &self.common_sampler,
         )
     }
@@ -174,7 +193,8 @@ impl Renderer {
             "material_uniform",
             bytemuck::bytes_of(&uniform),
         );
-        let bind_group = self.build_material_bind_group(&material, &buffer, from_pool);
+        let layer_texture = self.build_material_layer_texture(&material, from_pool);
+        let bind_group = self.build_material_bind_group(&buffer, &layer_texture);
         self.material_alpha_test.push(material.alpha_test);
         // VG resolves back faces away, so double-sided materials stay on the classic path.
         let keeps_classic_path = material.alpha_test || material.double_sided;
@@ -187,9 +207,9 @@ impl Renderer {
                 self.post_fx_settings.sss = Some(crate::post::sss::SssSettings::default());
             }
         }
-        let idx = self
-            .registry
-            .push_legacy_material(material.clone(), buffer, bind_group);
+        let idx =
+            self.registry
+                .push_legacy_material(material.clone(), buffer, layer_texture, bind_group);
         self.ensure_instance_slots(idx, &material);
         if keeps_classic_path && let Some(vg) = self.vg_system.as_mut() {
             vg.mark_alpha_tested_material(idx as u32);
@@ -221,10 +241,12 @@ impl Renderer {
             .collect();
         for idx in users {
             let material = self.registry.legacy_materials()[idx].clone();
+            let layer_texture = self.build_material_layer_texture(&material, true);
             let bind_group = {
                 let buffer = &self.registry.legacy_material_uniform_buffers[idx];
-                self.build_material_bind_group(&material, buffer, true)
+                self.build_material_bind_group(buffer, &layer_texture)
             };
+            self.registry.legacy_material_layer_textures[idx] = layer_texture;
             self.registry.legacy_material_bind_groups[idx] = bind_group;
         }
         self.vg_bind_groups_dirty = true;

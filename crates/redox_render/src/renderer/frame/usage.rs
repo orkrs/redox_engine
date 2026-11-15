@@ -16,7 +16,11 @@ pub(super) struct FrameUsage {
 impl FrameUsage {
     /// Starts a log for a frame of `width` x `height`. The graph structure does not depend on
     /// the size, but it is compiled for the actual target so the declaration matches the frame.
-    pub(super) fn for_size(width: u32, height: u32, features: crate::frame_graph::FrameFeatures) -> Self {
+    pub(super) fn for_size(
+        width: u32,
+        height: u32,
+        features: crate::frame_graph::FrameFeatures,
+    ) -> Self {
         let graph = crate::frame_graph::frame_graph_with_features(width, height, features)
             .compile()
             .ok();

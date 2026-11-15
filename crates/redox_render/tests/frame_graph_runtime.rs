@@ -15,7 +15,7 @@ use redox_render::light::{DirectionalLight, LightScene};
 use redox_render::material::Material;
 use redox_render::mesh::primitive::create_cube;
 use redox_render::post::fog::FogSettings;
-use redox_render::render_graph::{RenderGraph, TextureDesc, TextureUsages};
+use redox_render::render_graph::{RenderGraph, TextureDesc};
 use redox_render::shadow::ShadowClass;
 use redox_render::systems::RenderObject;
 use redox_render::transient_pool::{PoolKey, TransientPool};
@@ -88,7 +88,7 @@ fn two_nonoverlapping_targets_share_a_slot() {
         width: 64,
         height: 64,
         format: wgpu::TextureFormat::Rgba16Float,
-        usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
         sample_count: 1,
         mip_level_count: 1,
     };
@@ -96,10 +96,18 @@ fn two_nonoverlapping_targets_share_a_slot() {
     let b = g.create_texture("b", desc);
     let c = g.create_texture("c", desc);
     let out = g.import_texture("out", desc);
-    g.add_pass("p1", |p| p.write(a));
-    g.add_pass("p2", |p| p.read(a).write(b));
-    g.add_pass("p3", |p| p.read(b).write(c));
-    g.add_pass("p4", |p| p.read(c).write(out));
+    g.add_pass("p1", |p| {
+        p.write(a);
+    });
+    g.add_pass("p2", |p| {
+        p.read(a).write(b);
+    });
+    g.add_pass("p3", |p| {
+        p.read(b).write(c);
+    });
+    g.add_pass("p4", |p| {
+        p.read(c).write(out);
+    });
     let comp = g.compile().unwrap();
     assert_eq!(comp.slot_of(a), comp.slot_of(c));
     assert_eq!(comp.slot_count, 2);
@@ -124,7 +132,11 @@ fn resize_keeps_an_unchanged_slot() {
     pool.rebuild(&device, &graph, key);
     let created_first = pool.textures_created();
     pool.rebuild(&device, &graph, key);
-    assert_eq!(pool.textures_created(), created_first, "unchanged size reuses slots");
+    assert_eq!(
+        pool.textures_created(),
+        created_first,
+        "unchanged size reuses slots"
+    );
 }
 
 #[test]
@@ -152,7 +164,7 @@ fn a_partial_write_does_not_alias() {
         width: 32,
         height: 32,
         format: wgpu::TextureFormat::R8Unorm,
-        usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
         sample_count: 1,
         mip_level_count: 1,
     };

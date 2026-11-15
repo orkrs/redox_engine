@@ -119,8 +119,8 @@ fn variance_center(frame: &[u8], x0: u32, y0: u32, w: u32, h: u32) -> f32 {
     for y in y0..y0 + h {
         for x in x0..x0 + w {
             let at = ((y * SIZE + x) * 4) as usize;
-            let l = (f32::from(frame[at]) + f32::from(frame[at + 1]) + f32::from(frame[at + 2]))
-                / 3.0;
+            let l =
+                (f32::from(frame[at]) + f32::from(frame[at + 1]) + f32::from(frame[at + 2])) / 3.0;
             sum += f64::from(l);
             sum2 += f64::from(l * l);
             n += 1.0;
@@ -131,7 +131,9 @@ fn variance_center(frame: &[u8], x0: u32, y0: u32, w: u32, h: u32) -> f32 {
 }
 
 fn glass_scene(rig: &mut Rig, ior: f32, roughness: f32, strength: f32) -> Vec<RenderObject> {
-    let bright = rig.renderer.add_material(Material::solid(Vec3::splat(0.95)));
+    let bright = rig
+        .renderer
+        .add_material(Material::solid(Vec3::splat(0.95)));
     let mut glass_mat = Material::solid(Vec3::splat(0.98));
     glass_mat.roughness = roughness;
     glass_mat = glass_mat.refractive(ior, strength);
@@ -177,8 +179,10 @@ fn a_tilted_glass_shifts_the_background() {
     let (Some(mut a), Some(mut b)) = (rig(), rig()) else {
         return;
     };
-    let fa = a.settle(&glass_scene(&mut a, 1.0, 0.0, 2.0), 4);
-    let fb = b.settle(&glass_scene(&mut b, 1.5, 0.0, 2.0), 4);
+    let scene_a = glass_scene(&mut a, 1.0, 0.0, 2.0);
+    let fa = a.settle(&scene_a, 4);
+    let scene_b = glass_scene(&mut b, 1.5, 0.0, 2.0);
+    let fb = b.settle(&scene_b, 4);
     assert!(max_diff(&fa, &fb) > 6);
     assert!(a.renderer.scene_copy_frames > 0);
 }
@@ -195,7 +199,8 @@ fn ior_one_matches_alpha_blend() {
     let mut plain_objs = glass_scene(&mut plain, 1.0, 0.0, 0.0);
     plain_objs[1].material_index = slot0;
     let fa = plain.settle(&plain_objs, 4);
-    let fb = ior1.settle(&glass_scene(&mut ior1, 1.0, 0.0, 2.0), 4);
+    let scene_ior = glass_scene(&mut ior1, 1.0, 0.0, 2.0);
+    let fb = ior1.settle(&scene_ior, 4);
     let sum: u64 = fa
         .iter()
         .zip(&fb)
@@ -210,8 +215,10 @@ fn higher_roughness_picks_a_blurrier_sample() {
     let (Some(mut smooth), Some(mut rough)) = (rig(), rig()) else {
         return;
     };
-    let fs = smooth.settle(&glass_scene(&mut smooth, 1.45, 0.05, 2.0), 4);
-    let fr = rough.settle(&glass_scene(&mut rough, 1.45, 0.95, 2.0), 4);
+    let scene_smooth = glass_scene(&mut smooth, 1.45, 0.05, 2.0);
+    let fs = smooth.settle(&scene_smooth, 4);
+    let scene_rough = glass_scene(&mut rough, 1.45, 0.95, 2.0);
+    let fr = rough.settle(&scene_rough, 4);
     let var_smooth = variance_center(&fs, 52, 52, 24, 24);
     let var_rough = variance_center(&fr, 52, 52, 24, 24);
     assert!(var_rough < var_smooth);
@@ -223,7 +230,8 @@ fn the_glass_does_not_sample_itself() {
     let Some(mut rig) = rig() else {
         return;
     };
-    let frame = rig.settle(&glass_scene(&mut rig, 1.5, 0.1, 2.5), 4);
+    let scene = glass_scene(&mut rig, 1.5, 0.1, 2.5);
+    let frame = rig.settle(&scene, 4);
     assert!(variance_center(&frame, SIZE / 2 - 4, SIZE / 2 - 4, 8, 8) < 2000.0);
 }
 
@@ -256,7 +264,9 @@ fn static_glass_matches_the_frame_without_the_reactive_mask() {
     taa.renderer.enable_taa(true);
     sharp.renderer.enable_taa(false);
     sharp.renderer.set_aa_sharp(true);
-    let fa = taa.settle(&glass_scene(&mut taa, 1.5, 0.1, 2.0), 8);
-    let fb = sharp.settle(&glass_scene(&mut sharp, 1.5, 0.1, 2.0), 4);
+    let scene_taa = glass_scene(&mut taa, 1.5, 0.1, 2.0);
+    let fa = taa.settle(&scene_taa, 8);
+    let scene_sharp = glass_scene(&mut sharp, 1.5, 0.1, 2.0);
+    let fb = sharp.settle(&scene_sharp, 4);
     assert!(max_diff(&fa, &fb) <= 48);
 }

@@ -53,9 +53,15 @@ impl Vertex {
                     shader_location: 2,
                     format: wgpu::VertexFormat::Float32x2,
                 },
-                // tangent
+                // uv2 (lightmap). Location 4 so existing tangent inputs stay at location 3.
                 wgpu::VertexAttribute {
                     offset: std::mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
+                    shader_location: 4,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                // tangent
+                wgpu::VertexAttribute {
+                    offset: std::mem::size_of::<[f32; 10]>() as wgpu::BufferAddress,
                     shader_location: 3,
                     format: wgpu::VertexFormat::Float32x3,
                 },

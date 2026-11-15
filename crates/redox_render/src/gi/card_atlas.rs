@@ -296,6 +296,7 @@ mod tests {
             position: p,
             normal: [0.0, 1.0, 0.0],
             uv: [0.0, 0.0],
+            uv2: [0.0, 0.0],
             tangent: [1.0, 0.0, 0.0],
         };
         let mesh = Mesh::new(

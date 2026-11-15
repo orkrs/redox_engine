@@ -100,6 +100,7 @@ fn ground_mesh() -> Mesh {
             position: positions[i],
             normal: normals[i],
             uv: uvs[i],
+            uv2: [0.0, 0.0],
             tangent: tangents[i],
         })
         .collect();

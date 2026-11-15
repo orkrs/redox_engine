@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::frame_graph::{self, FrameFeatures};
-use crate::transient_pool::{PoolKey, TransientPool};
+use crate::transient_pool::PoolKey;
 
 impl Renderer {
     /// Features that control optional passes in the frame graph declaration.
@@ -13,7 +13,7 @@ impl Renderer {
     }
 
     /// Recompiles the frame graph and (re)allocates pooled transients for the current size.
-    pub(crate) fn rebuild_transient_pool(&mut self) {
+    pub fn rebuild_transient_pool(&mut self) {
         let features = self.frame_features();
         let graph = frame_graph::frame_graph_with_features(
             self.internal_width,
@@ -27,8 +27,7 @@ impl Renderer {
             height: self.internal_height,
             features,
         };
-        self.transient_pool
-            .rebuild(&self.device, &graph, key);
+        self.transient_pool.rebuild(&self.device, &graph, key);
         self.bind_transient_views();
         self.rebind_pool_dependent_resources();
         self.compiled_frame_graph = graph.clone();
@@ -76,7 +75,9 @@ impl Renderer {
             self.internal_height,
             features,
         );
-        let saved = self.transient_pool.aliased_saved_bytes(&self.compiled_frame_graph);
+        let saved = self
+            .transient_pool
+            .aliased_saved_bytes(&self.compiled_frame_graph);
         let _ = std::fmt::Write::write_fmt(
             &mut out,
             format_args!("pool_aliased_saved_bytes: {saved}\n"),

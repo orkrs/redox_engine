@@ -39,18 +39,17 @@ pub fn scene_copy_views(
         mip_views.push(texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("scene_copy_mip"),
             base_mip_level: level as u32,
-            mip_level_count: 1,
+            mip_level_count: Some(1),
             ..Default::default()
         }));
     }
     let chain = texture.create_view(&wgpu::TextureViewDescriptor {
         label: Some("scene_copy_chain"),
-        mip_level_count: SCENE_COPY_MIP_COUNT,
+        mip_level_count: Some(SCENE_COPY_MIP_COUNT),
         ..Default::default()
     });
-    let arr: [wgpu::TextureView; BLOOM_MIP_COUNT] = mip_views
-        .try_into()
-        .expect("scene copy mip view count");
+    let arr: [wgpu::TextureView; BLOOM_MIP_COUNT] =
+        mip_views.try_into().expect("scene copy mip view count");
     (arr, chain)
 }
 

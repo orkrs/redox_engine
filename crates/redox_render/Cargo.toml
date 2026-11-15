@@ -46,6 +46,7 @@ rand = "0.10"
 half = "2.4"
 ktx2 = "0.5"
 ron = { workspace = true }
+serde = { workspace = true }
 
 # Errors
 thiserror = { workspace = true }

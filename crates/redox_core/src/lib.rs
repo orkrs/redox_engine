@@ -40,12 +40,12 @@ pub mod gi_streaming;
 pub mod hlod_load;
 pub mod hlod_system;
 pub mod level_boot;
-pub mod nav_load;
-pub mod reflection_probes;
 pub mod material_graph;
+pub mod nav_load;
 pub mod net_plugin;
 pub mod plugin;
 pub mod ragdoll_system;
+pub mod reflection_probes;
 pub mod script_world;
 pub mod state;
 pub mod time;
@@ -57,10 +57,10 @@ pub use config::{EngineConfig, LightingMode};
 pub use dispatcher::{
     Dispatcher, Stage, SystemMeta, SystemTiming, access_compatible, parallel_layers,
 };
-pub use material_graph::{GraphBinding, MaterialGraphBindings, MaterialGraphPlugin};
-pub use net_plugin::{NetMode, NetPlugin};
 pub use level_boot::{boot_navigation, boot_reflection_probes};
+pub use material_graph::{GraphBinding, MaterialGraphBindings, MaterialGraphPlugin};
 pub use nav_load::{insert_nav_from_path, load_nav_world};
+pub use net_plugin::{NetMode, NetPlugin};
 pub use plugin::{
     App, AudioPlugin, CorePlugin, NavPlugin, PhysicsPlugin, Plugin, RenderPlugin, ScriptWorldPlugin,
 };

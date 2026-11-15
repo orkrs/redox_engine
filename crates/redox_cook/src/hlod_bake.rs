@@ -306,6 +306,7 @@ pub fn bake_world_brick(
                 .to_array(),
             normal: [0.0, 1.0, 0.0],
             uv: [0.0, 0.0],
+            uv2: [0.0, 0.0],
             tangent: [1.0, 0.0, 0.0],
         })
         .collect();

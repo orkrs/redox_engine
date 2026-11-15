@@ -42,12 +42,10 @@ pub fn hlod_plugin_for(world_bin: &Path) -> Option<HlodPlugin> {
     if !dir.join(KINDS_FILE_NAME).is_file() {
         return None;
     }
-    let has_proxy = fs::read_dir(dir).ok()?.flatten().any(|entry| {
-        entry
-            .path()
-            .extension()
-            .is_some_and(|ext| ext == "hlod")
-    });
+    let has_proxy = fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .any(|entry| entry.path().extension().is_some_and(|ext| ext == "hlod"));
     if !has_proxy {
         return None;
     }

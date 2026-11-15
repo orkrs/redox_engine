@@ -87,7 +87,10 @@ fn patch_cook_report(report_path: &Path, nav: &str, hlod: &str) -> Result<(), St
     fs::write(report_path, patched).map_err(|e| e.to_string())
 }
 
-fn first_level_mesh(project: &ProjectContext, profile: &redox_editor_core::project::BuildProfile) -> Option<PathBuf> {
+fn first_level_mesh(
+    project: &ProjectContext,
+    profile: &redox_editor_core::project::BuildProfile,
+) -> Option<PathBuf> {
     let service = BuildService;
     let plan = service.plan(project, profile).ok()?;
     let assets_root = project.root().join(project.manifest().assets_root.as_str());
@@ -178,8 +181,8 @@ mod tests {
     fn cook_without_level_geometry_skips_nav_and_still_writes_the_pak() {
         let dir = std::env::temp_dir().join(format!("cook_no_mesh_{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        let project =
-            ProjectContext::create(&dir, "NavSkip", ProjectTemplate::ThreeDStarter).expect("create");
+        let project = ProjectContext::create(&dir, "NavSkip", ProjectTemplate::ThreeDStarter)
+            .expect("create");
         let service = BuildService;
         let profile = service
             .resolve_active(project.manifest(), None)
@@ -220,8 +223,8 @@ mod tests {
     fn cook_writes_hlod_or_skips_when_there_is_no_world() {
         let dir = std::env::temp_dir().join(format!("cook_no_world_{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        let project =
-            ProjectContext::create(&dir, "HlodSkip", ProjectTemplate::ThreeDStarter).expect("create");
+        let project = ProjectContext::create(&dir, "HlodSkip", ProjectTemplate::ThreeDStarter)
+            .expect("create");
         let status = cook_hlod_sidecar(&project, &dir.join(".redox")).expect("hlod sidecar");
         assert_eq!(status, "skipped");
         let _ = fs::remove_dir_all(&dir);

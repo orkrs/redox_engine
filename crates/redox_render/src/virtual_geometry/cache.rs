@@ -331,6 +331,7 @@ mod tests {
                 position: [1.0, 2.0, 3.0],
                 normal: [0.0, 1.0, 0.0],
                 uv: [0.5, 0.5],
+                uv2: [0.0, 0.0],
                 tangent: [1.0, 0.0, 0.0],
             }],
             indices: vec![0, 0, 0],

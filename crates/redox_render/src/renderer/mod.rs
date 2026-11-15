@@ -23,9 +23,9 @@ mod post;
 mod reload;
 pub use reload::{ReloadablePass, ShaderHotReload};
 mod resize;
-mod transient_targets;
 mod scene_sync;
 mod settings;
+mod transient_targets;
 
 pub use assets::UploadRejected;
 pub use create::required_device_limits;
@@ -165,13 +165,14 @@ pub struct Renderer {
     /// Graph-driven material slots of the forward pass (MAT-02).
     pub matgraphs: crate::matgraph_cache::MaterialGraphs,
     /// Per-slot material instances (graph id + base material) synced each frame (MAT-10).
-    material_instances: Vec<crate::material::MaterialInstance>,
+    pub(crate) material_instances: Vec<crate::material::MaterialInstance>,
     /// Graph parameter values per material slot (parallel to `material_instances`).
-    material_graph_params: Vec<Vec<[f32; 4]>>,
+    pub(crate) material_graph_params: Vec<Vec<[f32; 4]>>,
     /// Registered graph sources keyed by [`crate::material::MaterialGraphId`].
-    registered_graphs: std::collections::HashMap<crate::material::MaterialGraphId, redox_matgraph::MaterialGraph>,
+    pub(crate) registered_graphs:
+        std::collections::HashMap<crate::material::MaterialGraphId, redox_matgraph::MaterialGraph>,
     /// Unknown graph ids already warned once this session.
-    unknown_graph_logged: std::collections::HashSet<crate::material::MaterialGraphId>,
+    pub(crate) unknown_graph_logged: std::collections::HashSet<crate::material::MaterialGraphId>,
     /// Shadow depth pass.
     pub shadow_pass: ShadowPass,
     /// Pass that renders normals and depth.
@@ -303,10 +304,16 @@ pub struct Renderer {
     /// Bind group with fallback textures.
     pub fallback_texture_bg: wgpu::BindGroup,
     /// Fallback normal map (flat).
+    pub fallback_normal: Texture,
+    /// Fallback normal map view (alias of [`Self::fallback_normal`]).
     pub fallback_normal_view: wgpu::TextureView,
     /// Fallback metallic-roughness texture.
+    pub fallback_mr: Texture,
+    /// Fallback metallic-roughness view.
     pub fallback_mr_view: wgpu::TextureView,
     /// Black when no lightmap is assigned.
+    pub fallback_lightmap: Texture,
+    /// View of [`Self::fallback_lightmap`].
     pub fallback_lightmap_view: wgpu::TextureView,
     /// Sampler shared by material textures.
     pub common_sampler: wgpu::Sampler,
@@ -458,7 +465,8 @@ pub struct Renderer {
     /// Byte limits per memory category (usage is computed on demand, see `memory_usage`).
     memory_limits: crate::memory_budget::MemoryBudget,
     /// Categories that already logged a budget rejection this frame (cleared in `memory_usage`).
-    memory_reject_warned: std::cell::RefCell<std::collections::BTreeSet<crate::memory_budget::MemoryCategory>>,
+    memory_reject_warned:
+        parking_lot::Mutex<std::collections::BTreeSet<crate::memory_budget::MemoryCategory>>,
     /// Pooled transient render targets (RND-12).
     transient_pool: crate::transient_pool::TransientPool,
     /// Last compiled frame graph used by the pool (for reports and savings).

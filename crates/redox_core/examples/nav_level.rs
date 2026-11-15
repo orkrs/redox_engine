@@ -3,7 +3,7 @@
 #![allow(clippy::unwrap_used)]
 
 use redox_core::config::EngineConfig;
-use redox_core::{insert_nav_from_path, App};
+use redox_core::{App, insert_nav_from_path};
 use redox_ecs::{Entity, World};
 use redox_math::{Transform, Vec3};
 use redox_nav::{NavAgent, NavTarget};
@@ -48,20 +48,20 @@ fn spawn_agent(world: &mut World) -> Entity {
             accel: 40.0,
         },
     );
-    world.add_component(entity, Transform::from_translation(Vec3::new(0.5, 0.0, 0.5)));
+    world.add_component(
+        entity,
+        Transform::from_translation(Vec3::new(0.5, 0.0, 0.5)),
+    );
     world.add_component(entity, NavTarget(Vec3::new(7.5, 0.0, 0.5)));
     entity
 }
 
 fn main() {
-    let nav_path =
-        std::env::temp_dir().join(format!("redox_nav_level_{}.nav", std::process::id()));
+    let nav_path = std::env::temp_dir().join(format!("redox_nav_level_{}.nav", std::process::id()));
     std::fs::write(&nav_path, corridor_nav_bytes()).unwrap();
-    App::new()
-        .with_navigation()
-        .run_with_setup(move |world| {
-            insert_nav_from_path(world, &nav_path);
-            spawn_agent(world);
-        });
+    App::new().with_navigation().run_with_setup(move |world| {
+        insert_nav_from_path(world, &nav_path);
+        spawn_agent(world);
+    });
     let _ = std::fs::remove_file(nav_path);
 }

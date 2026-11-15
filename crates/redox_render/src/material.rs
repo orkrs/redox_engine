@@ -171,6 +171,8 @@ pub mod material_flags {
     pub const HAS_REFRACTION: u32 = 1 << 8;
     /// Back faces are shaded too: the normal and tangent are mirrored for them (MAT-08).
     pub const DOUBLE_SIDED: u32 = 1 << 9;
+    /// Static lightmap is bound and should be sampled in the indirect term.
+    pub const HAS_LIGHTMAP: u32 = 1 << 10;
 }
 
 /// Coat IOR used when a coat is enabled without an explicit IOR.

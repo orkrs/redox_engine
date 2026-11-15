@@ -17,6 +17,7 @@ fn grid(n: u32) -> Mesh {
                 position: [fx, (fx * 3.0).sin() * 0.2 + (fz * 2.0).cos() * 0.2, fz],
                 normal: [0.0, 1.0, 0.0],
                 uv: [x as f32 / n as f32, z as f32 / n as f32],
+                uv2: [0.0, 0.0],
                 tangent: [1.0, 0.0, 0.0],
             });
         }

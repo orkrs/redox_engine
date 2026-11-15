@@ -17,7 +17,7 @@ fn target(width: u32, height: u32, format: F) -> TextureDesc {
         width,
         height,
         format,
-        usage: U::RENDER_ATTACHMENT | U::TEXTURE_BINDING,
+        usage: U::RENDER_ATTACHMENT | U::TEXTURE_BINDING | U::COPY_SRC,
         sample_count: 1,
         mip_level_count: 1,
     }
@@ -36,11 +36,7 @@ pub fn frame_graph(width: u32, height: u32) -> RenderGraph {
 }
 
 /// Declares the frame for `width` x `height` with the given enabled effects.
-pub fn frame_graph_with_features(
-    width: u32,
-    height: u32,
-    features: FrameFeatures,
-) -> RenderGraph {
+pub fn frame_graph_with_features(width: u32, height: u32, features: FrameFeatures) -> RenderGraph {
     let (w, h) = (width.max(1), height.max(1));
     let mut g = RenderGraph::new();
 
@@ -71,7 +67,10 @@ pub fn frame_graph_with_features(
     let normals = g.create_texture("normals", target(w, h, F::Rgba16Float));
     let hiz = g.create_texture("hiz", target(w, h, F::R32Float));
     let ao = g.create_texture("ao", target(w, h, F::Rgba16Float));
-    let hdr = g.create_texture("hdr_color", target(w, h, F::Rgba16Float));
+    let mut hdr_desc = target(w, h, F::Rgba16Float);
+    // Scene-copy for refraction (MAT-09) copies the opaque HDR via `copy_texture_to_texture`.
+    hdr_desc.usage |= U::COPY_SRC;
+    let hdr = g.create_texture("hdr_color", hdr_desc);
 
     g.add_pass("shadow_passes", |p| {
         p.write(shadow_maps);
@@ -198,10 +197,7 @@ pub fn frame_graph_report_with_features(
         })
         .sum::<u64>();
     let saved = logical.saturating_sub(physical);
-    let _ = std::fmt::Write::write_fmt(
-        &mut out,
-        format_args!("\naliased_saved_bytes: {saved}\n"),
-    );
+    let _ = std::fmt::Write::write_fmt(&mut out, format_args!("\naliased_saved_bytes: {saved}\n"));
     out
 }
 

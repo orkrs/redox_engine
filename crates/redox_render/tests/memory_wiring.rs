@@ -116,7 +116,7 @@ fn the_gi_card_atlas_is_in_the_memory_report() {
     let after = r.memory_usage().used(MemoryCategory::Textures);
     assert!(after > before, "GI card atlas bytes");
     let fresh = renderer().unwrap();
-  assert!(
+    assert!(
         fresh.memory_usage().used(MemoryCategory::Textures) < after
             || before == fresh.memory_usage().used(MemoryCategory::Textures),
         "GI off until cards are set"
@@ -128,7 +128,10 @@ fn an_upload_under_the_limit_succeeds() {
     let Some(mut r) = renderer() else { return };
     let mesh = primitive::create_cube();
     let bytes = Renderer::mesh_upload_bytes(&mesh, true);
-    r.set_memory_limit(MemoryCategory::Meshes, Some(r.memory_usage().used(MemoryCategory::Meshes) + bytes));
+    r.set_memory_limit(
+        MemoryCategory::Meshes,
+        Some(r.memory_usage().used(MemoryCategory::Meshes) + bytes),
+    );
     let slot = r.try_upload_mesh(&mesh).expect("under limit");
     assert_ne!(slot, usize::MAX);
 }

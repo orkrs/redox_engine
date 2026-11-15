@@ -411,6 +411,7 @@ fn bind_vertices(geometry: &SkinnedGeometry) -> Vec<Vertex> {
             position: geometry.positions[i],
             normal: geometry.normals[i],
             uv: geometry.uvs[i],
+            uv2: [0.0, 0.0],
             tangent: geometry.tangents.get(i).copied().unwrap_or(DEFAULT_TANGENT),
         })
         .collect()

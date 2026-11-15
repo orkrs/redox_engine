@@ -71,6 +71,7 @@ fn ground_mesh(half: f32, tile: f32) -> Mesh {
         position: [x, 0.0, z],
         normal: [0.0, 1.0, 0.0],
         uv: [x / tile, z / tile],
+        uv2: [0.0, 0.0],
         tangent: [1.0, 0.0, 0.0],
     };
     Mesh {

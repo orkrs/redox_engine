@@ -635,7 +635,7 @@ impl RenderGraph {
             let Kind::Texture(mut desc) = self.resources[r].kind else {
                 continue;
             };
-            desc.usage = required_usage[r];
+            desc.usage |= required_usage[r];
             if partial.contains(&(r as u32)) {
                 slots.push((desc, last));
                 physical[r] = Some(slots.len() - 1);
@@ -664,7 +664,12 @@ impl RenderGraph {
         physical: &[Option<usize>],
         required_usage: &[TextureUsages],
     ) -> Vec<SlotPlanEntry> {
-        let slot_count = physical.iter().flatten().copied().max().map_or(0, |m| m + 1);
+        let slot_count = physical
+            .iter()
+            .flatten()
+            .copied()
+            .max()
+            .map_or(0, |m| m + 1);
         let mut plan = vec![
             SlotPlanEntry {
                 desc: TextureDesc {
@@ -686,7 +691,7 @@ impl RenderGraph {
             let Kind::Texture(mut desc) = res.kind else {
                 continue;
             };
-            desc.usage = required_usage[r];
+            desc.usage |= required_usage[r];
             let entry = &mut plan[slot];
             if entry.users.is_empty() {
                 entry.desc = desc;
@@ -711,7 +716,7 @@ impl RenderGraph {
             let Kind::Texture(mut desc) = res.kind else {
                 continue;
             };
-            desc.usage = required_usage[r];
+            desc.usage |= required_usage[r];
             out.push((desc, res.name));
         }
         out
@@ -827,12 +832,7 @@ impl CompiledGraph {
             .iter()
             .map(|(desc, _)| {
                 let bpp = desc.format.block_copy_size(None).unwrap_or(4);
-                texture_size_bytes(
-                    desc.width,
-                    desc.height,
-                    bpp,
-                    desc.mip_level_count.max(1),
-                )
+                texture_size_bytes(desc.width, desc.height, bpp, desc.mip_level_count.max(1))
             })
             .sum()
     }

@@ -206,6 +206,7 @@ pub fn gltf_mesh_to_render_mesh(data: &GltfMeshData) -> Mesh {
             position: data.positions[i],
             normal: normals[i],
             uv: uvs[i],
+            uv2: [0.0, 0.0],
             tangent: tangents[i],
         })
         .collect();

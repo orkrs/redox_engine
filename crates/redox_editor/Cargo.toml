@@ -33,6 +33,7 @@ redox_reflect = { path = "../redox_reflect" }
 redox_math = { path = "../redox_math" }
 redox_scene = { path = "../redox_scene" }
 redox_render = { path = "../redox_render" }
+redox_asset = { path = "../redox_asset" }
 redox_physics = { path = "../redox_physics" }
 redox_gameplay = { path = "../redox_gameplay" }
 rapier3d = { workspace = true }
@@ -54,7 +55,6 @@ bytemuck = { workspace = true }
 
 [dev-dependencies]
 # Scenario tests (EDT-A7). Other editor crates are already normal dependencies above.
-redox_asset = { path = "../redox_asset" }
 redox_editor_assets = { path = "../redox_editor_assets" }
 redox_matgraph = { path = "../redox_matgraph" }
 image = { workspace = true }

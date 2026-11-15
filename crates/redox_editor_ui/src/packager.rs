@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use redox_asset::load_scene_from_path;
 use redox_math::Vec3;
 use redox_render::mesh::Mesh;
+use redox_render::mesh::primitive::create_cube;
 use redox_render::sdf::{SdfBrick, SdfBrickAtlas, bake_mesh};
 use redox_render::virtual_geometry::{LodChainConfig, build_vg_asset, cache as vg_cache};
 use redox_scene::{
@@ -241,7 +242,13 @@ impl PackagerPanel {
 
     /// CPU meshlet bake via [`build_vg_asset`] + disk cache. Pass mesh glTF paths; empty → error.
     pub fn bake_meshlets(&mut self) -> anyhow::Result<String> {
-        self.bake_meshlets_from_paths(&[])
+        let outcome = self.bake_meshlets_from_paths(&[])?;
+        Ok(format!(
+            "Meshlets OK: {} → {} ({})",
+            outcome.meshlet_count,
+            outcome.cache_path.display(),
+            outcome.gpu_register_line.trim()
+        ))
     }
 
     /// Bakes the first resolvable mesh in `sources` (OFPA has no mesh paths — use asset browser glTF).
@@ -250,7 +257,9 @@ impl PackagerPanel {
         sources: &[PathBuf],
     ) -> anyhow::Result<MeshletBakeOutcome> {
         if sources.is_empty() {
-            anyhow::bail!("no mesh selected — pick a glTF in the asset browser (OFPA actors have no mesh paths)");
+            anyhow::bail!(
+                "no mesh selected — pick a glTF in the asset browser (OFPA actors have no mesh paths)"
+            );
         }
         let source = sources
             .iter()
@@ -271,7 +280,10 @@ impl PackagerPanel {
         let asset = build_vg_asset(mesh, &lod, 0);
         let meshlet_count = asset.meshlets.len();
         if meshlet_count == 0 {
-            anyhow::bail!("build_vg_asset produced zero meshlets for {}", source.display());
+            anyhow::bail!(
+                "build_vg_asset produced zero meshlets for {}",
+                source.display()
+            );
         }
         let tri_count = asset.triangle_count();
         vg_cache::store_cached(key, &asset);
@@ -318,7 +330,10 @@ impl PackagerPanel {
     }
 
     /// Updates the bake report after GPU registration.
-    pub fn finalize_meshlet_gpu_register(&mut self, outcome: &MeshletBakeOutcome) -> anyhow::Result<()> {
+    pub fn finalize_meshlet_gpu_register(
+        &mut self,
+        outcome: &MeshletBakeOutcome,
+    ) -> anyhow::Result<()> {
         let report_path = PathBuf::from(".cache/bake_meshlets.txt");
         if report_path.is_file() {
             let mut body = std::fs::read_to_string(&report_path)?;
@@ -355,7 +370,7 @@ impl PackagerPanel {
                 .join(format!("{}.nav", self.cook_profile))
         };
         std::fs::create_dir_all(out.parent().expect("nav parent"))?;
-        redox_cook::nav::bake_navmesh_from_gltf(&mesh, &out)?;
+        redox_cook::nav::bake_navmesh_from_gltf(&mesh, &out).map_err(anyhow::Error::msg)?;
         let msg = format!("Navmesh OK → {}", out.display());
         self.bake_status.navmesh = msg.clone();
         Ok(msg)
@@ -365,7 +380,8 @@ impl PackagerPanel {
         if !self.project_root.is_empty() {
             let project = redox_editor_core::project::ProjectContext::open(&self.project_root)?;
             let service = redox_editor_build::BuildService;
-            let profile = service.resolve_active(project.manifest(), Some(self.cook_profile.as_str()))?;
+            let profile =
+                service.resolve_active(project.manifest(), Some(self.cook_profile.as_str()))?;
             let root = project.root();
             let assets = root.join(project.manifest().assets_root.as_str());
             let (registry, _) = redox_asset::AssetRegistry::scan(&assets)?;
@@ -704,7 +720,7 @@ mod navmesh_tests {
     fn the_editor_bake_calls_the_same_function_as_the_cli() {
         let name = std::any::type_name_of_val(&bake_navmesh_from_gltf);
         assert!(name.contains("bake_navmesh_from_gltf"));
-        let panel = PackagerPanel::default();
+        let mut panel = PackagerPanel::default();
         assert!(panel.bake_navmesh().is_err());
     }
 }

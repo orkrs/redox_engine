@@ -6,7 +6,7 @@ use redox_math::Vec3;
 use serde::{Deserialize, Serialize};
 
 use super::probe::ReflectionProbe;
-use super::set::{MAX_PROBES, PROBE_FACE_SIZE, PROBE_FORMAT, PROBE_MIP_LEVELS, ReflectionProbeSet};
+use super::set::{PROBE_FACE_SIZE, PROBE_FORMAT, PROBE_MIP_LEVELS, ReflectionProbeSet};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProbeBakeEntry {
@@ -54,7 +54,8 @@ pub fn read_probe_prefiltered(bytes: &[u8]) -> Result<redox_asset::Ktx2Texture, 
     if bytes.len() < 64 {
         return Err(ProbeFileError::InvalidKtx2("truncated header".into()));
     }
-    let reader = ktx2::Reader::new(bytes).map_err(|e| ProbeFileError::InvalidKtx2(format!("{e:?}")))?;
+    let reader =
+        ktx2::Reader::new(bytes).map_err(|e| ProbeFileError::InvalidKtx2(format!("{e:?}")))?;
     let header = reader.header();
     if header.face_count != 6
         || header.pixel_width != PROBE_FACE_SIZE
@@ -81,11 +82,15 @@ pub fn write_probe(
     Ok(path)
 }
 
-pub fn write_probes_manifest(out_dir: &Path, manifest: &ProbesManifest) -> Result<(), ProbeFileError> {
+pub fn write_probes_manifest(
+    out_dir: &Path,
+    manifest: &ProbesManifest,
+) -> Result<(), ProbeFileError> {
     std::fs::create_dir_all(out_dir).map_err(|e| ProbeFileError::Manifest(e.to_string()))?;
     let text = ron::ser::to_string_pretty(manifest, ron::ser::PrettyConfig::new())
         .map_err(|e| ProbeFileError::Manifest(e.to_string()))?;
-    std::fs::write(out_dir.join("probes.ron"), text).map_err(|e| ProbeFileError::Manifest(e.to_string()))
+    std::fs::write(out_dir.join("probes.ron"), text)
+        .map_err(|e| ProbeFileError::Manifest(e.to_string()))
 }
 
 pub fn read_probes_manifest(dir: &Path) -> Result<ProbesManifest, ProbeFileError> {
@@ -102,7 +107,11 @@ impl ReflectionProbeSet {
         dir: &Path,
     ) -> Result<usize, ProbeFileError> {
         let manifest = read_probes_manifest(dir)?;
-        let probes: Vec<ReflectionProbe> = manifest.probes.iter().map(ProbeBakeEntry::to_probe).collect();
+        let probes: Vec<ReflectionProbe> = manifest
+            .probes
+            .iter()
+            .map(ProbeBakeEntry::to_probe)
+            .collect();
         let count = self.set_probes(&probes);
         for (slot, entry) in manifest.probes.iter().take(count).enumerate() {
             let bytes = std::fs::read(dir.join(format!("{}.ktx2", entry.id)))
@@ -126,7 +135,8 @@ fn upload_baked_slot(
     slot: usize,
     ktx: &redox_asset::Ktx2Texture,
 ) -> Result<(), ProbeFileError> {
-    let Some(tex) = crate::resource::texture::Texture::from_ktx2(device, queue, ktx, "baked_probe") else {
+    let Some(tex) = crate::resource::texture::Texture::from_ktx2(device, queue, ktx, "baked_probe")
+    else {
         return Err(ProbeFileError::InvalidKtx2("unsupported format".into()));
     };
     if tex.texture.format() != PROBE_FORMAT {

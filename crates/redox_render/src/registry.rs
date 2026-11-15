@@ -119,6 +119,8 @@ pub struct GpuRegistry {
     pub legacy_materials: Vec<Material>,
     /// Bind groups of materials created through the legacy index-based API.
     pub legacy_material_bind_groups: Vec<wgpu::BindGroup>,
+    /// Packed albedo/normal/MR/lightmap arrays (one per legacy material).
+    pub legacy_material_layer_textures: Vec<wgpu::Texture>,
     /// Uniform buffers behind the legacy material bind groups.
     pub legacy_material_uniform_buffers: Vec<wgpu::Buffer>,
 
@@ -234,11 +236,13 @@ impl GpuRegistry {
         &mut self,
         material: Material,
         uniform_buffer: wgpu::Buffer,
+        layer_texture: wgpu::Texture,
         bind_group: wgpu::BindGroup,
     ) -> usize {
         let idx = self.legacy_materials.len();
         self.legacy_materials.push(material);
         self.legacy_material_uniform_buffers.push(uniform_buffer);
+        self.legacy_material_layer_textures.push(layer_texture);
         self.legacy_material_bind_groups.push(bind_group);
         idx
     }

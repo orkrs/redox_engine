@@ -14,7 +14,10 @@ fn unavailable_reasons_are_gone_for_the_four_modes() {
         ViewportShading::Depth,
     ] {
         let plan = ViewportShadingPlan::resolve(mode);
-        assert_eq!(plan.status, redox_editor_viewport::ShadingAvailability::Available);
+        assert_eq!(
+            plan.status,
+            redox_editor_viewport::ShadingAvailability::Available
+        );
         assert!(!plan.overlay_label().contains("unavailable"));
     }
 }

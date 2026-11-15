@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+use redox_math::Vec3;
 use redox_render::light::{DirectionalLight, LightScene};
 use redox_render::lightmap::{
     LightmapBaker, LightmapEntry, LightmapScene, LightmapsManifest, reject_mesh_without_uv2,
@@ -74,11 +75,19 @@ pub fn bake_lightmap(world: &Path, out_dir: &Path) -> Result<Vec<String>, String
     let mut baked = 0usize;
     let mut skipped = Vec::new();
     let baker = LightmapBaker::default();
-    let lights = LightScene::new(DirectionalLight::new(Vec3::new(0.2, -1.0, 0.0), Vec3::ONE, 2.0));
+    let lights = LightScene::new(DirectionalLight::new(
+        Vec3::new(0.2, -1.0, 0.0),
+        Vec3::ONE,
+        2.0,
+    ));
     std::fs::create_dir_all(out_dir).map_err(|e| e.to_string())?;
     let mut entries = Vec::new();
     let mut written = Vec::new();
-    let meshes: Vec<Mesh> = jobs.iter().filter(|j| !j.skinned).map(|j| j.mesh.clone()).collect();
+    let meshes: Vec<Mesh> = jobs
+        .iter()
+        .filter(|j| !j.skinned)
+        .map(|j| j.mesh.clone())
+        .collect();
     let scene = LightmapScene {
         meshes: &meshes,
         lights: &lights,
@@ -120,7 +129,9 @@ pub fn bake_lightmap(world: &Path, out_dir: &Path) -> Result<Vec<String>, String
     Ok(written)
 }
 
-fn lightmap_image_to_ktx2(image: &redox_render::lightmap::LightmapImage) -> redox_asset::Ktx2Texture {
+fn lightmap_image_to_ktx2(
+    image: &redox_render::lightmap::LightmapImage,
+) -> redox_asset::Ktx2Texture {
     use redox_asset::TextureFormat as F;
     let mut packed = Vec::with_capacity(image.pixels.len() * 2);
     for &half in &image.pixels {

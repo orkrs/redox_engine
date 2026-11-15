@@ -5,7 +5,10 @@ use redox_editor_ui::{EditorMeshProxy, EditorUiCtx};
 use std::path::PathBuf;
 
 /// glTF paths to cluster: selected asset browser entry, else the selected entity's mesh proxy.
-pub fn collect_meshlet_bake_sources(ui_ctx: &EditorUiCtx, assets_root: Option<&std::path::Path>) -> Vec<PathBuf> {
+pub fn collect_meshlet_bake_sources(
+    ui_ctx: &EditorUiCtx,
+    assets_root: Option<&std::path::Path>,
+) -> Vec<PathBuf> {
     let mut out = Vec::new();
     if let Some(entry) = ui_ctx.assets.lock().model.selected() {
         if matches!(entry.kind, AssetKind::Mesh) {

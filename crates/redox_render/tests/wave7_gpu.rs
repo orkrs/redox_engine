@@ -585,6 +585,7 @@ fn arm_vertices(bend: f32) -> Vec<Vertex> {
                 position: [x, y, z],
                 normal: v.normal,
                 uv: v.uv,
+                uv2: [0.0, 0.0],
                 tangent: v.tangent,
             }
         })
@@ -594,6 +595,7 @@ fn arm_vertices(bend: f32) -> Vec<Vertex> {
             position: [x, 0.0, 0.0],
             normal: [0.0, 1.0, 0.0],
             uv: [0.0; 2],
+            uv2: [0.0, 0.0],
             tangent: [1.0, 0.0, 0.0],
         });
     }

@@ -106,6 +106,7 @@ pub fn create_sphere(radius: f32, segments: u32) -> Mesh {
                 position: [x * radius, y * radius, z * radius],
                 normal: [x, y, z],
                 uv: [u, v],
+                uv2: [0.0, 0.0],
                 tangent: [tx, ty, tz],
             });
         }
@@ -163,6 +164,7 @@ pub fn create_torus(radius: f32, tube_radius: f32, segments: u32, tube_segments:
                 position: [x, y, z],
                 normal: [nx, ny, nz],
                 uv: [u, v],
+                uv2: [0.0, 0.0],
                 tangent: [tx, ty, tz],
             });
         }
@@ -191,24 +193,28 @@ pub fn create_quad() -> Mesh {
             position: [-0.5, -0.5, 0.0],
             normal: [0.0, 0.0, 1.0],
             uv: [0.0, 1.0],
+            uv2: [0.0, 0.0],
             tangent: [1.0, 0.0, 0.0],
         },
         Vertex {
             position: [0.5, -0.5, 0.0],
             normal: [0.0, 0.0, 1.0],
             uv: [1.0, 1.0],
+            uv2: [0.0, 0.0],
             tangent: [1.0, 0.0, 0.0],
         },
         Vertex {
             position: [0.5, 0.5, 0.0],
             normal: [0.0, 0.0, 1.0],
             uv: [1.0, 0.0],
+            uv2: [0.0, 0.0],
             tangent: [1.0, 0.0, 0.0],
         },
         Vertex {
             position: [-0.5, 0.5, 0.0],
             normal: [0.0, 0.0, 1.0],
             uv: [0.0, 0.0],
+            uv2: [0.0, 0.0],
             tangent: [1.0, 0.0, 0.0],
         },
     ];

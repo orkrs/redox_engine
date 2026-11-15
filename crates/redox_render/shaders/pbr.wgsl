@@ -105,11 +105,12 @@ struct SdfSceneGpu {
 
 // ── Group 2: Materials ──────────────────────────────────────────────────
 @group(2) @binding(0) var<uniform> material: Material;
-@group(2) @binding(1) var t_albedo: texture_2d<f32>;
-@group(2) @binding(2) var t_normal: texture_2d<f32>;
-@group(2) @binding(3) var t_mr: texture_2d<f32>;
-@group(2) @binding(4) var s_mat: sampler;
-@group(2) @binding(5) var t_lightmap: texture_2d<f32>;
+const MAT_LAYER_ALBEDO: u32 = 0u;
+const MAT_LAYER_NORMAL: u32 = 1u;
+const MAT_LAYER_MR: u32 = 2u;
+const MAT_LAYER_LIGHTMAP: u32 = 3u;
+@group(2) @binding(1) var t_mat_layers: texture_2d_array<f32>;
+@group(2) @binding(2) var s_mat: sampler;
 
 // ── Group 3: Instances ──────────────────────────────────────────────────
 @group(3) @binding(0) var<storage, read> models: array<Model>;
@@ -187,7 +188,8 @@ fn vs_main(in: CompressedVertIn, @builtin(instance_index) instance_idx: u32) -> 
     out.world_normal = n;
     out.world_tangent = t * decode_tangent_sign(in.pos_q);
     out.uv = in.uv;
-    out.uv2 = in.uv2;
+    // Compressed vertices carry one UV. UV2 is on the CPU mesh until the packer stores it.
+    out.uv2 = in.uv;
     out.instance_color = mdl.color;
     out.shadow_pos = light_u.shadow_view_proj * world_pos;
     return out;
@@ -750,6 +752,7 @@ const MAT_FLAG_COAT: u32 = 32u;
 const MAT_FLAG_ANISO: u32 = 64u;
 const MAT_FLAG_SSS: u32 = 128u;
 const MAT_FLAG_DOUBLE_SIDED: u32 = 512u;
+const MAT_FLAG_LIGHTMAP: u32 = 1024u;
 
 /// Wrapped Lambert term, normalised so `n_dot_l = 1` maps to 1 (see `wrap_diffuse` in sss.rs).
 fn wrap_diffuse(n_dot_l: f32, wrap: f32) -> f32 {
@@ -933,15 +936,15 @@ fn material_sample_textures(mat: Material, uv: vec2<f32>, frag_coord: vec4<f32>)
     tex.albedo = vec4<f32>(1.0);
     // LOD bias is 0 at native scale and negative when upscaling (PST-07).
     if ((mat.flags & 1u) != 0u) {
-        tex.albedo = textureSampleBias(t_albedo, s_mat, uv, shader_debug.lod_bias);
+        tex.albedo = textureSampleBias(t_mat_layers, s_mat, uv, MAT_LAYER_ALBEDO, shader_debug.lod_bias);
     }
     tex.normal = vec4<f32>(0.0);
     if ((mat.flags & 2u) != 0u) {
-        tex.normal = textureSampleBias(t_normal, s_mat, uv, shader_debug.lod_bias);
+        tex.normal = textureSampleBias(t_mat_layers, s_mat, uv, MAT_LAYER_NORMAL, shader_debug.lod_bias);
     }
     tex.mr = vec4<f32>(0.0);
     if ((mat.flags & 4u) != 0u) {
-        tex.mr = textureSampleBias(t_mr, s_mat, uv, shader_debug.lod_bias);
+        tex.mr = textureSampleBias(t_mat_layers, s_mat, uv, MAT_LAYER_MR, shader_debug.lod_bias);
     }
     // Blue-noise threshold for stochastic alpha (the discard itself is in material_surface).
     let screen_uv = frag_coord.xy / vec2<f32>(textureDimensions(t_blue_noise));
@@ -1206,7 +1209,7 @@ fn fs_main(in: VertexOutput, @builtin(front_facing) front_facing: bool) -> @loca
     let gi_diffuse = gi_irradiance(in.world_pos, bent_n, v);
     var lm_irr = vec3<f32>(0.0);
     if ((material.flags & MAT_FLAG_LIGHTMAP) != 0u && shader_debug.lightmap_enabled != 0u) {
-        let lm = textureSample(t_lightmap, s_mat, in.uv2);
+        let lm = textureSample(t_mat_layers, s_mat, in.uv2, MAT_LAYER_LIGHTMAP);
         lm_irr = lm.rgb * lm.a;
     }
     let ambient_base = (w_base * (kD_ibl * diffuse_ibl + specular_ibl) + substrate_ibl + gi_diffuse * albedo / PI + lm_irr * albedo / PI + light_u.ambient.xyz * albedo) * ambient_factor * ao;

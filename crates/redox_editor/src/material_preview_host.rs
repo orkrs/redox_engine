@@ -5,13 +5,13 @@ use redox_editor_assets::{
 };
 use redox_editor_ui::MaterialEditorSession;
 use redox_math::{Aabb, Mat4, Quat, Vec3};
-use redox_render::material::MaterialGraphId;
-use redox_render::mesh::primitive::{create_cube, create_sphere};
-use redox_render::{Material, RenderObject, Renderer};
 use redox_render::camera::Camera;
 use redox_render::frame::FrameView;
 use redox_render::light::{DirectionalLight, LightScene};
+use redox_render::material::MaterialGraphId;
+use redox_render::mesh::primitive::{create_cube, create_sphere};
 use redox_render::shadow::ShadowClass;
+use redox_render::{Material, RenderObject, Renderer};
 
 use crate::render_host::RenderHost;
 
@@ -34,9 +34,9 @@ pub fn init_material_preview(renderer: &mut Renderer) -> MaterialPreviewRig {
     let cube_mesh = renderer.upload_mesh(&create_cube());
     let mut plane = create_cube();
     for v in &mut plane.vertices {
-        v.position.y *= 0.05;
-        v.position.x *= 3.0;
-        v.position.z *= 3.0;
+        v.position[1] *= 0.05;
+        v.position[0] *= 3.0;
+        v.position[2] *= 3.0;
     }
     let plane_mesh = renderer.upload_mesh(&plane);
     let color_tex = renderer.device.create_texture(&wgpu::TextureDescriptor {
@@ -145,7 +145,10 @@ impl RenderHost {
     }
 }
 
-pub fn register_open_material(registry: &mut MaterialGraphRegistry, session: &MaterialEditorSession) {
+pub fn register_open_material(
+    registry: &mut MaterialGraphRegistry,
+    session: &MaterialEditorSession,
+) {
     if let Some(guid) = session.document.asset_guid {
         registry.register_guid(guid, session.document.graph.clone());
     }

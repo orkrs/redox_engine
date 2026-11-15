@@ -8,7 +8,12 @@ use crate::nav_load::{cooked_nav_path, insert_nav_from_path, nav_path_beside_wor
 use crate::reflection_probes::mark_all_reflection_probes_dirty;
 
 /// Inserts navigation from the profile cook output or a sibling of `world_bin`.
-pub fn boot_navigation(world: &mut World, level_root: &Path, world_bin: Option<&Path>, profile: &str) {
+pub fn boot_navigation(
+    world: &mut World,
+    level_root: &Path,
+    world_bin: Option<&Path>,
+    profile: &str,
+) {
     if let Some(bin) = world_bin {
         let path = nav_path_beside_world_bin(bin, profile);
         insert_nav_from_path(world, &path);

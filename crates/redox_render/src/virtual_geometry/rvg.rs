@@ -482,6 +482,7 @@ fn read_vertex(reader: &mut Reader<'_>) -> Result<Vertex, RvgError> {
         position: reader.f32x3()?,
         normal: reader.f32x3()?,
         uv: [reader.f32()?, reader.f32()?],
+        uv2: [0.0, 0.0],
         tangent: reader.f32x3()?,
     })
 }

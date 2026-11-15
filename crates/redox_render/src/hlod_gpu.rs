@@ -38,6 +38,7 @@ pub fn proxy_mesh(proxy: &HlodProxy) -> Mesh {
             position: *position,
             normal: *normal,
             uv: [0.0; 2],
+            uv2: [0.0, 0.0],
             tangent: perpendicular(*normal),
         })
         .collect();

@@ -23,6 +23,7 @@ pub mod light;
 pub mod lightmap;
 pub mod material;
 mod material_instance;
+pub mod material_layers;
 /// Shader modules of material graph variants (MAT-02 step 5).
 pub mod matgraph_cache;
 pub mod matgraph_passes;
@@ -38,7 +39,6 @@ pub mod profiler;
 pub mod reflection;
 pub mod registry;
 pub mod render_graph;
-pub mod transient_pool;
 pub mod renderer;
 pub mod resource;
 pub mod sdf;
@@ -51,6 +51,7 @@ pub mod sky;
 pub mod substrate;
 pub mod surface;
 pub mod systems;
+pub mod transient_pool;
 pub mod virtual_geometry;
 
 pub use asset_types::{BlendMode, MaterialData, MaterialLayer, MeshData, TextureData};

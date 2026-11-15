@@ -86,12 +86,8 @@ pub(crate) fn run_command(
                 pie.resume();
             } else if !pie.running {
                 let settings = redox_editor_core::settings::EditorSettings::default().pie;
-                let project_root = ui_ctx
-                    .core
-                    .status
-                    .lock()
-                    .strip_prefix("project:")
-                    .map(std::path::Path::new);
+                let status = ui_ctx.core.status.lock();
+                let project_root = status.strip_prefix("project:").map(std::path::Path::new);
                 prepare_pie_world(&settings, project_root, &registry, &mut world);
                 pie.start_with_mode(&world, &registry, PieRunMode::Play);
                 ui_ctx.log("[INFO] PIE started");

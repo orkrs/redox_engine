@@ -24,9 +24,7 @@ fn lock_path() -> PathBuf {
 
 /// Serializes GPU tests (threads and separate test binaries).
 pub fn lock_gpu() -> GpuTestLock {
-    let mut depth = GPU_LOCK_DEPTH
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let mut depth = GPU_LOCK_DEPTH.lock().unwrap_or_else(|e| e.into_inner());
     if *depth == 0 {
         let file = OpenOptions::new()
             .create(true)
@@ -44,9 +42,7 @@ pub fn lock_gpu() -> GpuTestLock {
 
 impl Drop for GpuTestLock {
     fn drop(&mut self) {
-        let mut depth = GPU_LOCK_DEPTH
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let mut depth = GPU_LOCK_DEPTH.lock().unwrap_or_else(|e| e.into_inner());
         assert!(*depth > 0, "GpuTestLock drop with zero depth");
         *depth -= 1;
         if *depth == 0 {
@@ -62,7 +58,12 @@ fn flock_exclusive(file: &File) {
     use std::os::unix::io::AsRawFd;
     let fd = file.as_raw_fd();
     let ret = unsafe { libc::flock(fd, libc::LOCK_EX) };
-    assert_eq!(ret, 0, "flock LOCK_EX failed: {}", std::io::Error::last_os_error());
+    assert_eq!(
+        ret,
+        0,
+        "flock LOCK_EX failed: {}",
+        std::io::Error::last_os_error()
+    );
 }
 
 #[cfg(unix)]

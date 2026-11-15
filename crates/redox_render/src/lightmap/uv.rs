@@ -1,4 +1,4 @@
-use crate::mesh::{Mesh, Vertex};
+use crate::mesh::Mesh;
 
 pub const DEFAULT_METERS_PER_TEXEL: f32 = 0.25;
 
@@ -7,9 +7,9 @@ pub fn uv_packer_available() -> bool {
 }
 
 pub fn uv2_in_unit_square(mesh: &Mesh) -> bool {
-    mesh.vertices.iter().all(|v| {
-        (0.0..=1.0).contains(&v.uv2[0]) && (0.0..=1.0).contains(&v.uv2[1])
-    })
+    mesh.vertices
+        .iter()
+        .all(|v| (0.0..=1.0).contains(&v.uv2[0]) && (0.0..=1.0).contains(&v.uv2[1]))
 }
 
 pub fn has_uv2(mesh: &Mesh) -> bool {
@@ -34,6 +34,7 @@ pub fn reject_mesh_without_uv2(mesh: &Mesh) -> Result<(), MeshUv2Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mesh::Vertex;
 
     fn v(uv2: [f32; 2]) -> Vertex {
         Vertex {

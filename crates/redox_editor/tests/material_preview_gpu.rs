@@ -25,7 +25,11 @@ fn colour_graph(colour: [f32; 3]) -> MaterialGraph {
         version: 1,
         name: "preview_colour".into(),
         nodes: vec![
-            Node { id: 1, kind: NodeKind::ConstVec3(colour), inputs: vec![] },
+            Node {
+                id: 1,
+                kind: NodeKind::ConstVec3(colour),
+                inputs: vec![],
+            },
             Node {
                 id: 2,
                 kind: NodeKind::SurfaceOutput,
@@ -146,10 +150,16 @@ fn material_preview_graph_matches_tint_within_tolerance() {
 #[test]
 #[ignore = "gpu: coordinator"]
 fn the_preview_sphere_shows_the_graph_colour() {
-    let Some(adapter) = gpu_adapter() else { return; };
-    let Some(mut renderer) = gpu_renderer(&adapter, SIZE) else { return; };
+    let Some(adapter) = gpu_adapter() else {
+        return;
+    };
+    let Some(mut renderer) = gpu_renderer(&adapter, SIZE) else {
+        return;
+    };
     let material = renderer.add_material(Material::solid(Vec3::ONE));
-    renderer.set_material_graph(material, &colour_graph([0.0, 1.0, 0.0]), &[]).unwrap();
+    renderer
+        .set_material_graph(material, &colour_graph([0.0, 1.0, 0.0]), &[])
+        .unwrap();
     let mesh = renderer.upload_mesh(&create_sphere(1.0, 24));
     let [_, g, _, _] = render_preview_pixel(&mut renderer, mesh, material);
     assert!(g > 140);
@@ -158,13 +168,27 @@ fn the_preview_sphere_shows_the_graph_colour() {
 #[test]
 #[ignore = "gpu: coordinator"]
 fn a_failed_compile_keeps_the_previous_preview() {
-    let Some(adapter) = gpu_adapter() else { return; };
-    let Some(mut renderer) = gpu_renderer(&adapter, SIZE) else { return; };
+    let Some(adapter) = gpu_adapter() else {
+        return;
+    };
+    let Some(mut renderer) = gpu_renderer(&adapter, SIZE) else {
+        return;
+    };
     let material = renderer.add_material(Material::solid(Vec3::ONE));
-    renderer.set_material_graph(material, &colour_graph([0.0, 1.0, 0.0]), &[]).unwrap();
+    renderer
+        .set_material_graph(material, &colour_graph([0.0, 1.0, 0.0]), &[])
+        .unwrap();
     let mesh = renderer.upload_mesh(&create_sphere(1.0, 24));
     let green = render_preview_pixel(&mut renderer, mesh, material);
-    let broken = MaterialGraph { version: 1, name: "broken".into(), nodes: vec![Node { id: 1, kind: NodeKind::ConstVec3([1.0, 0.0, 0.0]), inputs: vec![] }] };
+    let broken = MaterialGraph {
+        version: 1,
+        name: "broken".into(),
+        nodes: vec![Node {
+            id: 1,
+            kind: NodeKind::ConstVec3([1.0, 0.0, 0.0]),
+            inputs: vec![],
+        }],
+    };
     assert!(renderer.set_material_graph(material, &broken, &[]).is_err());
     assert_eq!(render_preview_pixel(&mut renderer, mesh, material), green);
 }
@@ -172,7 +196,11 @@ fn a_failed_compile_keeps_the_previous_preview() {
 fn render_preview_pixel(renderer: &mut Renderer, mesh: usize, material: usize) -> [u8; 4] {
     let target = renderer.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("mat_preview_readback"),
-        size: wgpu::Extent3d { width: SIZE, height: SIZE, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width: SIZE,
+            height: SIZE,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -182,16 +210,37 @@ fn render_preview_pixel(renderer: &mut Renderer, mesh: usize, material: usize) -
     });
     let view = target.create_view(&Default::default());
     let camera = Camera::new(0.9, 1.0, 0.1, 50.0);
-    renderer.camera_uniform.update(&camera, Vec3::new(0.0, 0.0, 3.0), Quat::IDENTITY);
+    renderer
+        .camera_uniform
+        .update(&camera, Vec3::new(0.0, 0.0, 3.0), Quat::IDENTITY);
     renderer.update_camera_buffer();
     let light = SimplePreviewLight::studio_fallback();
-    let mut lights = LightScene::new(DirectionalLight::new(Vec3::new(light.direction[0], light.direction[1], light.direction[2]), Vec3::new(light.colour[0], light.colour[1], light.colour[2]), 2.2));
+    let mut lights = LightScene::new(DirectionalLight::new(
+        Vec3::new(light.direction[0], light.direction[1], light.direction[2]),
+        Vec3::new(light.colour[0], light.colour[1], light.colour[2]),
+        2.2,
+    ));
     lights.ambient = Vec3::new(light.ambient[0], light.ambient[1], light.ambient[2]);
     renderer.update_light_buffer(&lights.to_legacy_uniform());
-    let object = RenderObject { id: 1, shadow_class: ShadowClass::Auto, deforms: false, pose_version: 0, model_matrix: Mat4::IDENTITY, color: [1.0; 4], mesh_index: mesh, material_index: material, bounds: Aabb::from_center_size(Vec3::ZERO, Vec3::ONE) };
-    renderer.render_frame_view(&FrameView::new(&camera, &[object], &lights), &view).unwrap();
+    let object = RenderObject {
+        id: 1,
+        shadow_class: ShadowClass::Auto,
+        deforms: false,
+        pose_version: 0,
+        model_matrix: Mat4::IDENTITY,
+        color: [1.0; 4],
+        mesh_index: mesh,
+        material_index: material,
+        bounds: Aabb::from_center_size(Vec3::ZERO, Vec3::ONE),
+    };
+    renderer
+        .render_frame_view(&FrameView::new(&camera, &[object], &lights), &view)
+        .unwrap();
     let _ = renderer.device.poll(wgpu::PollType::wait_indefinitely());
-    let rgba = read_texture_ktx2(&renderer.device, &renderer.queue, &target, false).unwrap().levels.swap_remove(0);
+    let rgba = read_texture_ktx2(&renderer.device, &renderer.queue, &target, false)
+        .unwrap()
+        .levels
+        .swap_remove(0);
     let i = ((SIZE / 2 * SIZE + SIZE / 2) * 4) as usize;
     [rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]]
 }

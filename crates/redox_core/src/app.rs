@@ -169,7 +169,8 @@ impl AppBuilder {
         let dir = dir.into();
         let mut builder = self.add_plugin(crate::gi_streaming::GiSdfStreamingPlugin);
         builder.on_setup(move |world| {
-            let Some(resource) = crate::gi_streaming::gi_sdf_resource_if_present(&dir, cell_size) else {
+            let Some(resource) = crate::gi_streaming::gi_sdf_resource_if_present(&dir, cell_size)
+            else {
                 return;
             };
             world.insert_resource(resource);

@@ -269,6 +269,7 @@ pub fn load(
                     position: positions[i],
                     normal: normals[i],
                     uv: uvs[i],
+                    uv2: [0.0, 0.0],
                     tangent: tangent[i],
                 })
                 .collect();

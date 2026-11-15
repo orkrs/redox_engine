@@ -40,6 +40,7 @@ fn cube_mesh(half: f32) -> Mesh {
                     position: p,
                     normal: n,
                     uv: [0.0, 0.0],
+                    uv2: [0.0, 0.0],
                     tangent: [1.0, 0.0, 0.0],
                 }
             };

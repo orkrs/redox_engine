@@ -324,7 +324,7 @@ fn fog_pair() -> (Vec<u8>, Vec<u8>) {
             return (Vec::new(), Vec::new());
         };
         let cube = r.object(Vec3::new(0.0, 0.0, -30.0), Vec3::splat(4.0));
-        r.frame(&[cube])
+        r.frame(std::slice::from_ref(&cube))
     };
     let with = {
         let Some(mut r) = rig_sharp() else {
@@ -336,7 +336,7 @@ fn fog_pair() -> (Vec<u8>, Vec<u8>) {
             ..FogSettings::default()
         }));
         let cube = r.object(Vec3::new(0.0, 0.0, -30.0), Vec3::splat(4.0));
-        r.frame(&[cube])
+        r.frame(std::slice::from_ref(&cube))
     };
     (without, with)
 }
@@ -349,7 +349,10 @@ fn fog_changes_the_frame_when_taa_is_off() {
     };
     let (off, on) = fog_pair();
     assert!(!off.is_empty() && !on.is_empty());
-    assert!(max_difference(&off, &on) > 4, "fog must change the sharp-AA frame");
+    assert!(
+        max_difference(&off, &on) > 4,
+        "fog must change the sharp-AA frame"
+    );
 }
 
 fn mirror_scene(rig: &mut Rig, roughness: f32) -> Vec<RenderObject> {
@@ -400,7 +403,10 @@ fn ssr_changes_a_mirror_pixel_when_taa_is_off() {
         }
         r.frame(&objects)
     };
-    assert!(max_difference(&a, &b) > 6, "SSR must change the sharp-AA frame");
+    assert!(
+        max_difference(&a, &b) > 6,
+        "SSR must change the sharp-AA frame"
+    );
 }
 
 #[test]
@@ -411,9 +417,9 @@ fn sharp_aa_without_effects_matches_the_previous_sharp_path() {
         };
         let cube = r.object(Vec3::new(0.0, 0.0, -5.0), Vec3::ONE);
         for _ in 0..4 {
-            r.frame(&[cube]);
+            r.frame(std::slice::from_ref(&cube));
         }
-        r.frame(&[cube])
+        r.frame(std::slice::from_ref(&cube))
     };
     let b = {
         let Some(mut r) = rig_sharp() else {
@@ -425,9 +431,9 @@ fn sharp_aa_without_effects_matches_the_previous_sharp_path() {
         r.renderer.set_depth_of_field(None);
         let cube = r.object(Vec3::new(0.0, 0.0, -5.0), Vec3::ONE);
         for _ in 0..4 {
-            r.frame(&[cube]);
+            r.frame(std::slice::from_ref(&cube));
         }
-        r.frame(&[cube])
+        r.frame(std::slice::from_ref(&cube))
     };
     let worst = max_difference(&a, &b);
     assert!(
@@ -448,11 +454,11 @@ fn smaa_still_runs_after_fog_on_the_sharp_path() {
     let cube = r.object(Vec3::new(0.5, 0.0, -4.0), Vec3::ONE);
     let frame = {
         for _ in 0..4 {
-            r.frame(&[cube]);
+            r.frame(std::slice::from_ref(&cube));
         }
-        r.frame(&[cube])
+        r.frame(std::slice::from_ref(&cube))
     };
-  // SMAA softens the cube silhouette: some edge pixels sit between sky and interior.
+    // SMAA softens the cube silhouette: some edge pixels sit between sky and interior.
     let sky = luminance(&frame, 4, SIZE / 2);
     let edge = luminance(&frame, SIZE / 2 - 8, SIZE / 2);
     assert!(
@@ -469,9 +475,9 @@ fn taa_on_still_runs_the_chain() {
         };
         let cube = r.object(Vec3::new(0.0, 0.0, -25.0), Vec3::splat(3.0));
         for _ in 0..5 {
-            r.frame(&[cube]);
+            r.frame(std::slice::from_ref(&cube));
         }
-        r.frame(&[cube])
+        r.frame(std::slice::from_ref(&cube))
     };
     let on = {
         let Some(mut r) = rig() else {
@@ -484,9 +490,12 @@ fn taa_on_still_runs_the_chain() {
         }));
         let cube = r.object(Vec3::new(0.0, 0.0, -25.0), Vec3::splat(3.0));
         for _ in 0..5 {
-            r.frame(&[cube]);
+            r.frame(std::slice::from_ref(&cube));
         }
-        r.frame(&[cube])
+        r.frame(std::slice::from_ref(&cube))
     };
-    assert!(max_difference(&off, &on) > 4, "fog must still run on the TAA path");
+    assert!(
+        max_difference(&off, &on) > 4,
+        "fog must still run on the TAA path"
+    );
 }

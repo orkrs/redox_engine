@@ -259,8 +259,9 @@ impl RenderHost {
 
         let pane_views = Some(make_pane_views(&renderer.device, width, height));
 
-        let material_preview =
-            Some(crate::material_preview_host::init_material_preview(&mut renderer));
+        let material_preview = Some(crate::material_preview_host::init_material_preview(
+            &mut renderer,
+        ));
 
         Self {
             viewport,
@@ -488,12 +489,12 @@ impl RenderHost {
         #[cfg(feature = "shader-hot-reload")]
         self.poll_shader_edits();
 
+        self.ensure_project_ibl(project_root, assets_root);
+        self.sync_vg_instance_transforms(draws);
         let Some(renderer) = self.renderer.as_mut() else {
             return;
         };
 
-        self.ensure_project_ibl(project_root, assets_root);
-        self.sync_vg_instance_transforms(draws);
         let toggle_hints = apply_viewport_runtime(renderer, &self.runtime, self.vg_adapter_ok);
         apply_editor_camera(renderer, camera);
         let plan = ViewportShadingPlan::resolve(shading);
@@ -559,11 +560,11 @@ impl RenderHost {
         self.object_scratch.clear();
         push_ground(&mut self.object_scratch, self.cube_mesh, self.ground_mat);
         let plan = ViewportShadingPlan::resolve(shading);
+        self.ensure_project_ibl(project_root, assets_root);
         {
             let Some(renderer) = self.renderer.as_mut() else {
                 return;
             };
-            self.ensure_project_ibl(project_root, assets_root);
             let _ = apply_viewport_runtime(renderer, &self.runtime, self.vg_adapter_ok);
             self.mesh_cache.clear_missing();
             self.wireframe_overlay.clear();
@@ -697,10 +698,18 @@ fn try_load_ibl_ktx2(renderer: &mut Renderer, dir: &Path) -> bool {
         let ktx = Ktx2Loader::default().load(&bytes).ok()?;
         Texture::from_ktx2(&renderer.device, &renderer.queue, &ktx, label)
     };
-    let env = load(&paths[0], "ibl_env")?;
-    let irr = load(&paths[1], "ibl_irr")?;
-    let pre = load(&paths[2], "ibl_pre")?;
-    let lut = load(&paths[3], "ibl_lut")?;
+    let Some(env) = load(&paths[0], "ibl_env") else {
+        return false;
+    };
+    let Some(irr) = load(&paths[1], "ibl_irr") else {
+        return false;
+    };
+    let Some(pre) = load(&paths[2], "ibl_pre") else {
+        return false;
+    };
+    let Some(lut) = load(&paths[3], "ibl_lut") else {
+        return false;
+    };
     match IBLResource::from_ktx2(env, irr, pre, lut) {
         Ok(resource) => {
             renderer.set_ibl_resource(resource);
@@ -717,7 +726,8 @@ fn try_load_ibl_hdr(renderer: &mut Renderer, hdr: &Path) -> bool {
     let Ok(bytes) = std::fs::read(hdr) else {
         return false;
     };
-    let Ok(texture) = Texture::from_hdr_bytes(&renderer.device, &renderer.queue, &bytes, "sky") else {
+    let Ok(texture) = Texture::from_hdr_bytes(&renderer.device, &renderer.queue, &bytes, "sky")
+    else {
         return false;
     };
     renderer.set_environment(&texture);
@@ -848,7 +858,9 @@ fn apply_editor_reflection_probes(
         dirty_slots[slot] = world.all_entities().any(|entity| {
             world
                 .get_component::<redox_render::reflection::ReflectionProbeComponent>(entity)
-                .is_some_and(|component| component.probe.priority == probe.priority && component.dirty)
+                .is_some_and(|component| {
+                    component.probe.priority == probe.priority && component.dirty
+                })
         });
     }
     redox_core::reflection_probe_apply_slice(

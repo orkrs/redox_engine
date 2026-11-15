@@ -75,7 +75,7 @@ impl Renderer {
         fx_settings
     }
 
-  /// Velocity buffer for motion blur when TAA is off (camera plus moving objects).
+    /// Velocity buffer for motion blur when TAA is off (camera plus moving objects).
     fn record_velocity_for_motion_blur(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
@@ -275,10 +275,7 @@ impl Renderer {
         self.taa_frame_count += 1;
     }
 
-    fn hdr_after_post_fx(
-        &self,
-        fx_out: Option<usize>,
-    ) -> &wgpu::TextureView {
+    fn hdr_after_post_fx(&self, fx_out: Option<usize>) -> &wgpu::TextureView {
         match fx_out {
             Some(i) => &self.post_fx.views[i],
             None => &self.hdr_view,

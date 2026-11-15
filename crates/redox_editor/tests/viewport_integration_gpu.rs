@@ -130,19 +130,24 @@ fn viewport_with_an_hdr_is_not_the_dummy_environment() {
 #[test]
 fn a_missing_mesh_stays_a_proxy() {
     let plan = ViewportShadingPlan::resolve(ViewportShading::Lit);
-    assert!(plan.overlay_label().contains("Lit") || plan.status == redox_editor_viewport::ShadingAvailability::Available);
+    assert!(
+        plan.overlay_label().contains("Lit")
+            || plan.status == redox_editor_viewport::ShadingAvailability::Available
+    );
 }
 
 #[test]
 fn vg_defaults_off_when_the_adapter_lacks_features() {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-    if let Some(adapter) =
+    if let Ok(adapter) =
         pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
     {
         let supported = vg_supported(&adapter);
         assert_eq!(
             supported,
-            adapter.features().contains(wgpu::Features::INDIRECT_FIRST_INSTANCE)
+            adapter
+                .features()
+                .contains(wgpu::Features::INDIRECT_FIRST_INSTANCE)
                 && adapter.features().contains(wgpu::Features::PRIMITIVE_INDEX)
         );
     }

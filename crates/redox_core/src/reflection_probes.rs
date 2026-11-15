@@ -3,12 +3,11 @@
 use std::collections::HashMap;
 
 use redox_ecs::{Entity, World};
+use redox_math::Vec3;
 use redox_render::Renderer;
 use redox_render::context::RenderContext;
 use redox_render::light::LightScene;
-use redox_render::reflection::{
-    ReflectionProbe, ReflectionProbeComponent, pick_by_priority,
-};
+use redox_render::reflection::{ReflectionProbe, ReflectionProbeComponent, pick_by_priority};
 use redox_render::systems::FrameRenderObjects;
 
 use crate::app::AppBuilder;
@@ -29,26 +28,23 @@ pub fn reflection_probe_track_dirty(world: &mut World) {
     let mut cache = world
         .remove_resource::<ProbePoseCache>()
         .unwrap_or_default();
-    for entity in world.all_entities() {
-        let Some(component) = world.get_component::<ReflectionProbeComponent>(entity) else {
+    let entities: Vec<Entity> = world.all_entities().collect();
+    for entity in entities {
+        let pose = world
+            .get_component::<ReflectionProbeComponent>(entity)
+            .map(|component| (component.probe.center, component.probe.half_extent));
+        let Some(pose) = pose else {
             cache.poses.remove(&entity);
             continue;
         };
-        let pose = (component.probe.center, component.probe.half_extent);
-        match cache.poses.insert(entity, pose) {
-            None => {
-                if let Some(component) = world.get_component_mut::<ReflectionProbeComponent>(entity)
-                {
-                    component.dirty = true;
-                }
-            }
-            Some(previous) if previous != pose => {
-                if let Some(component) = world.get_component_mut::<ReflectionProbeComponent>(entity)
-                {
-                    component.dirty = true;
-                }
-            }
-            _ => {}
+        let changed = match cache.poses.insert(entity, pose) {
+            None => true,
+            Some(previous) => previous != pose,
+        };
+        if changed
+            && let Some(component) = world.get_component_mut::<ReflectionProbeComponent>(entity)
+        {
+            component.dirty = true;
         }
     }
     world.insert_resource(cache);
@@ -56,7 +52,7 @@ pub fn reflection_probe_track_dirty(world: &mut World) {
 
 /// Collects up to four probes from entities, highest priority first (RFL-01 order).
 pub fn probes_from_world(world: &World) -> Vec<ReflectionProbe> {
-    let mut probes: Vec<ReflectionProbe> = world
+    let probes: Vec<ReflectionProbe> = world
         .all_entities()
         .filter_map(|entity| {
             world
@@ -69,7 +65,8 @@ pub fn probes_from_world(world: &World) -> Vec<ReflectionProbe> {
 
 /// Marks every probe dirty (level load or editor “Capture” forcing refresh).
 pub fn mark_all_reflection_probes_dirty(world: &mut World) {
-    for entity in world.all_entities() {
+    let entities: Vec<Entity> = world.all_entities().collect();
+    for entity in entities {
         let Some(component) = world.get_component_mut::<ReflectionProbeComponent>(entity) else {
             continue;
         };
@@ -103,7 +100,8 @@ fn clear_dirty_at_slot(world: &mut World, slot: usize, probes: &[ReflectionProbe
     let Some(target) = target else {
         return;
     };
-    for entity in world.all_entities() {
+    let entities: Vec<Entity> = world.all_entities().collect();
+    for entity in entities {
         let Some(component) = world.get_component_mut::<ReflectionProbeComponent>(entity) else {
             continue;
         };
@@ -234,10 +232,12 @@ mod tests {
             .probe
             .center = Vec3::new(1.0, 0.0, 0.0);
         reflection_probe_track_dirty(&mut world);
-        assert!(world
-            .get_component::<ReflectionProbeComponent>(entity)
-            .unwrap()
-            .dirty);
+        assert!(
+            world
+                .get_component::<ReflectionProbeComponent>(entity)
+                .unwrap()
+                .dirty
+        );
     }
 
     #[test]
@@ -256,7 +256,10 @@ mod tests {
     fn a_world_with_one_probe_enables_them_and_uploads_the_box() {
         let mut world = World::new();
         let entity = world.spawn();
-        world.add_component(entity, ReflectionProbeComponent::new(probe(1, Vec3::new(2.0, 0.0, 0.0))));
+        world.add_component(
+            entity,
+            ReflectionProbeComponent::new(probe(1, Vec3::new(2.0, 0.0, 0.0))),
+        );
         let list = probes_from_world(&world);
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].center.x, 2.0);

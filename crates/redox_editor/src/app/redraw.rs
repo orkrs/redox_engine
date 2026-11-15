@@ -215,13 +215,7 @@ impl EditorApp {
             .map(|p| p.root().join(p.manifest().assets_root.as_str()));
         let sources =
             crate::meshlet_bake::collect_meshlet_bake_sources(&self.ui_ctx, assets_root.as_deref());
-        let entity_id = self
-            .ui_ctx
-            .core
-            .selection
-            .lock()
-            .primary
-            .map(|e| e.id());
+        let entity_id = self.ui_ctx.core.selection.lock().primary.map(|e| e.id());
         let transform = {
             let world = self.core.world.lock();
             entity_id
@@ -495,7 +489,10 @@ impl EditorApp {
     fn sync_material_preview_gpu(&mut self) {
         let session_snapshot = self.ui_ctx.material.lock().clone();
         if let Some(host) = self.render_host.as_mut() {
-            host.sync_material_preview(session_snapshot.as_ref(), &mut self.material_graph_registry);
+            host.sync_material_preview(
+                session_snapshot.as_ref(),
+                &mut self.material_graph_registry,
+            );
             if let (Some(view), Some(gpu_renderer), Some(engine)) = (
                 host.material_preview_view(),
                 self.egui_renderer.as_mut(),

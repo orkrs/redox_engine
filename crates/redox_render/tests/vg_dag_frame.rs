@@ -155,9 +155,7 @@ fn a_dag_asset_enables_traversal() {
     let mesh = create_sphere(1.0, 16);
     let asset = build_vg_dag_asset(&mesh, &DagParams::default(), material as u32).expect("dag");
     let vg = renderer.vg_system.as_mut().expect("vg");
-    assert!(vg
-        .register_dag_asset(asset, &renderer.queue)
-        .is_some());
+    assert!(vg.register_dag_asset(asset, &renderer.queue).is_some());
     assert!(vg.config.dag_traverse);
 }
 
@@ -185,7 +183,10 @@ fn a_spawned_dag_instance_is_drawn() {
         return;
     };
     let covered = differing_pixels(&empty, &with);
-    assert!(covered > 100, "DAG instance should cover pixels, got {covered}");
+    assert!(
+        covered > 100,
+        "DAG instance should cover pixels, got {covered}"
+    );
 }
 
 #[test]

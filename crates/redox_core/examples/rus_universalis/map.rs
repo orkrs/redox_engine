@@ -22,6 +22,7 @@ fn create_cylinder(radius: f32, height: f32, segments: u32) -> Mesh {
         position: [0.0, half_h, 0.0],
         normal: [0.0, 1.0, 0.0],
         uv: [0.5, 0.5],
+        uv2: [0.0, 0.0],
         tangent: [1.0, 0.0, 0.0],
     });
 
@@ -32,6 +33,7 @@ fn create_cylinder(radius: f32, height: f32, segments: u32) -> Mesh {
             position: [cos * radius, half_h, sin * radius],
             normal: [0.0, 1.0, 0.0],
             uv: [0.5 + cos * 0.5, 0.5 + sin * 0.5],
+            uv2: [0.0, 0.0],
             tangent: [1.0, 0.0, 0.0],
         });
     }
@@ -50,6 +52,7 @@ fn create_cylinder(radius: f32, height: f32, segments: u32) -> Mesh {
         position: [0.0, -half_h, 0.0],
         normal: [0.0, -1.0, 0.0],
         uv: [0.5, 0.5],
+        uv2: [0.0, 0.0],
         tangent: [1.0, 0.0, 0.0],
     });
 
@@ -60,6 +63,7 @@ fn create_cylinder(radius: f32, height: f32, segments: u32) -> Mesh {
             position: [cos * radius, -half_h, sin * radius],
             normal: [0.0, -1.0, 0.0],
             uv: [0.5 + cos * 0.5, 0.5 + sin * 0.5],
+            uv2: [0.0, 0.0],
             tangent: [1.0, 0.0, 0.0],
         });
     }
@@ -82,12 +86,14 @@ fn create_cylinder(radius: f32, height: f32, segments: u32) -> Mesh {
             position: [cos * radius, half_h, sin * radius],
             normal: [cos, 0.0, sin],
             uv: [u, 0.0],
+            uv2: [0.0, 0.0],
             tangent: [-sin, 0.0, cos],
         });
         vertices.push(Vertex {
             position: [cos * radius, -half_h, sin * radius],
             normal: [cos, 0.0, sin],
             uv: [u, 1.0],
+            uv2: [0.0, 0.0],
             tangent: [-sin, 0.0, cos],
         });
     }

@@ -61,18 +61,14 @@ impl TransientPool {
     }
 
     /// Rebuilds slots for `graph`. Reuses unchanged slot descriptors when `key` matches.
-    pub fn rebuild(
-        &mut self,
-        device: &wgpu::Device,
-        graph: &CompiledGraph,
-        key: PoolKey,
-    ) {
+    pub fn rebuild(&mut self, device: &wgpu::Device, graph: &CompiledGraph, key: PoolKey) {
         let plan = graph.slot_plan();
         let same_key = self.key == Some(key);
         let mut next_slots = Vec::with_capacity(plan.len());
         for (slot_idx, entry) in plan.iter().enumerate() {
             let reuse = same_key
                 .then(|| self.slots.get(slot_idx))
+                .flatten()
                 .filter(|old| old.desc == entry.desc);
             let (texture, view) = if let Some(old) = reuse {
                 (old.texture.clone(), old.view.clone())
@@ -131,11 +127,7 @@ impl TransientPool {
     /// Bytes saved by aliasing: sum of logical transient sizes minus sum of slot sizes.
     pub fn aliased_saved_bytes(&self, graph: &CompiledGraph) -> u64 {
         let logical = graph.logical_transient_bytes();
-        let physical = self
-            .slots
-            .iter()
-            .map(|s| slot_bytes(&s.desc))
-            .sum::<u64>();
+        let physical = self.slots.iter().map(|s| slot_bytes(&s.desc)).sum::<u64>();
         logical.saturating_sub(physical)
     }
 
@@ -146,18 +138,11 @@ impl TransientPool {
 
     /// Names of logical textures in each slot (for reports).
     pub fn slot_users(&self) -> impl Iterator<Item = (&PoolSlot, &[&'static str])> {
-        self.slots
-            .iter()
-            .map(|s| (s, s.users.as_slice()))
+        self.slots.iter().map(|s| (s, s.users.as_slice()))
     }
 }
 
 fn slot_bytes(desc: &TextureDesc) -> u64 {
     let bpp = desc.format.block_copy_size(None).unwrap_or(4);
-    texture_size_bytes(
-        desc.width,
-        desc.height,
-        bpp,
-        desc.mip_level_count.max(1),
-    )
+    texture_size_bytes(desc.width, desc.height, bpp, desc.mip_level_count.max(1))
 }

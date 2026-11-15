@@ -141,6 +141,7 @@ struct ShaderDebugUniform {
     frame_index: u32,
     ibl_enabled: u32,
     gtao_enabled: u32,
+    lightmap_enabled: u32,
     lod_bias: f32,
 };
 

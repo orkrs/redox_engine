@@ -709,7 +709,7 @@ impl PostFx {
         }
         match source {
             Source::Target(i) => Some(i),
-            Source::History(_) => None,
+            Source::History(_) | Source::Hdr => None,
         }
     }
 }

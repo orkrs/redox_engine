@@ -565,6 +565,8 @@ pub struct ShaderDebugUniform {
     pub ibl_enabled: u32,
     /// Non-zero when ambient occlusion is applied.
     pub gtao_enabled: u32,
+    /// Non-zero when static lightmaps contribute to the indirect term (LGT-01).
+    pub lightmap_enabled: u32,
     /// Texture LOD bias for material samples (PST-07); `0.0` at native scale.
     pub lod_bias: f32,
 }

@@ -203,7 +203,7 @@ impl Renderer {
             } else {
                 encoder.copy_texture_to_texture(
                     self.hdr_texture.as_image_copy(),
-                    wgpu::ImageCopyTexture {
+                    wgpu::TexelCopyTextureInfo {
                         texture: copy,
                         mip_level: 0,
                         origin: wgpu::Origin3d::ZERO,

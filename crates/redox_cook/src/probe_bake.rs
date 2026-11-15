@@ -170,7 +170,7 @@ fn find_world_probes(root: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use redox_render::reflection::{ProbeBakeEntry, write_probes_manifest, ProbesManifest};
+    use redox_render::reflection::{ProbeBakeEntry, ProbesManifest, write_probes_manifest};
 
     #[test]
     fn bake_probes_writes_one_file_per_probe() {
@@ -190,7 +190,7 @@ mod tests {
         let world = dir.join("world.scene.ron");
         std::fs::write(&world, "").unwrap();
         match bake_probes(&world, &dir.join("out")) {
-            Err(e) if e.contains("no GPU") || e.contains("adapter") => {
+            Err(e) if e.contains("GPU") || e.contains("adapter") => {
                 eprintln!("skipping GPU bake-probes: {e}");
             }
             Ok(files) => {

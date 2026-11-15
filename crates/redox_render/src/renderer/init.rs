@@ -275,6 +275,16 @@ impl Renderer {
 
         let fallback_normal = Texture::normal_1x1(&device, &queue);
         let fallback_mr = Texture::mr_1x1(&device, &queue);
+        let fallback_lightmap = Texture::solid_1x1(
+            &device,
+            &queue,
+            [0, 0, 0, 0],
+            "lightmap_fallback_1x1",
+            wgpu::TextureFormat::Rgba8Unorm,
+        );
+        let fallback_normal_view = fallback_normal.view.clone();
+        let fallback_mr_view = fallback_mr.view.clone();
+        let fallback_lightmap_view = fallback_lightmap.view.clone();
         let common_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("common_material_sampler"),
             address_mode_u: wgpu::AddressMode::Repeat,
@@ -877,9 +887,12 @@ impl Renderer {
             local_shadow_atlas_view,
             registry,
             fallback_texture_bg,
-            fallback_normal_view: fallback_normal.view,
-            fallback_mr_view: fallback_mr.view,
-            fallback_lightmap_view: fallback_mr.view,
+            fallback_normal,
+            fallback_normal_view,
+            fallback_mr,
+            fallback_mr_view,
+            fallback_lightmap,
+            fallback_lightmap_view,
             common_sampler,
             material_blend_flags: Vec::new(),
             material_alpha_test: Vec::new(),
@@ -1015,7 +1028,7 @@ impl Renderer {
             main_vis_scratch: Vec::new(),
             vg_sync_scratch: Vec::new(),
             staging_ring,
-            memory_reject_warned: std::cell::RefCell::new(std::collections::BTreeSet::new()),
+            memory_reject_warned: parking_lot::Mutex::new(std::collections::BTreeSet::new()),
             transient_pool: crate::transient_pool::TransientPool::new(),
             compiled_frame_graph: crate::frame_graph::frame_graph(1, 1)
                 .compile()

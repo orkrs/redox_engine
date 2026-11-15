@@ -30,7 +30,10 @@ pub fn insert_nav_from_path(world: &mut World, path: &Path) {
             }
         },
         Err(err) => {
-            log::warn!("navigation stays off: cannot read {}: {err}", path.display());
+            log::warn!(
+                "navigation stays off: cannot read {}: {err}",
+                path.display()
+            );
         }
     }
 }
