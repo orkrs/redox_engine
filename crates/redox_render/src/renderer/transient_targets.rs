@@ -52,6 +52,9 @@ impl Renderer {
         self.rebuild_sharp_bind_groups();
         self.rebind_post_fx();
         self.rebind_normal_consumers();
+        // The VG resolve reads the main depth: rebuild it with the pool's depth view too, or it
+        // samples the pre-swap depth (all 1.0) and discards every VG pixel.
+        self.vg_bind_groups_dirty = true;
         let hdr = self.hdr_texture.clone();
         let depth = self.depth_texture.clone();
         self.frame_debug.note_bindings(&hdr, &depth);

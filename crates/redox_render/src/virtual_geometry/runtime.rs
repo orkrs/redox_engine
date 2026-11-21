@@ -250,7 +250,7 @@ impl VGSystem {
             camera_bind_group,
             instances_bgl,
             instances_bind_group,
-            dag: DagState::new(device, config.max_instances, config.max_visible_commands),
+            dag: DagState::new(device, &config),
             global_meshlets: Vec::new(),
             meshlets_dirty: false,
             instance_data: Vec::new(),

@@ -22,12 +22,6 @@ use crate::virtual_geometry::meshlet::{MeshletDescriptor, VGInstanceData};
 
 use super::{VGAssetId, VGInstanceHandle, VGSystem};
 
-/// Clusters of all DAG assets together.
-const DAG_MAX_CLUSTERS: usize = 1 << 16;
-/// Child ids of all DAG assets together.
-const DAG_MAX_CHILD_IDS: usize = 1 << 17;
-/// Entries of each traversal queue and of the Hi-Z reject list.
-const DAG_QUEUE_CAPACITY: u32 = 1 << 15;
 /// Identity transform for slots that hold no DAG instance this frame.
 const IDENTITY: [[f32; 4]; 4] = [
     [1.0, 0.0, 0.0, 0.0],
@@ -65,16 +59,21 @@ pub(super) struct DagState {
 
 impl DagState {
     /// Creates the traversal and the draw-command buffer.
-    pub(super) fn new(device: &wgpu::Device, max_instances: usize, max_commands: usize) -> Self {
+    /// Capacities come from `VGConfig` (`dag_max_clusters`, `dag_queue_capacity`).
+    pub(super) fn new(device: &wgpu::Device, config: &super::VGConfig) -> Self {
         Self {
             traversal: DagTraversal::new(
                 device,
-                DAG_QUEUE_CAPACITY,
-                max_instances as u32,
-                DAG_MAX_CLUSTERS as u32,
-                DAG_MAX_CHILD_IDS as u32,
+                config.dag_queue_capacity,
+                config.max_instances as u32,
+                config.dag_max_clusters as u32,
+                (config.dag_max_clusters * 2) as u32,
             ),
-            indirect: IndirectDrawBuffer::new(device, max_commands, "vg_dag_indirect_draw"),
+            indirect: IndirectDrawBuffer::new(
+                device,
+                config.max_visible_commands,
+                "vg_dag_indirect_draw",
+            ),
             hierarchies: Vec::new(),
             bases: Vec::new(),
             assets: HashMap::new(),
@@ -104,6 +103,46 @@ impl VGSystem {
         asset: VGDagAsset,
         queue: &wgpu::Queue,
     ) -> Option<VGAssetId> {
+        self.register_dag_asset_with(asset, queue, true)
+    }
+
+    /// Registers many DAG assets with a single hierarchy upload (one `upload_dags` instead of one
+    /// per asset, which re-sends every earlier hierarchy each time). Entry `i` is the id of
+    /// `assets[i]`, `None` when it no longer fit. Spawn instances after this returns.
+    pub fn register_dag_assets(
+        &mut self,
+        assets: Vec<VGDagAsset>,
+        queue: &wgpu::Queue,
+    ) -> Vec<Option<VGAssetId>> {
+        let ids: Vec<Option<VGAssetId>> = assets
+            .into_iter()
+            .map(|a| self.register_dag_asset_with(a, queue, false))
+            .collect();
+        if let Err(e) = self
+            .dag
+            .traversal
+            .upload_dags(queue, &self.dag.hierarchies, &self.dag.bases)
+        {
+            log::warn!("[VGSystem] DAG hierarchy upload failed: {e}");
+        }
+        ids
+    }
+
+    fn register_dag_asset_with(
+        &mut self,
+        asset: VGDagAsset,
+        queue: &wgpu::Queue,
+        upload: bool,
+    ) -> Option<VGAssetId> {
+        if !upload {
+            // Deferred upload: check the hierarchy capacity here (child ids never outnumber
+            // clusters, and their capacity is at least the cluster capacity).
+            let used: usize = self.dag.hierarchies.iter().map(|d| d.clusters.len()).sum();
+            if used + asset.dag.clusters.len() > self.dag.traversal.max_clusters() as usize {
+                log::warn!("[VGSystem] DAG hierarchy capacity is full");
+                return None;
+            }
+        }
         let vert_needed = asset.vertices.len();
         let idx_needed = asset.indices.len();
         if self.vertex_watermark as usize + vert_needed > self.config.max_vertices
@@ -118,11 +157,12 @@ impl VGSystem {
         let dag_index = self.dag.hierarchies.len();
         self.dag.hierarchies.push(asset.dag);
         self.dag.bases.push((vertex_base, index_base));
-        if self
-            .dag
-            .traversal
-            .upload_dags(queue, &self.dag.hierarchies, &self.dag.bases)
-            .is_err()
+        if upload
+            && self
+                .dag
+                .traversal
+                .upload_dags(queue, &self.dag.hierarchies, &self.dag.bases)
+                .is_err()
         {
             log::warn!("[VGSystem] DAG hierarchy capacity is full");
             self.dag.hierarchies.pop();
@@ -141,18 +181,14 @@ impl VGSystem {
             u64::from(vertex_base) * std::mem::size_of::<CompressedVertex>() as u64,
             bytemuck::cast_slice(&compressed),
         );
-        // The cluster builder emits triangles clockwise as the visibility pass sees them (its
-        // pipeline culls back faces, counter-clockwise front): flip each triangle on upload, or
-        // the surface that faces the camera is culled and the far side shows through.
-        let facing: Vec<u32> = asset
-            .indices
-            .chunks_exact(3)
-            .flat_map(|t| [t[0], t[2], t[1]])
-            .collect();
+        // Indices go up as built: the cluster builder keeps the winding of the source mesh, and the
+        // vis pass culls back faces with counter-clockwise front faces like the flat VG path and
+        // the raster passes. (A flip here used to turn every counter-clockwise mesh inside out:
+        // faces towards the camera were culled and the far side showed through.)
         queue.write_buffer(
             &self.index_buffer,
             u64::from(index_base) * std::mem::size_of::<u32>() as u64,
-            bytemuck::cast_slice(&facing),
+            bytemuck::cast_slice(&asset.indices),
         );
         self.vertex_watermark += vert_needed as u32;
         self.index_watermark += idx_needed as u32;
