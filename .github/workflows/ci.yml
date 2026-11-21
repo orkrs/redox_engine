@@ -69,7 +69,7 @@ jobs:
           }
           exit 0
       - name: upload editor reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: editor-pipeline-reports
