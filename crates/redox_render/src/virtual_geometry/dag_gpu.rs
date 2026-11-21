@@ -442,6 +442,11 @@ impl DagTraversal {
         Ok(())
     }
 
+    /// Cluster capacity given to [`Self::new`].
+    pub fn max_clusters(&self) -> u32 {
+        self.max_clusters
+    }
+
     /// Bounding sphere of hierarchy `dag` in its local space, if uploaded.
     pub fn dag_bound(&self, dag: usize) -> Option<[f32; 4]> {
         self.scene.as_ref()?.bounds.get(dag).copied()

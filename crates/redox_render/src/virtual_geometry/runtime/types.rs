@@ -26,6 +26,10 @@ pub struct VGConfig {
     pub dag_traverse: bool,
     /// Screen-space error (pixels) below which a DAG cluster is precise enough to draw.
     pub error_threshold_px: f32,
+    /// Clusters of all DAG assets together (GPU hierarchy capacity); child ids get twice as many.
+    pub dag_max_clusters: usize,
+    /// Entries of each DAG traversal queue and of the Hi-Z reject list.
+    pub dag_queue_capacity: u32,
 }
 
 impl Default for VGConfig {
@@ -40,6 +44,8 @@ impl Default for VGConfig {
             gpu_cull: false,
             dag_traverse: false,
             error_threshold_px: 1.0,
+            dag_max_clusters: 1 << 16,
+            dag_queue_capacity: 1 << 15,
         }
     }
 }

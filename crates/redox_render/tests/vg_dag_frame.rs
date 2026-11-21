@@ -12,6 +12,16 @@ use redox_render::mesh::primitive::create_sphere;
 use redox_render::resource::ibl::read_texture_ktx2;
 use redox_render::virtual_geometry::{DagParams, VGConfig, build_vg_dag_asset};
 
+/// `create_sphere` winds its triangles inward (the forward examples flip it, see foxrun's
+/// `outward`); the DAG path keeps the mesh winding, so flip it to face out.
+fn outward_sphere(radius: f32, segments: u32) -> redox_render::mesh::Mesh {
+    let mut mesh = create_sphere(radius, segments);
+    for t in mesh.indices.chunks_exact_mut(3) {
+        t.swap(1, 2);
+    }
+    mesh
+}
+
 const SIZE: u32 = 128;
 
 static GPU: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -78,7 +88,7 @@ fn frame_with(sphere: Option<Vec3>, path: Path) -> Option<Vec<u8>> {
     };
     renderer.init_virtual_geometry(config);
     if let Some(at) = sphere {
-        let mesh = create_sphere(1.0, 48);
+        let mesh = outward_sphere(1.0, 48);
         let transform = Mat4::from_translation(at).to_cols_array_2d();
         let vg = renderer.vg_system.as_mut().expect("vg");
         match path {
@@ -288,7 +298,7 @@ fn dag_bench_thousand_spheres() {
         dag_traverse: true,
         ..VGConfig::default()
     });
-    let mesh = create_sphere(1.0, 316);
+    let mesh = outward_sphere(1.0, 316);
     eprintln!("sphere: {} triangles", mesh.indices.len() / 3);
     let built = std::time::Instant::now();
     let asset =

@@ -17,9 +17,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     let src_coord = gid.xy * 2u;
+    // An odd source size leaves one column/row over: the last texel of the row/column takes it,
+    // so that every source texel reaches the coarser mip (the max must stay conservative).
+    let last = gid.xy + 1u == dst_dims;
+    let odd = (params.src_size & vec2<u32>(1u)) == vec2<u32>(1u);
+    let span = select(vec2<u32>(2u), vec2<u32>(3u), last & odd);
     var max_d = 0.0;
-    for (var oy = 0u; oy < 2u; oy++) {
-        for (var ox = 0u; ox < 2u; ox++) {
+    for (var oy = 0u; oy < span.y; oy++) {
+        for (var ox = 0u; ox < span.x; ox++) {
             let sc = src_coord + vec2<u32>(ox, oy);
             if (sc.x < params.src_size.x && sc.y < params.src_size.y) {
                 max_d = max(max_d, textureLoad(t_src, vec2<i32>(sc), 0).x);
